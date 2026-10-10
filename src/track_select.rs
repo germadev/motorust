@@ -54,16 +54,19 @@ type NameFilter = (
     With<TrackName>,
     Without<TrackDescription>,
     Without<TrackLength>,
+    Without<TrackHint>,
 );
 type DescriptionFilter = (
     With<TrackDescription>,
     Without<TrackName>,
     Without<TrackLength>,
+    Without<TrackHint>,
 );
 type LengthFilter = (
     With<TrackLength>,
     Without<TrackName>,
     Without<TrackDescription>,
+    Without<TrackHint>,
 );
 type HintFilter = (
     With<TrackHint>,
@@ -307,4 +310,52 @@ fn aerial_camera(
         .looking_at(Vec3::new(center.x, 0.0, center.y), Vec3::Y);
     let (mut transform, mut projection) = camera.into_inner();
     glide.apply(&mut transform, &mut projection, wanted, AERIAL_FOV, dt);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::circuits::{CIRCUITS, CurrentCircuit};
+
+    #[test]
+    fn track_select_systems_initialize_without_conflicts() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Font>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .init_resource::<Settings>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .add_message::<MenuSound>()
+            .init_resource::<crate::hud::UiFont>()
+            .init_resource::<crate::welcome::GameMode>()
+            .init_resource::<InputDevice>()
+            .init_resource::<CurrentCircuit>()
+            .init_resource::<CameraGlide>()
+            .add_plugins(TrackSelectPlugin);
+
+        let track = Track::new(&CIRCUITS[0].layout);
+        let image = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(crate::minimap::draw(&track, &[]));
+        app.insert_resource(crate::minimap::TrackMap {
+            image,
+            projection: crate::minimap::Projection::new(&track),
+        });
+        app.insert_resource(track);
+
+        app.world_mut().spawn((
+            Camera3d::default(),
+            Camera::default(),
+            Projection::Perspective(PerspectiveProjection::default()),
+        ));
+
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Tracks);
+        app.update();
+    }
 }

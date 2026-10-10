@@ -69,19 +69,19 @@ impl Plugin for MinimapPlugin {
 #[derive(Resource)]
 pub struct TrackMap {
     pub image: Handle<Image>,
-    projection: Projection,
+    pub projection: Projection,
 }
 
 /// Cómo se pasa del suelo (m) al plano (px).
 #[derive(Clone, Copy)]
-struct Projection {
-    min: Vec2,
-    scale: f32,
-    offset: Vec2,
+pub struct Projection {
+    pub min: Vec2,
+    pub scale: f32,
+    pub offset: Vec2,
 }
 
 impl Projection {
-    fn new(track: &Track) -> Self {
+    pub fn new(track: &Track) -> Self {
         let (min, max) = track.bounds();
         let scale = (MAP_SIZE as f32 - 2.0 * MAP_MARGIN) / (max - min).max_element();
         let offset = (Vec2::splat(MAP_SIZE as f32) - (max - min) * scale) / 2.0;

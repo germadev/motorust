@@ -32,67 +32,72 @@ use bevy::prelude::*;
 /// 240 FPS y la simulación es reproducible.
 const SIMULATION_HZ: f64 = 120.0;
 
-#[cfg(windows)]
 fn init_crash_handler() {
-    std::panic::set_hook(Box::new(|info| {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
         let msg = format!(
             "Motorust se ha cerrado por un error:\n\n{info}\n\nSe ha guardado un informe en motorust-crash.log."
         );
         let _ = std::fs::write("motorust-crash.log", &msg);
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let path = std::path::PathBuf::from(appdata)
-                .join("motorust")
-                .join("crash.log");
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(path, &msg);
-        }
 
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
-
-        let title: Vec<u16> = OsStr::new("Motorust - Error")
-            .encode_wide()
-            .chain(Some(0))
-            .collect();
-        let text: Vec<u16> = OsStr::new(&msg).encode_wide().chain(Some(0)).collect();
-
-        unsafe {
-            type MessageBoxW = unsafe extern "system" fn(
-                hwnd: *mut std::ffi::c_void,
-                lp_text: *const u16,
-                lp_caption: *const u16,
-                u_type: u32,
-            ) -> i32;
-
-            unsafe extern "system" {
-                fn LoadLibraryA(lpLibFileName: *const u8) -> *mut std::ffi::c_void;
-                fn GetProcAddress(
-                    hModule: *mut std::ffi::c_void,
-                    lpProcName: *const u8,
-                ) -> *mut std::ffi::c_void;
+        #[cfg(windows)]
+        {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                let path = std::path::PathBuf::from(appdata)
+                    .join("motorust")
+                    .join("crash.log");
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(path, &msg);
             }
 
-            let user32 = LoadLibraryA(b"user32.dll\0".as_ptr());
-            if !user32.is_null() {
-                let proc = GetProcAddress(user32, b"MessageBoxW\0".as_ptr());
-                if !proc.is_null() {
-                    let msg_box: MessageBoxW = std::mem::transmute(proc);
-                    msg_box(
-                        std::ptr::null_mut(),
-                        text.as_ptr(),
-                        title.as_ptr(),
-                        0x10, /* MB_ICONERROR */
-                    );
+            use std::ffi::OsStr;
+            use std::os::windows::ffi::OsStrExt;
+
+            let title: Vec<u16> = OsStr::new("Motorust - Error")
+                .encode_wide()
+                .chain(Some(0))
+                .collect();
+            let text: Vec<u16> = OsStr::new(&msg).encode_wide().chain(Some(0)).collect();
+
+            unsafe {
+                type MessageBoxW = unsafe extern "system" fn(
+                    hwnd: *mut std::ffi::c_void,
+                    lp_text: *const u16,
+                    lp_caption: *const u16,
+                    u_type: u32,
+                ) -> i32;
+
+                unsafe extern "system" {
+                    fn LoadLibraryA(lpLibFileName: *const u8) -> *mut std::ffi::c_void;
+                    fn GetProcAddress(
+                        hModule: *mut std::ffi::c_void,
+                        lpProcName: *const u8,
+                    ) -> *mut std::ffi::c_void;
+                }
+
+                let user32 = LoadLibraryA(b"user32.dll\0".as_ptr());
+                if !user32.is_null() {
+                    let proc = GetProcAddress(user32, b"MessageBoxW\0".as_ptr());
+                    if !proc.is_null() {
+                        let msg_box: MessageBoxW = std::mem::transmute(proc);
+                        msg_box(
+                            std::ptr::null_mut(),
+                            text.as_ptr(),
+                            title.as_ptr(),
+                            0x10, /* MB_ICONERROR */
+                        );
+                    }
                 }
             }
         }
+
+        default_hook(info);
     }));
 }
 
 fn main() {
-    #[cfg(windows)]
     init_crash_handler();
 
     // Los ajustes guardados deciden cómo se abre la ventana.

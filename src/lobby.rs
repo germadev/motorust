@@ -757,4 +757,59 @@ mod tests {
         assert!(config.move_right(ControllerBinding::Arrows));
         assert_eq!(config.p2, Some(ControllerBinding::Arrows));
     }
+
+    #[test]
+    fn split_screen_race_transition_runs_without_panicking() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::input::InputPlugin)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .add_plugins(bevy::audio::AudioPlugin::default())
+            .init_asset::<Mesh>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<Image>()
+            .init_asset::<Font>()
+            .init_asset::<bevy::render::mesh::skinning::SkinnedMeshInverseBindposes>()
+            .init_state::<GameState>()
+            .insert_resource(crate::welcome::GameMode::SplitScreen)
+            .init_resource::<Settings>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<crate::hud::UiFont>()
+            .init_resource::<crate::pause::DebugOptions>()
+            .insert_resource(LocalPlayersConfig {
+                p1: Some(ControllerBinding::Wasd),
+                p2: Some(ControllerBinding::Arrows),
+            })
+            .init_resource::<crate::circuits::CurrentCircuit>();
+
+        let track = crate::track::Track::new(&crate::circuits::CIRCUITS[0].layout);
+        let image = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(crate::minimap::draw(&track, &[]));
+        app.insert_resource(crate::minimap::TrackMap {
+            image,
+            projection: crate::minimap::Projection::new(&track),
+        });
+        app.insert_resource(track)
+            .init_resource::<crate::menu::Choice>()
+            .init_resource::<Time<Virtual>>()
+            .add_message::<bevy::app::AppExit>()
+            .add_plugins((
+                crate::camera::ChaseCameraPlugin,
+                crate::bike::BikePlugin,
+                crate::gamepads::GamepadsPlugin,
+                crate::hud::HudPlugin,
+                crate::minimap::MinimapPlugin,
+                crate::pause::PausePlugin,
+                crate::sound::SoundPlugin,
+                crate::ui::UiPlugin,
+            ));
+
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+    }
 }
