@@ -643,12 +643,15 @@ fn limit_frames(settings: Res<Settings>, mut deadline: Local<Option<Instant>>) {
 #[cfg(all(not(target_arch = "wasm32"), not(windows)))]
 fn set_window_icon(
     primary_window: Query<Entity, With<PrimaryWindow>>,
-    windows: NonSend<bevy::winit::WinitWindows>,
+    windows: Option<NonSend<bevy::winit::WinitWindows>>,
     mut done: Local<bool>,
 ) {
     if *done {
         return;
     }
+    let Some(windows) = windows else {
+        return;
+    };
     let Ok(entity) = primary_window.single() else {
         return;
     };
