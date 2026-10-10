@@ -27,15 +27,64 @@ pub const BAY: Circuit = Circuit {
         terraces: &[],
         mountains,
         curbs: [Color::srgb(0.85, 0.08, 0.06), Color::srgb(0.95, 0.95, 0.95)],
-        walls: &[],
+        walls: &[
+            // Paseo marítimo con barandilla abierta al mar en la recta de meta
+            WallRun {
+                span: span(0.0, 340.0),
+                side: Side::Left,
+                style: WallStyle::Railing,
+            },
+            // Barrera de hormigón en la bajada este
+            WallRun {
+                span: span(1040.0, 1220.0),
+                side: Side::Left,
+                style: WallStyle::Concrete,
+            },
+        ],
         tunnels: &[],
         bridges: &[],
-        gantries: &[Gantry {
-            along: 0.0,
-            color: Color::srgb(0.8, 0.08, 0.06),
-            text: None,
-        }],
-        billboards: &[],
+        gantries: &[
+            Gantry {
+                along: 0.0,
+                color: Color::srgb(0.8, 0.08, 0.06),
+                text: Some("BAHIA GP"),
+            },
+            Gantry {
+                along: 780.0,
+                color: Color::srgb(0.8, 0.08, 0.06),
+                text: Some("CHECKPOINT"),
+            },
+        ],
+        billboards: &[
+            Billboard {
+                along: 240.0,
+                side: Side::Right,
+                text: "MOTORUST",
+                color: Color::srgb(0.1, 0.1, 0.12),
+                accent: Some((4, crate::ui::RUST_ORANGE)),
+            },
+            Billboard {
+                along: 270.0,
+                side: Side::Right,
+                text: "MOTO RACER",
+                color: Color::srgb(0.08, 0.22, 0.75),
+                accent: None,
+            },
+            Billboard {
+                along: 620.0,
+                side: Side::Left,
+                text: "SUPERBIKE",
+                color: Color::srgb(0.75, 0.1, 0.08),
+                accent: None,
+            },
+            Billboard {
+                along: 1140.0,
+                side: Side::Right,
+                text: "GRAND PRIX",
+                color: Color::srgb(0.1, 0.5, 0.2),
+                accent: None,
+            },
+        ],
         lamps: &[Row {
             span: LAP,
             side: Side::Left,
@@ -57,7 +106,92 @@ pub const BAY: Circuit = Circuit {
         palms: &[],
         hotels: &[],
         grand_hotel: None,
-        buoys: &[],
+        buoys: &[
+            Vec2::new(-45.0, -100.0),
+            Vec2::new(-70.0, -220.0),
+            Vec2::new(-50.0, 40.0),
+            Vec2::new(10.0, 190.0),
+        ],
+        lighthouses: &[
+            Lighthouse {
+                position: Vec2::new(-170.0, -260.0),
+                height: 22.0,
+            },
+        ],
+        boats: &[
+            Boat {
+                position: Vec2::new(-85.0, -100.0),
+                heading: 0.5,
+                kind: BoatKind::Sailboat,
+            },
+            Boat {
+                position: Vec2::new(-120.0, -310.0),
+                heading: -1.2,
+                kind: BoatKind::Sailboat,
+            },
+            Boat {
+                position: Vec2::new(10.0, 230.0),
+                heading: 2.2,
+                kind: BoatKind::Yacht,
+            },
+            Boat {
+                position: Vec2::new(-150.0, 60.0),
+                heading: 0.1,
+                kind: BoatKind::Sailboat,
+            },
+        ],
+        chevrons: &[
+            ChevronSign {
+                along: 360.0,
+                side: Side::Right,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 660.0,
+                side: Side::Left,
+                direction: ChevronDirection::Left,
+            },
+            ChevronSign {
+                along: 980.0,
+                side: Side::Right,
+                direction: ChevronDirection::Right,
+            },
+        ],
+        grandstands: &[
+            Grandstand {
+                along: 70.0,
+                side: Side::Right,
+                lateral: WALL_DISTANCE + 5.0,
+                length: 32.0,
+            },
+        ],
+        beach_parasols: &[
+            ParasolCluster {
+                position: Vec2::new(-35.0, -110.0),
+                count: 5,
+            },
+            ParasolCluster {
+                position: Vec2::new(-30.0, -40.0),
+                count: 4,
+            },
+        ],
+        brake_markers: &[
+            BrakeMarker {
+                along: 310.0,
+                side: Side::Right,
+                distance: 100,
+            },
+            BrakeMarker {
+                along: 340.0,
+                side: Side::Right,
+                distance: 50,
+            },
+            BrakeMarker {
+                along: 630.0,
+                side: Side::Left,
+                distance: 50,
+            },
+        ],
     },
 };
 

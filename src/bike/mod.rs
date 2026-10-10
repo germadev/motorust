@@ -404,8 +404,10 @@ pub fn step(
     // gravedad, con un agarre tan alto, tumbaría la moto con muy poco giro.)
     let grip_used = (speed * yaw_rate / tuning.max_lateral_accel).clamp(-1.0, 1.0);
     let target_lean = tuning.max_lean * grip_used.abs().powf(LEAN_CURVE).copysign(grip_used);
-    // Se tumba deprisa y se levanta suave.
-    let leaning_in = target_lean.abs() > state.lean.abs() && target_lean * state.lean >= 0.0;
+    // Se tumba deprisa y se levanta suave. Al cambiar de lado en una curva,
+    // también se tumba deprisa hacia el lado contrario.
+    let leaning_in = (target_lean.abs() > state.lean.abs() && target_lean * state.lean >= 0.0)
+        || target_lean * state.lean < 0.0;
     let lean_rate = if leaning_in {
         tuning.lean_in_response
     } else {
@@ -821,14 +823,22 @@ impl DigitalSteer {
     /// vuelve al centro y la moto no gira.
     fn update(&mut self, pressed: f32, reach: f32, dt: f32) -> f32 {
         if pressed != self.pressed {
+            // Si se pulsa hacia el otro lado estando inclinado o recuperando,
+            // aborta la recuperación para empezar de inmediato hacia el nuevo
+            // lado (la misma respuesta que pulsando desde el centro).
+            if pressed != 0.0 && self.value * pressed < 0.0 {
+                self.value = 0.0;
+            }
             (self.pressed, self.time) = (pressed, 0.0);
         }
-        // En pasos de un milisegundo: igual a cualquier tasa de fotogramas, y
-        // al cambiar de lado pasa por el centro con la rapidez de soltar.
+        // En pasos de un milisegundo: igual a cualquier tasa de fotogramas.
         let steps = (dt * 1000.0).ceil().max(1.0);
         let dt = dt / steps;
         for _ in 0..steps as usize {
-            let returning = pressed == 0.0 || self.value * pressed < 0.0;
+            if pressed != 0.0 && self.value * pressed < 0.0 {
+                self.value = 0.0;
+            }
+            let returning = pressed == 0.0;
             let (start, accel, target) = if returning {
                 (DIGITAL_RELEASE_START, DIGITAL_RELEASE_ACCEL, 0.0)
             } else {
@@ -1210,11 +1220,42 @@ mod tests {
     }
 
     #[test]
-    fn keyboard_steering_passes_through_the_centre_to_change_sides() {
+    fn keyboard_steering_aborts_recovery_to_turn_the_other_way() {
+        // Al cambiar de lado aborta la recuperación y empieza de inmediato
+        // hacia el otro lado, como si se pulsara desde el centro.
         let values = digital_steer(1.5, DT, |t| if t < 0.7 { 1.0 } else { -1.0 });
         let at = |seconds: f32| values[(seconds / DT).round() as usize - 1];
-        assert!(at(0.8) > 0.0 && at(0.8) < 1.0);
+        let from_center = digital_steer(0.2, DT, |_| -1.0);
+        let at_center = |seconds: f32| from_center[(seconds / DT).round() as usize - 1];
+        // En 0.1 s tras cambiar de lado está exactamente en la misma posición
+        // que pulsando brevemente sin estar inclinado.
+        assert_eq!(at(0.8), at_center(0.1));
+        assert!(at(0.8) < 0.0);
         assert_eq!(*values.last().unwrap(), -1.0);
+    }
+
+    #[test]
+    fn keyboard_steering_aborts_active_recovery_when_tapping_opposite() {
+        // Si se suelta (empieza a recuperar) y se da un toque al lado opuesto,
+        // aborta la recuperación y va a la misma posición que desde el centro.
+        let values = digital_steer(1.5, DT, |t| {
+            if t < 0.4 {
+                1.0
+            } else if t < 0.6 {
+                0.0
+            } else {
+                -1.0
+            }
+        });
+        let at = |seconds: f32| values[(seconds / DT).round() as usize - 1];
+        let from_center = digital_steer(0.2, DT, |_| -1.0);
+        let at_center = |seconds: f32| from_center[(seconds / DT).round() as usize - 1];
+        // En 0.6 s estaba recuperando hacia el centro (todavía positivo).
+        assert!(at(0.6) > 0.0);
+        // En 0.7 s (0.1 s de toque opuesto), está exactamente en la posición del
+        // toque desde el centro.
+        assert_eq!(at(0.7), at_center(0.1));
+        assert!(at(0.7) < 0.0);
     }
 
     #[test]

@@ -166,6 +166,29 @@ pub fn spawn_road(
         ..default()
     };
     spawn(finish_line(track), checkered());
+
+    // Parrilla de salida con cajones pintados para las motos.
+    spawn(
+        starting_grid(track),
+        StandardMaterial {
+            base_color: Color::WHITE,
+            perceptual_roughness: 0.6,
+            ..default()
+        },
+    );
+
+    // Huellas de derrape y frenada en las curvas para dar dinamismo al asfalto.
+    if let Some(skids) = skid_marks(track) {
+        spawn(
+            skids,
+            StandardMaterial {
+                base_color: Color::srgb(0.12, 0.12, 0.14),
+                perceptual_roughness: 0.95,
+                ..default()
+            },
+        );
+    }
+
     for gantry in scenery.gantries {
         spawn_gantry(world, track, gantry, assets);
     }
@@ -476,6 +499,31 @@ fn spawn_gantry(
         );
     }
 
+    let flag_pole = assets.meshes.add(Cylinder::new(0.04, 2.2));
+    let pole_mat = assets.materials.add(StandardMaterial {
+        base_color: Color::srgb(0.8, 0.8, 0.82),
+        perceptual_roughness: 0.3,
+        ..default()
+    });
+    let mut flag_mesh = MeshBuilder::default();
+    flag_mesh.triangle(
+        [
+            (Vec3::new(0.0, 1.9, 0.0), Vec2::ZERO),
+            (Vec3::new(0.0, 0.9, 0.0), Vec2::Y),
+            (Vec3::new(1.3, 1.4, 0.15), Vec2::ONE),
+        ],
+        Vec3::Z,
+        gantry.color,
+    );
+    let flag_cloth = assets.meshes.add(flag_mesh.build());
+    let flag_mat = assets.materials.add(StandardMaterial {
+        base_color: gantry.color,
+        cull_mode: None,
+        double_sided: true,
+        perceptual_roughness: 0.6,
+        ..default()
+    });
+
     world.spawn((
         Transform::from_xyz(point.x, ground, point.y).with_rotation(Quat::from_rotation_y(heading)),
         Visibility::default(),
@@ -499,8 +547,102 @@ fn spawn_gantry(
                 Mesh3d(assets.meshes.add(banner.build())),
                 MeshMaterial3d(assets.materials.add(banner_material)),
             ),
+            (
+                Mesh3d(flag_pole.clone()),
+                MeshMaterial3d(pole_mat.clone()),
+                Transform::from_xyz(-span, GANTRY_HEIGHT + 1.1, 0.0),
+            ),
+            (
+                Mesh3d(flag_cloth.clone()),
+                MeshMaterial3d(flag_mat.clone()),
+                Transform::from_xyz(-span, GANTRY_HEIGHT, 0.0),
+            ),
+            (
+                Mesh3d(flag_pole),
+                MeshMaterial3d(pole_mat),
+                Transform::from_xyz(span, GANTRY_HEIGHT + 1.1, 0.0),
+            ),
+            (
+                Mesh3d(flag_cloth),
+                MeshMaterial3d(flag_mat),
+                Transform::from_xyz(span, GANTRY_HEIGHT, 0.0),
+            ),
         ],
     ));
+}
+
+/// Marcas en la parrilla de salida: cajones para las motos alineadas antes de la meta.
+fn starting_grid(track: &Track) -> Mesh {
+    let mut mesh = MeshBuilder::default();
+    let lift = SURFACE_Y + 1.5 * PAINT_LIFT;
+    for slot in 0..8 {
+        let (point, heading) = track.grid_slot(slot);
+        let fwd = crate::geometry::forward(heading);
+        let left = Vec2::new(-fwd.y, fwd.x);
+        let at = |x_off: f32, z_off: f32| {
+            let p = point + left * x_off + fwd * z_off;
+            Vec3::new(p.x, track.road_height(p) + lift, p.y)
+        };
+        // Línea frontal transversal de salida
+        let (w, d) = (0.85, 0.09);
+        mesh.quad(
+            [
+                (at(-w, 0.4 - d), Vec2::ZERO),
+                (at(w, 0.4 - d), Vec2::X),
+                (at(w, 0.4 + d), Vec2::ONE),
+                (at(-w, 0.4 + d), Vec2::Y),
+            ],
+            Vec3::Y,
+            Color::WHITE,
+        );
+        // Marcas laterales del cajón
+        for side in [-w, w] {
+            let sw = 0.06;
+            mesh.quad(
+                [
+                    (at(side - sw, -0.9), Vec2::ZERO),
+                    (at(side + sw, -0.9), Vec2::X),
+                    (at(side + sw, 0.4), Vec2::ONE),
+                    (at(side - sw, 0.4), Vec2::Y),
+                ],
+                Vec3::Y,
+                Color::WHITE,
+            );
+        }
+    }
+    mesh.build()
+}
+
+/// Huellas de neumático en las curvas para dar sensación de carrera.
+fn skid_marks(track: &Track) -> Option<Mesh> {
+    let mut mesh = MeshBuilder::default();
+    let n = track.sample_count();
+    let step = track.step_length();
+    let lift = SURFACE_Y + 0.5 * PAINT_LIFT;
+    for i in 0..n {
+        let curv = track.smoothed_curvature(i, 4);
+        if curv <= 1.0 / CURB_RADIUS {
+            continue;
+        }
+        let next = (i + 1) % n;
+        let at = |idx: usize, lat: f32| track.surface_point(idx, lat) + Vec3::Y * lift;
+        for base_lat in [-2.4, 2.4] {
+            let (lat0, lat1) = (base_lat - 0.16, base_lat + 0.16);
+            let u0 = i as f32 * step / 3.0;
+            let u1 = (i + 1) as f32 * step / 3.0;
+            mesh.quad(
+                [
+                    (at(i, lat0), Vec2::new(u0, 0.0)),
+                    (at(next, lat0), Vec2::new(u1, 0.0)),
+                    (at(next, lat1), Vec2::new(u1, 1.0)),
+                    (at(i, lat1), Vec2::new(u0, 1.0)),
+                ],
+                Vec3::Y,
+                Color::srgb(0.12, 0.12, 0.14),
+            );
+        }
+    }
+    (!mesh.is_empty()).then(|| mesh.build())
 }
 
 #[cfg(test)]

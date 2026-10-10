@@ -150,6 +150,12 @@ In a real track, the layout goes straight into the `Circuit`, as in `speed_bay.r
 | `houses` | `Houses { max, paints, spans }`: how many at most, their paint colours, and optionally the spans they are limited to. |
 | `grand_hotel` | `Some((along, lateral))`: an old-style grand hotel at that point of the lap and signed distance from the road (positive to the left). |
 | `buoys` | Positions of striped buoys in the sea. |
+| `lighthouses` | Coastal lighthouses with striped towers, observation gallery and beacon: `Lighthouse { position, height }`. |
+| `boats` | Sailboats and yachts anchored in the bay and open sea: `Boat { position, heading, kind }`. |
+| `chevrons` | Curve warning arrow signs on sharp bends: `ChevronSign { along, side, direction }`. |
+| `grandstands` | Covered spectator grandstands with crowds along the straights: `Grandstand { along, side, lateral, length }`. |
+| `beach_parasols` | Striped beach umbrellas and loungers on the sand: `ParasolCluster { position, count }`. |
+| `brake_markers` | Roadside braking countdown signs (100 m, 50 m) before corners: `BrakeMarker { along, side, distance }`. |
 
 ### What `cargo test` checks
 

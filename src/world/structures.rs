@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
-use super::scenery::{Billboard, Scenery, Span};
+use super::scenery::{Billboard, BrakeMarker, ChevronDirection, ChevronSign, Scenery, Span};
 use super::terrain::Terrain;
 use crate::geometry::fbm;
 use crate::track::{SURFACE_Y, Track, WALL_DISTANCE};
@@ -109,6 +109,12 @@ pub fn spawn_structures(
     }
     for billboard in scenery.billboards {
         spawn_billboard(world, track, terrain, billboard, assets);
+    }
+    for chevron in scenery.chevrons {
+        spawn_chevron(world, track, terrain, chevron, assets);
+    }
+    for marker in scenery.brake_markers {
+        spawn_brake_marker(world, track, terrain, marker, assets);
     }
 }
 
@@ -503,3 +509,153 @@ fn spawn_billboard(
         ],
     ));
 }
+
+/// Cartel de curva con flechas reflectantes (<<< o >>>) de advertencia en curvas cerradas.
+fn spawn_chevron(
+    world: &mut ChildSpawnerCommands,
+    track: &Track,
+    terrain: &Terrain,
+    chevron: &ChevronSign,
+    assets: &mut Assets3d,
+) {
+    const WIDTH: f32 = 4.8;
+    const HEIGHT: f32 = 1.6;
+    const LIFT: f32 = 1.0;
+    let index = track.index_at(chevron.along);
+    let lateral = chevron.side.sign() * (WALL_DISTANCE + 2.4);
+    let point = track.offset_point(index, lateral);
+    let base = terrain.height(point);
+    let (_, heading) = track.pose_at(index);
+    let turn = chevron.side.sign() * 0.4;
+    let text = match chevron.direction {
+        ChevronDirection::Left => "<<<",
+        ChevronDirection::Right => ">>>",
+    };
+    let yellow = Color::srgb(0.98, 0.84, 0.05);
+    let black = Color::srgb(0.08, 0.08, 0.1);
+    let image = sign_image(
+        text,
+        black,
+        None,
+        yellow,
+        Some(black),
+        WIDTH / HEIGHT,
+    );
+    let mut panel = MeshBuilder::default();
+    panel.quad(
+        [
+            (Vec3::new(-WIDTH / 2.0, LIFT, 0.0), Vec2::new(0.0, 1.0)),
+            (Vec3::new(WIDTH / 2.0, LIFT, 0.0), Vec2::new(1.0, 1.0)),
+            (Vec3::new(WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::new(1.0, 0.0)),
+            (Vec3::new(-WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::ZERO),
+        ],
+        Vec3::Z,
+        Color::WHITE,
+    );
+    let mut back = MeshBuilder::default();
+    for x in [-WIDTH / 3.0, WIDTH / 3.0] {
+        back.beam(
+            Vec3::new(x, -0.6, -0.15),
+            Vec3::new(x, LIFT + HEIGHT * 0.8, -0.15),
+            0.15,
+            0.15,
+            Color::srgb(0.5, 0.52, 0.55),
+        );
+    }
+    world.spawn((
+        Transform::from_xyz(point.x, base, point.y)
+            .with_rotation(Quat::from_rotation_y(heading + turn)),
+        Visibility::default(),
+        children![
+            (
+                Mesh3d(assets.meshes.add(panel.build())),
+                MeshMaterial3d(assets.materials.add(StandardMaterial {
+                    base_color_texture: Some(assets.images.add(image)),
+                    perceptual_roughness: 0.5,
+                    ..default()
+                })),
+            ),
+            (
+                Mesh3d(assets.meshes.add(back.build())),
+                MeshMaterial3d(assets.materials.add(StandardMaterial {
+                    perceptual_roughness: 0.6,
+                    ..default()
+                })),
+            ),
+        ],
+    ));
+}
+
+/// Cartel indicador de distancia a curva (100 m, 50 m) antes de frenadas fuertes.
+fn spawn_brake_marker(
+    world: &mut ChildSpawnerCommands,
+    track: &Track,
+    terrain: &Terrain,
+    marker: &BrakeMarker,
+    assets: &mut Assets3d,
+) {
+    const WIDTH: f32 = 2.2;
+    const HEIGHT: f32 = 1.8;
+    const LIFT: f32 = 0.9;
+    let index = track.index_at(marker.along);
+    let lateral = marker.side.sign() * (WALL_DISTANCE + 2.0);
+    let point = track.offset_point(index, lateral);
+    let base = terrain.height(point);
+    let (_, heading) = track.pose_at(index);
+    let turn = marker.side.sign() * 0.35;
+    let text = if marker.distance >= 100 { "100" } else { "50" };
+    let white = Color::srgb(0.96, 0.96, 0.96);
+    let black = Color::srgb(0.08, 0.08, 0.1);
+    let image = sign_image(
+        text,
+        black,
+        None,
+        white,
+        Some(black),
+        WIDTH / HEIGHT,
+    );
+    let mut panel = MeshBuilder::default();
+    panel.quad(
+        [
+            (Vec3::new(-WIDTH / 2.0, LIFT, 0.0), Vec2::new(0.0, 1.0)),
+            (Vec3::new(WIDTH / 2.0, LIFT, 0.0), Vec2::new(1.0, 1.0)),
+            (Vec3::new(WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::new(1.0, 0.0)),
+            (Vec3::new(-WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::ZERO),
+        ],
+        Vec3::Z,
+        Color::WHITE,
+    );
+    let mut back = MeshBuilder::default();
+    for x in [-WIDTH / 4.0, WIDTH / 4.0] {
+        back.beam(
+            Vec3::new(x, -0.6, -0.12),
+            Vec3::new(x, LIFT + HEIGHT * 0.8, -0.12),
+            0.12,
+            0.12,
+            Color::srgb(0.45, 0.48, 0.5),
+        );
+    }
+    world.spawn((
+        Transform::from_xyz(point.x, base, point.y)
+            .with_rotation(Quat::from_rotation_y(heading + turn)),
+        Visibility::default(),
+        children![
+            (
+                Mesh3d(assets.meshes.add(panel.build())),
+                MeshMaterial3d(assets.materials.add(StandardMaterial {
+                    base_color_texture: Some(assets.images.add(image)),
+                    perceptual_roughness: 0.5,
+                    ..default()
+                })),
+            ),
+            (
+                Mesh3d(assets.meshes.add(back.build())),
+                MeshMaterial3d(assets.materials.add(StandardMaterial {
+                    perceptual_roughness: 0.6,
+                    ..default()
+                })),
+            ),
+        ],
+    ));
+}
+

@@ -213,6 +213,72 @@ pub struct Scenery {
     pub grand_hotel: Option<(f32, f32)>,
     /// Boyas de rayas en el mar.
     pub buoys: &'static [Vec2],
+    /// Faros costeros en islotes o cabos.
+    pub lighthouses: &'static [Lighthouse],
+    /// Veleros y yates fondeados en la bahía o el mar abierto.
+    pub boats: &'static [Boat],
+    /// Flechas indicadoras de curva (<<< y >>>) en curvas cerradas.
+    pub chevrons: &'static [ChevronSign],
+    /// Tribunas cubiertas con público frente a la pista.
+    pub grandstands: &'static [Grandstand],
+    /// Sombrillas y tumbonas de colores en las playas.
+    pub beach_parasols: &'static [ParasolCluster],
+    /// Carteles de aviso de frenada (100 m, 50 m).
+    pub brake_markers: &'static [BrakeMarker],
+}
+
+/// Un faro costero sobre un peñasco o cabo.
+pub struct Lighthouse {
+    pub position: Vec2,
+    pub height: f32,
+}
+
+/// Embarcaciones fondeadas en el mar.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BoatKind {
+    Sailboat,
+    Yacht,
+}
+
+pub struct Boat {
+    pub position: Vec2,
+    pub heading: f32,
+    pub kind: BoatKind,
+}
+
+/// Dirección de la flecha de curva.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ChevronDirection {
+    Left,
+    Right,
+}
+
+/// Cartel de curva con flechas reflectantes.
+pub struct ChevronSign {
+    pub along: f32,
+    pub side: Side,
+    pub direction: ChevronDirection,
+}
+
+/// Tribuna de espectadores cubierta.
+pub struct Grandstand {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub length: f32,
+}
+
+/// Grupo de sombrillas y tumbonas en la arena.
+pub struct ParasolCluster {
+    pub position: Vec2,
+    pub count: usize,
+}
+
+/// Cartel de distancia a curva (100 m, 50 m).
+pub struct BrakeMarker {
+    pub along: f32,
+    pub side: Side,
+    pub distance: u32,
 }
 
 #[cfg(test)]

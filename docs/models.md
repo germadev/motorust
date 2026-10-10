@@ -117,6 +117,10 @@ The scenery textures are CC0 (public domain) photos from [Poly Haven](https://po
 | `assets/textures/roof.jpg` | Tiled roofs |
 | `assets/textures/plaster.jpg` | Plastered and concrete surfaces: houses, hotels, walls and structures |
 | `assets/textures/sky.jpg` | Sky dome |
+| *(procedural)* `water` | Vivid Mediterranean ocean with gentle wave shimmer and highlights |
+| *(procedural)* `crowd` | Pixelated grandstand spectators with vibrant retro clothing |
+| *(procedural)* `checker` | Start/finish and tunnel checkerboard strip |
+| *(procedural)* `panels` | Concrete tunnel lining panels |
 
 The labels use the [Russo One](https://fonts.google.com/specimen/Russo+One) font by Jovanny Lemonad, under the SIL Open Font License 1.1 (`assets/fonts/RussoOne-OFL.txt`).
 

@@ -167,6 +167,101 @@ pub const SPEED_BAY: Circuit = Circuit {
             Vec2::new(-58.0, 80.0),
             Vec2::new(-95.0, -300.0),
         ],
+        lighthouses: &[
+            Lighthouse {
+                position: Vec2::new(-190.0, -880.0),
+                height: 24.0,
+            },
+        ],
+        boats: &[
+            Boat {
+                position: Vec2::new(-70.0, -100.0),
+                heading: 0.6,
+                kind: BoatKind::Sailboat,
+            },
+            Boat {
+                position: Vec2::new(-110.0, -240.0),
+                heading: -0.9,
+                kind: BoatKind::Yacht,
+            },
+            Boat {
+                position: Vec2::new(-80.0, 40.0),
+                heading: 1.4,
+                kind: BoatKind::Sailboat,
+            },
+            Boat {
+                position: Vec2::new(265.0, 160.0),
+                heading: -2.1,
+                kind: BoatKind::Sailboat,
+            },
+        ],
+        chevrons: &[
+            ChevronSign {
+                along: 370.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 540.0,
+                side: Side::Right,
+                direction: ChevronDirection::Left,
+            },
+            ChevronSign {
+                along: 840.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 940.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 2020.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+        ],
+        grandstands: &[
+            Grandstand {
+                along: 80.0,
+                side: Side::Right,
+                lateral: WALL_DISTANCE + 4.5,
+                length: 36.0,
+            },
+        ],
+        beach_parasols: &[
+            ParasolCluster {
+                position: Vec2::new(-32.0, -140.0),
+                count: 6,
+            },
+            ParasolCluster {
+                position: Vec2::new(-30.0, -50.0),
+                count: 5,
+            },
+        ],
+        brake_markers: &[
+            BrakeMarker {
+                along: 280.0,
+                side: Side::Left,
+                distance: 100,
+            },
+            BrakeMarker {
+                along: 310.0,
+                side: Side::Left,
+                distance: 50,
+            },
+            BrakeMarker {
+                along: 500.0,
+                side: Side::Right,
+                distance: 100,
+            },
+            BrakeMarker {
+                along: 530.0,
+                side: Side::Right,
+                distance: 50,
+            },
+        ],
     },
 };
 

@@ -30,9 +30,9 @@ impl Plugin for PausePlugin {
 #[derive(Resource)]
 pub struct DebugOptions {
     /// Con el stick, cuánto limitar el giro según la velocidad (de entrada,
-    /// nada).
+    /// medio).
     pub stick_limit: TurnLimit,
-    /// Con el teclado o la cruceta, lo mismo (de entrada, del todo).
+    /// Con el teclado o la cruceta, lo mismo (de entrada, medio).
     pub keyboard_limit: TurnLimit,
     /// Si se ve en la carrera la leyenda con los controles (de entrada, no).
     pub show_legend: bool,
@@ -41,8 +41,8 @@ pub struct DebugOptions {
 impl Default for DebugOptions {
     fn default() -> Self {
         Self {
-            stick_limit: TurnLimit::Off,
-            keyboard_limit: TurnLimit::High,
+            stick_limit: TurnLimit::Medium,
+            keyboard_limit: TurnLimit::Medium,
             show_legend: false,
         }
     }
@@ -369,11 +369,11 @@ mod tests {
             shown.push(label.rsplit(' ').next().unwrap().to_string());
             limit = limit.next(1);
         }
-        assert_eq!(shown, ["no", "bajo", "medio", "alto", "no"]);
+        assert_eq!(shown, ["medio", "alto", "no", "bajo", "medio"]);
         assert_eq!(TurnLimit::Off.next(-1), TurnLimit::High);
-        // El teclado y la cruceta, limitados del todo de entrada.
+        // El teclado y la cruceta, limitados a medio de entrada.
         assert_eq!(items(Page::Debug, &options)[1].1, Action::NextKeyboardLimit);
-        assert!(items(Page::Debug, &options)[1].0.ends_with("alto"));
+        assert!(items(Page::Debug, &options)[1].0.ends_with("medio"));
         // La leyenda de los controles, oculta de entrada.
         assert_eq!(items(Page::Debug, &options)[2].1, Action::ToggleLegend);
         assert!(items(Page::Debug, &options)[2].0.ends_with("oculta"));

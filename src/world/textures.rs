@@ -28,6 +28,10 @@ pub struct WorldTextures {
     pub checker: Handle<Image>,
     /// Paneles de hormigón con juntas, para los túneles.
     pub panels: Handle<Image>,
+    /// Agua del mar con oleaje sutil y reflejos vivos mediterráneos.
+    pub water: Handle<Image>,
+    /// Gradas de público con ropa de colores vivos como en los arcades de los 90.
+    pub crowd: Handle<Image>,
 }
 
 impl FromWorld for WorldTextures {
@@ -48,6 +52,8 @@ impl FromWorld for WorldTextures {
         ));
         let checker = images.add(checker());
         let panels = images.add(panels());
+        let water = images.add(water());
+        let crowd = images.add(crowd());
         Self {
             sky,
             grass,
@@ -59,6 +65,8 @@ impl FromWorld for WorldTextures {
             plaster,
             checker,
             panels,
+            water,
+            crowd,
         }
     }
 }
@@ -146,6 +154,117 @@ fn checker() -> Image {
         Extent3d {
             width: SIZE,
             height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = sampler(ImageAddressMode::Repeat);
+    generate_mipmaps(&mut image);
+    image
+}
+
+/// Textura de agua para el mar: azules y turquesas vivos con ondulaciones
+/// suaves de olas, reflejos y crestas de espuma que se repiten armónicamente.
+fn water() -> Image {
+    const SIZE: u32 = 256;
+    let data = (0..SIZE * SIZE)
+        .flat_map(|i| {
+            let (x, y) = ((i % SIZE) as f32, (i / SIZE) as f32);
+            let point = Vec2::new(x, y);
+            let wave1 = (x * 0.08 + y * 0.05).sin();
+            let wave2 = ((x * 0.06 - y * 0.09) * 1.3).sin();
+            let detail = fbm(point / 12.0, 3);
+            let ripple = 0.5 + 0.3 * wave1 + 0.2 * wave2 + 0.25 * (detail - 0.5);
+            let deep = Color::srgb(0.03, 0.20, 0.52).to_srgba();
+            let turquoise = Color::srgb(0.08, 0.50, 0.68).to_srgba();
+            let highlight = Color::srgb(0.40, 0.78, 0.90).to_srgba();
+            let c = if ripple < 0.65 {
+                let t = (ripple / 0.65).clamp(0.0, 1.0);
+                deep.mix(&turquoise, t)
+            } else {
+                let t = ((ripple - 0.65) / 0.35).clamp(0.0, 1.0);
+                turquoise.mix(&highlight, t)
+            };
+            [
+                (c.red * 255.0).round() as u8,
+                (c.green * 255.0).round() as u8,
+                (c.blue * 255.0).round() as u8,
+                255,
+            ]
+        })
+        .collect();
+    let mut image = Image::new(
+        Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = sampler(ImageAddressMode::Repeat);
+    generate_mipmaps(&mut image);
+    image
+}
+
+/// Público pixelado para las gradas: filas de espectadores con ropa de colores vivos
+/// como en los juegos de carreras arcade de los 90.
+fn crowd() -> Image {
+    const WIDTH: u32 = 128;
+    const HEIGHT: u32 = 64;
+    const SHIRTS: [Color; 6] = [
+        Color::srgb(0.92, 0.15, 0.12),
+        Color::srgb(0.98, 0.85, 0.15),
+        Color::srgb(0.12, 0.45, 0.88),
+        Color::srgb(0.95, 0.95, 0.95),
+        Color::srgb(0.95, 0.50, 0.10),
+        Color::srgb(0.15, 0.72, 0.28),
+    ];
+    let data = (0..WIDTH * HEIGHT)
+        .flat_map(|i| {
+            let (x, y) = (i % WIDTH, i / HEIGHT);
+            let row = y / 16;
+            let row_y = y % 16;
+            let col = x / 8;
+            let col_x = x % 8;
+            let person_seed = (row * 37 + col * 13) as f32;
+            let shirt_idx =
+                ((person_seed * 1.7).sin().abs() * SHIRTS.len() as f32) as usize % SHIRTS.len();
+            let shirt = SHIRTS[shirt_idx];
+            let skin = Color::srgb(0.95, 0.78, 0.65);
+            let hair = if (person_seed * 2.3).sin() > 0.0 {
+                Color::srgb(0.25, 0.18, 0.12)
+            } else {
+                Color::srgb(0.55, 0.40, 0.20)
+            };
+            let bench = Color::srgb(0.55, 0.55, 0.58);
+            let c = if row_y < 3 {
+                bench
+            } else if row_y < 7 && (2..=5).contains(&col_x) {
+                if row_y < 5 { hair } else { skin }
+            } else if (7..14).contains(&row_y) && (1..=6).contains(&col_x) {
+                shirt
+            } else {
+                bench
+            };
+            let srgba = c.to_srgba();
+            [
+                (srgba.red * 255.0).round() as u8,
+                (srgba.green * 255.0).round() as u8,
+                (srgba.blue * 255.0).round() as u8,
+                255,
+            ]
+        })
+        .collect();
+    let mut image = Image::new(
+        Extent3d {
+            width: WIDTH,
+            height: HEIGHT,
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
