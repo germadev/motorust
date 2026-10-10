@@ -1,6 +1,6 @@
 # La versión web del juego en GitHub Pages: se compila para wasm en cada PR
-# (para saber que sigue compilando) y en cada push a main, que además la
-# publica en https://germadev.github.io/motorust/.
+# y en cada push a main (para saber que sigue compilando), y se publica en
+# GitHub Pages sólo al hacer una release desde release.yml.
 #
 # En Settings → Pages, la fuente tiene que ser «GitHub Actions».
 name: Pages
@@ -10,6 +10,13 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Versión con la que se compila, sin la v (por ejemplo 1.2.0)
+        type: string
+        required: false
+        default: ""
 
 # Una publicación detrás de otra; en una PR, un push nuevo cancela el run
 # anterior.
@@ -19,6 +26,8 @@ concurrency:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -43,15 +52,24 @@ jobs:
           if [ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen $version" ]; then
             cargo install wasm-bindgen-cli --locked --version "$version"
           fi
+      - name: Versión
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            # La de la release: va en Cargo.toml para que la web la lleve.
+            perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m' Cargo.toml
+          fi
       - name: Compilar
         run: web/build.sh dist/web
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'workflow_call'
         with:
           path: dist/web
 
   deploy:
     name: Publicar
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_call'
     needs: build
     runs-on: ubuntu-latest
     permissions:

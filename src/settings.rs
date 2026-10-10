@@ -34,26 +34,23 @@ pub struct Settings {
     pub controls: Controls,
 }
 
-/// Tamaño de la ventana (en puntos: en una pantalla Retina, el doble de
-/// píxeles) o pantalla completa.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+/// Tamaño de la ventana (dinámica, fija en puntos —en una pantalla Retina, el
+/// doble de píxeles— o pantalla completa).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Resolution {
+    #[default]
+    Dynamic,
     Window(u32, u32),
     Fullscreen,
-}
-
-impl Default for Resolution {
-    fn default() -> Self {
-        Resolution::Window(1280, 720)
-    }
 }
 
 /// Las resoluciones que se pueden elegir, en orden. En la web, el juego
 /// ocupa la página o la pantalla entera.
 pub const RESOLUTIONS: &[Resolution] = if WEB {
-    &[Resolution::Window(1280, 720), Resolution::Fullscreen]
+    &[Resolution::Dynamic, Resolution::Fullscreen]
 } else {
     &[
+        Resolution::Dynamic,
         Resolution::Window(1280, 720),
         Resolution::Window(1600, 900),
         Resolution::Window(1920, 1080),
@@ -63,8 +60,15 @@ pub const RESOLUTIONS: &[Resolution] = if WEB {
 };
 
 impl Resolution {
-    pub fn name(self) -> String {
+    pub fn name(self, window: Option<&Window>) -> String {
         match self {
+            Resolution::Dynamic if WEB => "Toda la página".into(),
+            Resolution::Dynamic => match window {
+                Some(w) if w.physical_width() > 0 && w.physical_height() > 0 => {
+                    format!("Dinámica ({} × {})", w.physical_width(), w.physical_height())
+                }
+                _ => "Dinámica".into(),
+            },
             Resolution::Window(..) if WEB => "Toda la página".into(),
             Resolution::Window(width, height) => format!("{width} × {height}"),
             Resolution::Fullscreen => "Pantalla completa".into(),
@@ -402,6 +406,9 @@ impl Settings {
 
     fn configure(&self, window: &mut Window) {
         match self.resolution {
+            Resolution::Dynamic => {
+                window.mode = WindowMode::Windowed;
+            }
             Resolution::Window(width, height) => {
                 window.mode = WindowMode::Windowed;
                 if !WEB {
@@ -674,6 +681,13 @@ mod tests {
             cycle(RESOLUTIONS, Resolution::Window(800, 600), 1),
             RESOLUTIONS[0]
         );
+    }
+
+    #[test]
+    fn dynamic_resolution_has_name() {
+        assert_eq!(Resolution::Dynamic.name(None), "Dinámica");
+        assert_eq!(RESOLUTIONS[0], Resolution::Dynamic);
+        assert_eq!(Resolution::default(), Resolution::Dynamic);
     }
 
     #[test]

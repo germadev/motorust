@@ -5,6 +5,7 @@
 //! cierra la pestaña) y los fotogramas los marca el navegador.
 
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 use crate::camera::CameraGlide;
 use crate::hud::UiFont;
@@ -15,7 +16,7 @@ use crate::settings::{
 use crate::track::Track;
 use crate::ui::{
     MenuInput, MenuSound, Row, gamepad_status, spawn_hint, spawn_logo, spawn_panel, spawn_title,
-    text_font,
+    text_font, version_label,
 };
 
 /// Tiempo para pulsar la tecla o el botón nuevo antes de que se cancele (s).
@@ -99,14 +100,19 @@ fn items(page: Page) -> Vec<Item> {
 }
 
 /// Cómo se ve una opción, con su valor si tiene.
-fn row(item: Item, settings: &Settings, capture: Option<Capture>) -> Row {
+fn row(
+    item: Item,
+    settings: &Settings,
+    capture: Option<Capture>,
+    window: Option<&Window>,
+) -> Row {
     match item {
         Item::Start => Row::new("Comenzar"),
         Item::Options => Row::new("Opciones"),
         Item::Quit => Row::new("Salir"),
         Item::Resolution => Row::with_value(
             "Resolución",
-            format!("<  {}  >", settings.resolution.name()),
+            format!("<  {}  >", settings.resolution.name(window)),
         ),
         Item::Fps => Row::with_value("Límite de FPS", format!("<  {}  >", settings.fps.name())),
         Item::Controls => Row::new("Controles: teclado y mando"),
@@ -249,18 +255,22 @@ fn show_welcome(
     mut commands: Commands,
     welcome: Res<Welcome>,
     settings: Res<Settings>,
+    window: Query<Ref<Window>, With<PrimaryWindow>>,
     font: Res<UiFont>,
     shown: Query<Entity, With<WelcomeScreen>>,
 ) {
-    if !welcome.is_changed() && !settings.is_changed() {
+    let window_ref = window.iter().next();
+    let window_changed = window_ref.as_ref().is_some_and(|w| w.is_changed());
+    if !welcome.is_changed() && !settings.is_changed() && !window_changed {
         return;
     }
     for entity in &shown {
         commands.entity(entity).despawn();
     }
+    let window_inner = window_ref.as_deref();
     let rows: Vec<Row> = items(welcome.page)
         .into_iter()
-        .map(|item| row(item, &settings, welcome.capture))
+        .map(|item| row(item, &settings, welcome.capture, window_inner))
         .collect();
     let hint = match (welcome.page, welcome.capture) {
         (Page::Main, _) => "Arriba y abajo: elegir   ·   Enter o A: aceptar".to_string(),
@@ -329,6 +339,7 @@ fn show_welcome(
             }
             spawn_hint(screen, &font, &hint);
             screen.spawn(gamepad_status(&font));
+            screen.spawn(version_label(&font));
         });
 }
 
@@ -361,6 +372,7 @@ fn fly_over_track(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::Resolution;
 
     #[test]
     fn the_welcome_screen_offers_what_was_asked() {
@@ -380,11 +392,26 @@ mod tests {
             since: 0.0,
         };
         let value = |action| {
-            row(Item::Bind(action), &settings, Some(capture))
+            row(Item::Bind(action), &settings, Some(capture), None)
                 .value
                 .unwrap()
         };
         assert_eq!(value(Action::Brake), "Pulsa una tecla o un botón");
         assert_eq!(value(Action::Throttle), "W, Arriba   ·   RT, A");
+    }
+
+    #[test]
+    fn the_resolution_row_shows_dynamic_by_default() {
+        let settings = Settings::default();
+        assert_eq!(settings.resolution, Resolution::Dynamic);
+        let res_row = row(Item::Resolution, &settings, None, None);
+        assert_eq!(res_row.value, Some("<  Dinámica  >".into()));
+    }
+
+    #[test]
+    fn the_welcome_screen_carries_the_version() {
+        let version = concat!("v", env!("CARGO_PKG_VERSION"));
+        assert!(version.starts_with('v'));
+        assert_eq!(version, format!("v{}", env!("CARGO_PKG_VERSION")));
     }
 }

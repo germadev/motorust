@@ -274,6 +274,26 @@ pub fn gamepad_status(font: &UiFont) -> impl Bundle {
     )
 }
 
+/// Texto, abajo a la izquierda, con la versión del juego.
+#[derive(Component)]
+pub struct VersionLabel;
+
+pub fn version_label(font: &UiFont) -> impl Bundle {
+    (
+        VersionLabel,
+        Text::new(concat!("v", env!("CARGO_PKG_VERSION"))),
+        text_font(font, 15.0),
+        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
+        TextShadow::default(),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: px(12),
+            left: px(16),
+            ..default()
+        },
+    )
+}
+
 /// El mando que ve el juego, o un aviso si no ve ninguno.
 fn show_gamepads(
     gamepads: Query<&Name, With<Gamepad>>,

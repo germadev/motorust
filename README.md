@@ -32,7 +32,7 @@ make up        # run the game
 
 CI builds Linux, Windows and macOS binaries on every run (as artifacts) and
 attaches them to each [release](https://github.com/germadev/motorust/releases).
-The browser version is published from `main`.
+The browser version is published to GitHub Pages with each release.
 
 ## Controls
 

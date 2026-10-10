@@ -122,7 +122,7 @@ The triggers are analogue: throttle and brake follow how far you squeeze them. R
 
 The welcome screen's "Opciones" (Options) page has three entries. Changes apply immediately.
 
-- **"Resolución" (Resolution).** A 1280 × 720 window (the default), 1600 × 900, 1920 × 1080, 2560 × 1440, or "Pantalla completa" (fullscreen). Sizes are in points, so on a Retina display the window has twice as many pixels. At any time, Cmd+Enter on macOS or Alt+Enter on Windows and Linux switches to fullscreen and back to the previous window. The change is saved as if you had picked it here. In the browser the choices are "Toda la página" (whole page) and fullscreen.
+- **"Resolución" (Resolution).** "Dinámica" (dynamic window adapting to the window and screen pixels; the default), a fixed 1280 × 720 window, 1600 × 900, 1920 × 1080, 2560 × 1440, or "Pantalla completa" (fullscreen). Sizes are in points, so on a Retina display the window has twice as many pixels. At any time, Cmd+Enter on macOS or Alt+Enter on Windows and Linux switches to fullscreen and back to the previous window. The change is saved as if you had picked it here. In the browser the choices are "Toda la página" (whole page) and fullscreen.
 - **"Límite de FPS" (FPS limit).** "Los de la pantalla" (the screen's rate, synchronised with it; the default), 30, 60, 120, or "Sin límite" (unlimited). With a fixed number, the game waits out the rest of each frame and stays synchronised with the screen so the image does not tear. If the screen is slower than the limit, the screen wins. This option is not available in the browser, which paces the frames itself.
 - **"Controles: teclado y mando" (Controls: keyboard and gamepad).** See below.
 

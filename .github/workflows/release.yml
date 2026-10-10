@@ -1,7 +1,8 @@
 # Publica una versión nueva, a mano desde la pestaña Actions: se elige qué
 # parte de la versión sube (mayor, menor o parche), se compila con build.yml
-# para todos los sistemas y se crea la release de GitHub con las builds y sus
-# sumas SHA-256.
+# para todos los sistemas, se publica la versión web en GitHub Pages con
+# pages.yml, se actualiza Cargo.toml en main y se crea la release de GitHub
+# con las builds y sus sumas SHA-256.
 #
 # La versión sale de la última etiqueta vX.Y.Z (las releases con los modelos
 # originales no cuentan). Sin ninguna, se parte de 0.0.0: la primera release
@@ -27,6 +28,8 @@ concurrency:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   version:
@@ -67,13 +70,27 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
 
+  pages:
+    name: GitHub Pages
+    needs: [version, build]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
   release:
     name: Release de GitHub
-    needs: [version, build]
+    needs: [version, build, pages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/download-artifact@v4
         with:
           pattern: motorust-*
@@ -81,6 +98,16 @@ jobs:
           merge-multiple: true
       - name: Sumas SHA-256
         run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Subir versión en Cargo.toml
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m' Cargo.toml
+          perl -0pi -e 's/^(name = "motorust"\nversion = )"[^"]*"/${1}"'"$VERSION"'"/m' Cargo.lock
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "v$VERSION"
+          git push origin main
       - name: Crear la release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,6 +115,6 @@ jobs:
         run: |
           gh release create "v$VERSION" dist/* \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
+            --target "main" \
             --title "Motorust $VERSION" \
             --generate-notes
