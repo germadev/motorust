@@ -25,6 +25,8 @@ pub enum GameState {
     /// Bienvenida, con las opciones.
     #[default]
     Welcome,
+    /// Elegir jugador y control (2 jugadores locales).
+    Lobby,
     /// Elegir pista.
     Tracks,
     /// Elegir moto y piloto.

@@ -193,6 +193,84 @@ impl Language {
         }
     }
 
+    // --- 2 Jugadores Locales / Lobby ---
+    pub fn select_players(self) -> &'static str {
+        match self {
+            Language::Spanish => "ELIGE JUGADOR",
+            Language::English => "CHOOSE PLAYER",
+        }
+    }
+
+    pub fn select_players_subtitle(self) -> &'static str {
+        match self {
+            Language::Spanish => "Player 1 a la izquierda   ·   Player 2 a la derecha",
+            Language::English => "Player 1 on the left   ·   Player 2 on the right",
+        }
+    }
+
+    pub fn player_1(self) -> &'static str {
+        match self {
+            Language::Spanish => "PLAYER 1 (IZQUIERDA)",
+            Language::English => "PLAYER 1 (LEFT)",
+        }
+    }
+
+    pub fn player_2(self) -> &'static str {
+        match self {
+            Language::Spanish => "PLAYER 2 (DERECHA)",
+            Language::English => "PLAYER 2 (RIGHT)",
+        }
+    }
+
+    pub fn player_waiting_left(self) -> &'static str {
+        match self {
+            Language::Spanish => "Pulsa A o ← para elegir este lado",
+            Language::English => "Press A or ← to choose this side",
+        }
+    }
+
+    pub fn player_waiting_right(self) -> &'static str {
+        match self {
+            Language::Spanish => "Pulsa D o → para elegir este lado",
+            Language::English => "Press D or → to choose this side",
+        }
+    }
+
+    pub fn player_stick_tip(self) -> &'static str {
+        match self {
+            Language::Spanish => "O mueve el stick del mando",
+            Language::English => "Or move gamepad stick",
+        }
+    }
+
+    pub fn player_ready(self) -> &'static str {
+        match self {
+            Language::Spanish => "✓ ¡LISTO!",
+            Language::English => "✓ READY!",
+        }
+    }
+
+    pub fn waiting_player(self) -> &'static str {
+        match self {
+            Language::Spanish => "ESPERANDO JUGADOR...",
+            Language::English => "WAITING FOR PLAYER...",
+        }
+    }
+
+    pub fn lobby_hint_waiting(self) -> &'static str {
+        match self {
+            Language::Spanish => "< >  Elige lado con tu control   ·   Esc o B: volver",
+            Language::English => "< >  Choose side with your control   ·   Esc or B: back",
+        }
+    }
+
+    pub fn lobby_hint_ready(self) -> &'static str {
+        match self {
+            Language::Spanish => "Enter, A o Start: continuar   ·   Esc o B: volver",
+            Language::English => "Enter, A or Start: continue   ·   Esc or B: back",
+        }
+    }
+
     // --- Pistas ---
     pub fn select_track(self) -> &'static str {
         match self {

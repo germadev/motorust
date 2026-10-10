@@ -50,6 +50,10 @@ impl Plugin for ChaseCameraPlugin {
         for (from, to) in [
             (GameState::Welcome, GameState::Tracks),
             (GameState::Tracks, GameState::Welcome),
+            (GameState::Welcome, GameState::Lobby),
+            (GameState::Lobby, GameState::Welcome),
+            (GameState::Lobby, GameState::Tracks),
+            (GameState::Tracks, GameState::Lobby),
             (GameState::Tracks, GameState::Select),
             (GameState::Select, GameState::Tracks),
         ] {

@@ -15,6 +15,7 @@ use crate::minimap::TrackMap;
 use crate::settings::Settings;
 use crate::track::Track;
 use crate::ui::{InputDevice, MenuInput, MenuSound, spawn_title, text_font};
+use crate::welcome::GameMode;
 
 /// La cámara gira alrededor de la pista a esta velocidad (rad/s), a esta
 /// distancia del centro y a esta altura (fracciones del tamaño de la pista),
@@ -193,6 +194,7 @@ fn spawn_screen(
 fn choose_track(
     mut input: MenuInput,
     mut choice: ResMut<CurrentCircuit>,
+    game_mode: Res<GameMode>,
     mut next: ResMut<NextState<GameState>>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
@@ -206,7 +208,11 @@ fn choose_track(
         next.set(GameState::Select);
     } else if request.back {
         sounds.write(MenuSound::Move);
-        next.set(GameState::Welcome);
+        if *game_mode == GameMode::SplitScreen {
+            next.set(GameState::Lobby);
+        } else {
+            next.set(GameState::Welcome);
+        }
     }
 }
 

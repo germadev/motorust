@@ -42,9 +42,11 @@ impl Plugin for WelcomePlugin {
             .add_systems(OnEnter(GameState::Welcome), open)
             .add_systems(
                 Update,
-                (use_welcome, show_welcome, fly_over_track)
-                    .chain()
-                    .run_if(in_state(GameState::Welcome)),
+                (
+                    (use_welcome, show_welcome).run_if(in_state(GameState::Welcome)),
+                    fly_over_track
+                        .run_if(in_state(GameState::Welcome).or_else(in_state(GameState::Lobby))),
+                ),
             );
     }
 }
@@ -298,7 +300,7 @@ fn use_welcome(
         Item::SplitScreen => {
             sounds.write(MenuSound::Confirm);
             *game_mode = GameMode::SplitScreen;
-            next.set(GameState::Tracks);
+            next.set(GameState::Lobby);
         }
         Item::CancelQuit => {
             sounds.write(MenuSound::Move);

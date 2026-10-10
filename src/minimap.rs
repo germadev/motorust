@@ -10,7 +10,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
-use crate::bike::{BikeColor, BikeState, Player};
+use crate::bike::{BikeColor, BikeState, LocalPlayer, Player};
 use crate::circuits::CurrentCircuit;
 use crate::menu::GameState;
 use crate::track::Track;
@@ -269,17 +269,25 @@ fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>) {
 /// Un punto por moto, donde está, del color de la moto; el del jugador,
 /// encima de los demás. Los puntos se crean la primera vez que se ve cada
 /// moto.
+#[allow(clippy::type_complexity)]
 fn place_dots(
     mut commands: Commands,
     map: Res<TrackMap>,
     hud: Single<Entity, With<HudMap>>,
-    bikes: Query<(Entity, &BikeState, &BikeColor, Has<Player>)>,
+    bikes: Query<(
+        Entity,
+        &BikeState,
+        &BikeColor,
+        Has<Player>,
+        Option<&LocalPlayer>,
+    )>,
     mut dots: Query<(&Dot, &mut Node)>,
 ) {
     let mut placed: HashMap<Entity, Mut<Node>> =
         dots.iter_mut().map(|(dot, node)| (dot.0, node)).collect();
-    for (bike, state, color, player) in &bikes {
-        let size = if player { PLAYER_DOT } else { RIVAL_DOT };
+    for (bike, state, color, player, local) in &bikes {
+        let is_human = player || local.is_some();
+        let size = if is_human { PLAYER_DOT } else { RIVAL_DOT };
         let at = map.projection.to_map(state.position) / MAP_SIZE as f32 * HUD_SIZE - size / 2.0;
         match placed.get_mut(&bike) {
             Some(node) => {
@@ -299,17 +307,17 @@ fn place_dots(
                             top: px(at.y),
                             width: px(size),
                             height: px(size),
-                            border: UiRect::all(px(if player { 2.5 } else { 1.0 })),
+                            border: UiRect::all(px(if is_human { 2.5 } else { 1.0 })),
                             border_radius: BorderRadius::MAX,
                             ..default()
                         },
                         BackgroundColor(color.0),
-                        BorderColor::all(if player {
+                        BorderColor::all(if is_human {
                             Color::WHITE
                         } else {
                             Color::srgba(0.0, 0.0, 0.0, 0.8)
                         }),
-                        ZIndex(i32::from(player)),
+                        ZIndex(i32::from(is_human)),
                     ))
                     .id();
                 commands.entity(*hud).add_child(dot);

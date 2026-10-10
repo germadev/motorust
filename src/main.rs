@@ -9,6 +9,7 @@ mod circuits;
 mod gamepads;
 mod geometry;
 mod hud;
+mod lobby;
 pub mod locale;
 mod menu;
 mod minimap;
@@ -115,6 +116,7 @@ fn main() {
         gamepads::GamepadsPlugin,
         hud::HudPlugin,
         menu::MenuPlugin,
+        lobby::LobbyPlugin,
         minimap::MinimapPlugin,
         welcome::WelcomePlugin,
         track_select::TrackSelectPlugin,

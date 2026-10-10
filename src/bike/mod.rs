@@ -13,11 +13,13 @@ use std::ops::Range;
 use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::geometry::{approach, forward, heading_of, smoothstep, to_world, wrap_angle};
+use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::locale::Language;
 use crate::menu::{Choice, GameState};
 use crate::pause::{self, DebugOptions, TurnLimit};
 use crate::settings::{Action, Settings};
 use crate::track::{SURFACE_Y, Surface, Track, WALL_DISTANCE};
+use crate::welcome::GameMode;
 use ai::Rival;
 use chassis::{Chassis, Forces};
 use model::{
@@ -124,6 +126,10 @@ struct GridPosition(usize);
 /// Marca la moto que lleva el jugador.
 #[derive(Component)]
 pub struct Player;
+
+/// Marca los jugadores locales en modo multijugador (0 para Player 1, 1 para Player 2).
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LocalPlayer(pub usize);
 
 /// Lo que pide el piloto en este momento. Al jugador lo rellena el teclado o
 /// el mando; a los rivales, su IA.
@@ -742,6 +748,7 @@ fn spawn_grid(
     choice: Res<Choice>,
     mut race: ResMut<Race>,
     mut assets: BikeAssets,
+    game_mode: Res<GameMode>,
 ) {
     race.started = false;
     for (slot, (rival, entry)) in GRID.iter().zip(lineup(choice.0)).enumerate() {
@@ -749,10 +756,176 @@ fn spawn_grid(
         let bike = assets.spawn(&mut commands, &ROSTER[entry], state);
         let mut bike = commands.entity(bike);
         bike.insert((GridPosition(slot), DespawnOnExit(GameState::Race)));
-        match *rival {
-            Some(rival) => bike.insert((rival, ai::Line(rival.lane))),
-            None => bike.insert(Player),
-        };
+        if *game_mode == GameMode::SplitScreen && slot == PLAYER_SLOT - 1 {
+            bike.insert(LocalPlayer(1));
+        } else {
+            match *rival {
+                Some(rival) => {
+                    bike.insert((rival, ai::Line(rival.lane)));
+                }
+                None => {
+                    bike.insert(Player);
+                    if *game_mode == GameMode::SplitScreen {
+                        bike.insert(LocalPlayer(0));
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn read_controller_binding(
+    binding: ControllerBinding,
+    keyboard: &ButtonInput<KeyCode>,
+    gamepads: &Query<&Gamepad>,
+    options: &DebugOptions,
+    speed: f32,
+    dt: f32,
+    digital: &mut DigitalSteer,
+) -> BikeInput {
+    match binding {
+        ControllerBinding::Wasd => {
+            let throttle = if keyboard.pressed(KeyCode::KeyW) {
+                1.0
+            } else {
+                0.0
+            };
+            let brake = if keyboard.pressed(KeyCode::KeyS) {
+                1.0
+            } else {
+                0.0
+            };
+            let left = if keyboard.pressed(KeyCode::KeyA) {
+                1.0f32
+            } else {
+                0.0f32
+            };
+            let right = if keyboard.pressed(KeyCode::KeyD) {
+                1.0f32
+            } else {
+                0.0f32
+            };
+            let wheelie = if keyboard.pressed(KeyCode::Space) {
+                1.0
+            } else {
+                0.0
+            };
+            let steer_direct = digital.update(
+                (left - right).clamp(-1.0, 1.0),
+                reach_with(options.keyboard_limit, speed),
+                options.keyboard_rate.factor(),
+                dt,
+            );
+            BikeInput {
+                throttle,
+                brake,
+                steer: 0.0,
+                steer_direct,
+                wheelie,
+            }
+        }
+        ControllerBinding::Arrows => {
+            let throttle = if keyboard.pressed(KeyCode::ArrowUp) {
+                1.0
+            } else {
+                0.0
+            };
+            let brake = if keyboard.pressed(KeyCode::ArrowDown) {
+                1.0
+            } else {
+                0.0
+            };
+            let left = if keyboard.pressed(KeyCode::ArrowLeft) {
+                1.0f32
+            } else {
+                0.0f32
+            };
+            let right = if keyboard.pressed(KeyCode::ArrowRight) {
+                1.0f32
+            } else {
+                0.0f32
+            };
+            let wheelie = if keyboard.any_pressed([
+                KeyCode::ControlRight,
+                KeyCode::ShiftRight,
+                KeyCode::Numpad0,
+                KeyCode::KeyL,
+            ]) {
+                1.0
+            } else {
+                0.0
+            };
+            let steer_direct = digital.update(
+                (left - right).clamp(-1.0, 1.0),
+                reach_with(options.keyboard_limit, speed),
+                options.keyboard_rate.factor(),
+                dt,
+            );
+            BikeInput {
+                throttle,
+                brake,
+                steer: 0.0,
+                steer_direct,
+                wheelie,
+            }
+        }
+        ControllerBinding::Gamepad(entity) => {
+            if let Ok(gamepad) = gamepads.get(entity) {
+                let trigger_r = gamepad.get(GamepadButton::RightTrigger2).unwrap_or(0.0);
+                let trigger_l = gamepad.get(GamepadButton::LeftTrigger2).unwrap_or(0.0);
+                let south = if gamepad.pressed(GamepadButton::South) {
+                    1.0
+                } else {
+                    0.0
+                };
+                let west = if gamepad.pressed(GamepadButton::West) {
+                    1.0
+                } else {
+                    0.0
+                };
+                let throttle = trigger_r.max(south);
+                let brake = trigger_l.max(west);
+
+                let mut steer = -stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0));
+                steer *= reach_with(options.stick_limit, speed);
+
+                let dpad_left = if gamepad.pressed(GamepadButton::DPadLeft) {
+                    1.0f32
+                } else {
+                    0.0f32
+                };
+                let dpad_right = if gamepad.pressed(GamepadButton::DPadRight) {
+                    1.0f32
+                } else {
+                    0.0f32
+                };
+                let steer_direct = digital.update(
+                    (dpad_left - dpad_right).clamp(-1.0, 1.0),
+                    reach_with(options.keyboard_limit, speed),
+                    options.keyboard_rate.factor(),
+                    dt,
+                );
+
+                let pulled_back =
+                    (-gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0) - 0.3) / 0.7;
+                let wheelie_btn = if gamepad.pressed(GamepadButton::East) {
+                    1.0
+                } else {
+                    0.0
+                };
+                let wheelie = pulled_back.clamp(0.0, 1.0).max(wheelie_btn);
+
+                BikeInput {
+                    throttle,
+                    brake,
+                    steer: steer.clamp(-1.0, 1.0),
+                    steer_direct,
+                    wheelie,
+                }
+            } else {
+                BikeInput::default()
+            }
+        }
     }
 }
 
@@ -762,59 +935,87 @@ fn read_player_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     settings: Res<Settings>,
+    game_mode: Res<GameMode>,
+    local_players: Res<LocalPlayersConfig>,
     mut race: ResMut<Race>,
     options: Res<DebugOptions>,
     player: Single<(&mut BikeInput, &BikeState), With<Player>>,
-    mut digital: Local<DigitalSteer>,
+    mut other_players: Query<(&mut BikeInput, &BikeState, &LocalPlayer)>,
+    mut digital_p1: Local<DigitalSteer>,
+    mut digital_p2: Local<DigitalSteer>,
 ) {
     let (mut input, state) = player.into_inner();
-    // Las teclas y los botones que haya elegido el jugador (ver `settings`).
-    let controls = &settings.controls;
-    let key = |action| controls.key_value(action, &keyboard);
-    let mut throttle = key(Action::Throttle);
-    let mut brake = key(Action::Brake);
-    let mut pressed = key(Action::Left) - key(Action::Right);
-    let mut steer = 0.0;
-    let mut wheelie = key(Action::Wheelie);
+    let dt = time.delta_secs();
 
-    for gamepad in &gamepads {
-        // Los gatillos cuentan según lo que se aprieten.
-        let button = |action| controls.button_value(action, gamepad);
-        throttle = throttle.max(button(Action::Throttle));
-        brake = brake.max(button(Action::Brake));
-        // El stick es positivo a la derecha; nuestra dirección, a la izquierda.
-        steer -= stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0));
-        let digital = |action| if button(action) > 0.5 { 1.0 } else { 0.0 };
-        pressed += digital(Action::Left) - digital(Action::Right);
-        // Caballito: tirar del stick hacia atrás o su botón (B, si no se ha
-        // cambiado).
-        let pulled_back = (-gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0) - 0.3) / 0.7;
-        wheelie = wheelie
-            .max(pulled_back.clamp(0.0, 1.0))
-            .max(button(Action::Wheelie));
+    if *game_mode == GameMode::SplitScreen {
+        if let Some(binding) = local_players.p1 {
+            *input = read_controller_binding(
+                binding,
+                &keyboard,
+                &gamepads,
+                &options,
+                state.speed,
+                dt,
+                &mut digital_p1,
+            );
+        }
+        for (mut p2_input, p2_state, local_player) in &mut other_players {
+            if let (1, Some(binding)) = (local_player.0, local_players.p2) {
+                *p2_input = read_controller_binding(
+                    binding,
+                    &keyboard,
+                    &gamepads,
+                    &options,
+                    p2_state.speed,
+                    dt,
+                    &mut digital_p2,
+                );
+            }
+        }
+    } else {
+        // Modo 1 jugador normal
+        let controls = &settings.controls;
+        let key = |action| controls.key_value(action, &keyboard);
+        let mut throttle = key(Action::Throttle);
+        let mut brake = key(Action::Brake);
+        let mut pressed = key(Action::Left) - key(Action::Right);
+        let mut steer = 0.0;
+        let mut wheelie = key(Action::Wheelie);
+
+        for gamepad in &gamepads {
+            let button = |action| controls.button_value(action, gamepad);
+            throttle = throttle.max(button(Action::Throttle));
+            brake = brake.max(button(Action::Brake));
+            steer -= stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0));
+            let digital = |action| if button(action) > 0.5 { 1.0 } else { 0.0 };
+            pressed += digital(Action::Left) - digital(Action::Right);
+            let pulled_back = (-gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0) - 0.3) / 0.7;
+            wheelie = wheelie
+                .max(pulled_back.clamp(0.0, 1.0))
+                .max(button(Action::Wheelie));
+        }
+
+        steer *= reach_with(options.stick_limit, state.speed);
+        let steer_direct = digital_p1.update(
+            pressed.clamp(-1.0, 1.0),
+            reach_with(options.keyboard_limit, state.speed),
+            options.keyboard_rate.factor(),
+            dt,
+        );
+
+        *input = BikeInput {
+            throttle,
+            brake,
+            steer: steer.clamp(-1.0, 1.0),
+            steer_direct,
+            wheelie,
+        };
     }
 
-    // Opciones de depuración: cuánto limita la velocidad el giro del stick y
-    // el del teclado (del todo, en parte o nada), y cuánto gira el teclado
-    // al dejar pulsada la tecla (lento, medio o alto).
-    steer *= reach_with(options.stick_limit, state.speed);
-    let steer_direct = digital.update(
-        pressed.clamp(-1.0, 1.0),
-        reach_with(options.keyboard_limit, state.speed),
-        options.keyboard_rate.factor(),
-        time.delta_secs(),
-    );
-
-    if throttle > 0.0 && !race.started {
+    let p2_throttles = other_players.iter().any(|(inp, _, _)| inp.throttle > 0.0);
+    if (input.throttle > 0.0 || p2_throttles) && !race.started {
         race.started = true;
     }
-    *input = BikeInput {
-        throttle,
-        brake,
-        steer: steer.clamp(-1.0, 1.0),
-        steer_direct,
-        wheelie,
-    };
 }
 
 /// Lo más que gira el teclado manteniéndolo pulsado yendo a `speed` (m/s).
