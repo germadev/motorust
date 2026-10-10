@@ -14,7 +14,8 @@ mod textures;
 
 use bevy::{light::CascadeShadowConfigBuilder, prelude::*, transform::TransformSystems};
 
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::menu::GameState;
 use crate::track::Track;
 pub use textures::generate_mipmaps;
 
@@ -28,6 +29,8 @@ impl Plugin for WorldPlugin {
             .init_resource::<textures::WorldTextures>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
+            .add_systems(OnEnter(GameState::Tracks), cache_all_circuits)
+            .add_systems(OnExit(GameState::Tracks), unload_unused_circuits)
             .add_systems(
                 PostUpdate,
                 sky::follow_camera.before(TransformSystems::Propagate),
@@ -35,37 +38,92 @@ impl Plugin for WorldPlugin {
     }
 }
 
-/// Todo lo que depende de la pista cuelga de esta entidad: al cambiar de
-/// pista se borra entera.
-#[derive(Component)]
-struct WorldRoot;
+/// Cada circuito cargado tiene su entidad raíz con su índice en [`CIRCUITS`].
+#[derive(Component, Debug, PartialEq, Eq)]
+pub struct WorldRoot(pub usize);
 
-/// Al cambiar de pista: fuera el mundo anterior, y el trazado y el mundo de
-/// la nueva.
+/// Al entrar al menú de elección de pistas, precalcula en segundo plano las
+/// pistas que falten por cargar para que alternar entre ellas sea instantáneo.
+fn cache_all_circuits(
+    mut commands: Commands,
+    roots: Query<&WorldRoot>,
+    current: Res<CurrentCircuit>,
+    mut builder: Builder,
+) {
+    let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
+    for (index, circuit) in CIRCUITS.iter().enumerate() {
+        if !built.contains(&index) {
+            let track = Track::new(&circuit.layout);
+            let visibility = if index == current.0 {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            build(&mut commands, index, &track, &mut builder, visibility);
+        }
+    }
+}
+
+/// Al salir del menú de pistas (hacia elegir moto o volver a bienvenida),
+/// se descargan los circuitos en caché que no se estén usando para liberar memoria.
+fn unload_unused_circuits(
+    mut commands: Commands,
+    current: Res<CurrentCircuit>,
+    roots: Query<(Entity, &WorldRoot)>,
+) {
+    for (entity, root) in &roots {
+        if root.0 != current.0 {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+/// Al cambiar de pista: actualiza el trazado y conmuta la visibilidad entre
+/// las pistas cargadas en caché (o la construye si no estuviera).
 fn rebuild_world(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
-    roots: Query<Entity, With<WorldRoot>>,
+    mut roots: Query<(Entity, &WorldRoot, &mut Visibility)>,
     mut track: ResMut<Track>,
-    builder: Builder,
+    mut builder: Builder,
 ) {
     if !current.is_changed() || current.is_added() {
         return;
     }
-    for root in &roots {
-        commands.entity(root).despawn();
-    }
     *track = Track::new(&current.get().layout);
-    build(&mut commands, *current, &track, builder);
+    let mut found = false;
+    for (_entity, root, mut visibility) in &mut roots {
+        if root.0 == current.0 {
+            *visibility = Visibility::Inherited;
+            found = true;
+        } else {
+            *visibility = Visibility::Hidden;
+        }
+    }
+    if !found {
+        build(
+            &mut commands,
+            current.0,
+            &track,
+            &mut builder,
+            Visibility::Inherited,
+        );
+    }
 }
 
 fn build_world(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
     track: Res<Track>,
-    builder: Builder,
+    mut builder: Builder,
 ) {
-    build(&mut commands, *current, &track, builder);
+    build(
+        &mut commands,
+        current.0,
+        &track,
+        &mut builder,
+        Visibility::Inherited,
+    );
 }
 
 /// Lo que hace falta para construir el mundo.
@@ -77,8 +135,15 @@ struct Builder<'w> {
     images: ResMut<'w, Assets<Image>>,
 }
 
-fn build(commands: &mut Commands, current: CurrentCircuit, track: &Track, mut builder: Builder) {
-    let scenery = &current.get().scenery;
+fn build(
+    commands: &mut Commands,
+    circuit_index: usize,
+    track: &Track,
+    builder: &mut Builder,
+    visibility: Visibility,
+) {
+    let circuit = &CIRCUITS[circuit_index];
+    let scenery = &circuit.scenery;
     let terrain = terrain::Terrain::new(track, scenery);
     let mut assets = Assets3d {
         textures: &builder.textures,
@@ -87,7 +152,7 @@ fn build(commands: &mut Commands, current: CurrentCircuit, track: &Track, mut bu
         images: &mut builder.images,
     };
     commands
-        .spawn((WorldRoot, Transform::default(), Visibility::default()))
+        .spawn((WorldRoot(circuit_index), Transform::default(), visibility))
         .with_children(|world| {
             terrain::spawn_terrain(
                 world,
@@ -131,4 +196,73 @@ fn spawn_sun(mut commands: Commands) {
         }
         .build(),
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn circuits_cache_on_tracks_menu_and_unload_on_exit() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Mesh>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .add_plugins(WorldPlugin);
+
+        app.update();
+
+        // Al inicio, solo la pista inicial (0) está cargada y visible.
+        let mut roots_query = app.world_mut().query::<(&WorldRoot, &Visibility)>();
+        let roots: Vec<_> = roots_query.iter(app.world()).collect();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].0.0, 0);
+        assert_eq!(*roots[0].1, Visibility::Inherited);
+
+        // Entramos al menú de elección de pista: se deben cachear todas las pistas.
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Tracks);
+        app.update();
+
+        let roots: Vec<_> = roots_query.iter(app.world()).collect();
+        assert_eq!(roots.len(), CIRCUITS.len());
+        for (root, vis) in &roots {
+            if root.0 == 0 {
+                assert_eq!(*vis, Visibility::Inherited);
+            } else {
+                assert_eq!(*vis, Visibility::Hidden);
+            }
+        }
+
+        // Cambiamos de pista a la 1: debe conmutar visibilidad instantáneamente.
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = 1;
+        app.update();
+
+        let roots: Vec<_> = roots_query.iter(app.world()).collect();
+        assert_eq!(roots.len(), CIRCUITS.len());
+        for (root, vis) in &roots {
+            if root.0 == 1 {
+                assert_eq!(*vis, Visibility::Inherited);
+            } else {
+                assert_eq!(*vis, Visibility::Hidden);
+            }
+        }
+
+        // Salimos del menú de pistas hacia Select (elegir moto):
+        // la pista no usada (0) debe descargarse y quedar solo la pista elegida (1).
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Select);
+        app.update();
+
+        let roots: Vec<_> = roots_query.iter(app.world()).collect();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].0.0, 1);
+        assert_eq!(*roots[0].1, Visibility::Inherited);
+    }
 }
