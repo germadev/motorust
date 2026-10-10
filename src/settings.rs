@@ -20,7 +20,7 @@ impl Plugin for SettingsPlugin {
         // En la web, el navegador decide cuándo se dibuja cada fotograma.
         if !WEB {
             app.add_systems(Last, limit_frames);
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(all(not(target_arch = "wasm32"), not(windows)))]
             app.add_systems(Update, set_window_icon);
         }
     }
@@ -637,9 +637,10 @@ fn limit_frames(settings: Res<Settings>, mut deadline: Local<Option<Instant>>) {
     });
 }
 
-/// En escritorio (Windows, Linux, macOS), pone el icono de la ventana en cuanto
-/// el manejador de ventanas de winit esté disponible.
-#[cfg(not(target_arch = "wasm32"))]
+/// En Linux y macOS, pone el icono de la ventana en cuanto el manejador de
+/// ventanas de winit esté disponible. En Windows se incrusta en el ejecutable
+/// con winres y el sistema operativo lo aplica directamente.
+#[cfg(all(not(target_arch = "wasm32"), not(windows)))]
 fn set_window_icon(
     primary_window: Query<Entity, With<PrimaryWindow>>,
     windows: NonSend<bevy::winit::WinitWindows>,
