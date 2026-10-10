@@ -32,6 +32,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 10
   # Lo que Bevy necesita para compilar en Linux (lo mismo que `make install`).
   LINUX_PACKAGES: >-
     g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0

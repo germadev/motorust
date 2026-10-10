@@ -5,7 +5,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 ![The Motorust welcome screen, with the camera flying over Speed Bay](docs/images/welcome.jpg)
 
-**Play it in the browser:** <https://germadev.github.io/motorust/>
+**Play it in the browser:** <https://motorust.germade.dev>
 
 - **Two tracks.** Bahía is a Mediterranean coast road. Speed Bay is modelled on
   Moto Racer's own track and has a seafront, a tunnel, a bridge and a forest.
@@ -32,7 +32,7 @@ make up        # run the game
 
 CI builds Linux, Windows and macOS binaries on every run (as artifacts) and
 attaches them to each [release](https://github.com/germadev/motorust/releases).
-The browser version is published to GitHub Pages with each release.
+The browser version is deployed to Cloudflare Pages (<https://motorust.germade.dev>).
 
 ## Controls
 
