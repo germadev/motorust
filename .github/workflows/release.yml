@@ -1,7 +1,8 @@
 # Publica una versión nueva, a mano desde la pestaña Actions: se elige qué
 # parte de la versión sube (mayor, menor o parche), se compila con build.yml
-# para todos los sistemas, se actualiza Cargo.toml en main y se crea la release
-# de GitHub con las builds y sus sumas SHA-256.
+# para todos los sistemas, se publica la versión web en Cloudflare Pages, se
+# actualiza Cargo.toml en main y se crea la release de GitHub con las builds
+# y sus sumas SHA-256.
 #
 # La versión sale de la última etiqueta vX.Y.Z (las releases con los modelos
 # originales no cuentan). Sin ninguna, se parte de 0.0.0: la primera release
@@ -67,9 +68,25 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
 
+  pages:
+    name: Cloudflare Pages
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist/web
+      - name: Desplegar a Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist/web --project-name=motorust --branch=main
+
   release:
     name: Release de GitHub
-    needs: [version, build]
+    needs: [version, build, pages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
