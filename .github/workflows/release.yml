@@ -83,7 +83,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put motorust/motorust_bg.wasm --file=dist/web/motorust_bg.wasm --remote
+          command: r2 object put motorust/motorust_bg.wasm --file=dist/web/motorust_bg.wasm --content-type=application/wasm
       - name: Quitar .wasm de dist/web (supera el límite de 25 MiB de Pages)
         run: rm dist/web/motorust_bg.wasm
       - name: Desplegar a Cloudflare Pages
