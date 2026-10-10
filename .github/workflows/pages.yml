@@ -1,17 +1,12 @@
 # La versión web del juego en GitHub Pages: se publica en GitHub Pages sólo
-# al hacer una release llamado desde release.yml.
+# al hacer una release llamado desde release.yml, reutilizando el build
+# de WebAssembly generado por build.yml.
 #
 # En Settings → Pages, la fuente tiene que ser «GitHub Actions».
 name: Pages
 
 on:
   workflow_call:
-    inputs:
-      version:
-        description: Versión con la que se compila, sin la v (por ejemplo 1.2.0)
-        type: string
-        required: false
-        default: ""
 
 # Una publicación detrás de otra.
 concurrency:
@@ -23,53 +18,21 @@ permissions:
   pages: write
   id-token: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  build:
-    name: Compilar para la web
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: wasm32
-      - name: wasm-bindgen
-        run: |
-          # La misma versión que la librería en Cargo.lock, o no se entienden.
-          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
-          echo "wasm-bindgen $version"
-          if [ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen $version" ]; then
-            cargo install wasm-bindgen-cli --locked --version "$version"
-          fi
-      - name: Versión
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          if [ -n "$VERSION" ]; then
-            # La de la release: va en Cargo.toml para que la web la lleve.
-            perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m' Cargo.toml
-          fi
-      - name: Compilar
-        run: web/build.sh dist/web
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist/web
-
   deploy:
     name: Publicar
-    needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist/web
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
       - id: deployment
         uses: actions/deploy-pages@v4
+
