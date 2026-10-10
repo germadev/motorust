@@ -776,11 +776,13 @@ fn read_player_input(
     }
 
     // Opciones de depuración: cuánto limita la velocidad el giro del stick y
-    // el del teclado (del todo, en parte o nada).
+    // el del teclado (del todo, en parte o nada), y cuánto gira el teclado
+    // al dejar pulsada la tecla (lento, medio o alto).
     steer *= reach_with(options.stick_limit, state.speed);
     let steer_direct = digital.update(
         pressed.clamp(-1.0, 1.0),
         reach_with(options.keyboard_limit, state.speed),
+        options.keyboard_rate.factor(),
         time.delta_secs(),
     );
 
@@ -819,9 +821,9 @@ struct DigitalSteer {
 
 impl DigitalSteer {
     /// Avanza `dt` segundos con `pressed` pulsado (-1, 0 o 1), girando como
-    /// mucho `reach` (de 0 a 1). Solo suaviza lo que se pulsa: sin pulsar,
-    /// vuelve al centro y la moto no gira.
-    fn update(&mut self, pressed: f32, reach: f32, dt: f32) -> f32 {
+    /// mucho `reach` (de 0 a 1) y con una rapidez multiplicada por `rate_factor`.
+    /// Solo suaviza lo que se pulsa: sin pulsar, vuelve al centro y la moto no gira.
+    fn update(&mut self, pressed: f32, reach: f32, rate_factor: f32, dt: f32) -> f32 {
         if pressed != self.pressed {
             // Si se pulsa hacia el otro lado estando inclinado o recuperando,
             // aborta la recuperación para empezar de inmediato hacia el nuevo
@@ -842,7 +844,11 @@ impl DigitalSteer {
             let (start, accel, target) = if returning {
                 (DIGITAL_RELEASE_START, DIGITAL_RELEASE_ACCEL, 0.0)
             } else {
-                (DIGITAL_STEER_START, DIGITAL_STEER_ACCEL, pressed * reach)
+                (
+                    DIGITAL_STEER_START * rate_factor,
+                    DIGITAL_STEER_ACCEL * rate_factor,
+                    pressed * reach,
+                )
             };
             let rate = start + accel * (self.time + 0.5 * dt);
             self.value = move_toward(self.value, target, rate * dt);
@@ -956,6 +962,8 @@ fn interpolate_bikes(
 #[cfg(test)]
 mod tests {
     use std::f32::consts::FRAC_PI_2;
+
+    use crate::pause::SteerRate;
 
     use super::*;
 
@@ -1107,9 +1115,27 @@ mod tests {
         dt: f32,
         pressed: impl Fn(f32) -> f32,
     ) -> Vec<f32> {
+        digital_steer_with_rate(speed, 1.0, seconds, dt, pressed)
+    }
+
+    /// Igual, con un multiplicador de rapidez `rate_factor`.
+    fn digital_steer_with_rate(
+        speed: f32,
+        rate_factor: f32,
+        seconds: f32,
+        dt: f32,
+        pressed: impl Fn(f32) -> f32,
+    ) -> Vec<f32> {
         let mut digital = DigitalSteer::default();
         (0..(seconds / dt).round() as usize)
-            .map(|frame| digital.update(pressed(frame as f32 * dt), digital_reach(speed), dt))
+            .map(|frame| {
+                digital.update(
+                    pressed(frame as f32 * dt),
+                    digital_reach(speed),
+                    rate_factor,
+                    dt,
+                )
+            })
             .collect()
     }
 
@@ -1127,7 +1153,7 @@ mod tests {
             let pressed = if frame < release { 1.0 } else { 0.0 };
             let input = BikeInput {
                 throttle: 1.0,
-                steer_direct: digital.update(pressed, digital_reach(state.speed), DT),
+                steer_direct: digital.update(pressed, digital_reach(state.speed), 1.0, DT),
                 ..default()
             };
             state = step(&state, &input, &Ground::flat(Surface::Asphalt), &tuning, DT);
@@ -1270,6 +1296,26 @@ mod tests {
                 "{value} y {same_moment}"
             );
         }
+    }
+
+    #[test]
+    fn keyboard_steering_rate_option_changes_how_fast_it_turns_while_held() {
+        let at = |values: &[f32], seconds: f32| values[(seconds / DT).round() as usize - 1];
+        let held = |rate: SteerRate| {
+            digital_steer_with_rate(0.0, rate.factor(), 1.0, DT, |_| 1.0)
+        };
+        let slow = held(SteerRate::Slow);
+        let medium = held(SteerRate::Medium);
+        let fast = held(SteerRate::Fast);
+
+        // Al dejar pulsado, lento gira menos que medio, y medio menos que alto.
+        assert!(at(&slow, 0.2) < at(&medium, 0.2));
+        assert!(at(&medium, 0.2) < at(&fast, 0.2));
+
+        // Alto llega al tope en unos 0.35 s; lento tarda más de medio segundo.
+        assert_eq!(at(&fast, 0.35), 1.0);
+        assert!(at(&slow, 0.35) < 0.8);
+        assert_eq!(at(&slow, 0.8), 1.0);
     }
 
     #[test]

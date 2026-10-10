@@ -34,6 +34,9 @@ pub struct DebugOptions {
     pub stick_limit: TurnLimit,
     /// Con el teclado o la cruceta, lo mismo (de entrada, medio).
     pub keyboard_limit: TurnLimit,
+    /// Con el teclado o la cruceta, cuánto gira al dejar pulsada la tecla
+    /// (de entrada, medio).
+    pub keyboard_rate: SteerRate,
     /// Si se ve en la carrera la leyenda con los controles (de entrada, no).
     pub show_legend: bool,
 }
@@ -43,8 +46,48 @@ impl Default for DebugOptions {
         Self {
             stick_limit: TurnLimit::Medium,
             keyboard_limit: TurnLimit::Medium,
+            keyboard_rate: SteerRate::Medium,
             show_legend: false,
         }
+    }
+}
+
+/// Cuánto gira el teclado o la cruceta al dejar pulsada la tecla: lento,
+/// medio o alto (lo de siempre).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SteerRate {
+    Slow,
+    Medium,
+    Fast,
+}
+
+const STEER_RATES: [SteerRate; 3] = [
+    SteerRate::Slow,
+    SteerRate::Medium,
+    SteerRate::Fast,
+];
+
+impl SteerRate {
+    /// Factor que multiplica la rapidez con la que gira el teclado.
+    pub fn factor(self) -> f32 {
+        match self {
+            SteerRate::Slow => 0.5,
+            SteerRate::Medium => 0.75,
+            SteerRate::Fast => 1.0,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            SteerRate::Slow => "lento",
+            SteerRate::Medium => "medio",
+            SteerRate::Fast => "alto",
+        }
+    }
+
+    /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta.
+    fn next(self, step: i32) -> Self {
+        cycle(&STEER_RATES, self, step)
     }
 }
 
@@ -125,6 +168,7 @@ enum Action {
     Quit,
     NextStickLimit,
     NextKeyboardLimit,
+    NextKeyboardRate,
     ToggleLegend,
     SearchGamepads,
     Back,
@@ -159,6 +203,13 @@ fn items(page: Page, options: &DebugOptions) -> Vec<(String, Action)> {
                     options.keyboard_limit.name()
                 ),
                 Action::NextKeyboardLimit,
+            ),
+            (
+                format!(
+                    "Teclado y cruceta: cuánto gira al dejar pulsado: {}",
+                    options.keyboard_rate.name()
+                ),
+                Action::NextKeyboardRate,
             ),
             (
                 format!(
@@ -255,6 +306,12 @@ fn use_pause_menu(
             options.keyboard_limit =
                 options
                     .keyboard_limit
+                    .next(if request.side < 0 { -1 } else { 1 });
+        }
+        Some(Action::NextKeyboardRate) => {
+            options.keyboard_rate =
+                options
+                    .keyboard_rate
                     .next(if request.side < 0 { -1 } else { 1 });
         }
         Some(Action::ToggleLegend) => {
@@ -374,9 +431,28 @@ mod tests {
         // El teclado y la cruceta, limitados a medio de entrada.
         assert_eq!(items(Page::Debug, &options)[1].1, Action::NextKeyboardLimit);
         assert!(items(Page::Debug, &options)[1].0.ends_with("medio"));
+        // Cuánto gira al dejar pulsado: medio de entrada, y pasa por alto y lento.
+        assert_eq!(items(Page::Debug, &options)[2].1, Action::NextKeyboardRate);
+        assert!(items(Page::Debug, &options)[2].0.ends_with("medio"));
+        let mut rate = options.keyboard_rate;
+        let mut shown_rates = Vec::new();
+        for _ in 0..4 {
+            let options = DebugOptions {
+                keyboard_rate: rate,
+                ..default()
+            };
+            let label = items(Page::Debug, &options)[2].0.clone();
+            shown_rates.push(label.rsplit(' ').next().unwrap().to_string());
+            rate = rate.next(1);
+        }
+        assert_eq!(shown_rates, ["medio", "alto", "lento", "medio"]);
+        assert_eq!(SteerRate::Slow.next(-1), SteerRate::Fast);
+        assert_eq!(SteerRate::Fast.factor(), 1.0);
+        assert!(SteerRate::Slow.factor() < SteerRate::Medium.factor());
+        assert!(SteerRate::Medium.factor() < SteerRate::Fast.factor());
         // La leyenda de los controles, oculta de entrada.
-        assert_eq!(items(Page::Debug, &options)[2].1, Action::ToggleLegend);
-        assert!(items(Page::Debug, &options)[2].0.ends_with("oculta"));
+        assert_eq!(items(Page::Debug, &options)[3].1, Action::ToggleLegend);
+        assert!(items(Page::Debug, &options)[3].0.ends_with("oculta"));
         assert_eq!(TurnLimit::High.strength(), 1.0);
         // Volver desde depuración deja elegida la entrada de depuración.
         assert_eq!(items(Page::Main, &options)[2].1, Action::OpenDebug);
