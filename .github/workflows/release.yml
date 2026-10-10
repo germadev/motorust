@@ -69,14 +69,23 @@ jobs:
       version: ${{ needs.version.outputs.version }}
 
   pages:
-    name: Cloudflare Pages
+    name: Cloudflare Pages y R2
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: web-dist
           path: dist/web
+      - name: Subir motorust_bg.wasm a Cloudflare R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put motorust/motorust_bg.wasm --file=dist/web/motorust_bg.wasm --remote
+      - name: Quitar .wasm de dist/web (supera el límite de 25 MiB de Pages)
+        run: rm dist/web/motorust_bg.wasm
       - name: Desplegar a Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
