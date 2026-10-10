@@ -14,7 +14,7 @@ use crate::menu::GameState;
 use crate::minimap::TrackMap;
 use crate::settings::Settings;
 use crate::track::Track;
-use crate::ui::{MenuInput, MenuSound, gamepad_status, spawn_title, text_font};
+use crate::ui::{InputDevice, MenuInput, MenuSound, spawn_title, text_font};
 
 /// La cámara gira alrededor de la pista a esta velocidad (rad/s), a esta
 /// distancia del centro y a esta altura (fracciones del tamaño de la pista),
@@ -45,6 +45,9 @@ struct TrackDescription;
 #[derive(Component)]
 struct TrackLength;
 
+#[derive(Component)]
+struct TrackHint;
+
 /// Filtros para tocar los textos a la vez.
 type NameFilter = (
     With<TrackName>,
@@ -60,6 +63,12 @@ type LengthFilter = (
     With<TrackLength>,
     Without<TrackName>,
     Without<TrackDescription>,
+);
+type HintFilter = (
+    With<TrackHint>,
+    Without<TrackName>,
+    Without<TrackDescription>,
+    Without<TrackLength>,
 );
 
 /// Punto que marca qué pista se está viendo.
@@ -173,29 +182,9 @@ fn spawn_screen(
                                 ));
                             }
                         });
-                        // Con una sola pista no hay nada que elegir con las flechas.
-                        let hint = match lang {
-                            Language::Spanish => {
-                                let choose = if CIRCUITS.len() > 1 {
-                                    "< >  elegir   ·   "
-                                } else {
-                                    ""
-                                };
-                                format!("{choose}Enter o A: elegir moto   ·   Esc o B: volver")
-                            }
-                            Language::English => {
-                                let choose = if CIRCUITS.len() > 1 {
-                                    "< >  choose   ·   "
-                                } else {
-                                    ""
-                                };
-                                format!("{choose}Enter or A: choose bike   ·   Esc or B: back")
-                            }
-                        };
-                        text.spawn((Text::new(hint), text_font(&font, 18.0), soft));
+                        text.spawn((TrackHint, Text::new(""), text_font(&font, 18.0), soft));
                     });
                 });
-            screen.spawn(gamepad_status(&font));
         });
 }
 
@@ -221,14 +210,17 @@ fn choose_track(
     }
 }
 
-/// Nombre, descripción, longitud y puntos de la pista elegida.
+/// Nombre, descripción, longitud, pista elegida y leyenda de controles.
+#[allow(clippy::too_many_arguments)]
 fn show_track(
     choice: Res<CurrentCircuit>,
     track: Res<Track>,
     settings: Res<Settings>,
+    device: Res<InputDevice>,
     mut name: Single<&mut Text, NameFilter>,
     mut description: Single<&mut Text, DescriptionFilter>,
     mut length: Single<&mut Text, LengthFilter>,
+    mut hint: Single<&mut Text, HintFilter>,
     mut dots: Query<(&Dot, &mut BackgroundColor)>,
 ) {
     let lang = settings.language;
@@ -249,6 +241,33 @@ fn show_track(
     };
     if length.0 != label {
         length.0 = label;
+    }
+    let (confirm, back) = match *device {
+        InputDevice::Keyboard => ("ENTER", "ESC"),
+        InputDevice::Gamepad => ("A o START", "B"),
+    };
+    let choose = if CIRCUITS.len() > 1 {
+        "< >  elegir   ·   "
+    } else {
+        ""
+    };
+    let wanted_hint = match lang {
+        Language::Spanish => format!("{choose}{confirm}: elegir moto   ·   {back}: volver"),
+        Language::English => {
+            let (confirm_en, back_en) = match *device {
+                InputDevice::Keyboard => ("ENTER", "ESC"),
+                InputDevice::Gamepad => ("A or START", "B"),
+            };
+            let choose_en = if CIRCUITS.len() > 1 {
+                "< >  choose   ·   "
+            } else {
+                ""
+            };
+            format!("{choose_en}{confirm_en}: choose bike   ·   {back_en}: back")
+        }
+    };
+    if hint.0 != wanted_hint {
+        hint.0 = wanted_hint;
     }
     for (dot, mut color) in &mut dots {
         let alpha = if dot.0 == choice.0 { 1.0 } else { 0.3 };

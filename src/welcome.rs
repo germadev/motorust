@@ -16,7 +16,7 @@ use crate::settings::{
 };
 use crate::track::Track;
 use crate::ui::{
-    MenuInput, MenuSound, Row, gamepad_status, spawn_hint, spawn_logo, spawn_panel, spawn_title,
+    InputDevice, MenuInput, MenuSound, Row, spawn_hint, spawn_logo, spawn_panel, spawn_title,
     text_font, version_label,
 };
 
@@ -38,6 +38,7 @@ pub struct WelcomePlugin;
 impl Plugin for WelcomePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Welcome>()
+            .init_resource::<GameMode>()
             .add_systems(OnEnter(GameState::Welcome), open)
             .add_systems(
                 Update,
@@ -46,6 +47,14 @@ impl Plugin for WelcomePlugin {
                     .run_if(in_state(GameState::Welcome)),
             );
     }
+}
+
+/// Modo de juego elegido en la pantalla principal.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GameMode {
+    #[default]
+    SinglePlayer,
+    SplitScreen,
 }
 
 /// Qué página se ve, qué opción está elegida y si se espera una tecla nueva.
@@ -60,6 +69,7 @@ struct Welcome {
 enum Page {
     #[default]
     Main,
+    QuitConfirm,
     Options,
     Controls,
 }
@@ -74,9 +84,10 @@ struct Capture {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Item {
-    Start,
-    Options,
-    Quit,
+    SinglePlayer,
+    SplitScreen,
+    CancelQuit,
+    ConfirmQuit,
     Fullscreen,
     Resolution,
     Fps,
@@ -90,8 +101,8 @@ enum Item {
 /// Las opciones de cada página.
 fn items(page: Page) -> Vec<Item> {
     match page {
-        Page::Main if WEB => vec![Item::Start, Item::Options],
-        Page::Main => vec![Item::Start, Item::Options, Item::Quit],
+        Page::Main => vec![Item::SinglePlayer, Item::SplitScreen],
+        Page::QuitConfirm => vec![Item::CancelQuit, Item::ConfirmQuit],
         Page::Options if WEB => vec![
             Item::Fullscreen,
             Item::Resolution,
@@ -119,11 +130,21 @@ fn items(page: Page) -> Vec<Item> {
 fn row(item: Item, settings: &Settings, capture: Option<Capture>, window: Option<&Window>) -> Row {
     let lang = settings.language;
     match item {
-        Item::Start => Row::new(lang.start()),
-        Item::Options => Row::new(lang.options()),
-        Item::Quit => Row::new(match lang {
-            Language::Spanish => "Salir",
-            Language::English => "Exit",
+        Item::SinglePlayer => Row::new(match lang {
+            Language::Spanish => "1 jugador local",
+            Language::English => "1 local player",
+        }),
+        Item::SplitScreen => Row::new(match lang {
+            Language::Spanish => "2 jugadores locales a pantalla dividida",
+            Language::English => "2 local players split-screen",
+        }),
+        Item::CancelQuit => Row::new(match lang {
+            Language::Spanish => "Cancelar",
+            Language::English => "Cancel",
+        }),
+        Item::ConfirmQuit => Row::new(match lang {
+            Language::Spanish => "Salir del juego",
+            Language::English => "Exit game",
         }),
         Item::Fullscreen => Row::with_value(
             lang.fullscreen(),
@@ -158,16 +179,18 @@ fn row(item: Item, settings: &Settings, capture: Option<Capture>, window: Option
     }
 }
 
-/// Al llegar, la página principal con Comenzar elegido.
+/// Al llegar, la página principal con la primera opción elegida.
 fn open(mut welcome: ResMut<Welcome>) {
     *welcome = Welcome::default();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn use_welcome(
     mut input: MenuInput,
     time: Res<Time<Real>>,
     mut welcome: ResMut<Welcome>,
     mut settings: ResMut<Settings>,
+    mut game_mode: ResMut<GameMode>,
     mut next: ResMut<NextState<GameState>>,
     mut exit: MessageWriter<AppExit>,
     mut sounds: MessageWriter<MenuSound>,
@@ -201,6 +224,13 @@ fn use_welcome(
         return;
     }
 
+    // TAB o SELECT en la pantalla principal para ir a opciones.
+    if request.options && welcome.page == Page::Main {
+        go(&mut welcome, Page::Options, Item::Fullscreen);
+        sounds.write(MenuSound::Confirm);
+        return;
+    }
+
     let items = items(welcome.page);
     if request.step != 0 {
         welcome.selected =
@@ -208,18 +238,33 @@ fn use_welcome(
         sounds.write(MenuSound::Move);
     }
     let item = items[welcome.selected];
-    // Esc o B vuelven a la página anterior.
+
+    // Esc o B:
     if request.back {
         match welcome.page {
-            Page::Main => return,
-            Page::Options => go(&mut welcome, Page::Main, Item::Options),
-            Page::Controls => go(&mut welcome, Page::Options, Item::Controls),
+            Page::Main => {
+                if !WEB {
+                    go(&mut welcome, Page::QuitConfirm, Item::CancelQuit);
+                    sounds.write(MenuSound::Move);
+                }
+            }
+            Page::QuitConfirm => {
+                go(&mut welcome, Page::Main, Item::SinglePlayer);
+                sounds.write(MenuSound::Move);
+            }
+            Page::Options => {
+                go(&mut welcome, Page::Main, Item::SinglePlayer);
+                sounds.write(MenuSound::Move);
+            }
+            Page::Controls => {
+                go(&mut welcome, Page::Options, Item::Controls);
+                sounds.write(MenuSound::Move);
+            }
         }
-        sounds.write(MenuSound::Move);
         return;
     }
-    // Izquierda y derecha cambian los valores; Enter o A, también, hacia
-    // delante.
+
+    // Izquierda y derecha cambian los valores; Enter, A o Start confirman.
     let change = if request.side != 0 {
         request.side
     } else {
@@ -245,15 +290,21 @@ fn use_welcome(
             sounds.write(MenuSound::Move);
         }
         _ if !(request.confirm || (request.start && welcome.page == Page::Main)) => {}
-        Item::Start => {
+        Item::SinglePlayer => {
             sounds.write(MenuSound::Confirm);
+            *game_mode = GameMode::SinglePlayer;
             next.set(GameState::Tracks);
         }
-        Item::Options => {
-            go(&mut welcome, Page::Options, Item::Fullscreen);
+        Item::SplitScreen => {
             sounds.write(MenuSound::Confirm);
+            *game_mode = GameMode::SplitScreen;
+            next.set(GameState::Tracks);
         }
-        Item::Quit => {
+        Item::CancelQuit => {
+            sounds.write(MenuSound::Move);
+            go(&mut welcome, Page::Main, Item::SinglePlayer);
+        }
+        Item::ConfirmQuit => {
             exit.write(AppExit::Success);
         }
         Item::Controls => {
@@ -273,7 +324,7 @@ fn use_welcome(
         Item::Back => {
             match welcome.page {
                 Page::Controls => go(&mut welcome, Page::Options, Item::Controls),
-                _ => go(&mut welcome, Page::Main, Item::Options),
+                _ => go(&mut welcome, Page::Main, Item::SinglePlayer),
             }
             sounds.write(MenuSound::Move);
         }
@@ -295,13 +346,14 @@ fn show_welcome(
     mut commands: Commands,
     welcome: Res<Welcome>,
     settings: Res<Settings>,
+    device: Res<InputDevice>,
     window: Query<Ref<Window>, With<PrimaryWindow>>,
     font: Res<UiFont>,
     shown: Query<Entity, With<WelcomeScreen>>,
 ) {
     let window_ref = window.iter().next();
     let window_changed = window_ref.as_ref().is_some_and(|w| w.is_changed());
-    if !welcome.is_changed() && !settings.is_changed() && !window_changed {
+    if !welcome.is_changed() && !settings.is_changed() && !window_changed && !device.is_changed() {
         return;
     }
     for entity in &shown {
@@ -314,37 +366,80 @@ fn show_welcome(
         .collect();
     let lang = settings.language;
     let hint = match (welcome.page, welcome.capture) {
-        (Page::Main, _) => match lang {
-            Language::Spanish => "Arriba y abajo: elegir   ·   Enter o A: aceptar".to_string(),
-            Language::English => "Up and down: choose   ·   Enter or A: accept".to_string(),
+        (Page::Main, _) => match (*device, lang) {
+            (InputDevice::Keyboard, Language::Spanish) => {
+                "Arriba y abajo: elegir   ·   ENTER: jugar".to_string()
+            }
+            (InputDevice::Keyboard, Language::English) => {
+                "Up and down: choose   ·   ENTER: play".to_string()
+            }
+            (InputDevice::Gamepad, Language::Spanish) => {
+                "Cruz o stick: elegir   ·   A o START: jugar".to_string()
+            }
+            (InputDevice::Gamepad, Language::English) => {
+                "D-pad or stick: choose   ·   A or START: play".to_string()
+            }
         },
-        (Page::Options, _) => match lang {
-            Language::Spanish => {
-                "Arriba y abajo: elegir   ·   Izquierda y derecha: cambiar   ·   Esc o B: volver"
+        (Page::QuitConfirm, _) => match (*device, lang) {
+            (InputDevice::Keyboard, Language::Spanish) => {
+                "Arriba y abajo: elegir   ·   ENTER: confirmar   ·   ESC: cancelar".to_string()
+            }
+            (InputDevice::Keyboard, Language::English) => {
+                "Up and down: choose   ·   ENTER: confirm   ·   ESC: cancel".to_string()
+            }
+            (InputDevice::Gamepad, Language::Spanish) => {
+                "Cruz o stick: elegir   ·   A o START: confirmar   ·   B: cancelar".to_string()
+            }
+            (InputDevice::Gamepad, Language::English) => {
+                "D-pad or stick: choose   ·   A or START: confirm   ·   B: cancel".to_string()
+            }
+        },
+        (Page::Options, _) => match (*device, lang) {
+            (InputDevice::Keyboard, Language::Spanish) => {
+                "Arriba y abajo: elegir   ·   Izquierda y derecha: cambiar   ·   ESC: volver"
                     .to_string()
             }
-            Language::English => {
-                "Up and down: choose   ·   Left and right: change   ·   Esc or B: back".to_string()
+            (InputDevice::Keyboard, Language::English) => {
+                "Up and down: choose   ·   Left and right: change   ·   ESC: back".to_string()
+            }
+            (InputDevice::Gamepad, Language::Spanish) => {
+                "Cruz o stick: elegir   ·   Izquierda y derecha: cambiar   ·   B: volver"
+                    .to_string()
+            }
+            (InputDevice::Gamepad, Language::English) => {
+                "D-pad or stick: choose   ·   Left and right: change   ·   B: back".to_string()
             }
         },
-        (Page::Controls, None) => match lang {
-            Language::Spanish => {
-                "Enter o A: cambiar la tecla o el botón   ·   Esc o B: volver".to_string()
+        (Page::Controls, None) => match (*device, lang) {
+            (InputDevice::Keyboard, Language::Spanish) => {
+                "ENTER: cambiar la tecla o el botón   ·   ESC: volver".to_string()
             }
-            Language::English => {
-                "Enter or A: change key or button   ·   Esc or B: back".to_string()
+            (InputDevice::Keyboard, Language::English) => {
+                "ENTER: change key or button   ·   ESC: back".to_string()
+            }
+            (InputDevice::Gamepad, Language::Spanish) => {
+                "A o START: cambiar la tecla o el botón   ·   B: volver".to_string()
+            }
+            (InputDevice::Gamepad, Language::English) => {
+                "A or START: change key or button   ·   B: back".to_string()
             }
         },
-        (Page::Controls, Some(capture)) => match lang {
-            Language::Spanish => format!(
-                "Pulsa la tecla o el botón para «{}»   ·   Esc: cancelar",
-                capture.action.name(lang)
-            ),
-            Language::English => format!(
-                "Press the key or button for \"{}\"   ·   Esc: cancel",
-                capture.action.name(lang)
-            ),
-        },
+        (Page::Controls, Some(capture)) => {
+            let back = match *device {
+                InputDevice::Keyboard => "ESC",
+                InputDevice::Gamepad => "B",
+            };
+            match lang {
+                Language::Spanish => format!(
+                    "Pulsa la tecla o el botón para «{}»   ·   {back}: cancelar",
+                    capture.action.name(lang)
+                ),
+                Language::English => format!(
+                    "Press key or button for \"{}\"   ·   {back}: cancel",
+                    capture.action.name(lang)
+                ),
+            }
+        }
     };
     commands
         .spawn((
@@ -378,6 +473,15 @@ fn show_welcome(
                         },
                     ));
                 }
+                Page::QuitConfirm => spawn_title(
+                    screen,
+                    &font,
+                    match lang {
+                        Language::Spanish => "¿SALIR DEL JUEGO?",
+                        Language::English => "EXIT GAME?",
+                    },
+                    52.0,
+                ),
                 Page::Options => spawn_title(
                     screen,
                     &font,
@@ -425,7 +529,51 @@ fn show_welcome(
                 ));
             }
             spawn_hint(screen, &font, &hint);
-            screen.spawn(gamepad_status(&font));
+
+            if welcome.page == Page::Main {
+                let footer_text = match (*device, lang) {
+                    (InputDevice::Keyboard, Language::Spanish) => {
+                        if WEB {
+                            "TAB para ver las opciones".to_string()
+                        } else {
+                            "TAB para ver las opciones   ·   ESC para salir".to_string()
+                        }
+                    }
+                    (InputDevice::Keyboard, Language::English) => {
+                        if WEB {
+                            "TAB for options".to_string()
+                        } else {
+                            "TAB for options   ·   ESC to exit".to_string()
+                        }
+                    }
+                    (InputDevice::Gamepad, Language::Spanish) => {
+                        if WEB {
+                            "SELECT para ver las opciones".to_string()
+                        } else {
+                            "SELECT para ver las opciones   ·   B para salir".to_string()
+                        }
+                    }
+                    (InputDevice::Gamepad, Language::English) => {
+                        if WEB {
+                            "SELECT for options".to_string()
+                        } else {
+                            "SELECT for options   ·   B to exit".to_string()
+                        }
+                    }
+                };
+                screen.spawn((
+                    Text::new(footer_text),
+                    text_font(&font, 17.0),
+                    TextColor(Color::srgba(1.0, 0.85, 0.25, 0.85)),
+                    TextShadow::default(),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        bottom: px(14),
+                        ..default()
+                    },
+                ));
+            }
+
             screen.spawn(version_label(&font));
         });
 }
@@ -463,7 +611,11 @@ mod tests {
 
     #[test]
     fn the_welcome_screen_offers_what_was_asked() {
-        assert_eq!(items(Page::Main), [Item::Start, Item::Options, Item::Quit]);
+        assert_eq!(items(Page::Main), [Item::SinglePlayer, Item::SplitScreen]);
+        assert_eq!(
+            items(Page::QuitConfirm),
+            [Item::CancelQuit, Item::ConfirmQuit]
+        );
         if WEB {
             assert_eq!(
                 items(Page::Options),

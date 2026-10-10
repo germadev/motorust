@@ -14,9 +14,10 @@ use bevy::prelude::*;
 use crate::bike::{BikeAssets, BikeState, ROSTER};
 use crate::camera::{CameraGlide, right_stick};
 use crate::hud::UiFont;
+use crate::locale::Language;
 use crate::settings::Settings;
 use crate::track::Track;
-use crate::ui::{MenuInput, MenuSound, gamepad_status};
+use crate::ui::{InputDevice, MenuInput, MenuSound};
 
 /// En qué pantalla está el juego.
 #[derive(States, Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -74,9 +75,13 @@ struct BikeName;
 #[derive(Component)]
 struct BikeDescription;
 
-/// Filtros para tocar los dos textos a la vez.
-type NameFilter = (With<BikeName>, Without<BikeDescription>);
-type DescriptionFilter = (With<BikeDescription>, Without<BikeName>);
+#[derive(Component)]
+struct BikeHint;
+
+/// Filtros para tocar los textos a la vez.
+type NameFilter = (With<BikeName>, Without<BikeDescription>, Without<BikeHint>);
+type DescriptionFilter = (With<BikeDescription>, Without<BikeName>, Without<BikeHint>);
+type HintFilter = (With<BikeHint>, Without<BikeName>, Without<BikeDescription>);
 
 /// Punto de la fila que marca qué moto se está viendo.
 #[derive(Component)]
@@ -179,12 +184,12 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>, settings: Res<Settings>
                         }
                     });
                     card.spawn((
-                        Text::new(lang.bike_hint()),
+                        BikeHint,
+                        Text::new(""),
                         text(18.0),
                         TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
                     ));
                 });
-            screen.spawn(gamepad_status(&font));
         });
 }
 
@@ -252,8 +257,10 @@ fn orbit_camera(
 fn show_choice(
     choice: Res<Choice>,
     settings: Res<Settings>,
+    device: Res<InputDevice>,
     mut name: Single<(&mut Text, &mut TextColor), NameFilter>,
     mut description: Single<&mut Text, DescriptionFilter>,
+    mut hint: Single<&mut Text, HintFilter>,
     mut dots: Query<(&Dot, &mut BackgroundColor)>,
 ) {
     let entry = &ROSTER[choice.0];
@@ -264,6 +271,23 @@ fn show_choice(
         description.0 = wanted_desc.to_string();
     } else if description.0 != wanted_desc {
         description.0 = wanted_desc.to_string();
+    }
+    let (confirm, back) = match *device {
+        InputDevice::Keyboard => ("ENTER", "ESC"),
+        InputDevice::Gamepad => ("A o START", "B"),
+    };
+    let wanted_hint = match settings.language {
+        Language::Spanish => format!("< >  elegir   ·   {confirm}: correr   ·   {back}: volver"),
+        Language::English => {
+            let (confirm_en, back_en) = match *device {
+                InputDevice::Keyboard => ("ENTER", "ESC"),
+                InputDevice::Gamepad => ("A or START", "B"),
+            };
+            format!("< >  choose   ·   {confirm_en}: race   ·   {back_en}: back")
+        }
+    };
+    if hint.0 != wanted_hint {
+        hint.0 = wanted_hint;
     }
     for (dot, mut color) in &mut dots {
         let alpha = if dot.0 == choice.0 { 1.0 } else { 0.3 };

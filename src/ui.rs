@@ -3,10 +3,8 @@
 
 use bevy::{ecs::system::SystemParam, prelude::*};
 
-use crate::gamepads::Gamepads;
 use crate::hud::UiFont;
-use crate::locale::Language;
-use crate::settings::{Settings, fullscreen_keys};
+use crate::settings::fullscreen_keys;
 
 /// El naranja del óxido, para «RUST» en «MOTORUST».
 pub const RUST_ORANGE: Color = Color::srgb(0.9, 0.4, 0.12);
@@ -19,7 +17,40 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<MenuSound>()
-            .add_systems(Update, show_gamepads);
+            .init_resource::<InputDevice>()
+            .add_systems(PreUpdate, update_input_device);
+    }
+}
+
+/// Si el jugador está usando el teclado o un mando.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InputDevice {
+    #[default]
+    Keyboard,
+    Gamepad,
+}
+
+fn update_input_device(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    mut device: ResMut<InputDevice>,
+) {
+    if keyboard.get_just_pressed().next().is_some() {
+        if *device != InputDevice::Keyboard {
+            *device = InputDevice::Keyboard;
+        }
+    } else {
+        for gamepad in &gamepads {
+            let has_button = gamepad.get_just_pressed().next().is_some();
+            let stick_x = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0).abs();
+            let stick_y = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0).abs();
+            if has_button || stick_x > 0.4 || stick_y > 0.4 {
+                if *device != InputDevice::Gamepad {
+                    *device = InputDevice::Gamepad;
+                }
+                break;
+            }
+        }
     }
 }
 
@@ -39,12 +70,14 @@ pub struct Request {
     pub step: i32,
     /// Izquierda (-1) o derecha (1).
     pub side: i32,
-    /// Enter, Espacio o A.
+    /// Enter, Espacio, A o Start.
     pub confirm: bool,
     /// Start.
     pub start: bool,
     /// Esc o B.
     pub back: bool,
+    /// Tab o Select (opciones).
+    pub options: bool,
 }
 
 /// El teclado y los mandos, para moverse por los menús: flechas, WASD,
@@ -70,15 +103,18 @@ impl MenuInput<'_, '_> {
                 && !fullscreen_keys(keyboard),
             back: keyboard.just_pressed(KeyCode::Escape),
             start: false,
+            options: keyboard.just_pressed(KeyCode::Tab),
         };
         let mut stick = Vec2::ZERO;
         for gamepad in &self.gamepads {
             let pressed = |button| i32::from(gamepad.just_pressed(button));
             request.step += pressed(GamepadButton::DPadDown) - pressed(GamepadButton::DPadUp);
             request.side += pressed(GamepadButton::DPadRight) - pressed(GamepadButton::DPadLeft);
-            request.confirm |= gamepad.just_pressed(GamepadButton::South);
+            request.confirm |= gamepad.just_pressed(GamepadButton::South)
+                || gamepad.just_pressed(GamepadButton::Start);
             request.back |= gamepad.just_pressed(GamepadButton::East);
             request.start |= gamepad.just_pressed(GamepadButton::Start);
+            request.options |= gamepad.just_pressed(GamepadButton::Select);
             let axis = |axis| gamepad.get(axis).unwrap_or(0.0);
             let (x, y) = (axis(GamepadAxis::LeftStickX), axis(GamepadAxis::LeftStickY));
             if x.abs() > stick.x.abs() {
@@ -276,26 +312,6 @@ pub fn spawn_hint(parent: &mut ChildSpawnerCommands, font: &UiFont, hint: &str) 
     ));
 }
 
-/// Texto, abajo a la derecha, con los mandos que ve el juego.
-#[derive(Component)]
-pub struct GamepadStatus;
-
-pub fn gamepad_status(font: &UiFont) -> impl Bundle {
-    (
-        GamepadStatus,
-        Text::new(""),
-        text_font(font, 15.0),
-        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
-        TextShadow::default(),
-        Node {
-            position_type: PositionType::Absolute,
-            bottom: px(12),
-            right: px(16),
-            ..default()
-        },
-    )
-}
-
 /// Texto, abajo a la izquierda, con la versión del juego.
 #[derive(Component)]
 pub struct VersionLabel;
@@ -314,45 +330,6 @@ pub fn version_label(font: &UiFont) -> impl Bundle {
             ..default()
         },
     )
-}
-
-/// El mando que ve el juego, o un aviso si no ve ninguno.
-fn show_gamepads(
-    gamepads: Query<&Name, With<Gamepad>>,
-    search: Res<Gamepads>,
-    settings: Res<Settings>,
-    mut status: Query<&mut Text, With<GamepadStatus>>,
-) {
-    if status.is_empty() {
-        return;
-    }
-    let lang = settings.language;
-    let names: Vec<&str> = gamepads.iter().map(Name::as_str).collect();
-    let label = if !names.is_empty() {
-        match lang {
-            Language::Spanish => format!("Mando: {}", names.join(", ")),
-            Language::English => format!("Gamepad: {}", names.join(", ")),
-        }
-    } else if search.searching() {
-        match lang {
-            Language::Spanish => "Buscando mando...".to_string(),
-            Language::English => "Searching for gamepad...".to_string(),
-        }
-    } else {
-        match lang {
-            Language::Spanish => {
-                "Sin mando: si tienes uno, reconéctalo o prueba otro modo del mando".to_string()
-            }
-            Language::English => {
-                "No gamepad: if you have one, reconnect it or try another gamepad mode".to_string()
-            }
-        }
-    };
-    for mut text in &mut status {
-        if text.0 != label {
-            text.0.clone_from(&label);
-        }
-    }
 }
 
 #[cfg(test)]
