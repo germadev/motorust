@@ -22,11 +22,20 @@ sys-locale = "0.3"
 objc2 = "0.6"
 objc2-game-controller = "0.3"
 
+# En escritorio (Windows, Linux, macOS), cargamos y aplicamos el icono de la ventana.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+winit = { version = "0.30", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 # En la web, los ajustes se guardan en el almacenamiento del navegador y se
 # avisa a la página cuando el juego ya se ve (la misma versión que ya usa
 # Bevy).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Document", "Element", "Storage", "Window"] }
+
+# En Windows, incrusta el icono en el ejecutable (.exe).
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
 
 # En desarrollo, nuestro código se compila con optimización ligera (compila
 # rápido) y las dependencias con optimización completa (Bevy en modo debug

@@ -92,7 +92,13 @@ fn items(page: Page) -> Vec<Item> {
     match page {
         Page::Main if WEB => vec![Item::Start, Item::Options],
         Page::Main => vec![Item::Start, Item::Options, Item::Quit],
-        Page::Options if WEB => vec![Item::Fullscreen, Item::Language, Item::Controls, Item::Back],
+        Page::Options if WEB => vec![
+            Item::Fullscreen,
+            Item::Resolution,
+            Item::Language,
+            Item::Controls,
+            Item::Back,
+        ],
         Page::Options => vec![
             Item::Fullscreen,
             Item::Resolution,
@@ -123,10 +129,14 @@ fn row(item: Item, settings: &Settings, capture: Option<Capture>, window: Option
             lang.fullscreen(),
             if settings.fullscreen { "[X]" } else { "[ ]" },
         ),
-        Item::Resolution => Row::with_value(
-            lang.resolution(),
-            format!("<  {}  >", settings.resolution.name(window, lang)),
-        ),
+        Item::Resolution => {
+            let name = settings.resolution.name(window, lang);
+            if WEB {
+                Row::disabled(lang.resolution(), name)
+            } else {
+                Row::with_value(lang.resolution(), format!("<  {name}  >"))
+            }
+        }
         Item::Fps => Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang))),
         Item::Language => Row::with_value(lang.language(), format!("<  {}  >", lang.name())),
         Item::Controls => Row::new(lang.controls()),
@@ -221,8 +231,10 @@ fn use_welcome(
             sounds.write(MenuSound::Move);
         }
         Item::Resolution if change != 0 => {
-            settings.resolution = cycle(RESOLUTIONS, settings.resolution, change);
-            sounds.write(MenuSound::Move);
+            if !WEB {
+                settings.resolution = cycle(RESOLUTIONS, settings.resolution, change);
+                sounds.write(MenuSound::Move);
+            }
         }
         Item::Fps if change != 0 => {
             settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
@@ -455,7 +467,13 @@ mod tests {
         if WEB {
             assert_eq!(
                 items(Page::Options),
-                [Item::Fullscreen, Item::Language, Item::Controls, Item::Back]
+                [
+                    Item::Fullscreen,
+                    Item::Resolution,
+                    Item::Language,
+                    Item::Controls,
+                    Item::Back,
+                ]
             );
         } else {
             assert_eq!(
@@ -508,11 +526,23 @@ mod tests {
         };
         assert_eq!(settings.resolution, Resolution::Dynamic);
         let res_row = row(Item::Resolution, &settings, None, None);
-        assert_eq!(res_row.value, Some("<  Dinámica  >".into()));
+        if WEB {
+            assert!(res_row.disabled);
+            assert_eq!(res_row.value, Some("Dinámica".into()));
+        } else {
+            assert!(!res_row.disabled);
+            assert_eq!(res_row.value, Some("<  Dinámica  >".into()));
+        }
 
         settings.language = Language::English;
         let res_row_en = row(Item::Resolution, &settings, None, None);
-        assert_eq!(res_row_en.value, Some("<  Dynamic  >".into()));
+        if WEB {
+            assert!(res_row_en.disabled);
+            assert_eq!(res_row_en.value, Some("Dynamic".into()));
+        } else {
+            assert!(!res_row_en.disabled);
+            assert_eq!(res_row_en.value, Some("<  Dynamic  >".into()));
+        }
     }
 
     #[test]

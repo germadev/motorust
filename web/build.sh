@@ -23,4 +23,5 @@ wasm-bindgen --target web --no-typescript --remove-name-section --remove-produce
   --out-dir "$out" target/wasm32-unknown-unknown/release/motorust.wasm
 bytes=$(wc -c < "$out/motorust_bg.wasm" | tr -d ' ')
 sed "s/const WASM_BYTES = 0;/const WASM_BYTES = $bytes;/" web/index.html > "$out/index.html"
+cp web/favicon.png "$out/favicon.png"
 ls -l "$out"

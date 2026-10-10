@@ -20,6 +20,8 @@ impl Plugin for SettingsPlugin {
         // En la web, el navegador decide cuándo se dibuja cada fotograma.
         if !WEB {
             app.add_systems(Last, limit_frames);
+            #[cfg(not(target_arch = "wasm32"))]
+            app.add_systems(Update, set_window_icon);
         }
     }
 }
@@ -65,8 +67,20 @@ pub const RESOLUTIONS: &[Resolution] = if WEB {
 
 impl Resolution {
     pub fn name(self, window: Option<&Window>, lang: Language) -> String {
+        if WEB {
+            return match window {
+                Some(w) if w.physical_width() > 0 && w.physical_height() > 0 => {
+                    format!(
+                        "{} ({} × {})",
+                        lang.dynamic(),
+                        w.physical_width(),
+                        w.physical_height()
+                    )
+                }
+                _ => lang.dynamic().into(),
+            };
+        }
         match self {
-            Resolution::Dynamic if WEB => lang.whole_page().into(),
             Resolution::Dynamic => match window {
                 Some(w) if w.physical_width() > 0 && w.physical_height() > 0 => {
                     format!(
@@ -78,7 +92,6 @@ impl Resolution {
                 }
                 _ => lang.dynamic().into(),
             },
-            Resolution::Window(..) if WEB => lang.whole_page().into(),
             Resolution::Window(width, height) => format!("{width} × {height}"),
             Resolution::Fullscreen => lang.fullscreen().into(),
         }
@@ -622,6 +635,33 @@ fn limit_frames(settings: Res<Settings>, mut deadline: Local<Option<Instant>>) {
         // El primero, o uno que ya llega tarde: se empieza a contar de nuevo.
         _ => now + frame,
     });
+}
+
+/// En escritorio (Windows, Linux, macOS), pone el icono de la ventana en cuanto
+/// el manejador de ventanas de winit esté disponible.
+#[cfg(not(target_arch = "wasm32"))]
+fn set_window_icon(
+    primary_window: Query<Entity, With<PrimaryWindow>>,
+    windows: NonSend<bevy::winit::WinitWindows>,
+    mut done: Local<bool>,
+) {
+    if *done {
+        return;
+    }
+    let Ok(entity) = primary_window.single() else {
+        return;
+    };
+    let Some(window) = windows.get_window(entity) else {
+        return;
+    };
+    if let Ok(image) = image::load_from_memory(include_bytes!("../assets/icon-256.png")) {
+        let rgba = image.into_rgba8();
+        let (width, height) = rgba.dimensions();
+        if let Ok(icon) = winit::window::Icon::from_rgba(rgba.into_raw(), width, height) {
+            window.set_window_icon(Some(icon));
+        }
+    }
+    *done = true;
 }
 
 #[cfg(test)]

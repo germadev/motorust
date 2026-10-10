@@ -112,6 +112,7 @@ fn tilt(value: f32, held: &mut bool) -> i32 {
 pub struct Row {
     pub label: String,
     pub value: Option<String>,
+    pub disabled: bool,
 }
 
 impl Row {
@@ -119,6 +120,7 @@ impl Row {
         Self {
             label: label.into(),
             value: None,
+            disabled: false,
         }
     }
 
@@ -126,6 +128,15 @@ impl Row {
         Self {
             label: label.into(),
             value: Some(value.into()),
+            disabled: false,
+        }
+    }
+
+    pub fn disabled(label: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            value: Some(value.into()),
+            disabled: true,
         }
     }
 }
@@ -169,7 +180,13 @@ pub fn spawn_panel(
             for (index, row) in rows.iter().enumerate() {
                 let chosen = index == selected;
                 let color = TextColor(if chosen {
-                    Color::srgb(0.08, 0.06, 0.02)
+                    if row.disabled {
+                        Color::srgba(0.85, 0.85, 0.85, 0.7)
+                    } else {
+                        Color::srgb(0.08, 0.06, 0.02)
+                    }
+                } else if row.disabled {
+                    Color::srgba(1.0, 1.0, 1.0, 0.4)
                 } else {
                     Color::WHITE
                 });
@@ -187,7 +204,11 @@ pub fn spawn_panel(
                             ..default()
                         },
                         BackgroundColor(if chosen {
-                            Color::srgba(1.0, 0.8, 0.2, 0.95)
+                            if row.disabled {
+                                Color::srgba(0.5, 0.5, 0.5, 0.25)
+                            } else {
+                                Color::srgba(1.0, 0.8, 0.2, 0.95)
+                            }
                         } else {
                             Color::NONE
                         }),
