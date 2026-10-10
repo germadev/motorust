@@ -9,6 +9,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::camera::CameraGlide;
 use crate::hud::UiFont;
+use crate::locale::{LANGUAGES, Language};
 use crate::menu::GameState;
 use crate::settings::{
     ACTIONS, Action, Controls, FPS_LIMITS, FULLSCREEN_KEYS, RESOLUTIONS, Settings, WEB, cycle,
@@ -76,8 +77,10 @@ enum Item {
     Start,
     Options,
     Quit,
+    Fullscreen,
     Resolution,
     Fps,
+    Language,
     Controls,
     Bind(Action),
     ResetControls,
@@ -89,8 +92,15 @@ fn items(page: Page) -> Vec<Item> {
     match page {
         Page::Main if WEB => vec![Item::Start, Item::Options],
         Page::Main => vec![Item::Start, Item::Options, Item::Quit],
-        Page::Options if WEB => vec![Item::Resolution, Item::Controls, Item::Back],
-        Page::Options => vec![Item::Resolution, Item::Fps, Item::Controls, Item::Back],
+        Page::Options if WEB => vec![Item::Fullscreen, Item::Language, Item::Controls, Item::Back],
+        Page::Options => vec![
+            Item::Fullscreen,
+            Item::Resolution,
+            Item::Fps,
+            Item::Language,
+            Item::Controls,
+            Item::Back,
+        ],
         Page::Controls => ACTIONS
             .iter()
             .map(|&action| Item::Bind(action))
@@ -101,25 +111,40 @@ fn items(page: Page) -> Vec<Item> {
 
 /// Cómo se ve una opción, con su valor si tiene.
 fn row(item: Item, settings: &Settings, capture: Option<Capture>, window: Option<&Window>) -> Row {
+    let lang = settings.language;
     match item {
-        Item::Start => Row::new("Comenzar"),
-        Item::Options => Row::new("Opciones"),
-        Item::Quit => Row::new("Salir"),
-        Item::Resolution => Row::with_value(
-            "Resolución",
-            format!("<  {}  >", settings.resolution.name(window)),
+        Item::Start => Row::new(lang.start()),
+        Item::Options => Row::new(lang.options()),
+        Item::Quit => Row::new(match lang {
+            Language::Spanish => "Salir",
+            Language::English => "Exit",
+        }),
+        Item::Fullscreen => Row::with_value(
+            lang.fullscreen(),
+            if settings.fullscreen { "[X]" } else { "[ ]" },
         ),
-        Item::Fps => Row::with_value("Límite de FPS", format!("<  {}  >", settings.fps.name())),
-        Item::Controls => Row::new("Controles: teclado y mando"),
+        Item::Resolution => Row::with_value(
+            lang.resolution(),
+            format!("<  {}  >", settings.resolution.name(window, lang)),
+        ),
+        Item::Fps => Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang))),
+        Item::Language => Row::with_value(lang.language(), format!("<  {}  >", lang.name())),
+        Item::Controls => Row::new(lang.controls()),
         Item::Bind(action) => Row::with_value(
-            action.name(),
+            action.name(lang),
             match capture {
-                Some(capture) if capture.action == action => "Pulsa una tecla o un botón".into(),
+                Some(capture) if capture.action == action => match lang {
+                    Language::Spanish => "Pulsa una tecla o un botón".into(),
+                    Language::English => "Press a key or a button".into(),
+                },
                 _ => settings.controls.describe(action),
             },
         ),
-        Item::ResetControls => Row::new("Restablecer los controles"),
-        Item::Back => Row::new("Volver"),
+        Item::ResetControls => Row::new(match lang {
+            Language::Spanish => "Restablecer los controles",
+            Language::English => "Reset controls",
+        }),
+        Item::Back => Row::new(lang.back()),
     }
 }
 
@@ -191,6 +216,10 @@ fn use_welcome(
         i32::from(request.confirm)
     };
     match item {
+        Item::Fullscreen if change != 0 => {
+            settings.fullscreen = !settings.fullscreen;
+            sounds.write(MenuSound::Move);
+        }
         Item::Resolution if change != 0 => {
             settings.resolution = cycle(RESOLUTIONS, settings.resolution, change);
             sounds.write(MenuSound::Move);
@@ -199,13 +228,17 @@ fn use_welcome(
             settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
             sounds.write(MenuSound::Move);
         }
+        Item::Language if change != 0 => {
+            settings.language = cycle(&LANGUAGES, settings.language, change);
+            sounds.write(MenuSound::Move);
+        }
         _ if !(request.confirm || (request.start && welcome.page == Page::Main)) => {}
         Item::Start => {
             sounds.write(MenuSound::Confirm);
             next.set(GameState::Tracks);
         }
         Item::Options => {
-            go(&mut welcome, Page::Options, Item::Resolution);
+            go(&mut welcome, Page::Options, Item::Fullscreen);
             sounds.write(MenuSound::Confirm);
         }
         Item::Quit => {
@@ -232,7 +265,7 @@ fn use_welcome(
             }
             sounds.write(MenuSound::Move);
         }
-        Item::Resolution | Item::Fps => {}
+        Item::Fullscreen | Item::Resolution | Item::Fps | Item::Language => {}
     }
 }
 
@@ -267,19 +300,39 @@ fn show_welcome(
         .into_iter()
         .map(|item| row(item, &settings, welcome.capture, window_inner))
         .collect();
+    let lang = settings.language;
     let hint = match (welcome.page, welcome.capture) {
-        (Page::Main, _) => "Arriba y abajo: elegir   ·   Enter o A: aceptar".to_string(),
-        (Page::Options, _) => {
-            "Arriba y abajo: elegir   ·   Izquierda y derecha: cambiar   ·   Esc o B: volver"
-                .to_string()
-        }
-        (Page::Controls, None) => {
-            "Enter o A: cambiar la tecla o el botón   ·   Esc o B: volver".to_string()
-        }
-        (Page::Controls, Some(capture)) => format!(
-            "Pulsa la tecla o el botón para «{}»   ·   Esc: cancelar",
-            capture.action.name()
-        ),
+        (Page::Main, _) => match lang {
+            Language::Spanish => "Arriba y abajo: elegir   ·   Enter o A: aceptar".to_string(),
+            Language::English => "Up and down: choose   ·   Enter or A: accept".to_string(),
+        },
+        (Page::Options, _) => match lang {
+            Language::Spanish => {
+                "Arriba y abajo: elegir   ·   Izquierda y derecha: cambiar   ·   Esc o B: volver"
+                    .to_string()
+            }
+            Language::English => {
+                "Up and down: choose   ·   Left and right: change   ·   Esc or B: back".to_string()
+            }
+        },
+        (Page::Controls, None) => match lang {
+            Language::Spanish => {
+                "Enter o A: cambiar la tecla o el botón   ·   Esc o B: volver".to_string()
+            }
+            Language::English => {
+                "Enter or A: change key or button   ·   Esc or B: back".to_string()
+            }
+        },
+        (Page::Controls, Some(capture)) => match lang {
+            Language::Spanish => format!(
+                "Pulsa la tecla o el botón para «{}»   ·   Esc: cancelar",
+                capture.action.name(lang)
+            ),
+            Language::English => format!(
+                "Press the key or button for \"{}\"   ·   Esc: cancel",
+                capture.action.name(lang)
+            ),
+        },
     };
     commands
         .spawn((
@@ -301,7 +354,10 @@ fn show_welcome(
                 Page::Main => {
                     spawn_logo(screen, &font, 110.0);
                     screen.spawn((
-                        Text::new("Carreras de motos arcade"),
+                        Text::new(match lang {
+                            Language::Spanish => "Carreras de motos arcade",
+                            Language::English => "Arcade motorcycle racing",
+                        }),
                         text_font(&font, 24.0),
                         TextShadow::default(),
                         Node {
@@ -310,8 +366,24 @@ fn show_welcome(
                         },
                     ));
                 }
-                Page::Options => spawn_title(screen, &font, "OPCIONES", 52.0),
-                Page::Controls => spawn_title(screen, &font, "CONTROLES", 52.0),
+                Page::Options => spawn_title(
+                    screen,
+                    &font,
+                    match lang {
+                        Language::Spanish => "OPCIONES",
+                        Language::English => "OPTIONS",
+                    },
+                    52.0,
+                ),
+                Page::Controls => spawn_title(
+                    screen,
+                    &font,
+                    match lang {
+                        Language::Spanish => "CONTROLES",
+                        Language::English => "CONTROLS",
+                    },
+                    52.0,
+                ),
             }
             spawn_panel(
                 screen,
@@ -321,12 +393,20 @@ fn show_welcome(
                 welcome.page == Page::Controls,
             );
             if welcome.page == Page::Controls {
-                screen.spawn((
-                    Text::new(format!(
+                let note = match lang {
+                    Language::Spanish => format!(
                         "Siempre: stick izquierdo para girar (hacia atrás, caballito)   ·   \
                          stick derecho para mirar   ·   M para el sonido   ·   \
                          {FULLSCREEN_KEYS} para la pantalla completa"
-                    )),
+                    ),
+                    Language::English => format!(
+                        "Always: left stick to steer (backward, wheelie)   ·   \
+                         right stick to look   ·   M for sound   ·   \
+                         {FULLSCREEN_KEYS} for fullscreen"
+                    ),
+                };
+                screen.spawn((
+                    Text::new(note),
                     text_font(&font, 16.0),
                     TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
                     TextShadow::default(),
@@ -372,16 +452,33 @@ mod tests {
     #[test]
     fn the_welcome_screen_offers_what_was_asked() {
         assert_eq!(items(Page::Main), [Item::Start, Item::Options, Item::Quit]);
-        assert_eq!(
-            items(Page::Options),
-            [Item::Resolution, Item::Fps, Item::Controls, Item::Back]
-        );
+        if WEB {
+            assert_eq!(
+                items(Page::Options),
+                [Item::Fullscreen, Item::Language, Item::Controls, Item::Back]
+            );
+        } else {
+            assert_eq!(
+                items(Page::Options),
+                [
+                    Item::Fullscreen,
+                    Item::Resolution,
+                    Item::Fps,
+                    Item::Language,
+                    Item::Controls,
+                    Item::Back,
+                ]
+            );
+        }
         // Una fila por acción, y después restablecer y volver.
         let controls = items(Page::Controls);
         assert_eq!(controls.len(), ACTIONS.len() + 2);
         assert_eq!(controls[0], Item::Bind(Action::Throttle));
         // Mientras se espera la tecla nueva, su fila lo dice.
-        let settings = Settings::default();
+        let mut settings = Settings {
+            language: Language::Spanish,
+            ..default()
+        };
         let capture = Capture {
             action: Action::Brake,
             since: 0.0,
@@ -393,14 +490,43 @@ mod tests {
         };
         assert_eq!(value(Action::Brake), "Pulsa una tecla o un botón");
         assert_eq!(value(Action::Throttle), "W, Arriba   ·   RT, A");
+
+        settings.language = Language::English;
+        let value_en = |action| {
+            row(Item::Bind(action), &settings, Some(capture), None)
+                .value
+                .unwrap()
+        };
+        assert_eq!(value_en(Action::Brake), "Press a key or a button");
     }
 
     #[test]
     fn the_resolution_row_shows_dynamic_by_default() {
-        let settings = Settings::default();
+        let mut settings = Settings {
+            language: Language::Spanish,
+            ..default()
+        };
         assert_eq!(settings.resolution, Resolution::Dynamic);
         let res_row = row(Item::Resolution, &settings, None, None);
         assert_eq!(res_row.value, Some("<  Dinámica  >".into()));
+
+        settings.language = Language::English;
+        let res_row_en = row(Item::Resolution, &settings, None, None);
+        assert_eq!(res_row_en.value, Some("<  Dynamic  >".into()));
+    }
+
+    #[test]
+    fn the_fullscreen_row_shows_checkbox() {
+        let mut settings = Settings {
+            fullscreen: false,
+            ..default()
+        };
+        let fs_row = row(Item::Fullscreen, &settings, None, None);
+        assert_eq!(fs_row.value, Some("[ ]".into()));
+
+        settings.fullscreen = true;
+        let fs_row_on = row(Item::Fullscreen, &settings, None, None);
+        assert_eq!(fs_row_on.value, Some("[X]".into()));
     }
 
     #[test]

@@ -9,8 +9,10 @@ use crate::bike::ROSTER;
 use crate::camera::CameraGlide;
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::hud::UiFont;
+use crate::locale::Language;
 use crate::menu::GameState;
 use crate::minimap::TrackMap;
+use crate::settings::Settings;
 use crate::track::Track;
 use crate::ui::{MenuInput, MenuSound, gamepad_status, spawn_title, text_font};
 
@@ -64,8 +66,14 @@ type LengthFilter = (
 #[derive(Component)]
 struct Dot(usize);
 
-fn spawn_screen(mut commands: Commands, font: Res<UiFont>, map: Res<TrackMap>) {
+fn spawn_screen(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    map: Res<TrackMap>,
+    settings: Res<Settings>,
+) {
     let soft = TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8));
+    let lang = settings.language;
     commands
         .spawn((
             DespawnOnExit(GameState::Tracks),
@@ -86,7 +94,7 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, map: Res<TrackMap>) {
             },
         ))
         .with_children(|screen| {
-            spawn_title(screen, &font, "ELIGE PISTA", 44.0);
+            spawn_title(screen, &font, lang.select_track(), 44.0);
             // Flechas a los lados, si hay entre qué elegir.
             screen
                 .spawn(Node {
@@ -166,18 +174,25 @@ fn spawn_screen(mut commands: Commands, font: Res<UiFont>, map: Res<TrackMap>) {
                             }
                         });
                         // Con una sola pista no hay nada que elegir con las flechas.
-                        let choose = if CIRCUITS.len() > 1 {
-                            "< >  elegir   ·   "
-                        } else {
-                            ""
+                        let hint = match lang {
+                            Language::Spanish => {
+                                let choose = if CIRCUITS.len() > 1 {
+                                    "< >  elegir   ·   "
+                                } else {
+                                    ""
+                                };
+                                format!("{choose}Enter o A: elegir moto   ·   Esc o B: volver")
+                            }
+                            Language::English => {
+                                let choose = if CIRCUITS.len() > 1 {
+                                    "< >  choose   ·   "
+                                } else {
+                                    ""
+                                };
+                                format!("{choose}Enter or A: choose bike   ·   Esc or B: back")
+                            }
                         };
-                        text.spawn((
-                            Text::new(format!(
-                                "{choose}Enter o A: elegir moto   ·   Esc o B: volver"
-                            )),
-                            text_font(&font, 18.0),
-                            soft,
-                        ));
+                        text.spawn((Text::new(hint), text_font(&font, 18.0), soft));
                     });
                 });
             screen.spawn(gamepad_status(&font));
@@ -210,18 +225,28 @@ fn choose_track(
 fn show_track(
     choice: Res<CurrentCircuit>,
     track: Res<Track>,
+    settings: Res<Settings>,
     mut name: Single<&mut Text, NameFilter>,
     mut description: Single<&mut Text, DescriptionFilter>,
     mut length: Single<&mut Text, LengthFilter>,
     mut dots: Query<(&Dot, &mut BackgroundColor)>,
 ) {
+    let lang = settings.language;
     let circuit = choice.get();
-    if name.0 != circuit.name {
-        name.0 = circuit.name.to_string();
-        description.0 = circuit.description.to_string();
+    let wanted_name = circuit.name(lang);
+    let wanted_description = circuit.description(lang);
+    if name.0 != wanted_name {
+        name.0 = wanted_name.to_string();
+        description.0 = wanted_description.to_string();
     }
-    let kilometres = format!("{:.1}", track.lap_length() / 1000.0).replace('.', ",");
-    let label = format!("{kilometres} km por vuelta   ·   {} motos", ROSTER.len());
+    let kilometres = match lang {
+        Language::Spanish => format!("{:.1}", track.lap_length() / 1000.0).replace('.', ","),
+        Language::English => format!("{:.1}", track.lap_length() / 1000.0),
+    };
+    let label = match lang {
+        Language::Spanish => format!("{kilometres} km por vuelta   ·   {} motos", ROSTER.len()),
+        Language::English => format!("{kilometres} km per lap   ·   {} bikes", ROSTER.len()),
+    };
     if length.0 != label {
         length.0 = label;
     }

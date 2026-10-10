@@ -5,7 +5,8 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::gamepads::Gamepads;
 use crate::hud::UiFont;
-use crate::settings::fullscreen_keys;
+use crate::locale::Language;
+use crate::settings::{Settings, fullscreen_keys};
 
 /// El naranja del óxido, para «RUST» en «MOTORUST».
 pub const RUST_ORANGE: Color = Color::srgb(0.9, 0.4, 0.12);
@@ -298,18 +299,33 @@ pub fn version_label(font: &UiFont) -> impl Bundle {
 fn show_gamepads(
     gamepads: Query<&Name, With<Gamepad>>,
     search: Res<Gamepads>,
+    settings: Res<Settings>,
     mut status: Query<&mut Text, With<GamepadStatus>>,
 ) {
     if status.is_empty() {
         return;
     }
+    let lang = settings.language;
     let names: Vec<&str> = gamepads.iter().map(Name::as_str).collect();
     let label = if !names.is_empty() {
-        format!("Mando: {}", names.join(", "))
+        match lang {
+            Language::Spanish => format!("Mando: {}", names.join(", ")),
+            Language::English => format!("Gamepad: {}", names.join(", ")),
+        }
     } else if search.searching() {
-        "Buscando mando...".to_string()
+        match lang {
+            Language::Spanish => "Buscando mando...".to_string(),
+            Language::English => "Searching for gamepad...".to_string(),
+        }
     } else {
-        "Sin mando: si tienes uno, reconéctalo o prueba otro modo del mando".to_string()
+        match lang {
+            Language::Spanish => {
+                "Sin mando: si tienes uno, reconéctalo o prueba otro modo del mando".to_string()
+            }
+            Language::English => {
+                "No gamepad: if you have one, reconnect it or try another gamepad mode".to_string()
+            }
+        }
     };
     for mut text in &mut status {
         if text.0 != label {

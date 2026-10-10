@@ -1,0 +1,376 @@
+//! Textos del juego en Español e Inglés, seleccionados según los ajustes o
+//! el idioma del sistema.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Language {
+    Spanish,
+    English,
+}
+
+impl Default for Language {
+    fn default() -> Self {
+        Self::detect_system()
+    }
+}
+
+pub const LANGUAGES: [Language; 2] = [Language::Spanish, Language::English];
+
+impl Language {
+    /// Detecta el idioma del sistema con fallback a inglés si no es español.
+    pub fn detect_system() -> Self {
+        if sys_locale::get_locale().is_some_and(|l| l.to_lowercase().starts_with("es")) {
+            return Language::Spanish;
+        }
+        Language::English
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Language::Spanish => "Español",
+            Language::English => "English",
+        }
+    }
+
+    // --- Menú Bienvenida / Opciones ---
+    pub fn start(self) -> &'static str {
+        match self {
+            Language::Spanish => "Comenzar",
+            Language::English => "Start",
+        }
+    }
+
+    pub fn options(self) -> &'static str {
+        match self {
+            Language::Spanish => "Opciones",
+            Language::English => "Options",
+        }
+    }
+
+    pub fn fullscreen(self) -> &'static str {
+        match self {
+            Language::Spanish => "Pantalla completa",
+            Language::English => "Fullscreen",
+        }
+    }
+
+    pub fn resolution(self) -> &'static str {
+        match self {
+            Language::Spanish => "Resolución",
+            Language::English => "Resolution",
+        }
+    }
+
+    pub fn fps(self) -> &'static str {
+        "FPS"
+    }
+
+    pub fn language(self) -> &'static str {
+        match self {
+            Language::Spanish => "Idioma",
+            Language::English => "Language",
+        }
+    }
+
+    pub fn controls(self) -> &'static str {
+        match self {
+            Language::Spanish => "Controles",
+            Language::English => "Controls",
+        }
+    }
+
+    pub fn back(self) -> &'static str {
+        match self {
+            Language::Spanish => "Volver",
+            Language::English => "Back",
+        }
+    }
+
+    pub fn dynamic(self) -> &'static str {
+        match self {
+            Language::Spanish => "Dinámica",
+            Language::English => "Dynamic",
+        }
+    }
+
+    pub fn whole_page(self) -> &'static str {
+        match self {
+            Language::Spanish => "Toda la página",
+            Language::English => "Full page",
+        }
+    }
+
+    pub fn fps_screen(self) -> &'static str {
+        match self {
+            Language::Spanish => "De la pantalla",
+            Language::English => "Screen",
+        }
+    }
+
+    pub fn fps_unlimited(self) -> &'static str {
+        match self {
+            Language::Spanish => "Sin límite",
+            Language::English => "Unlimited",
+        }
+    }
+
+    pub fn welcome_hint(self) -> &'static str {
+        match self {
+            Language::Spanish => "< >  cambiar   ·   Enter o A: aceptar   ·   Esc o B: volver",
+            Language::English => "< >  change   ·   Enter or A: select   ·   Esc or B: back",
+        }
+    }
+
+    pub fn controls_hint(self) -> &'static str {
+        match self {
+            Language::Spanish => "Pulsa una tecla o botón del mando (Esc para cancelar)",
+            Language::English => "Press a key or gamepad button (Esc to cancel)",
+        }
+    }
+
+    pub fn steering_rate(self) -> &'static str {
+        match self {
+            Language::Spanish => "Sensibilidad giro",
+            Language::English => "Steering Rate",
+        }
+    }
+
+    // --- Acciones de control ---
+    pub fn action_throttle(self) -> &'static str {
+        match self {
+            Language::Spanish => "Acelerar",
+            Language::English => "Throttle",
+        }
+    }
+
+    pub fn action_brake(self) -> &'static str {
+        match self {
+            Language::Spanish => "Frenar / Marcha atrás",
+            Language::English => "Brake / Reverse",
+        }
+    }
+
+    pub fn action_left(self) -> &'static str {
+        match self {
+            Language::Spanish => "Girar a la izquierda",
+            Language::English => "Steer Left",
+        }
+    }
+
+    pub fn action_right(self) -> &'static str {
+        match self {
+            Language::Spanish => "Girar a la derecha",
+            Language::English => "Steer Right",
+        }
+    }
+
+    pub fn action_wheelie(self) -> &'static str {
+        match self {
+            Language::Spanish => "Caballito",
+            Language::English => "Wheelie",
+        }
+    }
+
+    pub fn action_look_back(self) -> &'static str {
+        match self {
+            Language::Spanish => "Mirar atrás",
+            Language::English => "Look Back",
+        }
+    }
+
+    pub fn action_camera(self) -> &'static str {
+        match self {
+            Language::Spanish => "Cambiar cámara",
+            Language::English => "Change Camera",
+        }
+    }
+
+    pub fn action_pause(self) -> &'static str {
+        match self {
+            Language::Spanish => "Pausa",
+            Language::English => "Pause",
+        }
+    }
+
+    // --- Pistas ---
+    pub fn select_track(self) -> &'static str {
+        match self {
+            Language::Spanish => "ELIGE PISTA",
+            Language::English => "SELECT TRACK",
+        }
+    }
+
+    pub fn track_hint(self, can_choose: bool) -> String {
+        let choose = if can_choose {
+            match self {
+                Language::Spanish => "< >  elegir   ·   ",
+                Language::English => "< >  choose   ·   ",
+            }
+        } else {
+            ""
+        };
+        match self {
+            Language::Spanish => format!("{choose}Enter o A: elegir moto   ·   Esc o B: volver"),
+            Language::English => format!("{choose}Enter or A: choose bike   ·   Esc or B: back"),
+        }
+    }
+
+    pub fn track_length_label(self, km: &str, bikes: usize) -> String {
+        match self {
+            Language::Spanish => format!("{km} km por vuelta   ·   {bikes} motos"),
+            Language::English => format!("{km} km per lap   ·   {bikes} bikes"),
+        }
+    }
+
+    // --- Motos ---
+    pub fn select_bike(self) -> &'static str {
+        match self {
+            Language::Spanish => "ELIGE MOTO",
+            Language::English => "SELECT BIKE",
+        }
+    }
+
+    pub fn bike_hint(self) -> &'static str {
+        match self {
+            Language::Spanish => "< >  elegir   ·   Enter o A: correr   ·   Esc o B: volver",
+            Language::English => "< >  choose   ·   Enter or A: race   ·   Esc or B: back",
+        }
+    }
+
+    pub fn stat_speed(self) -> &'static str {
+        match self {
+            Language::Spanish => "Velocidad",
+            Language::English => "Top Speed",
+        }
+    }
+
+    pub fn stat_accel(self) -> &'static str {
+        match self {
+            Language::Spanish => "Aceleración",
+            Language::English => "Acceleration",
+        }
+    }
+
+    pub fn stat_grip(self) -> &'static str {
+        match self {
+            Language::Spanish => "Agarre",
+            Language::English => "Grip",
+        }
+    }
+
+    // --- HUD y Carrera ---
+    pub fn lap(self) -> &'static str {
+        match self {
+            Language::Spanish => "VUELTA",
+            Language::English => "LAP",
+        }
+    }
+
+    pub fn pos(self) -> &'static str {
+        match self {
+            Language::Spanish => "POS",
+            Language::English => "POS",
+        }
+    }
+
+    pub fn time(self) -> &'static str {
+        match self {
+            Language::Spanish => "TIEMPO",
+            Language::English => "TIME",
+        }
+    }
+
+    pub fn best(self) -> &'static str {
+        match self {
+            Language::Spanish => "MEJOR",
+            Language::English => "BEST",
+        }
+    }
+
+    pub fn finish(self) -> &'static str {
+        match self {
+            Language::Spanish => "META",
+            Language::English => "FINISH",
+        }
+    }
+
+    pub fn best_lap(self) -> &'static str {
+        match self {
+            Language::Spanish => "VUELTA RÁPIDA",
+            Language::English => "FASTEST LAP",
+        }
+    }
+
+    pub fn countdown_go(self) -> &'static str {
+        match self {
+            Language::Spanish => "¡YA!",
+            Language::English => "GO!",
+        }
+    }
+
+    // --- Menú Pausa ---
+    pub fn pause_title(self) -> &'static str {
+        match self {
+            Language::Spanish => "PAUSA",
+            Language::English => "PAUSE",
+        }
+    }
+
+    pub fn resume(self) -> &'static str {
+        match self {
+            Language::Spanish => "Continuar",
+            Language::English => "Resume",
+        }
+    }
+
+    pub fn restart(self) -> &'static str {
+        match self {
+            Language::Spanish => "Reiniciar",
+            Language::English => "Restart",
+        }
+    }
+
+    pub fn choose_bike_item(self) -> &'static str {
+        match self {
+            Language::Spanish => "Elegir moto",
+            Language::English => "Choose bike",
+        }
+    }
+
+    pub fn choose_track_item(self) -> &'static str {
+        match self {
+            Language::Spanish => "Elegir pista",
+            Language::English => "Choose track",
+        }
+    }
+
+    pub fn main_menu_item(self) -> &'static str {
+        match self {
+            Language::Spanish => "Menú principal",
+            Language::English => "Main menu",
+        }
+    }
+
+    pub fn pause_hint(self) -> &'static str {
+        match self {
+            Language::Spanish => "Enter o A: elegir   ·   Esc, P o Start: seguir",
+            Language::English => "Enter or A: select   ·   Esc, P or Start: resume",
+        }
+    }
+
+    // --- Gamepad / Mandos ---
+    pub fn gamepad_connected(self, name: &str) -> String {
+        match self {
+            Language::Spanish => format!("Mando conectado: {name}"),
+            Language::English => format!("Gamepad connected: {name}"),
+        }
+    }
+
+    pub fn no_gamepad(self) -> &'static str {
+        match self {
+            Language::Spanish => "Sin mando (teclas en Opciones)",
+            Language::English => "No gamepad (keys in Options)",
+        }
+    }
+}

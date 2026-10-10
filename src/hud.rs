@@ -8,6 +8,7 @@ use bevy::{
 };
 
 use crate::bike::{BikeState, Player};
+use crate::locale::Language;
 use crate::menu::GameState;
 use crate::pause::DebugOptions;
 use crate::settings::{Action, Controls, Settings};
@@ -71,18 +72,30 @@ fn spawn_fps_counter(mut commands: Commands) {
 }
 
 /// La ayuda de los controles, con las teclas que haya elegido el jugador.
-fn help(controls: &Controls) -> String {
+fn help(controls: &Controls, lang: Language) -> String {
     let key = |action| controls.first_key(action);
-    format!(
-        "{}/{} acelerar y frenar  |  {}/{} girar  |  {} caballito  |  {} reiniciar  |  {} pausa  |  M sonido",
-        key(Action::Throttle),
-        key(Action::Brake),
-        key(Action::Left),
-        key(Action::Right),
-        key(Action::Wheelie),
-        key(Action::Restart),
-        key(Action::Pause),
-    )
+    match lang {
+        Language::Spanish => format!(
+            "{}/{} acelerar y frenar  |  {}/{} girar  |  {} caballito  |  {} reiniciar  |  {} pausa  |  M sonido",
+            key(Action::Throttle),
+            key(Action::Brake),
+            key(Action::Left),
+            key(Action::Right),
+            key(Action::Wheelie),
+            key(Action::Restart),
+            key(Action::Pause),
+        ),
+        Language::English => format!(
+            "{}/{} accelerate and brake  |  {}/{} steer  |  {} wheelie  |  {} restart  |  {} pause  |  M sound",
+            key(Action::Throttle),
+            key(Action::Brake),
+            key(Action::Left),
+            key(Action::Right),
+            key(Action::Wheelie),
+            key(Action::Restart),
+            key(Action::Pause),
+        ),
+    }
 }
 
 fn spawn_race_hud(
@@ -95,7 +108,7 @@ fn spawn_race_hud(
         DespawnOnExit(GameState::Race),
         Legend,
         legend_visibility(&options),
-        Text::new(help(&settings.controls)),
+        Text::new(help(&settings.controls, settings.language)),
         TextFont {
             font: font.0.clone().into(),
             font_size: FontSize::Px(17.0),
@@ -179,10 +192,11 @@ mod tests {
     fn the_help_shows_the_chosen_keys() {
         let mut controls = Controls::default();
         assert_eq!(
-            help(&controls),
+            help(&controls, Language::Spanish),
             "W/S acelerar y frenar  |  A/D girar  |  Espacio caballito  |  R reiniciar  |  Esc pausa  |  M sonido"
         );
         controls.bind_key(Action::Wheelie, KeyCode::KeyJ);
-        assert!(help(&controls).contains("J caballito"));
+        assert!(help(&controls, Language::Spanish).contains("J caballito"));
+        assert!(help(&controls, Language::English).contains("J wheelie"));
     }
 }

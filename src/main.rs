@@ -9,6 +9,7 @@ mod circuits;
 mod gamepads;
 mod geometry;
 mod hud;
+pub mod locale;
 mod menu;
 mod minimap;
 mod pause;

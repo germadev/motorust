@@ -13,6 +13,8 @@ serde = { version = "1", features = ["derive"] }
 # La misma versión que usa Bevy, para leer los mandos a nuestra manera (ver
 # src/gamepads.rs).
 gilrs = "0.11"
+# Para detectar el idioma del sistema y ponerlo por defecto.
+sys-locale = "0.3"
 
 # En macOS, los mandos que conoce el sistema se leen con GameController, el
 # framework de Apple (ver src/gamepads/apple.rs).

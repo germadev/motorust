@@ -13,6 +13,7 @@ use std::ops::Range;
 use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::geometry::{approach, forward, heading_of, smoothstep, to_world, wrap_angle};
+use crate::locale::Language;
 use crate::menu::{Choice, GameState};
 use crate::pause::{self, DebugOptions, TurnLimit};
 use crate::settings::{Action, Settings};
@@ -553,10 +554,20 @@ fn move_toward(value: f32, target: f32, max_delta: f32) -> f32 {
 pub struct Entry {
     pub name: &'static str,
     pub description: &'static str,
+    pub description_en: &'static str,
     /// Color de su nombre en la pantalla de inicio.
     pub color: Srgba,
     design: Design,
     livery: &'static Livery,
+}
+
+impl Entry {
+    pub fn description(&self, lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => self.description,
+            Language::English => self.description_en,
+        }
+    }
 }
 
 /// Las motos de la carrera. La que elige el jugador sale desde su puesto y
@@ -565,6 +576,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Shogun TZ",
         description: "Azul y blanca, como la de la portada de Moto Racer",
+        description_en: "Blue and white, like the Moto Racer cover",
         color: Srgba::rgb(0.35, 0.6, 1.0),
         design: Design::Shogun,
         livery: &COVER,
@@ -572,6 +584,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Legend 88",
         description: "Blanca y roja",
+        description_en: "White and red",
         color: Srgba::rgb(1.0, 0.3, 0.35),
         design: Design::Legend,
         livery: &FLECHA,
@@ -579,6 +592,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Azura RZ",
         description: "Amarilla, blanca y negra",
+        description_en: "Yellow, white and black",
         color: Srgba::rgb(1.0, 0.85, 0.15),
         design: Design::Azura,
         livery: &DIAGONAL,
@@ -586,6 +600,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Kraken RS",
         description: "Verde lima y negra",
+        description_en: "Lime green and black",
         color: Srgba::rgb(0.5, 0.95, 0.2),
         design: Design::Kraken,
         livery: &VERDE,
@@ -593,6 +608,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Falcon KRZ",
         description: "Roja, azul y blanca",
+        description_en: "Red, blue and white",
         color: Srgba::rgb(1.0, 0.25, 0.25),
         design: Design::Falcon,
         livery: &TRICOLOR,
@@ -600,6 +616,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Stiletto V4",
         description: "Roja",
+        description_en: "Red",
         color: Srgba::rgb(0.95, 0.15, 0.15),
         design: Design::Stiletto,
         livery: &ROSSO,
@@ -607,6 +624,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Cobra XT",
         description: "Naranja y negra",
+        description_en: "Orange and black",
         color: Srgba::rgb(1.0, 0.5, 0.1),
         design: Design::Cobra,
         livery: &ROSSO,
@@ -614,6 +632,7 @@ pub const ROSTER: [Entry; 8] = [
     Entry {
         name: "Ronin YS",
         description: "Azul y negra",
+        description_en: "Blue and black",
         color: Srgba::rgb(0.25, 0.45, 1.0),
         design: Design::Ronin,
         livery: &COVER,

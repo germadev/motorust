@@ -30,8 +30,11 @@ const TOWN: Span = span(2350.0, 2560.0);
 
 pub const SPEED_BAY: Circuit = Circuit {
     name: "Speed Bay",
+    name_en: "Speed Bay",
     description: "La de Moto Racer: paseo marítimo con palmeras,\n\
                   túnel, gran hotel, bosque y puente rojo",
+    description_en: "The Moto Racer classic: palm-lined promenade,\n\
+                     tunnel, grand hotel, forest and red bridge",
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,

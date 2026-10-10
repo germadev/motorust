@@ -10,6 +10,8 @@ use bevy::prelude::*;
 use bevy::window::{MonitorSelection, PresentMode, PrimaryWindow, WindowMode};
 use serde::{Deserialize, Serialize};
 
+use crate::locale::Language;
+
 pub struct SettingsPlugin;
 
 impl Plugin for SettingsPlugin {
@@ -29,25 +31,28 @@ pub const WEB: bool = cfg!(target_arch = "wasm32");
 #[derive(Resource, Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub fullscreen: bool,
     pub resolution: Resolution,
     pub fps: FpsLimit,
+    pub language: Language,
     pub controls: Controls,
 }
 
-/// Tamaño de la ventana (dinámica, fija en puntos —en una pantalla Retina, el
-/// doble de píxeles— o pantalla completa).
+/// Tamaño de la ventana (dinámica o fija en puntos —en una pantalla Retina, el
+/// doble de píxeles—).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Resolution {
     #[default]
     Dynamic,
     Window(u32, u32),
+    #[doc(hidden)]
     Fullscreen,
 }
 
 /// Las resoluciones que se pueden elegir, en orden. En la web, el juego
-/// ocupa la página o la pantalla entera.
+/// ocupa la página.
 pub const RESOLUTIONS: &[Resolution] = if WEB {
-    &[Resolution::Dynamic, Resolution::Fullscreen]
+    &[Resolution::Dynamic]
 } else {
     &[
         Resolution::Dynamic,
@@ -55,27 +60,27 @@ pub const RESOLUTIONS: &[Resolution] = if WEB {
         Resolution::Window(1600, 900),
         Resolution::Window(1920, 1080),
         Resolution::Window(2560, 1440),
-        Resolution::Fullscreen,
     ]
 };
 
 impl Resolution {
-    pub fn name(self, window: Option<&Window>) -> String {
+    pub fn name(self, window: Option<&Window>, lang: Language) -> String {
         match self {
-            Resolution::Dynamic if WEB => "Toda la página".into(),
+            Resolution::Dynamic if WEB => lang.whole_page().into(),
             Resolution::Dynamic => match window {
                 Some(w) if w.physical_width() > 0 && w.physical_height() > 0 => {
                     format!(
-                        "Dinámica ({} × {})",
+                        "{} ({} × {})",
+                        lang.dynamic(),
                         w.physical_width(),
                         w.physical_height()
                     )
                 }
-                _ => "Dinámica".into(),
+                _ => lang.dynamic().into(),
             },
-            Resolution::Window(..) if WEB => "Toda la página".into(),
+            Resolution::Window(..) if WEB => lang.whole_page().into(),
             Resolution::Window(width, height) => format!("{width} × {height}"),
-            Resolution::Fullscreen => "Pantalla completa".into(),
+            Resolution::Fullscreen => lang.fullscreen().into(),
         }
     }
 }
@@ -100,11 +105,11 @@ pub const FPS_LIMITS: [FpsLimit; 5] = [
 ];
 
 impl FpsLimit {
-    pub fn name(self) -> String {
+    pub fn name(self, lang: Language) -> String {
         match self {
-            FpsLimit::Screen => "Los de la pantalla".into(),
+            FpsLimit::Screen => lang.fps_screen().into(),
             FpsLimit::Cap(fps) => fps.to_string(),
-            FpsLimit::Unlimited => "Sin límite".into(),
+            FpsLimit::Unlimited => lang.fps_unlimited().into(),
         }
     }
 
@@ -154,15 +159,15 @@ pub const ACTIONS: [Action; 7] = [
 ];
 
 impl Action {
-    pub fn name(self) -> &'static str {
+    pub fn name(self, lang: Language) -> &'static str {
         match self {
-            Action::Throttle => "Acelerar",
-            Action::Brake => "Frenar",
-            Action::Left => "Girar a la izquierda",
-            Action::Right => "Girar a la derecha",
-            Action::Wheelie => "Caballito",
-            Action::Restart => "Reiniciar",
-            Action::Pause => "Pausa",
+            Action::Throttle => lang.action_throttle(),
+            Action::Brake => lang.action_brake(),
+            Action::Left => lang.action_left(),
+            Action::Right => lang.action_right(),
+            Action::Wheelie => lang.action_wheelie(),
+            Action::Restart => lang.restart(),
+            Action::Pause => lang.action_pause(),
         }
     }
 }
@@ -409,18 +414,17 @@ impl Settings {
     }
 
     fn configure(&self, window: &mut Window) {
-        match self.resolution {
-            Resolution::Dynamic => {
-                window.mode = WindowMode::Windowed;
-            }
-            Resolution::Window(width, height) => {
-                window.mode = WindowMode::Windowed;
-                if !WEB {
-                    window.resolution.set(width as f32, height as f32);
+        if self.fullscreen {
+            window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+        } else {
+            window.mode = WindowMode::Windowed;
+            match self.resolution {
+                Resolution::Dynamic | Resolution::Fullscreen => {}
+                Resolution::Window(width, height) => {
+                    if !WEB {
+                        window.resolution.set(width as f32, height as f32);
+                    }
                 }
-            }
-            Resolution::Fullscreen => {
-                window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
             }
         }
         window.present_mode = self.fps.present_mode();
@@ -433,13 +437,18 @@ impl Settings {
         let Some(text) = storage::read() else {
             return Self::default();
         };
-        ron::from_str(&text).unwrap_or_else(|error| {
+        let mut settings = ron::from_str::<Self>(&text).unwrap_or_else(|error| {
             eprintln!(
                 "No se entienden los ajustes de {}: {error}. Se usan los de siempre",
                 storage::place()
             );
             Self::default()
-        })
+        });
+        if settings.resolution == Resolution::Fullscreen {
+            settings.fullscreen = true;
+            settings.resolution = Resolution::Dynamic;
+        }
+        settings
     }
 
     fn save(&self) {
@@ -564,35 +573,23 @@ pub fn fullscreen_keys(keyboard: &ButtonInput<KeyCode>) -> bool {
     held && keyboard.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter])
 }
 
-/// Con [`FULLSCREEN_KEYS`], de la ventana a la pantalla completa y vuelta a
-/// la ventana que había (o a la de siempre). Se guarda como si se hubiera
-/// elegido en Opciones.
-fn toggle_fullscreen(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut settings: ResMut<Settings>,
-    mut windowed: Local<Option<Resolution>>,
-) {
+/// Con [`FULLSCREEN_KEYS`], conmuta la pantalla completa. Se guarda como si
+/// se hubiera elegido en Opciones.
+fn toggle_fullscreen(keyboard: Res<ButtonInput<KeyCode>>, mut settings: ResMut<Settings>) {
     if !fullscreen_keys(&keyboard) {
         return;
     }
-    settings.resolution = match settings.resolution {
-        Resolution::Fullscreen => windowed.unwrap_or_default(),
-        window => {
-            *windowed = Some(window);
-            Resolution::Fullscreen
-        }
-    };
+    settings.fullscreen = !settings.fullscreen;
 }
 
-/// Al cambiar los ajustes se guardan y, si cambian la resolución o el límite
-/// de FPS, la ventana se pone como piden (si no, se deja como esté, por si
-/// se ha cambiado de tamaño a mano).
+/// Al cambiar los ajustes se guardan y, si cambian la pantalla completa, la
+/// resolución o el límite de FPS, la ventana se pone como piden.
 fn apply_settings(
     settings: Res<Settings>,
     mut window: Query<&mut Window, With<PrimaryWindow>>,
-    mut applied: Local<Option<(Resolution, FpsLimit)>>,
+    mut applied: Local<Option<(bool, Resolution, FpsLimit)>>,
 ) {
-    let wanted = (settings.resolution, settings.fps);
+    let wanted = (settings.fullscreen, settings.resolution, settings.fps);
     // La ventana ya se abrió con los ajustes guardados.
     let applied = applied.get_or_insert(wanted);
     if !settings.is_changed() || settings.is_added() {
@@ -634,8 +631,10 @@ mod tests {
     #[test]
     fn settings_survive_saving_and_loading() {
         let mut settings = Settings {
-            resolution: Resolution::Fullscreen,
+            fullscreen: true,
+            resolution: Resolution::Dynamic,
             fps: FpsLimit::Cap(60),
+            language: Language::Spanish,
             ..default()
         };
         settings.controls.bind_key(Action::Wheelie, KeyCode::KeyJ);
@@ -672,7 +671,7 @@ mod tests {
     #[test]
     fn options_cycle_around() {
         assert_eq!(
-            cycle(RESOLUTIONS, Resolution::Fullscreen, 1),
+            cycle(RESOLUTIONS, RESOLUTIONS[RESOLUTIONS.len() - 1], 1),
             RESOLUTIONS[0]
         );
         assert_eq!(
@@ -689,7 +688,11 @@ mod tests {
 
     #[test]
     fn dynamic_resolution_has_name() {
-        assert_eq!(Resolution::Dynamic.name(None), "Dinámica");
+        assert_eq!(
+            Resolution::Dynamic.name(None, Language::Spanish),
+            "Dinámica"
+        );
+        assert_eq!(Resolution::Dynamic.name(None, Language::English), "Dynamic");
         assert_eq!(RESOLUTIONS[0], Resolution::Dynamic);
         assert_eq!(Resolution::default(), Resolution::Dynamic);
     }
@@ -714,9 +717,8 @@ mod tests {
     #[test]
     fn the_fullscreen_keys_go_there_and_back() {
         let mut app = App::new();
-        let window = Resolution::Window(1920, 1080);
         app.insert_resource(Settings {
-            resolution: window,
+            fullscreen: false,
             ..default()
         })
         .init_resource::<ButtonInput<KeyCode>>()
@@ -734,13 +736,12 @@ mod tests {
                 keyboard.press(key);
             }
             app.update();
-            app.world().resource::<Settings>().resolution
+            app.world().resource::<Settings>().fullscreen
         };
-        // Enter solo no hace nada; con la otra tecla, pantalla completa y
-        // vuelta a la ventana que había.
-        assert_eq!(press(&[KeyCode::Enter]), window);
-        assert_eq!(press(&[modifier, KeyCode::Enter]), Resolution::Fullscreen);
-        assert_eq!(press(&[modifier, KeyCode::Enter]), window);
+        // Enter solo no hace nada; con la otra tecla, conmuta pantalla completa.
+        assert!(!press(&[KeyCode::Enter]));
+        assert!(press(&[modifier, KeyCode::Enter]));
+        assert!(!press(&[modifier, KeyCode::Enter]));
     }
 
     #[test]

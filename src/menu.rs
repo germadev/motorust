@@ -14,6 +14,7 @@ use bevy::prelude::*;
 use crate::bike::{BikeAssets, BikeState, ROSTER};
 use crate::camera::{CameraGlide, right_stick};
 use crate::hud::UiFont;
+use crate::settings::Settings;
 use crate::track::Track;
 use crate::ui::{MenuInput, MenuSound, gamepad_status};
 
@@ -92,7 +93,8 @@ fn spawn_showcase(mut commands: Commands, track: Res<Track>, mut assets: BikeAss
     }
 }
 
-fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
+fn spawn_menu(mut commands: Commands, font: Res<UiFont>, settings: Res<Settings>) {
+    let lang = settings.language;
     let text = |size: f32| TextFont {
         font: font.0.clone().into(),
         font_size: FontSize::Px(size),
@@ -124,7 +126,7 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
             },
         ))
         .with_children(|screen| {
-            screen.spawn((Text::new("ELIGE TU MOTO"), text(44.0), shadow));
+            screen.spawn((Text::new(lang.select_bike()), text(44.0), shadow));
             // Flechas a los lados.
             screen
                 .spawn(Node {
@@ -177,7 +179,7 @@ fn spawn_menu(mut commands: Commands, font: Res<UiFont>) {
                         }
                     });
                     card.spawn((
-                        Text::new("< >  elegir   ·   Enter o A: ¡a correr!   ·   Esc o B: volver"),
+                        Text::new(lang.bike_hint()),
                         text(18.0),
                         TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
                     ));
@@ -249,15 +251,19 @@ fn orbit_camera(
 /// Nombre, descripción y puntos de la moto elegida.
 fn show_choice(
     choice: Res<Choice>,
+    settings: Res<Settings>,
     mut name: Single<(&mut Text, &mut TextColor), NameFilter>,
     mut description: Single<&mut Text, DescriptionFilter>,
     mut dots: Query<(&Dot, &mut BackgroundColor)>,
 ) {
     let entry = &ROSTER[choice.0];
+    let wanted_desc = entry.description(settings.language);
     if name.0.0 != entry.name {
         name.0.0 = entry.name.to_string();
         name.1.0 = entry.color.into();
-        description.0 = entry.description.to_string();
+        description.0 = wanted_desc.to_string();
+    } else if description.0 != wanted_desc {
+        description.0 = wanted_desc.to_string();
     }
     for (dot, mut color) in &mut dots {
         let alpha = if dot.0 == choice.0 { 1.0 } else { 0.3 };

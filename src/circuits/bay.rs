@@ -12,8 +12,11 @@ use crate::world::scenery::*;
 
 pub const BAY: Circuit = Circuit {
     name: "Bahía",
+    name_en: "Bay",
     description: "Una carretera junto al mar, con cuestas, peraltes\n\
                   y un salto en la recta de meta",
+    description_en: "A seaside road with slopes, banked turns\n\
+                     and a jump on the main straight",
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
