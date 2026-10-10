@@ -1,7 +1,8 @@
-# Pasa los tests y compila el juego para Linux, Windows y macOS (Apple
-# Silicon e Intel). Cada build queda como artefacto del run: un .tar.gz (o un
-# .zip en Windows) con el ejecutable, que lleva dentro todos los modelos,
-# texturas y sonidos, y el README.
+# Pasa los tests y compila el juego para Linux, Windows, macOS (Apple
+# Silicon e Intel) y WebAssembly. Cada build queda como artefacto del run: un
+# .tar.gz (o un .zip en Windows y WebAssembly) con el ejecutable o la versión
+# web lista para servir, que lleva dentro todos los modelos, texturas y
+# sonidos, y el README.
 #
 # Corre en cada push a main y en cada PR, a mano desde la pestaña Actions y
 # llamado desde release.yml, que le pasa la versión con la que se compila.
@@ -125,3 +126,55 @@ jobs:
           name: motorust-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
+
+  wasm:
+    name: Build WebAssembly
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm32
+      - name: wasm-bindgen
+        run: |
+          # La misma versión que la librería en Cargo.lock, o no se entienden.
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          echo "wasm-bindgen $version"
+          if [ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen $version" ]; then
+            cargo install wasm-bindgen-cli --locked --version "$version"
+          fi
+      - name: Versión
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            # La de la release: va en Cargo.toml para que la web la lleve.
+            perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m' Cargo.toml
+            echo "label=$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "label=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Compilar
+        run: web/build.sh dist/web
+      - name: Empaquetar
+        env:
+          TARGET: wasm32-unknown-unknown
+          LABEL: ${{ steps.version.outputs.label }}
+        run: |
+          name="motorust-$LABEL-$TARGET"
+          mkdir -p "dist-pkg/$name"
+          cp -r dist/web/* README.md assets/CREDITS.md "dist-pkg/$name/"
+          (cd dist-pkg && zip -r "$name.zip" "$name" > /dev/null)
+          rm -r "dist-pkg/$name"
+          ls -l dist-pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: motorust-wasm32-unknown-unknown
+          path: dist-pkg/*
+          if-no-files-found: error
+

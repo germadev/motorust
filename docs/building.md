@@ -93,8 +93,8 @@ There are three workflows in `.github/workflows/`:
 
 | Workflow | Runs on | What it does |
 |---|---|---|
-| [`build.yml`](#buildyml) | Push to `main`, every PR, manually, and called from `release.yml` | Format check, clippy, tests, and builds for four targets. |
-| [`pages.yml`](#pagesyml) | Push to `main`, every PR, manually, and called from `release.yml` | Builds the web version; called from `release.yml` it also publishes it to GitHub Pages. |
+| [`build.yml`](#buildyml) | Push to `main`, every PR, manually, and called from `release.yml` | Format check, clippy, tests, and builds for four desktop targets and WebAssembly. |
+| [`pages.yml`](#pagesyml) | Called from `release.yml` only | Builds and publishes the web version to GitHub Pages upon release. |
 | [`release.yml`](#releaseyml) | Manually only | Bumps the version, builds everything, publishes to GitHub Pages and creates a GitHub release. |
 
 In a PR, a new push cancels the previous run of the same workflow.
@@ -110,12 +110,13 @@ In a PR, a new push cancels the previous run of the same workflow.
    | Windows x86_64 | `windows-latest` | `x86_64-pc-windows-msvc` |
    | macOS Apple Silicon | `macos-latest` | `aarch64-apple-darwin` |
    | macOS Intel | `macos-latest` | `x86_64-apple-darwin` |
+   | WebAssembly | `ubuntu-latest` | `wasm32-unknown-unknown` |
 
-3. **Packaging:** each build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`, uploaded as a run artifact named `motorust-<target>`. The models, textures and font are inside the executable. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
+3. **Packaging:** each desktop build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`. The WebAssembly build becomes `motorust-<version>-wasm32-unknown-unknown.zip` containing the served files (`index.html`, `motorust.js`, `motorust_bg.wasm`), `README.md` and `CREDITS.md`. Each archive is uploaded as a run artifact named `motorust-<target>`. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
 
 ### `pages.yml`
 
-Builds the web version on every PR and on every push to `main` (to make sure it still compiles). When called from `release.yml`, it also publishes it to GitHub Pages. It installs the `wasm-bindgen-cli` version that matches `Cargo.lock`, writes the release version to `Cargo.toml`, runs `web/build.sh dist/web` and uploads the folder as a Pages artifact to deploy it.
+Called from `release.yml` when publishing a release. It installs the `wasm-bindgen-cli` version that matches `Cargo.lock`, writes the release version to `Cargo.toml`, runs `web/build.sh dist/web` and deploys the folder to GitHub Pages.
 
 For the deploy to work, the repository's **Settings → Pages → Source** must be set to **"GitHub Actions"**.
 

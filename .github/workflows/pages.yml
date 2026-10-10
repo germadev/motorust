@@ -1,15 +1,10 @@
-# La versión web del juego en GitHub Pages: se compila para wasm en cada PR
-# y en cada push a main (para saber que sigue compilando), y se publica en
-# GitHub Pages sólo al hacer una release desde release.yml.
+# La versión web del juego en GitHub Pages: se publica en GitHub Pages sólo
+# al hacer una release llamado desde release.yml.
 #
 # En Settings → Pages, la fuente tiene que ser «GitHub Actions».
 name: Pages
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
   workflow_call:
     inputs:
       version:
@@ -18,11 +13,10 @@ on:
         required: false
         default: ""
 
-# Una publicación detrás de otra; en una PR, un push nuevo cancela el run
-# anterior.
+# Una publicación detrás de otra.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: pages
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -63,13 +57,11 @@ jobs:
       - name: Compilar
         run: web/build.sh dist/web
       - uses: actions/upload-pages-artifact@v3
-        if: github.event_name == 'workflow_call'
         with:
           path: dist/web
 
   deploy:
     name: Publicar
-    if: github.event_name == 'workflow_call'
     needs: build
     runs-on: ubuntu-latest
     permissions:
