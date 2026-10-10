@@ -116,11 +116,30 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then
             cp "target/$TARGET/release/motorust.exe" "dist/$name/"
             (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null)
+            rm -r "dist/$name"
+          elif [ "$RUNNER_OS" = macOS ]; then
+            # 1. Binario tradicional para terminal (.tar.gz)
+            cp "target/$TARGET/release/motorust" "dist/$name/"
+            (cd dist && tar czf "$name.tar.gz" "$name")
+            rm -r "dist/$name"
+
+            # 2. Aplicación nativa de macOS (.app en .zip)
+            app_dir="dist/$name-app/Motorust.app"
+            mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
+            cp "target/$TARGET/release/motorust" "$app_dir/Contents/MacOS/"
+            chmod +x "$app_dir/Contents/MacOS/motorust"
+            cp README.md assets/CREDITS.md "dist/$name-app/"
+            if [ -f assets/icon.icns ]; then
+              cp assets/icon.icns "$app_dir/Contents/Resources/AppIcon.icns"
+            fi
+            sed "s/__VERSION__/$LABEL/g" assets/Info.plist > "$app_dir/Contents/Info.plist"
+            (cd "dist/$name-app" && zip -r -y "../$name-app.zip" "Motorust.app" README.md CREDITS.md > /dev/null)
+            rm -r "dist/$name-app"
           else
             cp "target/$TARGET/release/motorust" "dist/$name/"
             (cd dist && tar czf "$name.tar.gz" "$name")
+            rm -r "dist/$name"
           fi
-          rm -r "dist/$name"
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:

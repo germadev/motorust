@@ -111,7 +111,7 @@ In a PR, a new push cancels the previous run of the same workflow.
    | macOS Intel | `macos-latest` | `x86_64-apple-darwin` |
    | WebAssembly | `ubuntu-latest` | `wasm32-unknown-unknown` |
 
-3. **Packaging:** each desktop build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`. The WebAssembly build becomes `motorust-<version>-wasm32-unknown-unknown.zip` containing the served files (`index.html`, `motorust.js`, `motorust_bg.wasm`), `README.md` and `CREDITS.md`. Each archive is uploaded as a run artifact named `motorust-<target>`, and the web folder is uploaded as `web-dist`. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
+3. **Packaging:** each desktop build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`. On macOS, both `motorust-<version>-<target>.tar.gz` (command-line binary) and `motorust-<version>-<target>-app.zip` (containing `Motorust.app` to launch directly from Finder without opening Terminal) are produced. The WebAssembly build becomes `motorust-<version>-wasm32-unknown-unknown.zip` containing the served files (`index.html`, `motorust.js`, `motorust_bg.wasm`), `README.md` and `CREDITS.md`. Each archive is uploaded as a run artifact named `motorust-<target>`, and the web folder is uploaded as `web-dist`. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
 
 ### `release.yml`
 
@@ -132,6 +132,6 @@ Download an archive from the [releases page](https://github.com/germadev/motorus
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
-- **macOS:** the executables are not signed. The first time, open the game with right-click → Open, or remove the quarantine flag with `xattr -d com.apple.quarantine motorust`.
+- **macOS:** the executables are not signed. The first time, open the game with right-click → Open, or remove the quarantine flag with `xattr -d com.apple.quarantine motorust` (or on `Motorust.app`). Double-clicking `Motorust.app` opens the game directly without launching Terminal.
 - **Windows:** the release build opens without a console window.
 - **Linux:** run `./motorust` from the extracted folder.
