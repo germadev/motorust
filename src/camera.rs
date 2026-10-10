@@ -6,11 +6,15 @@
 
 use std::ops::Range;
 
+use bevy::camera::Viewport;
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
-use crate::bike::{BikeState, BikeTuning, Player};
+use crate::bike::{BikeState, BikeTuning, LocalPlayer, Player};
 use crate::geometry::{approach, smoothstep, wrap_angle};
+use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::menu::GameState;
+use crate::welcome::GameMode;
 
 /// Color del horizonte en la foto del cielo: el de la neblina de la distancia.
 const HORIZON: Color = Color::srgb(0.6, 0.66, 0.78);
@@ -68,13 +72,20 @@ impl Plugin for ChaseCameraPlugin {
         app.insert_resource(ClearColor(HORIZON))
             .add_systems(Startup, spawn_camera)
             .init_resource::<CameraGlide>()
-            .add_systems(OnEnter(GameState::Race), reset_chase)
-            .add_systems(Update, follow_player.run_if(in_state(GameState::Race)));
+            .add_systems(OnEnter(GameState::Race), (setup_split_cameras, reset_chase))
+            .add_systems(OnExit(GameState::Race), cleanup_camera_viewports)
+            .add_systems(
+                Update,
+                (update_camera_viewports, follow_player)
+                    .chain()
+                    .run_if(in_state(GameState::Race)),
+            );
     }
 }
 
-/// La moto del jugador, excluyendo la cámara para poder mover las dos a la vez.
-type PlayerBikeFilter = (With<Player>, Without<ChaseCamera>);
+/// A qué jugador sigue esta cámara (0 para Player 1, 1 para Player 2).
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CameraPlayer(pub usize);
 
 #[derive(Component, Default)]
 struct ChaseCamera {
@@ -103,9 +114,22 @@ pub fn right_stick(gamepads: &Query<&Gamepad>) -> Vec2 {
         .unwrap_or(Vec2::ZERO)
 }
 
+fn gamepad_right_stick(gamepads: &Query<&Gamepad>, entity: Entity) -> Vec2 {
+    if let Ok(gamepad) = gamepads.get(entity) {
+        let axis = |a| gamepad.get(a).unwrap_or(0.0);
+        Vec2::new(
+            axis(GamepadAxis::RightStickX),
+            axis(GamepadAxis::RightStickY),
+        )
+    } else {
+        Vec2::ZERO
+    }
+}
+
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
+        Camera::default(),
         Projection::Perspective(PerspectiveProjection {
             fov: FOV.start,
             far: FAR,
@@ -121,9 +145,98 @@ fn spawn_camera(mut commands: Commands) {
             ..default()
         },
         ChaseCamera::default(),
+        CameraPlayer(0),
     ));
 }
 
+/// En modo pantalla dividida, crea la segunda cámara para el Jugador 2 (abajo).
+fn setup_split_cameras(mut commands: Commands, game_mode: Res<GameMode>) {
+    if *game_mode == GameMode::SplitScreen {
+        commands.spawn((
+            Camera3d::default(),
+            Camera {
+                order: 1,
+                ..default()
+            },
+            Projection::Perspective(PerspectiveProjection {
+                fov: FOV.start,
+                far: FAR,
+                ..default()
+            }),
+            DistanceFog {
+                color: HORIZON,
+                falloff: FogFalloff::Linear {
+                    start: 450.0,
+                    end: 3800.0,
+                },
+                ..default()
+            },
+            ChaseCamera::default(),
+            CameraPlayer(1),
+            DespawnOnExit(GameState::Race),
+        ));
+    }
+}
+
+/// Divide la pantalla en dos viewports horizontales:
+/// Jugador 1 arriba (0 .. alto/2), Jugador 2 abajo (alto/2 .. alto).
+fn update_camera_viewports(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    game_mode: Res<GameMode>,
+    mut cameras: Query<(&CameraPlayer, &mut Camera)>,
+) {
+    if *game_mode == GameMode::SplitScreen {
+        let Some(window) = windows.iter().next() else {
+            return;
+        };
+        let width = window.physical_width();
+        let height = window.physical_height();
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        let half_height = height / 2;
+        for (cam_player, mut camera) in &mut cameras {
+            camera.is_active = true;
+            if cam_player.0 == 0 {
+                camera.order = 0;
+                camera.viewport = Some(Viewport {
+                    physical_position: UVec2::new(0, 0),
+                    physical_size: UVec2::new(width, half_height),
+                    depth: 0.0..1.0,
+                });
+            } else if cam_player.0 == 1 {
+                camera.order = 1;
+                camera.viewport = Some(Viewport {
+                    physical_position: UVec2::new(0, half_height),
+                    physical_size: UVec2::new(width, height.saturating_sub(half_height)),
+                    depth: 0.0..1.0,
+                });
+            }
+        }
+    } else {
+        for (cam_player, mut camera) in &mut cameras {
+            if cam_player.0 == 0 {
+                camera.order = 0;
+                camera.viewport = None;
+                camera.is_active = true;
+            } else {
+                camera.is_active = false;
+            }
+        }
+    }
+}
+
+/// Al salir de la carrera, restaura la cámara principal a pantalla completa para los menús.
+fn cleanup_camera_viewports(mut cameras: Query<(&CameraPlayer, &mut Camera)>) {
+    for (cam_player, mut camera) in &mut cameras {
+        if cam_player.0 == 0 {
+            camera.order = 0;
+            camera.viewport = None;
+            camera.is_active = true;
+        }
+    }
+}
 /// Para que la cámara vaya poco a poco de donde estaba al sitio que le toca
 /// en la pantalla nueva, en lugar de saltar: dónde estaba, su campo de
 /// visión y cuánto hace que empezó a moverse (s).
@@ -169,11 +282,14 @@ impl CameraGlide {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn start_glide(
-    camera: Single<(&Transform, &Projection), With<Camera3d>>,
+    cameras: Query<(&Transform, &Projection), (With<Camera3d>, With<ChaseCamera>)>,
     mut glide: ResMut<CameraGlide>,
 ) {
-    let (transform, projection) = camera.into_inner();
+    let Some((transform, projection)) = cameras.iter().next() else {
+        return;
+    };
     let fov = match projection {
         Projection::Perspective(perspective) => perspective.fov,
         _ => FOV.start,
@@ -185,8 +301,10 @@ fn start_glide(
 }
 
 /// Al empezar la carrera, la cámara se coloca de golpe detrás del jugador.
-fn reset_chase(mut camera: Single<&mut ChaseCamera>) {
-    **camera = ChaseCamera::default();
+fn reset_chase(mut cameras: Query<&mut ChaseCamera>) {
+    for mut camera in &mut cameras {
+        *camera = ChaseCamera::default();
+    }
 }
 
 /// Hacia dónde apunta el stick derecho respecto a la moto (rad, positivo a
@@ -208,45 +326,81 @@ fn chase_view(target: Vec3, heading: f32, distance: f32) -> (Vec3, Vec3) {
     )
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn follow_player(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
     gamepads: Query<&Gamepad>,
-    bike: Single<(&Transform, &BikeState), PlayerBikeFilter>,
-    camera: Single<(&mut Transform, &mut Projection, &mut ChaseCamera)>,
+    game_mode: Res<GameMode>,
+    local_players: Res<LocalPlayersConfig>,
+    player_bikes: Query<(&Transform, &BikeState), (With<Player>, Without<ChaseCamera>)>,
+    other_bikes: Query<(&Transform, &BikeState, &LocalPlayer), Without<ChaseCamera>>,
+    mut cameras: Query<(
+        &mut Transform,
+        &mut Projection,
+        &mut ChaseCamera,
+        &CameraPlayer,
+    )>,
 ) {
-    let (bike_transform, state) = bike.into_inner();
-    let (mut transform, mut projection, mut chase) = camera.into_inner();
+    for (mut transform, mut projection, mut chase, cam_player) in &mut cameras {
+        let bike_data = if cam_player.0 == 0 {
+            player_bikes.iter().next()
+        } else {
+            other_bikes
+                .iter()
+                .find(|(_, _, lp)| lp.0 == cam_player.0)
+                .map(|(t, s, _)| (t, s))
+        };
 
-    // El Transform de la moto ya viene interpolado y solo lleva guiñada (la
-    // inclinación va en un hijo).
-    let (bike_yaw, _, _) = bike_transform.rotation.to_euler(EulerRot::YXZ);
-    let yaw = match chase.yaw {
-        Some(yaw) => {
-            let blend = 1.0 - (-YAW_RESPONSE * time.delta_secs()).exp();
-            yaw + wrap_angle(bike_yaw - yaw) * blend
+        let Some((bike_transform, state)) = bike_data else {
+            continue;
+        };
+
+        // El Transform de la moto ya viene interpolado y solo lleva guiñada (la
+        // inclinación va en un hijo).
+        let (bike_yaw, _, _) = bike_transform.rotation.to_euler(EulerRot::YXZ);
+        let yaw = match chase.yaw {
+            Some(yaw) => {
+                let blend = 1.0 - (-YAW_RESPONSE * time.delta_secs()).exp();
+                yaw + wrap_angle(bike_yaw - yaw) * blend
+            }
+            None => bike_yaw,
+        };
+        chase.yaw = Some(yaw);
+
+        // Stick derecho: la cámara mira hacia donde apunta, por el camino más
+        // corto, y al soltarlo vuelve a mirar hacia delante.
+        let dt = time.delta_secs();
+        let stick = if *game_mode == GameMode::SplitScreen {
+            let binding = if cam_player.0 == 0 {
+                local_players.p1
+            } else {
+                local_players.p2
+            };
+            match binding {
+                Some(ControllerBinding::Gamepad(entity)) => gamepad_right_stick(&gamepads, entity),
+                _ => Vec2::ZERO,
+            }
+        } else {
+            right_stick(&gamepads)
+        };
+
+        let wanted = stick_direction(stick).unwrap_or(0.0);
+        let blend = 1.0 - (-LOOK_RESPONSE * dt).exp();
+        chase.look = wrap_angle(chase.look + wrap_angle(wanted - chase.look) * blend);
+
+        let speed_factor = (state.speed.abs() / tuning.max_speed).clamp(0.0, 1.0);
+        let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.start, SURGE.end);
+        chase.surge = approach(chase.surge, surge, SURGE_RESPONSE, dt);
+        let distance = DISTANCE.start.lerp(DISTANCE.end, speed_factor) + chase.surge;
+        let (position, look_at) =
+            chase_view(bike_transform.translation, yaw + chase.look, distance);
+        transform.translation = position;
+        transform.look_at(look_at, Vec3::Y);
+
+        if let Projection::Perspective(perspective) = projection.as_mut() {
+            perspective.fov = FOV.start.lerp(FOV.end, speed_factor);
         }
-        None => bike_yaw,
-    };
-    chase.yaw = Some(yaw);
-
-    // Stick derecho: la cámara mira hacia donde apunta, por el camino más
-    // corto, y al soltarlo vuelve a mirar hacia delante.
-    let dt = time.delta_secs();
-    let wanted = stick_direction(right_stick(&gamepads)).unwrap_or(0.0);
-    let blend = 1.0 - (-LOOK_RESPONSE * dt).exp();
-    chase.look = wrap_angle(chase.look + wrap_angle(wanted - chase.look) * blend);
-
-    let speed_factor = (state.speed.abs() / tuning.max_speed).clamp(0.0, 1.0);
-    let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.start, SURGE.end);
-    chase.surge = approach(chase.surge, surge, SURGE_RESPONSE, dt);
-    let distance = DISTANCE.start.lerp(DISTANCE.end, speed_factor) + chase.surge;
-    let (position, look_at) = chase_view(bike_transform.translation, yaw + chase.look, distance);
-    transform.translation = position;
-    transform.look_at(look_at, Vec3::Y);
-
-    if let Projection::Perspective(perspective) = projection.as_mut() {
-        perspective.fov = FOV.start.lerp(FOV.end, speed_factor);
     }
 }
 

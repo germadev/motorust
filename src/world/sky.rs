@@ -63,10 +63,12 @@ pub fn spawn_sky(
 
 /// La cúpula sigue a la cámara (solo en posición, no en giro).
 pub fn follow_camera(
-    camera: Single<&Transform, (With<Camera3d>, Without<Sky>)>,
+    cameras: Query<&Transform, (With<Camera3d>, Without<Sky>)>,
     mut sky: Single<&mut Transform, With<Sky>>,
 ) {
-    sky.translation = camera.translation;
+    if let Some(camera) = cameras.iter().next() {
+        sky.translation = camera.translation;
+    }
 }
 
 /// Cúpula con la foto del cielo proyectada como un panorama: el ancho de la

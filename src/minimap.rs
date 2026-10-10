@@ -14,6 +14,7 @@ use crate::bike::{BikeColor, BikeState, LocalPlayer, Player};
 use crate::circuits::CurrentCircuit;
 use crate::menu::GameState;
 use crate::track::Track;
+use crate::welcome::GameMode;
 
 /// Lado del plano (píxeles) y margen alrededor del trazado.
 pub const MAP_SIZE: u32 = 256;
@@ -241,10 +242,19 @@ struct HudMap;
 #[derive(Component)]
 struct Dot(Entity);
 
-fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>) {
-    commands.spawn((
-        HudMap,
-        DespawnOnExit(GameState::Race),
+fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>, game_mode: Res<GameMode>) {
+    let node = if *game_mode == GameMode::SplitScreen {
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(16),
+            top: percent(50.0),
+            margin: UiRect::top(px(-HUD_SIZE / 2.0)),
+            width: px(HUD_SIZE),
+            height: px(HUD_SIZE),
+            border_radius: BorderRadius::all(px(14)),
+            ..default()
+        }
+    } else {
         Node {
             position_type: PositionType::Absolute,
             left: px(16),
@@ -253,7 +263,13 @@ fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>) {
             height: px(HUD_SIZE),
             border_radius: BorderRadius::all(px(14)),
             ..default()
-        },
+        }
+    };
+
+    commands.spawn((
+        HudMap,
+        DespawnOnExit(GameState::Race),
+        node,
         BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.45)),
         children![(
             ImageNode::new(map.image.clone()),

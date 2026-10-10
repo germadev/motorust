@@ -226,11 +226,14 @@ fn run_engines(
     time: Res<Time>,
     state: Res<State<GameState>>,
     blip: Res<Blip>,
-    camera: Single<&GlobalTransform, With<Camera3d>>,
+    cameras: Query<&GlobalTransform, With<Camera3d>>,
     mut bikes: Query<(&BikeState, &BikeInput, &GlobalTransform, &mut Engine)>,
 ) {
     let dt = time.delta_secs();
     let in_menu = *state.get() != GameState::Race;
+    let Some(camera) = cameras.iter().next() else {
+        return;
+    };
     // En el menú, la moto elegida es la que está más cerca de la cámara.
     let nearest = bikes
         .iter()
@@ -259,7 +262,7 @@ fn run_engines(
 fn place_sounds(
     time: Res<Time>,
     controls: Res<SoundControls>,
-    camera: Single<&GlobalTransform, With<Camera3d>>,
+    cameras: Query<&GlobalTransform, With<Camera3d>>,
     mut listener_motion: Local<(Option<Vec3>, Vec3)>,
     mut bikes: Query<(
         Entity,
@@ -269,6 +272,9 @@ fn place_sounds(
         Has<Player>,
     )>,
 ) {
+    let Some(camera) = cameras.iter().next() else {
+        return;
+    };
     let dt = time.delta_secs().max(1e-4);
     let listener = camera.translation();
     // La velocidad de la cámara, suavizada: medida de un fotograma a otro

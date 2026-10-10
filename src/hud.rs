@@ -7,11 +7,12 @@ use bevy::{
     prelude::*,
 };
 
-use crate::bike::{BikeState, Player};
+use crate::bike::{BikeState, LocalPlayer, Player};
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::pause::DebugOptions;
 use crate::settings::{Action, Controls, Settings};
+use crate::welcome::GameMode;
 
 pub struct HudPlugin;
 
@@ -45,7 +46,7 @@ impl FromWorld for UiFont {
 }
 
 #[derive(Component)]
-struct Speedometer;
+struct Speedometer(pub usize);
 
 /// La leyenda con los controles.
 #[derive(Component)]
@@ -103,6 +104,7 @@ fn spawn_race_hud(
     font: Res<UiFont>,
     settings: Res<Settings>,
     options: Res<DebugOptions>,
+    game_mode: Res<GameMode>,
 ) {
     commands.spawn((
         DespawnOnExit(GameState::Race),
@@ -122,23 +124,120 @@ fn spawn_race_hud(
             ..default()
         },
     ));
-    commands.spawn((
-        DespawnOnExit(GameState::Race),
-        Speedometer,
-        Text::new("0 km/h"),
-        TextFont {
-            font: font.0.clone().into(),
-            font_size: FontSize::Px(48.0),
-            ..default()
-        },
-        TextShadow::default(),
-        Node {
-            position_type: PositionType::Absolute,
-            bottom: px(16),
-            right: px(24),
-            ..default()
-        },
-    ));
+
+    if *game_mode == GameMode::SplitScreen {
+        // Línea divisoria central entre ambos jugadores
+        commands.spawn((
+            DespawnOnExit(GameState::Race),
+            Node {
+                position_type: PositionType::Absolute,
+                top: percent(50.0),
+                left: px(0),
+                width: percent(100.0),
+                height: px(4),
+                margin: UiRect::top(px(-2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
+        ));
+
+        // Indicador Jugador 1 (Arriba)
+        commands.spawn((
+            DespawnOnExit(GameState::Race),
+            Text::new("1P"),
+            TextColor(Color::srgb(0.3, 0.8, 1.0)),
+            TextFont {
+                font: font.0.clone().into(),
+                font_size: FontSize::Px(18.0),
+                ..default()
+            },
+            TextShadow::default(),
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(12),
+                right: px(90),
+                ..default()
+            },
+        ));
+
+        // Velocímetro Jugador 1 (abajo a la derecha de la mitad superior)
+        commands.spawn((
+            DespawnOnExit(GameState::Race),
+            Speedometer(0),
+            Text::new("0 km/h"),
+            TextFont {
+                font: font.0.clone().into(),
+                font_size: FontSize::Px(38.0),
+                ..default()
+            },
+            TextShadow::default(),
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: percent(50.0),
+                right: px(24),
+                margin: UiRect::bottom(px(10.0)),
+                ..default()
+            },
+        ));
+
+        // Indicador Jugador 2 (Abajo)
+        commands.spawn((
+            DespawnOnExit(GameState::Race),
+            Text::new("2P"),
+            TextColor(Color::srgb(1.0, 0.4, 0.4)),
+            TextFont {
+                font: font.0.clone().into(),
+                font_size: FontSize::Px(18.0),
+                ..default()
+            },
+            TextShadow::default(),
+            Node {
+                position_type: PositionType::Absolute,
+                top: percent(50.0),
+                right: px(90),
+                margin: UiRect::top(px(12.0)),
+                ..default()
+            },
+        ));
+
+        // Velocímetro Jugador 2 (abajo a la derecha de la mitad inferior)
+        commands.spawn((
+            DespawnOnExit(GameState::Race),
+            Speedometer(1),
+            Text::new("0 km/h"),
+            TextFont {
+                font: font.0.clone().into(),
+                font_size: FontSize::Px(38.0),
+                ..default()
+            },
+            TextShadow::default(),
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: px(16),
+                right: px(24),
+                ..default()
+            },
+        ));
+    } else {
+        // Velocímetro modo 1 jugador
+        commands.spawn((
+            DespawnOnExit(GameState::Race),
+            Speedometer(0),
+            Text::new("0 km/h"),
+            TextFont {
+                font: font.0.clone().into(),
+                font_size: FontSize::Px(48.0),
+                ..default()
+            },
+            TextShadow::default(),
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: px(16),
+                right: px(24),
+                ..default()
+            },
+        ));
+    }
 }
 
 fn legend_visibility(options: &DebugOptions) -> Visibility {
@@ -160,13 +259,27 @@ fn show_legend(options: Res<DebugOptions>, mut legend: Query<&mut Visibility, Wi
 }
 
 fn update_speedometer(
-    bike: Single<&BikeState, With<Player>>,
-    mut text: Single<&mut Text, With<Speedometer>>,
+    p1_bike: Query<&BikeState, With<Player>>,
+    other_bikes: Query<(&BikeState, &LocalPlayer)>,
+    mut speedometers: Query<(&mut Text, &Speedometer)>,
 ) {
-    let label = format!("{:.0} km/h", bike.speed.abs() * 3.6);
-    // Solo escribir si cambia: tocar el texto obliga a recolocarlo.
-    if text.0 != label {
-        text.0 = label;
+    let p1_speed = p1_bike
+        .iter()
+        .next()
+        .map(|b| b.speed.abs() * 3.6)
+        .unwrap_or(0.0);
+    let p2_speed = other_bikes
+        .iter()
+        .find(|(_, lp)| lp.0 == 1)
+        .map(|(b, _)| b.speed.abs() * 3.6)
+        .unwrap_or(0.0);
+
+    for (mut text, sp) in &mut speedometers {
+        let speed = if sp.0 == 0 { p1_speed } else { p2_speed };
+        let label = format!("{speed:.0} km/h");
+        if text.0 != label {
+            text.0 = label;
+        }
     }
 }
 
