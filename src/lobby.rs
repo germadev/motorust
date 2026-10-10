@@ -161,35 +161,23 @@ impl LocalPlayersConfig {
 #[derive(Component)]
 struct LobbyScreen;
 
-#[derive(Component)]
-struct Player1Box;
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+enum LobbyBox {
+    P1,
+    P2,
+}
 
-#[derive(Component)]
-struct Player2Box;
-
-#[derive(Component)]
-struct Player1DeviceText;
-
-#[derive(Component)]
-struct Player2DeviceText;
-
-#[derive(Component)]
-struct Player1DescText;
-
-#[derive(Component)]
-struct Player2DescText;
-
-#[derive(Component)]
-struct Player1StatusText;
-
-#[derive(Component)]
-struct Player2StatusText;
-
-#[derive(Component)]
-struct DetectedDevicesText;
-
-#[derive(Component)]
-struct LobbyFooterText;
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+enum LobbyText {
+    P1Device,
+    P1Desc,
+    P1Status,
+    P2Device,
+    P2Desc,
+    P2Status,
+    DetectedDevices,
+    Footer,
+}
 
 fn open_lobby(
     mut commands: Commands,
@@ -246,7 +234,7 @@ fn open_lobby(
                     // --- TARJETA PLAYER 1 (IZQUIERDA) ---
                     cards
                         .spawn((
-                            Player1Box,
+                            LobbyBox::P1,
                             Node {
                                 width: px(380),
                                 min_height: px(280),
@@ -272,7 +260,7 @@ fn open_lobby(
 
                             // Dispositivo vinculado
                             card.spawn((
-                                Player1DeviceText,
+                                LobbyText::P1Device,
                                 Text::new(lang.waiting_player()),
                                 text_font(&font, 24.0),
                                 TextColor(Color::WHITE),
@@ -285,7 +273,7 @@ fn open_lobby(
 
                             // Descripción / guía de controles
                             card.spawn((
-                                Player1DescText,
+                                LobbyText::P1Desc,
                                 Text::new(format!(
                                     "{}\n{}",
                                     lang.player_waiting_left(),
@@ -298,7 +286,7 @@ fn open_lobby(
 
                             // Estado (Listo / Esperando)
                             card.spawn((
-                                Player1StatusText,
+                                LobbyText::P1Status,
                                 Text::new(lang.waiting_player()),
                                 text_font(&font, 19.0),
                                 TextColor(Color::srgba(0.7, 0.7, 0.7, 0.7)),
@@ -309,7 +297,7 @@ fn open_lobby(
                     // --- TARJETA PLAYER 2 (DERECHA) ---
                     cards
                         .spawn((
-                            Player2Box,
+                            LobbyBox::P2,
                             Node {
                                 width: px(380),
                                 min_height: px(280),
@@ -335,7 +323,7 @@ fn open_lobby(
 
                             // Dispositivo vinculado
                             card.spawn((
-                                Player2DeviceText,
+                                LobbyText::P2Device,
                                 Text::new(lang.waiting_player()),
                                 text_font(&font, 24.0),
                                 TextColor(Color::WHITE),
@@ -348,7 +336,7 @@ fn open_lobby(
 
                             // Descripción / guía de controles
                             card.spawn((
-                                Player2DescText,
+                                LobbyText::P2Desc,
                                 Text::new(format!(
                                     "{}\n{}",
                                     lang.player_waiting_right(),
@@ -361,7 +349,7 @@ fn open_lobby(
 
                             // Estado (Listo / Esperando)
                             card.spawn((
-                                Player2StatusText,
+                                LobbyText::P2Status,
                                 Text::new(lang.waiting_player()),
                                 text_font(&font, 19.0),
                                 TextColor(Color::srgba(0.7, 0.7, 0.7, 0.7)),
@@ -372,7 +360,7 @@ fn open_lobby(
 
             // Dispositivos detectados
             screen.spawn((
-                DetectedDevicesText,
+                LobbyText::DetectedDevices,
                 Text::new(""),
                 text_font(&font, 16.0),
                 TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
@@ -385,7 +373,7 @@ fn open_lobby(
 
             // Leyenda / pie inferior
             screen.spawn((
-                LobbyFooterText,
+                LobbyText::Footer,
                 Text::new(lang.lobby_hint_waiting()),
                 text_font(&font, 19.0),
                 TextColor(Color::WHITE),
@@ -512,42 +500,12 @@ fn handle_lobby_input(
     }
 }
 
-#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn update_lobby_ui(
     config: Res<LocalPlayersConfig>,
     settings: Res<Settings>,
     gamepads: Query<(Entity, &Gamepad)>,
-    mut p1_box: Single<&mut BorderColor, (With<Player1Box>, Without<Player2Box>)>,
-    mut p2_box: Single<&mut BorderColor, (With<Player2Box>, Without<Player1Box>)>,
-    mut p1_device: Single<&mut Text, (With<Player1DeviceText>, Without<Player2DeviceText>)>,
-    mut p2_device: Single<&mut Text, (With<Player2DeviceText>, Without<Player1DeviceText>)>,
-    mut p1_desc: Single<&mut Text, (With<Player1DescText>, Without<Player2DescText>)>,
-    mut p2_desc: Single<&mut Text, (With<Player2DescText>, Without<Player1DescText>)>,
-    mut p1_status: Single<
-        (&mut Text, &mut TextColor),
-        (
-            With<Player1StatusText>,
-            Without<Player2StatusText>,
-            Without<Player1DescText>,
-        ),
-    >,
-    mut p2_status: Single<
-        (&mut Text, &mut TextColor),
-        (
-            With<Player2StatusText>,
-            Without<Player1StatusText>,
-            Without<Player2DescText>,
-        ),
-    >,
-    mut detected_text: Single<&mut Text, (With<DetectedDevicesText>, Without<LobbyFooterText>)>,
-    mut footer_text: Single<
-        (&mut Text, &mut TextColor),
-        (
-            With<LobbyFooterText>,
-            Without<DetectedDevicesText>,
-            Without<Player1StatusText>,
-        ),
-    >,
+    mut boxes: Query<(&mut BorderColor, &LobbyBox)>,
+    mut texts: Query<(&mut Text, Option<&mut TextColor>, &LobbyText)>,
 ) {
     let lang = settings.language;
 
@@ -559,14 +517,26 @@ fn update_lobby_ui(
             .map(|i| i + 1)
     };
 
-    // --- Actualizar Player 1 UI ---
-    **p1_box = if config.p1.is_some() {
+    let p1_box_color = if config.p1.is_some() {
         BorderColor::all(Color::srgb(0.35, 0.85, 1.0))
     } else {
         BorderColor::all(Color::srgba(0.3, 0.5, 0.8, 0.4))
     };
 
-    p1_device.0 = match config.p1 {
+    let p2_box_color = if config.p2.is_some() {
+        BorderColor::all(Color::srgb(1.0, 0.7, 0.3))
+    } else {
+        BorderColor::all(Color::srgba(0.8, 0.5, 0.3, 0.4))
+    };
+
+    for (mut border, box_kind) in &mut boxes {
+        *border = match box_kind {
+            LobbyBox::P1 => p1_box_color,
+            LobbyBox::P2 => p2_box_color,
+        };
+    }
+
+    let p1_device_str = match config.p1 {
         Some(binding) => {
             let idx = match binding {
                 ControllerBinding::Gamepad(e) => get_gamepad_index(e),
@@ -577,7 +547,7 @@ fn update_lobby_ui(
         None => lang.waiting_player().to_string(),
     };
 
-    p1_desc.0 = match config.p1 {
+    let p1_desc_str = match config.p1 {
         Some(binding) => binding.controls_hint(lang).to_string(),
         None => format!(
             "{}\n{}",
@@ -586,22 +556,19 @@ fn update_lobby_ui(
         ),
     };
 
-    if config.p1.is_some() {
-        p1_status.0.0 = lang.player_ready().to_string();
-        *p1_status.1 = TextColor(Color::srgb(0.4, 1.0, 0.5));
+    let (p1_status_str, p1_status_color) = if config.p1.is_some() {
+        (
+            lang.player_ready().to_string(),
+            TextColor(Color::srgb(0.4, 1.0, 0.5)),
+        )
     } else {
-        p1_status.0.0 = lang.waiting_player().to_string();
-        *p1_status.1 = TextColor(Color::srgba(0.7, 0.7, 0.7, 0.6));
-    }
-
-    // --- Actualizar Player 2 UI ---
-    **p2_box = if config.p2.is_some() {
-        BorderColor::all(Color::srgb(1.0, 0.7, 0.3))
-    } else {
-        BorderColor::all(Color::srgba(0.8, 0.5, 0.3, 0.4))
+        (
+            lang.waiting_player().to_string(),
+            TextColor(Color::srgba(0.7, 0.7, 0.7, 0.6)),
+        )
     };
 
-    p2_device.0 = match config.p2 {
+    let p2_device_str = match config.p2 {
         Some(binding) => {
             let idx = match binding {
                 ControllerBinding::Gamepad(e) => get_gamepad_index(e),
@@ -612,7 +579,7 @@ fn update_lobby_ui(
         None => lang.waiting_player().to_string(),
     };
 
-    p2_desc.0 = match config.p2 {
+    let p2_desc_str = match config.p2 {
         Some(binding) => binding.controls_hint(lang).to_string(),
         None => format!(
             "{}\n{}",
@@ -621,15 +588,18 @@ fn update_lobby_ui(
         ),
     };
 
-    if config.p2.is_some() {
-        p2_status.0.0 = lang.player_ready().to_string();
-        *p2_status.1 = TextColor(Color::srgb(0.4, 1.0, 0.5));
+    let (p2_status_str, p2_status_color) = if config.p2.is_some() {
+        (
+            lang.player_ready().to_string(),
+            TextColor(Color::srgb(0.4, 1.0, 0.5)),
+        )
     } else {
-        p2_status.0.0 = lang.waiting_player().to_string();
-        *p2_status.1 = TextColor(Color::srgba(0.7, 0.7, 0.7, 0.6));
-    }
+        (
+            lang.waiting_player().to_string(),
+            TextColor(Color::srgba(0.7, 0.7, 0.7, 0.6)),
+        )
+    };
 
-    // --- Dispositivos detectados ---
     let gamepad_count = gamepad_order.len();
     let wasd_label = if config.p1 == Some(ControllerBinding::Wasd) {
         "WASD (P1)"
@@ -664,7 +634,7 @@ fn update_lobby_ui(
         (Language::English, n) => format!("{n} gamepads connected"),
     };
 
-    detected_text.0 = match lang {
+    let detected_str = match lang {
         Language::Spanish => {
             format!("Dispositivos: {wasd_label}  ·  {arrows_label}  ·  {pads_label}")
         }
@@ -673,13 +643,70 @@ fn update_lobby_ui(
         }
     };
 
-    // --- Pie inferior / Leyenda ---
-    if config.is_ready() {
-        footer_text.0.0 = lang.lobby_hint_ready().to_string();
-        *footer_text.1 = TextColor(Color::srgb(1.0, 0.85, 0.25));
+    let (footer_str, footer_color) = if config.is_ready() {
+        (
+            lang.lobby_hint_ready().to_string(),
+            TextColor(Color::srgb(1.0, 0.85, 0.25)),
+        )
     } else {
-        footer_text.0.0 = lang.lobby_hint_waiting().to_string();
-        *footer_text.1 = TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75));
+        (
+            lang.lobby_hint_waiting().to_string(),
+            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
+        )
+    };
+
+    for (mut text, mut color, kind) in &mut texts {
+        match kind {
+            LobbyText::P1Device => {
+                if text.0 != p1_device_str {
+                    text.0 = p1_device_str.clone();
+                }
+            }
+            LobbyText::P1Desc => {
+                if text.0 != p1_desc_str {
+                    text.0 = p1_desc_str.clone();
+                }
+            }
+            LobbyText::P1Status => {
+                if text.0 != p1_status_str {
+                    text.0 = p1_status_str.clone();
+                }
+                if let Some(ref mut c) = color {
+                    **c = p1_status_color;
+                }
+            }
+            LobbyText::P2Device => {
+                if text.0 != p2_device_str {
+                    text.0 = p2_device_str.clone();
+                }
+            }
+            LobbyText::P2Desc => {
+                if text.0 != p2_desc_str {
+                    text.0 = p2_desc_str.clone();
+                }
+            }
+            LobbyText::P2Status => {
+                if text.0 != p2_status_str {
+                    text.0 = p2_status_str.clone();
+                }
+                if let Some(ref mut c) = color {
+                    **c = p2_status_color;
+                }
+            }
+            LobbyText::DetectedDevices => {
+                if text.0 != detected_str {
+                    text.0 = detected_str.clone();
+                }
+            }
+            LobbyText::Footer => {
+                if text.0 != footer_str {
+                    text.0 = footer_str.clone();
+                }
+                if let Some(ref mut c) = color {
+                    **c = footer_color;
+                }
+            }
+        }
     }
 }
 

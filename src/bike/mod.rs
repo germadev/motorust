@@ -940,7 +940,7 @@ fn read_player_input(
     mut race: ResMut<Race>,
     options: Res<DebugOptions>,
     player: Single<(&mut BikeInput, &BikeState), With<Player>>,
-    mut other_players: Query<(&mut BikeInput, &BikeState, &LocalPlayer)>,
+    mut other_players: Query<(&mut BikeInput, &BikeState, &LocalPlayer), Without<Player>>,
     mut digital_p1: Local<DigitalSteer>,
     mut digital_p2: Local<DigitalSteer>,
 ) {
