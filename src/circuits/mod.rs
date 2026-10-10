@@ -34,6 +34,16 @@ impl Circuit {
             Language::English => self.description_en,
         }
     }
+
+    /// Puntos a lo largo de la vuelta (m desde la meta) donde hay un checkpoint.
+    pub fn checkpoints(&self) -> Vec<f32> {
+        self.scenery
+            .gantries
+            .iter()
+            .filter(|g| g.text == Some("CHECKPOINT"))
+            .map(|g| g.along)
+            .collect()
+    }
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista.
@@ -47,5 +57,16 @@ pub struct CurrentCircuit(pub usize);
 impl CurrentCircuit {
     pub fn get(self) -> &'static Circuit {
         &CIRCUITS[self.0]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn circuits_have_checkpoints() {
+        assert_eq!(CIRCUITS[0].checkpoints(), vec![780.0]);
+        assert_eq!(CIRCUITS[1].checkpoints(), vec![1100.0, 1935.0]);
     }
 }

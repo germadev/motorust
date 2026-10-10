@@ -11,16 +11,36 @@ use bevy::{
 };
 
 use crate::bike::{BikeColor, BikeState, Player};
+use crate::circuits::CurrentCircuit;
 use crate::menu::GameState;
 use crate::track::Track;
 
 /// Lado del plano (píxeles) y margen alrededor del trazado.
 pub const MAP_SIZE: u32 = 256;
 const MAP_MARGIN: f32 = 18.0;
-/// Grosor del trazado y de su borde, y tamaño de la marca de la meta (px).
+/// Grosor del trazado y de su borde (px).
 const MAP_ROAD: f32 = 3.0;
 const MAP_OUTLINE: f32 = 5.5;
-const MAP_START: f32 = 6.0;
+
+struct MarkerStyle {
+    half_len: f32,
+    radius: f32,
+    color: [f32; 4],
+}
+
+/// Marca de la meta (línea amarilla) y de los checkpoints (líneas rojas más finas).
+const START_STYLE: MarkerStyle = MarkerStyle {
+    half_len: 5.5,
+    radius: 1.6,
+    color: [1.0, 0.85, 0.1, 1.0],
+};
+
+const CHECKPOINT_STYLE: MarkerStyle = MarkerStyle {
+    half_len: 4.8,
+    radius: 0.9,
+    color: [0.95, 0.15, 0.15, 1.0],
+};
+
 /// Lado del minimapa de la carrera en pantalla y de los puntos de las motos
 /// (px): el del jugador, más grande y con borde blanco.
 const HUD_SIZE: f32 = 190.0;
@@ -72,33 +92,47 @@ impl Projection {
     }
 }
 
-fn create_map(mut commands: Commands, track: Res<Track>, mut images: ResMut<Assets<Image>>) {
+fn create_map(
+    mut commands: Commands,
+    circuit: Option<Res<CurrentCircuit>>,
+    track: Res<Track>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let checkpoints = circuit.map(|c| c.get().checkpoints()).unwrap_or_default();
     commands.insert_resource(TrackMap {
-        image: images.add(draw(&track)),
+        image: images.add(draw(&track, &checkpoints)),
         projection: Projection::new(&track),
     });
 }
 
-fn redraw_map(track: Res<Track>, mut map: ResMut<TrackMap>, mut images: ResMut<Assets<Image>>) {
-    if !track.is_changed() || track.is_added() {
+fn redraw_map(
+    circuit: Option<Res<CurrentCircuit>>,
+    track: Res<Track>,
+    mut map: ResMut<TrackMap>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let circuit_changed = circuit.as_ref().is_some_and(|c| c.is_changed());
+    if (!track.is_changed() && !circuit_changed) || track.is_added() {
         return;
     }
+    let checkpoints = circuit.map(|c| c.get().checkpoints()).unwrap_or_default();
     map.projection = Projection::new(&track);
     images
-        .insert(&map.image, draw(&track))
+        .insert(&map.image, draw(&track, &checkpoints))
         .expect("la imagen del plano sigue existiendo");
 }
 
-/// El trazado en blanco con un borde oscuro y la meta en amarillo, sobre
-/// fondo transparente.
-pub fn draw(track: &Track) -> Image {
+/// El trazado en blanco con un borde oscuro, el inicio con una línea amarilla
+/// transversal y los checkpoints con líneas rojas más finas, sobre fondo
+/// transparente.
+pub fn draw(track: &Track, checkpoints: &[f32]) -> Image {
     let size = MAP_SIZE as usize;
     let mut pixels = vec![[0.0f32; 4]; size * size];
     let projection = Projection::new(track);
     let centerline = track.centerline();
-    let outline = [0.02, 0.04, 0.1, 0.9];
+    let outline = [0.02, 0.04, 0.1, 0.95];
     let road = [1.0, 1.0, 1.0, 1.0];
-    let start = [1.0, 0.8, 0.2, 1.0];
+
     for (radius, color) in [(MAP_OUTLINE, outline), (MAP_ROAD, road)] {
         for (index, &point) in centerline.iter().enumerate() {
             let next = centerline[(index + 1) % centerline.len()];
@@ -111,9 +145,24 @@ pub fn draw(track: &Track) -> Image {
             }
         }
     }
-    let goal = projection.to_map(centerline[0]);
-    stamp(&mut pixels, size, goal, MAP_START + 2.0, outline);
-    stamp(&mut pixels, size, goal, MAP_START, start);
+
+    // Checkpoints: líneas rojas más finas transversales a la pista.
+    for &along in checkpoints {
+        let index = track.index_at(along);
+        let (cp_center, cp_tangent) = marker_tangent(centerline, index, projection);
+        draw_track_marker(
+            &mut pixels,
+            size,
+            cp_center,
+            cp_tangent,
+            CHECKPOINT_STYLE,
+            outline,
+        );
+    }
+
+    // Inicio: línea amarilla transversal a la pista.
+    let (goal, start_tangent) = marker_tangent(centerline, 0, projection);
+    draw_track_marker(&mut pixels, size, goal, start_tangent, START_STYLE, outline);
 
     let data = pixels
         .iter()
@@ -130,6 +179,38 @@ pub fn draw(track: &Track) -> Image {
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::RENDER_WORLD,
     )
+}
+
+fn marker_tangent(centerline: &[Vec2], index: usize, projection: Projection) -> (Vec2, Vec2) {
+    let n = centerline.len();
+    let center = projection.to_map(centerline[index % n]);
+    let prev = projection.to_map(centerline[(index + n - 1) % n]);
+    let next = projection.to_map(centerline[(index + 1) % n]);
+    let tangent = (next - prev).normalize_or_zero();
+    (center, tangent)
+}
+
+fn draw_track_marker(
+    pixels: &mut [[f32; 4]],
+    size: usize,
+    center: Vec2,
+    tangent: Vec2,
+    style: MarkerStyle,
+    outline: [f32; 4],
+) {
+    let normal = Vec2::new(-tangent.y, tangent.x);
+    let a = center - normal * style.half_len;
+    let b = center + normal * style.half_len;
+    draw_line(pixels, size, a, b, style.radius + 1.0, outline);
+    draw_line(pixels, size, a, b, style.radius, style.color);
+}
+
+fn draw_line(pixels: &mut [[f32; 4]], size: usize, a: Vec2, b: Vec2, radius: f32, color: [f32; 4]) {
+    let steps = (a.distance(b) * 2.0).ceil().max(1.0) as usize;
+    for step in 0..=steps {
+        let at = a.lerp(b, step as f32 / steps as f32);
+        stamp(pixels, size, at, radius, color);
+    }
 }
 
 /// Pinta un círculo de `color` con el borde suavizado.
@@ -243,7 +324,7 @@ mod tests {
 
     #[test]
     fn the_map_shows_the_whole_track_inside_its_margins() {
-        let image = draw(&Track::default());
+        let image = draw(&Track::default(), &[780.0]);
         let data = image.data.as_ref().unwrap();
         let size = MAP_SIZE as usize;
         let alpha = |x: usize, y: usize| data[(y * size + x) * 4 + 3];
@@ -256,6 +337,44 @@ mod tests {
                 assert_eq!(alpha(x, y), 0, "borde en ({x}, {y})");
             }
         }
+    }
+
+    #[test]
+    fn the_map_draws_start_line_and_checkpoints() {
+        let track = Track::default();
+        let image = draw(&track, &[780.0]);
+        let data = image.data.as_ref().unwrap();
+        let size = MAP_SIZE as usize;
+
+        let mut yellow_pixels = 0;
+        let mut red_pixels = 0;
+
+        for i in 0..(size * size) {
+            let r = data[i * 4];
+            let g = data[i * 4 + 1];
+            let b = data[i * 4 + 2];
+            let a = data[i * 4 + 3];
+
+            if a > 150 {
+                // Línea de inicio amarilla: rojo y verde altos, azul bajo.
+                if r > 180 && g > 150 && b < 100 {
+                    yellow_pixels += 1;
+                }
+                // Checkpoint rojo: rojo alto, verde y azul bajos.
+                if r > 180 && g < 100 && b < 100 {
+                    red_pixels += 1;
+                }
+            }
+        }
+
+        assert!(
+            yellow_pixels > 0,
+            "Debe haber píxeles amarillos para la línea de inicio ({yellow_pixels})"
+        );
+        assert!(
+            red_pixels > 0,
+            "Debe haber píxeles rojos para los checkpoints ({red_pixels})"
+        );
     }
 
     #[test]
