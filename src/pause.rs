@@ -1,0 +1,384 @@
+//! Menú de pausa: Esc o Start paran la carrera y abren un menú para seguir,
+//! volver a la pantalla de inicio, salir del juego o cambiar opciones de
+//! depuración.
+
+use bevy::prelude::*;
+
+use crate::gamepads::Gamepads;
+use crate::hud::UiFont;
+use crate::menu::GameState;
+use crate::settings::{Action as Control, Settings, WEB, cycle};
+use crate::ui::{MenuInput, Row, spawn_hint, spawn_panel, spawn_title};
+
+pub struct PausePlugin;
+
+impl Plugin for PausePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Pause>()
+            .init_resource::<DebugOptions>()
+            .add_systems(OnExit(GameState::Race), close)
+            .add_systems(
+                Update,
+                (use_pause_menu, show_pause_menu)
+                    .chain()
+                    .run_if(in_state(GameState::Race)),
+            );
+    }
+}
+
+/// Opciones de depuración, para probar variantes del manejo.
+#[derive(Resource)]
+pub struct DebugOptions {
+    /// Con el stick, cuánto limitar el giro según la velocidad (de entrada,
+    /// nada).
+    pub stick_limit: TurnLimit,
+    /// Con el teclado o la cruceta, lo mismo (de entrada, del todo).
+    pub keyboard_limit: TurnLimit,
+    /// Si se ve en la carrera la leyenda con los controles (de entrada, no).
+    pub show_legend: bool,
+}
+
+impl Default for DebugOptions {
+    fn default() -> Self {
+        Self {
+            stick_limit: TurnLimit::Off,
+            keyboard_limit: TurnLimit::High,
+            show_legend: false,
+        }
+    }
+}
+
+/// Cuánto se limita el giro con la velocidad: nada, o una parte del límite
+/// (alto, todo: ver `DIGITAL_STEER_FAST` en `bike`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TurnLimit {
+    Off,
+    Low,
+    Medium,
+    High,
+}
+
+const TURN_LIMITS: [TurnLimit; 4] = [
+    TurnLimit::Off,
+    TurnLimit::Low,
+    TurnLimit::Medium,
+    TurnLimit::High,
+];
+
+impl TurnLimit {
+    /// Qué parte del límite se aplica.
+    pub fn strength(self) -> f32 {
+        match self {
+            TurnLimit::Off => 0.0,
+            TurnLimit::Low => 1.0 / 3.0,
+            TurnLimit::Medium => 2.0 / 3.0,
+            TurnLimit::High => 1.0,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            TurnLimit::Off => "no",
+            TurnLimit::Low => "bajo",
+            TurnLimit::Medium => "medio",
+            TurnLimit::High => "alto",
+        }
+    }
+
+    /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta:
+    /// después del más alto, sin límite.
+    fn next(self, step: i32) -> Self {
+        cycle(&TURN_LIMITS, self, step)
+    }
+}
+
+/// Si la carrera está en pausa, qué página del menú se ve y qué opción está
+/// elegida.
+#[derive(Resource, Default)]
+pub struct Pause {
+    page: Option<Page>,
+    selected: usize,
+}
+
+impl Pause {
+    pub fn is_open(&self) -> bool {
+        self.page.is_some()
+    }
+}
+
+/// Para los `run_if` de lo que no debe pasar con la carrera en pausa.
+pub fn running(pause: Res<Pause>) -> bool {
+    !pause.is_open()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Page {
+    Main,
+    Debug,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Action {
+    Resume,
+    MainMenu,
+    OpenDebug,
+    Quit,
+    NextStickLimit,
+    NextKeyboardLimit,
+    ToggleLegend,
+    SearchGamepads,
+    Back,
+}
+
+/// Las opciones de cada página: su texto y lo que hacen.
+fn items(page: Page, options: &DebugOptions) -> Vec<(String, Action)> {
+    match page {
+        Page::Main => {
+            let mut items = vec![
+                ("Continuar".into(), Action::Resume),
+                ("Volver al menú principal".into(), Action::MainMenu),
+                ("Depuración".into(), Action::OpenDebug),
+            ];
+            // En la web se sale cerrando la pestaña.
+            if !WEB {
+                items.push(("Salir del juego".into(), Action::Quit));
+            }
+            items
+        }
+        Page::Debug => vec![
+            (
+                format!(
+                    "Stick: limitar el giro con la velocidad: {}",
+                    options.stick_limit.name()
+                ),
+                Action::NextStickLimit,
+            ),
+            (
+                format!(
+                    "Teclado y cruceta: limitar el giro con la velocidad: {}",
+                    options.keyboard_limit.name()
+                ),
+                Action::NextKeyboardLimit,
+            ),
+            (
+                format!(
+                    "Leyenda de los controles: {}",
+                    if options.show_legend {
+                        "se ve"
+                    } else {
+                        "oculta"
+                    }
+                ),
+                Action::ToggleLegend,
+            ),
+            ("Volver a buscar mandos".into(), Action::SearchGamepads),
+            ("Volver".into(), Action::Back),
+        ],
+    }
+}
+
+/// Abre y cierra la pausa, se mueve por las opciones y las aplica.
+#[allow(clippy::too_many_arguments)]
+fn use_pause_menu(
+    mut input: MenuInput,
+    settings: Res<Settings>,
+    mut pause: ResMut<Pause>,
+    mut options: ResMut<DebugOptions>,
+    mut time: ResMut<Time<Virtual>>,
+    mut next: ResMut<NextState<GameState>>,
+    mut exit: MessageWriter<AppExit>,
+    mut gamepads: ResMut<Gamepads>,
+) {
+    let request = input.read();
+    // La tecla o el botón de pausa (Esc o Start, si no se han cambiado).
+    let toggle =
+        settings
+            .controls
+            .just_pressed(Control::Pause, &input.keyboard, input.gamepads.iter());
+    let Some(page) = pause.page else {
+        if toggle {
+            *pause = Pause {
+                page: Some(Page::Main),
+                selected: 0,
+            };
+            time.pause();
+        }
+        return;
+    };
+    let items = items(page, &options);
+    if request.step != 0 {
+        pause.selected =
+            (pause.selected as i32 + request.step).rem_euclid(items.len() as i32) as usize;
+    }
+    // Pausa, Esc o B: atrás desde depuración y, desde el menú, seguir.
+    // Izquierda y derecha cambian la opción de depuración.
+    let action = if toggle || request.back {
+        Some(if page == Page::Debug {
+            Action::Back
+        } else {
+            Action::Resume
+        })
+    } else if request.confirm
+        || (request.side != 0
+            && matches!(
+                items[pause.selected].1,
+                Action::NextStickLimit | Action::NextKeyboardLimit | Action::ToggleLegend
+            ))
+    {
+        Some(items[pause.selected].1)
+    } else {
+        None
+    };
+    match action {
+        Some(Action::Resume) => {
+            *pause = Pause::default();
+            time.unpause();
+        }
+        Some(Action::MainMenu) => {
+            next.set(GameState::Welcome);
+        }
+        Some(Action::OpenDebug) => {
+            *pause = Pause {
+                page: Some(Page::Debug),
+                selected: 0,
+            };
+        }
+        Some(Action::Quit) => {
+            exit.write(AppExit::Success);
+        }
+        Some(Action::NextStickLimit) => {
+            options.stick_limit = options
+                .stick_limit
+                .next(if request.side < 0 { -1 } else { 1 });
+        }
+        Some(Action::NextKeyboardLimit) => {
+            options.keyboard_limit =
+                options
+                    .keyboard_limit
+                    .next(if request.side < 0 { -1 } else { 1 });
+        }
+        Some(Action::ToggleLegend) => {
+            options.show_legend = !options.show_legend;
+        }
+        Some(Action::SearchGamepads) => {
+            gamepads.search_again();
+        }
+        Some(Action::Back) => {
+            *pause = Pause {
+                page: Some(Page::Main),
+                selected: 2,
+            };
+        }
+        None => {}
+    }
+}
+
+/// Al salir de la carrera la pausa se cierra y el tiempo vuelve a correr.
+fn close(mut pause: ResMut<Pause>, mut time: ResMut<Time<Virtual>>) {
+    *pause = Pause::default();
+    time.unpause();
+}
+
+/// El menú en pantalla, rehecho cada vez que cambia algo.
+#[derive(Component)]
+struct PauseMenu;
+
+fn show_pause_menu(
+    mut commands: Commands,
+    pause: Res<Pause>,
+    options: Res<DebugOptions>,
+    font: Res<UiFont>,
+    shown: Query<Entity, With<PauseMenu>>,
+) {
+    if !pause.is_changed() && !options.is_changed() {
+        return;
+    }
+    for entity in &shown {
+        commands.entity(entity).despawn();
+    }
+    let Some(page) = pause.page else {
+        return;
+    };
+    let title = match page {
+        Page::Main => "PAUSA",
+        Page::Debug => "DEPURACIÓN",
+    };
+    let rows: Vec<Row> = items(page, &options)
+        .into_iter()
+        .map(|(label, _)| Row::new(label))
+        .collect();
+    commands
+        .spawn((
+            PauseMenu,
+            DespawnOnExit(GameState::Race),
+            Node {
+                width: percent(100),
+                height: percent(100),
+                position_type: PositionType::Absolute,
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: px(14),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.02, 0.06, 0.6)),
+            // Por encima del marcador.
+            GlobalZIndex(10),
+        ))
+        .with_children(|menu| {
+            spawn_title(menu, &font, title, 52.0);
+            spawn_panel(menu, &font, &rows, pause.selected, false);
+            spawn_hint(
+                menu,
+                &font,
+                "Arriba y abajo: elegir   ·   Enter o A: aceptar   ·   Esc o B: volver",
+            );
+        });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_pause_menu_offers_what_was_asked() {
+        let options = DebugOptions::default();
+        let main: Vec<Action> = items(Page::Main, &options)
+            .into_iter()
+            .map(|i| i.1)
+            .collect();
+        assert_eq!(
+            main,
+            [
+                Action::Resume,
+                Action::MainMenu,
+                Action::OpenDebug,
+                Action::Quit
+            ]
+        );
+        // La opción de depuración dice cómo está y pasa por los tres niveles
+        // antes de volver a no limitar.
+        let mut limit = options.stick_limit;
+        let mut shown = Vec::new();
+        for _ in 0..5 {
+            let options = DebugOptions {
+                stick_limit: limit,
+                ..default()
+            };
+            let label = items(Page::Debug, &options)[0].0.clone();
+            shown.push(label.rsplit(' ').next().unwrap().to_string());
+            limit = limit.next(1);
+        }
+        assert_eq!(shown, ["no", "bajo", "medio", "alto", "no"]);
+        assert_eq!(TurnLimit::Off.next(-1), TurnLimit::High);
+        // El teclado y la cruceta, limitados del todo de entrada.
+        assert_eq!(items(Page::Debug, &options)[1].1, Action::NextKeyboardLimit);
+        assert!(items(Page::Debug, &options)[1].0.ends_with("alto"));
+        // La leyenda de los controles, oculta de entrada.
+        assert_eq!(items(Page::Debug, &options)[2].1, Action::ToggleLegend);
+        assert!(items(Page::Debug, &options)[2].0.ends_with("oculta"));
+        assert_eq!(TurnLimit::High.strength(), 1.0);
+        // Volver desde depuración deja elegida la entrada de depuración.
+        assert_eq!(items(Page::Main, &options)[2].1, Action::OpenDebug);
+    }
+}

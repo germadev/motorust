@@ -1,0 +1,127 @@
+# Pasa los tests y compila el juego para Linux, Windows y macOS (Apple
+# Silicon e Intel). Cada build queda como artefacto del run: un .tar.gz (o un
+# .zip en Windows) con el ejecutable, que lleva dentro todos los modelos,
+# texturas y sonidos, y el README.
+#
+# Corre en cada push a main y en cada PR, a mano desde la pestaña Actions y
+# llamado desde release.yml, que le pasa la versión con la que se compila.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Versión con la que se compila, sin la v (por ejemplo 1.2.0)
+        type: string
+        required: false
+        default: ""
+
+# En una PR, un push nuevo cancela el run anterior. Llamado desde release.yml,
+# el grupo es el de la release y no choca con los de aquí.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Lo que Bevy necesita para compilar en Linux (lo mismo que `make install`).
+  LINUX_PACKAGES: >-
+    g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0
+    libwayland-dev libxkbcommon-dev
+
+jobs:
+  test:
+    name: Tests, formato y clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Dependencias de Linux
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES
+      - uses: Swatinem/rust-cache@v2
+      - name: Formato
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS Intel
+            os: macos-latest
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Dependencias de Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Versión
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            # La de la release: va en Cargo.toml para que el ejecutable la lleve.
+            perl -0pi -e 's/^version = "[^"]*"/version = "'"$VERSION"'"/m' Cargo.toml
+            echo "label=$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "label=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Compilar
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Empaquetar
+        env:
+          TARGET: ${{ matrix.target }}
+          LABEL: ${{ steps.version.outputs.label }}
+        run: |
+          name="motorust-$LABEL-$TARGET"
+          mkdir -p "dist/$name"
+          cp README.md assets/CREDITS.md "dist/$name/"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "target/$TARGET/release/motorust.exe" "dist/$name/"
+            (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null)
+          else
+            cp "target/$TARGET/release/motorust" "dist/$name/"
+            (cd dist && tar czf "$name.tar.gz" "$name")
+          fi
+          rm -r "dist/$name"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: motorust-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error

@@ -1,0 +1,274 @@
+//! Plano de la pista: el trazado visto desde arriba (el norte, -Z, arriba),
+//! dibujado a partir de la línea central cada vez que cambia la pista. Lo
+//! usan la pantalla de elegir pista y el minimapa de la carrera, abajo a la
+//! izquierda, con un punto por moto del color de cada una.
+
+use bevy::{
+    asset::RenderAssetUsages,
+    platform::collections::HashMap,
+    prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+};
+
+use crate::bike::{BikeColor, BikeState, Player};
+use crate::menu::GameState;
+use crate::track::Track;
+
+/// Lado del plano (píxeles) y margen alrededor del trazado.
+pub const MAP_SIZE: u32 = 256;
+const MAP_MARGIN: f32 = 18.0;
+/// Grosor del trazado y de su borde, y tamaño de la marca de la meta (px).
+const MAP_ROAD: f32 = 3.0;
+const MAP_OUTLINE: f32 = 5.5;
+const MAP_START: f32 = 6.0;
+/// Lado del minimapa de la carrera en pantalla y de los puntos de las motos
+/// (px): el del jugador, más grande y con borde blanco.
+const HUD_SIZE: f32 = 190.0;
+const RIVAL_DOT: f32 = 9.0;
+const PLAYER_DOT: f32 = 14.0;
+
+pub struct MinimapPlugin;
+
+impl Plugin for MinimapPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PreStartup, create_map)
+            .add_systems(Update, redraw_map)
+            .add_systems(OnEnter(GameState::Race), spawn_hud_map)
+            .add_systems(
+                Update,
+                place_dots
+                    .run_if(in_state(GameState::Race))
+                    .after(redraw_map),
+            );
+    }
+}
+
+/// El plano de la pista actual, siempre en la misma imagen: al cambiar de
+/// pista se vuelve a dibujar encima.
+#[derive(Resource)]
+pub struct TrackMap {
+    pub image: Handle<Image>,
+    projection: Projection,
+}
+
+/// Cómo se pasa del suelo (m) al plano (px).
+#[derive(Clone, Copy)]
+struct Projection {
+    min: Vec2,
+    scale: f32,
+    offset: Vec2,
+}
+
+impl Projection {
+    fn new(track: &Track) -> Self {
+        let (min, max) = track.bounds();
+        let scale = (MAP_SIZE as f32 - 2.0 * MAP_MARGIN) / (max - min).max_element();
+        let offset = (Vec2::splat(MAP_SIZE as f32) - (max - min) * scale) / 2.0;
+        Self { min, scale, offset }
+    }
+
+    fn to_map(self, point: Vec2) -> Vec2 {
+        (point - self.min) * self.scale + self.offset
+    }
+}
+
+fn create_map(mut commands: Commands, track: Res<Track>, mut images: ResMut<Assets<Image>>) {
+    commands.insert_resource(TrackMap {
+        image: images.add(draw(&track)),
+        projection: Projection::new(&track),
+    });
+}
+
+fn redraw_map(track: Res<Track>, mut map: ResMut<TrackMap>, mut images: ResMut<Assets<Image>>) {
+    if !track.is_changed() || track.is_added() {
+        return;
+    }
+    map.projection = Projection::new(&track);
+    images
+        .insert(&map.image, draw(&track))
+        .expect("la imagen del plano sigue existiendo");
+}
+
+/// El trazado en blanco con un borde oscuro y la meta en amarillo, sobre
+/// fondo transparente.
+pub fn draw(track: &Track) -> Image {
+    let size = MAP_SIZE as usize;
+    let mut pixels = vec![[0.0f32; 4]; size * size];
+    let projection = Projection::new(track);
+    let centerline = track.centerline();
+    let outline = [0.02, 0.04, 0.1, 0.9];
+    let road = [1.0, 1.0, 1.0, 1.0];
+    let start = [1.0, 0.8, 0.2, 1.0];
+    for (radius, color) in [(MAP_OUTLINE, outline), (MAP_ROAD, road)] {
+        for (index, &point) in centerline.iter().enumerate() {
+            let next = centerline[(index + 1) % centerline.len()];
+            let (a, b) = (projection.to_map(point), projection.to_map(next));
+            // Un círculo cada medio píxel a lo largo del tramo.
+            let steps = (a.distance(b) * 2.0).ceil().max(1.0) as usize;
+            for step in 0..steps {
+                let at = a.lerp(b, step as f32 / steps as f32);
+                stamp(&mut pixels, size, at, radius, color);
+            }
+        }
+    }
+    let goal = projection.to_map(centerline[0]);
+    stamp(&mut pixels, size, goal, MAP_START + 2.0, outline);
+    stamp(&mut pixels, size, goal, MAP_START, start);
+
+    let data = pixels
+        .iter()
+        .flat_map(|pixel| pixel.map(|channel| (channel * 255.0).round() as u8))
+        .collect();
+    Image::new(
+        Extent3d {
+            width: MAP_SIZE,
+            height: MAP_SIZE,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+}
+
+/// Pinta un círculo de `color` con el borde suavizado.
+fn stamp(pixels: &mut [[f32; 4]], size: usize, center: Vec2, radius: f32, color: [f32; 4]) {
+    let low = (center - radius - 1.0).max(Vec2::ZERO);
+    let high = (center + radius + 1.0).min(Vec2::splat(size as f32 - 1.0));
+    for y in low.y as usize..=high.y as usize {
+        for x in low.x as usize..=high.x as usize {
+            let pixel_center = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+            let cover = (radius + 0.5 - pixel_center.distance(center)).clamp(0.0, 1.0);
+            if cover <= 0.0 {
+                continue;
+            }
+            let pixel = &mut pixels[y * size + x];
+            for channel in 0..3 {
+                pixel[channel] += (color[channel] - pixel[channel]) * cover;
+            }
+            pixel[3] = pixel[3].max(color[3] * cover);
+        }
+    }
+}
+
+/// El minimapa de la carrera, abajo a la izquierda.
+#[derive(Component)]
+struct HudMap;
+
+/// El punto de una moto en el minimapa.
+#[derive(Component)]
+struct Dot(Entity);
+
+fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>) {
+    commands.spawn((
+        HudMap,
+        DespawnOnExit(GameState::Race),
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(16),
+            bottom: px(16),
+            width: px(HUD_SIZE),
+            height: px(HUD_SIZE),
+            border_radius: BorderRadius::all(px(14)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.45)),
+        children![(
+            ImageNode::new(map.image.clone()),
+            Node {
+                width: percent(100),
+                height: percent(100),
+                ..default()
+            },
+        )],
+    ));
+}
+
+/// Un punto por moto, donde está, del color de la moto; el del jugador,
+/// encima de los demás. Los puntos se crean la primera vez que se ve cada
+/// moto.
+fn place_dots(
+    mut commands: Commands,
+    map: Res<TrackMap>,
+    hud: Single<Entity, With<HudMap>>,
+    bikes: Query<(Entity, &BikeState, &BikeColor, Has<Player>)>,
+    mut dots: Query<(&Dot, &mut Node)>,
+) {
+    let mut placed: HashMap<Entity, Mut<Node>> =
+        dots.iter_mut().map(|(dot, node)| (dot.0, node)).collect();
+    for (bike, state, color, player) in &bikes {
+        let size = if player { PLAYER_DOT } else { RIVAL_DOT };
+        let at = map.projection.to_map(state.position) / MAP_SIZE as f32 * HUD_SIZE - size / 2.0;
+        match placed.get_mut(&bike) {
+            Some(node) => {
+                // Solo si se ha movido: tocar el nodo obliga a recolocarlo.
+                if node.left != px(at.x) || node.top != px(at.y) {
+                    node.left = px(at.x);
+                    node.top = px(at.y);
+                }
+            }
+            None => {
+                let dot = commands
+                    .spawn((
+                        Dot(bike),
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: px(at.x),
+                            top: px(at.y),
+                            width: px(size),
+                            height: px(size),
+                            border: UiRect::all(px(if player { 2.5 } else { 1.0 })),
+                            border_radius: BorderRadius::MAX,
+                            ..default()
+                        },
+                        BackgroundColor(color.0),
+                        BorderColor::all(if player {
+                            Color::WHITE
+                        } else {
+                            Color::srgba(0.0, 0.0, 0.0, 0.8)
+                        }),
+                        ZIndex(i32::from(player)),
+                    ))
+                    .id();
+                commands.entity(*hud).add_child(dot);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_map_shows_the_whole_track_inside_its_margins() {
+        let image = draw(&Track::default());
+        let data = image.data.as_ref().unwrap();
+        let size = MAP_SIZE as usize;
+        let alpha = |x: usize, y: usize| data[(y * size + x) * 4 + 3];
+        // Hay trazado dibujado...
+        let drawn = (0..size * size).filter(|i| data[i * 4 + 3] > 200).count();
+        assert!(drawn > size * 4, "{drawn} píxeles");
+        // ...y no toca los bordes.
+        for i in 0..size {
+            for (x, y) in [(i, 0), (i, size - 1), (0, i), (size - 1, i)] {
+                assert_eq!(alpha(x, y), 0, "borde en ({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn the_projection_keeps_the_track_inside_the_map() {
+        let track = Track::default();
+        let projection = Projection::new(&track);
+        for &point in track.centerline() {
+            let at = projection.to_map(point);
+            assert!(at.cmpge(Vec2::splat(MAP_MARGIN - 0.5)).all());
+            assert!(
+                at.cmple(Vec2::splat(MAP_SIZE as f32 - MAP_MARGIN + 0.5))
+                    .all()
+            );
+        }
+    }
+}

@@ -1,0 +1,41 @@
+[package]
+name = "motorust"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+
+[dependencies]
+bevy = { version = "0.19", features = ["jpeg", "serialize"] }
+# Para guardar los ajustes (resolución, FPS y controles) entre partidas, con
+# las mismas versiones que ya usa Bevy.
+ron = "0.12"
+serde = { version = "1", features = ["derive"] }
+# La misma versión que usa Bevy, para leer los mandos a nuestra manera (ver
+# src/gamepads.rs).
+gilrs = "0.11"
+
+# En macOS, los mandos que conoce el sistema se leen con GameController, el
+# framework de Apple (ver src/gamepads/apple.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-game-controller = "0.3"
+
+# En la web, los ajustes se guardan en el almacenamiento del navegador y se
+# avisa a la página cuando el juego ya se ve (la misma versión que ya usa
+# Bevy).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Document", "Element", "Storage", "Window"] }
+
+# En desarrollo, nuestro código se compila con optimización ligera (compila
+# rápido) y las dependencias con optimización completa (Bevy en modo debug
+# sin optimizar va a pocos FPS).
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Build final: máximo rendimiento a cambio de compilar más lento.
+[profile.release]
+codegen-units = 1
+lto = "thin"

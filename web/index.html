@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Motorust</title>
+  <meta name="description" content="Carreras de motos arcade inspiradas en Moto Racer, hechas con Rust y Bevy.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23161a22'/%3E%3Ctext x='16' y='23' font-family='Arial Black,Arial' font-weight='900' font-size='20' text-anchor='middle' fill='%23e66a1f'%3EM%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --ink: #f2f2f2;
+      --soft: rgba(242, 242, 242, 0.7);
+      --rust: #e66a1f;
+      --track: rgba(255, 255, 255, 0.14);
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    /* El juego llena la página: Bevy ajusta el canvas a este contenedor. */
+    #game {
+      position: fixed;
+      inset: 0;
+    }
+    #motorust {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+    #loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      padding: 0 16px;
+      background: radial-gradient(circle at 50% 40%, #1b2230 0%, var(--bg) 70%);
+      transition: opacity 0.6s ease;
+      text-align: center;
+    }
+    [data-motorust="ready"] #loader {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .logo {
+      margin: 0;
+      font-size: clamp(44px, 11vw, 96px);
+      font-weight: 900;
+      font-style: italic;
+      letter-spacing: 0.04em;
+      line-height: 1;
+    }
+    .logo span {
+      color: var(--rust);
+    }
+    .bar {
+      width: min(420px, 100%);
+      height: 8px;
+      border-radius: 4px;
+      background: var(--track);
+      overflow: hidden;
+    }
+    .bar div {
+      width: 0;
+      height: 100%;
+      background: var(--rust);
+      transition: width 0.2s linear;
+    }
+    /* Mientras se prepara la pista no se sabe cuánto falta. */
+    [data-motorust="starting"] .bar div {
+      width: 35%;
+      animation: busy 1.1s ease-in-out infinite alternate;
+    }
+    @keyframes busy {
+      from { margin-left: 0; }
+      to { margin-left: 65%; }
+    }
+    #status {
+      margin: 0;
+      min-height: 1.4em;
+      color: var(--soft);
+      font-size: 16px;
+    }
+    .tips {
+      margin: 0;
+      max-width: 560px;
+      color: var(--soft);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    [data-motorust="failed"] #status {
+      color: #ff8a7a;
+    }
+    [data-motorust="failed"] .bar {
+      display: none;
+    }
+    a {
+      color: var(--rust);
+    }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <canvas id="motorust" tabindex="0"></canvas>
+  </div>
+  <div id="loader">
+    <h1 class="logo">MOTO<span>RUST</span></h1>
+    <div class="bar"><div id="progress"></div></div>
+    <p id="status">Descargando el juego…</p>
+    <p class="tips">
+      Teclado: W/S o las flechas para acelerar y frenar, A/D para girar.
+      Mando: gatillos y stick izquierdo (pulsa un botón para que el navegador lo vea).
+      Alt+Enter o Cmd+Enter: pantalla completa.
+      <br><a href="https://github.com/germadev/motorust">Código en GitHub</a>
+    </p>
+  </div>
+
+  <script>
+    // El navegador no deja sonar nada hasta que se pulsa una tecla o se hace
+    // clic: el audio del juego se crea parado y se pone en marcha entonces.
+    (() => {
+      const Original = window.AudioContext || window.webkitAudioContext;
+      if (!Original) return;
+      const contexts = [];
+      class Tracked extends Original {
+        constructor(...args) {
+          super(...args);
+          contexts.push(this);
+        }
+      }
+      window.AudioContext = Tracked;
+      window.webkitAudioContext = Tracked;
+      const resume = () => {
+        for (const context of contexts) {
+          if (context.state !== "running") context.resume();
+        }
+      };
+      for (const event of ["keydown", "pointerdown", "touchstart"]) {
+        document.addEventListener(event, resume, { capture: true });
+      }
+    })();
+  </script>
+  <script type="module">
+    import init from "./motorust.js";
+
+    // build.sh pone aquí el tamaño del .wasm, para la barra de progreso (el
+    // servidor lo manda comprimido y no siempre dice cuánto ocupa).
+    const WASM_BYTES = 0;
+
+    const page = document.documentElement;
+    const status = document.getElementById("status");
+    const progress = document.getElementById("progress");
+    const canvas = document.getElementById("motorust");
+    const megabytes = (bytes) => (bytes / 1048576).toFixed(1).replace(".", ",");
+
+    const fail = (message) => {
+      if (page.dataset.motorust === "ready") return;
+      page.dataset.motorust = "failed";
+      status.textContent = message;
+    };
+
+    // El juego marca la página como lista cuando ya se ve (src/web.rs).
+    new MutationObserver(() => {
+      if (page.dataset.motorust === "ready") canvas.focus();
+    }).observe(page, { attributes: true, attributeFilter: ["data-motorust"] });
+    canvas.addEventListener("pointerdown", () => canvas.focus());
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    // Un fallo del juego antes de verse se enseña en lugar del cartel.
+    window.addEventListener("error", (event) => {
+      if (String(event.message).includes("Using exceptions for control flow")) return;
+      fail(`El juego no ha podido arrancar: ${event.message}`);
+    });
+
+    async function download(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${url}: ${response.status}`);
+      const total = WASM_BYTES || Number(response.headers.get("content-length")) || 0;
+      if (!response.body) return response.arrayBuffer();
+      const reader = response.body.getReader();
+      const parts = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value);
+        received += value.length;
+        if (total >= received) {
+          progress.style.width = `${(100 * received) / total}%`;
+          status.textContent = `Descargando el juego… ${megabytes(received)} de ${megabytes(total)} MB`;
+        } else {
+          status.textContent = `Descargando el juego… ${megabytes(received)} MB`;
+        }
+      }
+      const bytes = new Uint8Array(received);
+      let offset = 0;
+      for (const part of parts) {
+        bytes.set(part, offset);
+        offset += part.length;
+      }
+      return bytes;
+    }
+
+    try {
+      if (!document.createElement("canvas").getContext("webgl2")) {
+        throw new Error("este navegador no tiene WebGL2");
+      }
+      const bytes = await download("./motorust_bg.wasm");
+      page.dataset.motorust = "starting";
+      status.textContent = "Preparando la pista…";
+      // Deja que se pinte el cartel antes de que el juego ocupe el hilo.
+      await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+      await init({ module_or_path: bytes });
+    } catch (error) {
+      // winit sale de `main` con esta excepción a propósito: el juego sigue.
+      if (!String(error).includes("Using exceptions for control flow")) {
+        console.error(error);
+        fail(`El juego no ha podido arrancar: ${error.message ?? error}`);
+      }
+    }
+  </script>
+</body>
+</html>

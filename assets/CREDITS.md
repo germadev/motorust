@@ -1,0 +1,38 @@
+# Asset credits
+
+All textures come from [Poly Haven](https://polyhaven.com) under the
+[CC0](https://creativecommons.org/publicdomain/zero/1.0/) licence (public
+domain): they can be used, modified and redistributed without permission or
+attribution. Thank you anyway.
+
+They have been downsized and retouched (more saturation, less contrast in the
+asphalt cracks, the grass recoloured to a brighter green and the sky cropped to
+the upper hemisphere) to bring them closer to the look of 90s games.
+
+| File | Poly Haven original |
+|---|---|
+| `textures/sky.jpg` | [Kloofendal 48d Partly Cloudy (Pure Sky)](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) |
+| `textures/grass.jpg` | [Leafy Grass](https://polyhaven.com/a/leafy_grass) |
+| `textures/rock.jpg` | [Marble Cliff 03](https://polyhaven.com/a/marble_cliff_03) |
+| `textures/wall.jpg` | [Stone Wall](https://polyhaven.com/a/stone_wall) |
+| `textures/asphalt.jpg` | [Asphalt 02](https://polyhaven.com/a/asphalt_02) |
+| `textures/sand.jpg` | [Coast Sand 01](https://polyhaven.com/a/coast_sand_01) |
+| `textures/roof.jpg` | [Clay Roof Tiles](https://polyhaven.com/a/clay_roof_tiles) |
+| `textures/plaster.jpg` | [Plastered Wall](https://polyhaven.com/a/plastered_wall) |
+
+## Models
+
+The bikes and their riders (`models/shogun`, `models/kraken`, `models/falcon`,
+`models/stiletto`, `models/azura`, `models/legend`, `models/cobra` and
+`models/ronin`) were made by the project's author with
+[Meshy](https://www.meshy.ai) from their own design sheets, and the riders use
+the skeleton from Meshy's auto-rigging. The originals are attached to the
+repository's [model releases](https://github.com/germadev/motorust/releases);
+`tools/import_models.py` splits them into parts, scales them to the game's
+measurements and downsizes their textures.
+
+## Font
+
+`fonts/RussoOne-Regular.ttf` is [Russo One](https://fonts.google.com/specimen/Russo+One)
+by Jovanny Lemonad, licensed under the SIL Open Font License 1.1
+(`fonts/RussoOne-OFL.txt`).

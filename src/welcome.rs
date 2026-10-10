@@ -1,0 +1,390 @@
+//! Pantalla de bienvenida: el título del juego mientras la cámara recorre la
+//! pista, con Comenzar, Opciones y Salir. En Opciones se cambian la
+//! resolución, el límite de fotogramas por segundo y las teclas y botones de
+//! cada acción ([`crate::settings`]). En la web no se sale del juego (se
+//! cierra la pestaña) y los fotogramas los marca el navegador.
+
+use bevy::prelude::*;
+
+use crate::camera::CameraGlide;
+use crate::hud::UiFont;
+use crate::menu::GameState;
+use crate::settings::{
+    ACTIONS, Action, Controls, FPS_LIMITS, FULLSCREEN_KEYS, RESOLUTIONS, Settings, WEB, cycle,
+};
+use crate::track::Track;
+use crate::ui::{
+    MenuInput, MenuSound, Row, gamepad_status, spawn_hint, spawn_logo, spawn_panel, spawn_title,
+    text_font,
+};
+
+/// Tiempo para pulsar la tecla o el botón nuevo antes de que se cancele (s).
+const CAPTURE_TIME: f32 = 8.0;
+/// La cámara recorre la pista a esta velocidad (m/s), a un lado del centro
+/// de la carretera (m, positivo a la izquierda) y a esta altura sobre ella;
+/// mira a un punto de la carretera más adelante (m), a esta altura, con este
+/// campo de visión (rad).
+const FLYBY_SPEED: f32 = 22.0;
+const FLYBY_SIDE: f32 = -4.0;
+const FLYBY_HEIGHT: f32 = 6.0;
+const FLYBY_AHEAD: f32 = 45.0;
+const FLYBY_LOOK_HEIGHT: f32 = 1.5;
+const FLYBY_FOV: f32 = 0.9;
+
+pub struct WelcomePlugin;
+
+impl Plugin for WelcomePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Welcome>()
+            .add_systems(OnEnter(GameState::Welcome), open)
+            .add_systems(
+                Update,
+                (use_welcome, show_welcome, fly_over_track)
+                    .chain()
+                    .run_if(in_state(GameState::Welcome)),
+            );
+    }
+}
+
+/// Qué página se ve, qué opción está elegida y si se espera una tecla nueva.
+#[derive(Resource, Default)]
+struct Welcome {
+    page: Page,
+    selected: usize,
+    capture: Option<Capture>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+enum Page {
+    #[default]
+    Main,
+    Options,
+    Controls,
+}
+
+/// Esperando la tecla o el botón nuevo de una acción desde este momento (s
+/// de reloj).
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Capture {
+    action: Action,
+    since: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Item {
+    Start,
+    Options,
+    Quit,
+    Resolution,
+    Fps,
+    Controls,
+    Bind(Action),
+    ResetControls,
+    Back,
+}
+
+/// Las opciones de cada página.
+fn items(page: Page) -> Vec<Item> {
+    match page {
+        Page::Main if WEB => vec![Item::Start, Item::Options],
+        Page::Main => vec![Item::Start, Item::Options, Item::Quit],
+        Page::Options if WEB => vec![Item::Resolution, Item::Controls, Item::Back],
+        Page::Options => vec![Item::Resolution, Item::Fps, Item::Controls, Item::Back],
+        Page::Controls => ACTIONS
+            .iter()
+            .map(|&action| Item::Bind(action))
+            .chain([Item::ResetControls, Item::Back])
+            .collect(),
+    }
+}
+
+/// Cómo se ve una opción, con su valor si tiene.
+fn row(item: Item, settings: &Settings, capture: Option<Capture>) -> Row {
+    match item {
+        Item::Start => Row::new("Comenzar"),
+        Item::Options => Row::new("Opciones"),
+        Item::Quit => Row::new("Salir"),
+        Item::Resolution => Row::with_value(
+            "Resolución",
+            format!("<  {}  >", settings.resolution.name()),
+        ),
+        Item::Fps => Row::with_value("Límite de FPS", format!("<  {}  >", settings.fps.name())),
+        Item::Controls => Row::new("Controles: teclado y mando"),
+        Item::Bind(action) => Row::with_value(
+            action.name(),
+            match capture {
+                Some(capture) if capture.action == action => "Pulsa una tecla o un botón".into(),
+                _ => settings.controls.describe(action),
+            },
+        ),
+        Item::ResetControls => Row::new("Restablecer los controles"),
+        Item::Back => Row::new("Volver"),
+    }
+}
+
+/// Al llegar, la página principal con Comenzar elegido.
+fn open(mut welcome: ResMut<Welcome>) {
+    *welcome = Welcome::default();
+}
+
+fn use_welcome(
+    mut input: MenuInput,
+    time: Res<Time<Real>>,
+    mut welcome: ResMut<Welcome>,
+    mut settings: ResMut<Settings>,
+    mut next: ResMut<NextState<GameState>>,
+    mut exit: MessageWriter<AppExit>,
+    mut sounds: MessageWriter<MenuSound>,
+) {
+    let request = input.read();
+    let now = time.elapsed_secs();
+    if let Some(capture) = welcome.capture {
+        // La primera tecla o el primer botón que se pulse; Esc cancela, y M
+        // es siempre el sonido.
+        let key = input
+            .keyboard
+            .get_just_pressed()
+            .copied()
+            .find(|&key| key != KeyCode::KeyM);
+        let button = input
+            .gamepads
+            .iter()
+            .find_map(|gamepad| gamepad.get_just_pressed().next().copied());
+        if key == Some(KeyCode::Escape) || now - capture.since > CAPTURE_TIME {
+            welcome.capture = None;
+            sounds.write(MenuSound::Move);
+        } else if let Some(key) = key {
+            settings.controls.bind_key(capture.action, key);
+            welcome.capture = None;
+            sounds.write(MenuSound::Confirm);
+        } else if let Some(button) = button {
+            settings.controls.bind_button(capture.action, button);
+            welcome.capture = None;
+            sounds.write(MenuSound::Confirm);
+        }
+        return;
+    }
+
+    let items = items(welcome.page);
+    if request.step != 0 {
+        welcome.selected =
+            (welcome.selected as i32 + request.step).rem_euclid(items.len() as i32) as usize;
+        sounds.write(MenuSound::Move);
+    }
+    let item = items[welcome.selected];
+    // Esc o B vuelven a la página anterior.
+    if request.back {
+        match welcome.page {
+            Page::Main => return,
+            Page::Options => go(&mut welcome, Page::Main, Item::Options),
+            Page::Controls => go(&mut welcome, Page::Options, Item::Controls),
+        }
+        sounds.write(MenuSound::Move);
+        return;
+    }
+    // Izquierda y derecha cambian los valores; Enter o A, también, hacia
+    // delante.
+    let change = if request.side != 0 {
+        request.side
+    } else {
+        i32::from(request.confirm)
+    };
+    match item {
+        Item::Resolution if change != 0 => {
+            settings.resolution = cycle(RESOLUTIONS, settings.resolution, change);
+            sounds.write(MenuSound::Move);
+        }
+        Item::Fps if change != 0 => {
+            settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
+            sounds.write(MenuSound::Move);
+        }
+        _ if !(request.confirm || (request.start && welcome.page == Page::Main)) => {}
+        Item::Start => {
+            sounds.write(MenuSound::Confirm);
+            next.set(GameState::Tracks);
+        }
+        Item::Options => {
+            go(&mut welcome, Page::Options, Item::Resolution);
+            sounds.write(MenuSound::Confirm);
+        }
+        Item::Quit => {
+            exit.write(AppExit::Success);
+        }
+        Item::Controls => {
+            go(&mut welcome, Page::Controls, Item::Bind(ACTIONS[0]));
+            sounds.write(MenuSound::Confirm);
+        }
+        Item::Bind(action) => {
+            welcome.capture = Some(Capture { action, since: now });
+            sounds.write(MenuSound::Confirm);
+        }
+        Item::ResetControls => {
+            if settings.controls != Controls::default() {
+                settings.controls = Controls::default();
+            }
+            sounds.write(MenuSound::Confirm);
+        }
+        Item::Back => {
+            match welcome.page {
+                Page::Controls => go(&mut welcome, Page::Options, Item::Controls),
+                _ => go(&mut welcome, Page::Main, Item::Options),
+            }
+            sounds.write(MenuSound::Move);
+        }
+        Item::Resolution | Item::Fps => {}
+    }
+}
+
+/// Pasa a otra página con una opción elegida.
+fn go(welcome: &mut Welcome, page: Page, item: Item) {
+    let selected = items(page).iter().position(|&i| i == item).unwrap_or(0);
+    (welcome.page, welcome.selected) = (page, selected);
+}
+
+/// La pantalla, rehecha cada vez que cambia algo.
+#[derive(Component)]
+struct WelcomeScreen;
+
+fn show_welcome(
+    mut commands: Commands,
+    welcome: Res<Welcome>,
+    settings: Res<Settings>,
+    font: Res<UiFont>,
+    shown: Query<Entity, With<WelcomeScreen>>,
+) {
+    if !welcome.is_changed() && !settings.is_changed() {
+        return;
+    }
+    for entity in &shown {
+        commands.entity(entity).despawn();
+    }
+    let rows: Vec<Row> = items(welcome.page)
+        .into_iter()
+        .map(|item| row(item, &settings, welcome.capture))
+        .collect();
+    let hint = match (welcome.page, welcome.capture) {
+        (Page::Main, _) => "Arriba y abajo: elegir   ·   Enter o A: aceptar".to_string(),
+        (Page::Options, _) => {
+            "Arriba y abajo: elegir   ·   Izquierda y derecha: cambiar   ·   Esc o B: volver"
+                .to_string()
+        }
+        (Page::Controls, None) => {
+            "Enter o A: cambiar la tecla o el botón   ·   Esc o B: volver".to_string()
+        }
+        (Page::Controls, Some(capture)) => format!(
+            "Pulsa la tecla o el botón para «{}»   ·   Esc: cancelar",
+            capture.action.name()
+        ),
+    };
+    commands
+        .spawn((
+            WelcomeScreen,
+            DespawnOnExit(GameState::Welcome),
+            Node {
+                width: percent(100),
+                height: percent(100),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: px(14),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.02, 0.06, 0.3)),
+        ))
+        .with_children(|screen| {
+            match welcome.page {
+                Page::Main => {
+                    spawn_logo(screen, &font, 110.0);
+                    screen.spawn((
+                        Text::new("Carreras de motos arcade"),
+                        text_font(&font, 24.0),
+                        TextShadow::default(),
+                        Node {
+                            margin: UiRect::bottom(px(26)),
+                            ..default()
+                        },
+                    ));
+                }
+                Page::Options => spawn_title(screen, &font, "OPCIONES", 52.0),
+                Page::Controls => spawn_title(screen, &font, "CONTROLES", 52.0),
+            }
+            spawn_panel(
+                screen,
+                &font,
+                &rows,
+                welcome.selected,
+                welcome.page == Page::Controls,
+            );
+            if welcome.page == Page::Controls {
+                screen.spawn((
+                    Text::new(format!(
+                        "Siempre: stick izquierdo para girar (hacia atrás, caballito)   ·   \
+                         stick derecho para mirar   ·   M para el sonido   ·   \
+                         {FULLSCREEN_KEYS} para la pantalla completa"
+                    )),
+                    text_font(&font, 16.0),
+                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
+                    TextShadow::default(),
+                ));
+            }
+            spawn_hint(screen, &font, &hint);
+            screen.spawn(gamepad_status(&font));
+        });
+}
+
+/// La cámara recorre la pista despacio, un poco por encima de la carretera.
+fn fly_over_track(
+    time: Res<Time>,
+    track: Res<Track>,
+    camera: Single<(&mut Transform, &mut Projection), With<Camera3d>>,
+    mut glide: ResMut<CameraGlide>,
+    mut travelled: Local<f32>,
+) {
+    let dt = time.delta_secs();
+    let length = track.sample_count() as f32 * track.step_length();
+    *travelled = (*travelled + FLYBY_SPEED * dt) % length;
+    // Un punto de la carretera a `distance` m de la meta, entre dos muestras.
+    let at = |distance: f32, lateral: f32| {
+        let samples = distance.rem_euclid(length) / track.step_length();
+        let index = samples as usize;
+        track
+            .surface_point(index, lateral)
+            .lerp(track.surface_point(index + 1, lateral), samples.fract())
+    };
+    let position = at(*travelled, FLYBY_SIDE) + Vec3::Y * FLYBY_HEIGHT;
+    let target = at(*travelled + FLYBY_AHEAD, 0.0) + Vec3::Y * FLYBY_LOOK_HEIGHT;
+    let wanted = Transform::from_translation(position).looking_at(target, Vec3::Y);
+    let (mut transform, mut projection) = camera.into_inner();
+    glide.apply(&mut transform, &mut projection, wanted, FLYBY_FOV, dt);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_welcome_screen_offers_what_was_asked() {
+        assert_eq!(items(Page::Main), [Item::Start, Item::Options, Item::Quit]);
+        assert_eq!(
+            items(Page::Options),
+            [Item::Resolution, Item::Fps, Item::Controls, Item::Back]
+        );
+        // Una fila por acción, y después restablecer y volver.
+        let controls = items(Page::Controls);
+        assert_eq!(controls.len(), ACTIONS.len() + 2);
+        assert_eq!(controls[0], Item::Bind(Action::Throttle));
+        // Mientras se espera la tecla nueva, su fila lo dice.
+        let settings = Settings::default();
+        let capture = Capture {
+            action: Action::Brake,
+            since: 0.0,
+        };
+        let value = |action| {
+            row(Item::Bind(action), &settings, Some(capture))
+                .value
+                .unwrap()
+        };
+        assert_eq!(value(Action::Brake), "Pulsa una tecla o un botón");
+        assert_eq!(value(Action::Throttle), "W, Arriba   ·   RT, A");
+    }
+}

@@ -1,0 +1,65 @@
+# La versión web del juego en GitHub Pages: se compila para wasm en cada PR
+# (para saber que sigue compilando) y en cada push a main, que además la
+# publica en https://germadev.github.io/motorust/.
+#
+# En Settings → Pages, la fuente tiene que ser «GitHub Actions».
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Una publicación detrás de otra; en una PR, un push nuevo cancela el run
+# anterior.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Compilar para la web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm32
+      - name: wasm-bindgen
+        run: |
+          # La misma versión que la librería en Cargo.lock, o no se entienden.
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          echo "wasm-bindgen $version"
+          if [ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen $version" ]; then
+            cargo install wasm-bindgen-cli --locked --version "$version"
+          fi
+      - name: Compilar
+        run: web/build.sh dist/web
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+  deploy:
+    name: Publicar
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

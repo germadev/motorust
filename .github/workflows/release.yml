@@ -1,0 +1,93 @@
+# Publica una versión nueva, a mano desde la pestaña Actions: se elige qué
+# parte de la versión sube (mayor, menor o parche), se compila con build.yml
+# para todos los sistemas y se crea la release de GitHub con las builds y sus
+# sumas SHA-256.
+#
+# La versión sale de la última etiqueta vX.Y.Z (las releases con los modelos
+# originales no cuentan). Sin ninguna, se parte de 0.0.0: la primera release
+# es 0.0.1, 0.1.0 o 1.0.0 según lo que se elija.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Qué parte de la versión sube
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+# Una release detrás de otra, nunca dos a la vez.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Versión nueva
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Calcular la versión
+        id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+          IFS=. read -r major minor patch <<< "${last:-v0.0.0}"
+          major=${major#v}
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+            *) echo "No sé subir «$BUMP»"; exit 1 ;;
+          esac
+          version="$major.$minor.$patch"
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "La etiqueta v$version ya existe"
+            exit 1
+          fi
+          echo "De ${last:-nada} a v$version ($BUMP)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  release:
+    name: Release de GitHub
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: motorust-*
+          path: dist
+          merge-multiple: true
+      - name: Sumas SHA-256
+        run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Crear la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Motorust $VERSION" \
+            --generate-notes
