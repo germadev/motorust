@@ -72,13 +72,18 @@ impl Plugin for ChaseCameraPlugin {
         app.insert_resource(ClearColor(HORIZON))
             .add_systems(Startup, spawn_camera)
             .init_resource::<CameraGlide>()
+            .add_systems(OnEnter(GameState::Select), setup_split_cameras)
             .add_systems(OnEnter(GameState::Race), (setup_split_cameras, reset_chase))
-            .add_systems(OnExit(GameState::Race), cleanup_camera_viewports)
+            .add_systems(OnEnter(GameState::Tracks), cleanup_camera_viewports)
+            .add_systems(OnEnter(GameState::Welcome), cleanup_camera_viewports)
+            .add_systems(OnEnter(GameState::Lobby), cleanup_camera_viewports)
             .add_systems(
                 Update,
-                (update_camera_viewports, follow_player)
-                    .chain()
-                    .run_if(in_state(GameState::Race)),
+                (
+                    update_camera_viewports
+                        .run_if(in_state(GameState::Select).or_else(in_state(GameState::Race))),
+                    follow_player.run_if(in_state(GameState::Race)),
+                ),
             );
     }
 }
@@ -147,11 +152,27 @@ fn spawn_camera(mut commands: Commands) {
         ChaseCamera::default(),
         CameraPlayer(0),
     ));
+
+    // Cámara dedicada a la interfaz (UI) para que la maquetación siempre cubra
+    // la ventana completa, independientemente de los viewports de pantalla dividida 3D.
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: 100,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        bevy::ui::IsDefaultUiCamera,
+    ));
 }
 
 /// En modo pantalla dividida, crea la segunda cámara para el Jugador 2 (abajo).
-fn setup_split_cameras(mut commands: Commands, game_mode: Res<GameMode>) {
-    if *game_mode == GameMode::SplitScreen {
+fn setup_split_cameras(
+    mut commands: Commands,
+    game_mode: Res<GameMode>,
+    existing: Query<Entity, (With<CameraPlayer>, With<Camera3d>)>,
+) {
+    if *game_mode == GameMode::SplitScreen && existing.iter().count() < 2 {
         commands.spawn((
             Camera3d::default(),
             Camera {
@@ -173,7 +194,6 @@ fn setup_split_cameras(mut commands: Commands, game_mode: Res<GameMode>) {
             },
             ChaseCamera::default(),
             CameraPlayer(1),
-            DespawnOnExit(GameState::Race),
         ));
     }
 }
@@ -227,13 +247,18 @@ fn update_camera_viewports(
     }
 }
 
-/// Al salir de la carrera, restaura la cámara principal a pantalla completa para los menús.
-fn cleanup_camera_viewports(mut cameras: Query<(&CameraPlayer, &mut Camera)>) {
-    for (cam_player, mut camera) in &mut cameras {
+/// Al salir a menús compartidos de pantalla completa, restaura la cámara principal y elimina la secundaria.
+fn cleanup_camera_viewports(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, &CameraPlayer, &mut Camera), With<Camera3d>>,
+) {
+    for (entity, cam_player, mut camera) in &mut cameras {
         if cam_player.0 == 0 {
             camera.order = 0;
             camera.viewport = None;
             camera.is_active = true;
+        } else {
+            commands.entity(entity).despawn();
         }
     }
 }

@@ -243,34 +243,44 @@ struct HudMap;
 struct Dot(Entity);
 
 fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>, game_mode: Res<GameMode>) {
-    let node = if *game_mode == GameMode::SplitScreen {
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(16),
-            top: percent(50.0),
-            margin: UiRect::top(px(-HUD_SIZE / 2.0)),
-            width: px(HUD_SIZE),
-            height: px(HUD_SIZE),
-            border_radius: BorderRadius::all(px(14)),
-            ..default()
-        }
+    let (node, border) = if *game_mode == GameMode::SplitScreen {
+        (
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(16),
+                top: percent(50.0),
+                margin: UiRect::top(px(-HUD_SIZE / 2.0)),
+                width: px(HUD_SIZE),
+                height: px(HUD_SIZE),
+                border_radius: BorderRadius::all(px(14)),
+                border: UiRect::all(px(2)),
+                ..default()
+            },
+            BorderColor::all(Color::srgba(0.25, 0.35, 0.5, 0.7)),
+        )
     } else {
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(16),
-            bottom: px(16),
-            width: px(HUD_SIZE),
-            height: px(HUD_SIZE),
-            border_radius: BorderRadius::all(px(14)),
-            ..default()
-        }
+        (
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(16),
+                bottom: px(16),
+                width: px(HUD_SIZE),
+                height: px(HUD_SIZE),
+                border_radius: BorderRadius::all(px(14)),
+                border: UiRect::all(px(1)),
+                ..default()
+            },
+            BorderColor::all(Color::srgba(0.2, 0.25, 0.35, 0.4)),
+        )
     };
 
     commands.spawn((
         HudMap,
         DespawnOnExit(GameState::Race),
         node,
-        BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.45)),
+        border,
+        GlobalZIndex(10),
+        BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.65)),
         children![(
             ImageNode::new(map.image.clone()),
             Node {

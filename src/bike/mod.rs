@@ -15,7 +15,7 @@ use bevy::{ecs::system::SystemParam, prelude::*};
 use crate::geometry::{approach, forward, heading_of, smoothstep, to_world, wrap_angle};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::locale::Language;
-use crate::menu::{Choice, GameState};
+use crate::menu::{Choice, GameState, SplitChoices};
 use crate::pause::{self, DebugOptions, TurnLimit};
 use crate::settings::{Action, Settings};
 use crate::track::{SURFACE_Y, Surface, Track, WALL_DISTANCE};
@@ -94,6 +94,7 @@ impl Plugin for BikePlugin {
         app.add_plugins(BikeModelPlugin)
             .init_resource::<BikeTuning>()
             .init_resource::<Race>()
+            .init_resource::<SplitChoices>()
             .add_systems(OnEnter(GameState::Race), spawn_grid)
             .add_systems(
                 FixedUpdate,
@@ -698,6 +699,21 @@ fn lineup(choice: usize) -> [usize; GRID.len()] {
     lineup
 }
 
+/// En pantalla dividida: P1 (`p1_choice`) en PLAYER_SLOT, P2 (`p2_choice`) en PLAYER_SLOT - 1,
+/// y los rivales en el resto.
+fn split_lineup(p1_choice: usize, p2_choice: usize) -> [usize; GRID.len()] {
+    let mut lineup = [0; GRID.len()];
+    lineup[PLAYER_SLOT] = p1_choice;
+    lineup[PLAYER_SLOT - 1] = p2_choice;
+    let mut others = (0..ROSTER.len()).filter(|&entry| entry != p1_choice && entry != p2_choice);
+    for (slot, entry) in lineup.iter_mut().enumerate() {
+        if slot != PLAYER_SLOT && slot != PLAYER_SLOT - 1 {
+            *entry = others.next().unwrap_or(slot % ROSTER.len());
+        }
+    }
+    lineup
+}
+
 /// El color de una moto, el de su nombre en [`ROSTER`]: el de su punto en el
 /// minimapa.
 #[derive(Component, Clone, Copy)]
@@ -746,12 +762,22 @@ fn spawn_grid(
     mut commands: Commands,
     track: Res<Track>,
     choice: Res<Choice>,
+    split_choices: Option<Res<SplitChoices>>,
     mut race: ResMut<Race>,
     mut assets: BikeAssets,
     game_mode: Res<GameMode>,
 ) {
     race.started = false;
-    for (slot, (rival, entry)) in GRID.iter().zip(lineup(choice.0)).enumerate() {
+    let roster_indices = if *game_mode == GameMode::SplitScreen {
+        if let Some(split) = split_choices {
+            split_lineup(split.p1, split.p2)
+        } else {
+            split_lineup(0, 1)
+        }
+    } else {
+        lineup(choice.0)
+    };
+    for (slot, (rival, entry)) in GRID.iter().zip(roster_indices).enumerate() {
         let state = BikeState::parked_on(&track, track.grid_slot(slot));
         let bike = assets.spawn(&mut commands, &ROSTER[entry], state);
         let mut bike = commands.entity(bike);
