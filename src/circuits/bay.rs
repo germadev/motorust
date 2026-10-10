@@ -112,12 +112,10 @@ pub const BAY: Circuit = Circuit {
             Vec2::new(-50.0, 40.0),
             Vec2::new(10.0, 190.0),
         ],
-        lighthouses: &[
-            Lighthouse {
-                position: Vec2::new(-170.0, -260.0),
-                height: 22.0,
-            },
-        ],
+        lighthouses: &[Lighthouse {
+            position: Vec2::new(-170.0, -260.0),
+            height: 22.0,
+        }],
         boats: &[
             Boat {
                 position: Vec2::new(-85.0, -100.0),
@@ -157,14 +155,12 @@ pub const BAY: Circuit = Circuit {
                 direction: ChevronDirection::Right,
             },
         ],
-        grandstands: &[
-            Grandstand {
-                along: 70.0,
-                side: Side::Right,
-                lateral: WALL_DISTANCE + 5.0,
-                length: 32.0,
-            },
-        ],
+        grandstands: &[Grandstand {
+            along: 70.0,
+            side: Side::Right,
+            lateral: WALL_DISTANCE + 5.0,
+            length: 32.0,
+        }],
         beach_parasols: &[
             ParasolCluster {
                 position: Vec2::new(-35.0, -110.0),

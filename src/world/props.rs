@@ -1134,9 +1134,18 @@ fn grandstand_meshes(length: f32) -> (Mesh, Mesh, Mesh) {
     structure.quad(
         [
             (Vec3::new(-hl, 0.0, total_depth), Vec2::ZERO),
-            (Vec3::new(hl, 0.0, total_depth), Vec2::new(length / 4.0, 0.0)),
-            (Vec3::new(hl, total_height, total_depth), Vec2::new(length / 4.0, 1.0)),
-            (Vec3::new(-hl, total_height, total_depth), Vec2::new(0.0, 1.0)),
+            (
+                Vec3::new(hl, 0.0, total_depth),
+                Vec2::new(length / 4.0, 0.0),
+            ),
+            (
+                Vec3::new(hl, total_height, total_depth),
+                Vec2::new(length / 4.0, 1.0),
+            ),
+            (
+                Vec3::new(-hl, total_height, total_depth),
+                Vec2::new(0.0, 1.0),
+            ),
         ],
         Vec3::Z,
         Color::srgb(0.7, 0.7, 0.68),
@@ -1177,8 +1186,14 @@ fn grandstand_meshes(length: f32) -> (Mesh, Mesh, Mesh) {
         [
             (Vec3::new(-hl - 0.5, 4.4, -0.5), Vec2::ZERO),
             (Vec3::new(hl + 0.5, 4.4, -0.5), Vec2::new(length / 4.0, 0.0)),
-            (Vec3::new(hl + 0.5, 5.4, total_depth + 0.6), Vec2::new(length / 4.0, 1.5)),
-            (Vec3::new(-hl - 0.5, 5.4, total_depth + 0.6), Vec2::new(0.0, 1.5)),
+            (
+                Vec3::new(hl + 0.5, 5.4, total_depth + 0.6),
+                Vec2::new(length / 4.0, 1.5),
+            ),
+            (
+                Vec3::new(-hl - 0.5, 5.4, total_depth + 0.6),
+                Vec2::new(0.0, 1.5),
+            ),
         ],
         Vec3::new(0.0, 1.0, -0.2).normalize(),
         Color::WHITE,
@@ -1223,10 +1238,7 @@ fn spawn_lighthouse(
                 Mesh3d(assets.meshes.add(lantern_mesh)),
                 MeshMaterial3d(metal),
             ),
-            (
-                Mesh3d(assets.meshes.add(lamp_mesh)),
-                MeshMaterial3d(beacon),
-            ),
+            (Mesh3d(assets.meshes.add(lamp_mesh)), MeshMaterial3d(beacon),),
         ],
     ));
 }
@@ -1264,7 +1276,16 @@ fn lighthouse_meshes(height: f32) -> (Mesh, Mesh, Mesh) {
             let p3 = Vec3::new(a0.cos() * r1, y1, a0.sin() * r1);
             let mid = (a0 + a1) / 2.0;
             let normal = Vec3::new(mid.cos(), 0.1, mid.sin()).normalize();
-            body.quad([(p0, Vec2::ZERO), (p1, Vec2::X), (p2, Vec2::ONE), (p3, Vec2::Y)], normal, color);
+            body.quad(
+                [
+                    (p0, Vec2::ZERO),
+                    (p1, Vec2::X),
+                    (p2, Vec2::ONE),
+                    (p3, Vec2::Y),
+                ],
+                normal,
+                color,
+            );
         }
     }
     // Plataforma del balcón superior
@@ -1276,7 +1297,16 @@ fn lighthouse_meshes(height: f32) -> (Mesh, Mesh, Mesh) {
         let p1 = Vec3::new(a1.cos() * r_top, height, a1.sin() * r_top);
         let p2 = Vec3::new(a1.cos() * r_balcony, height, a1.sin() * r_balcony);
         let p3 = Vec3::new(a0.cos() * r_balcony, height, a0.sin() * r_balcony);
-        body.quad([(p0, Vec2::ZERO), (p1, Vec2::X), (p2, Vec2::ONE), (p3, Vec2::Y)], Vec3::Y, Color::srgb(0.9, 0.9, 0.9));
+        body.quad(
+            [
+                (p0, Vec2::ZERO),
+                (p1, Vec2::X),
+                (p2, Vec2::ONE),
+                (p3, Vec2::Y),
+            ],
+            Vec3::Y,
+            Color::srgb(0.9, 0.9, 0.9),
+        );
         // Barandilla del balcón
         let b0 = Vec3::new(a0.cos() * r_balcony, height + 1.1, a0.sin() * r_balcony);
         let b1 = Vec3::new(a1.cos() * r_balcony, height + 1.1, a1.sin() * r_balcony);
@@ -1336,14 +1366,8 @@ fn spawn_boat(world: &mut ChildSpawnerCommands, boat: &Boat, assets: &mut Assets
                 Transform::from_translation(position).with_rotation(rotation),
                 Visibility::default(),
                 children![
-                    (
-                        Mesh3d(assets.meshes.add(hull)),
-                        MeshMaterial3d(hull_mat),
-                    ),
-                    (
-                        Mesh3d(assets.meshes.add(sails)),
-                        MeshMaterial3d(sail_mat),
-                    ),
+                    (Mesh3d(assets.meshes.add(hull)), MeshMaterial3d(hull_mat),),
+                    (Mesh3d(assets.meshes.add(sails)), MeshMaterial3d(sail_mat),),
                 ],
             ));
         }
@@ -1384,9 +1408,21 @@ fn sailboat_meshes() -> (Mesh, Mesh) {
     hull.triangle([(bow, u0), (stern_r, u1), (mid_r, u2)], Vec3::Y, wood);
 
     // Costados del casco
-    hull.triangle([(bow, u0), (keel, u1), (mid_l, u2)], Vec3::new(-1.0, 0.0, -0.5).normalize(), white);
-    hull.triangle([(bow, u0), (mid_r, u1), (keel, u2)], Vec3::new(1.0, 0.0, -0.5).normalize(), white);
-    hull.triangle([(mid_l, u0), (keel, u1), (stern_l, u2)], Vec3::NEG_X, stripe);
+    hull.triangle(
+        [(bow, u0), (keel, u1), (mid_l, u2)],
+        Vec3::new(-1.0, 0.0, -0.5).normalize(),
+        white,
+    );
+    hull.triangle(
+        [(bow, u0), (mid_r, u1), (keel, u2)],
+        Vec3::new(1.0, 0.0, -0.5).normalize(),
+        white,
+    );
+    hull.triangle(
+        [(mid_l, u0), (keel, u1), (stern_l, u2)],
+        Vec3::NEG_X,
+        stripe,
+    );
     hull.triangle([(mid_r, u0), (stern_r, u1), (keel, u2)], Vec3::X, stripe);
     hull.triangle([(stern_l, u0), (keel, u1), (stern_r, u2)], Vec3::Z, white);
 
@@ -1398,16 +1434,30 @@ fn sailboat_meshes() -> (Mesh, Mesh) {
 
     // Botavara y vela mayor
     let boom_end = Vec3::new(0.0, 1.4, LENGTH / 2.3);
-    hull.beam(mast_base + Vec3::Y * 0.8, boom_end, 0.12, 0.12, Color::srgb(0.8, 0.8, 0.85));
+    hull.beam(
+        mast_base + Vec3::Y * 0.8,
+        boom_end,
+        0.12,
+        0.12,
+        Color::srgb(0.8, 0.8, 0.85),
+    );
 
     sails.triangle(
-        [(mast_base + Vec3::Y * 0.9, u0), (boom_end, u1), (mast_top, u2)],
+        [
+            (mast_base + Vec3::Y * 0.9, u0),
+            (boom_end, u1),
+            (mast_top, u2),
+        ],
         Vec3::X,
         Color::WHITE,
     );
     // Foque / génova en proa
     sails.triangle(
-        [(bow + Vec3::Y * 0.2, u0), (mast_base + Vec3::Y * 0.5, u1), (mast_top - Vec3::Y * 2.0, u2)],
+        [
+            (bow + Vec3::Y * 0.2, u0),
+            (mast_base + Vec3::Y * 0.5, u1),
+            (mast_top - Vec3::Y * 2.0, u2),
+        ],
         Vec3::NEG_X,
         Color::srgb(0.94, 0.96, 0.98),
     );
@@ -1431,10 +1481,26 @@ fn yacht_mesh() -> Mesh {
     let (u0, u1, u2) = (Vec2::ZERO, Vec2::X, Vec2::ONE);
 
     // Casco
-    mesh.triangle([(bow, u0), (bottom, u1), (mid_l, u2)], Vec3::new(-1.0, 0.0, -0.5).normalize(), white);
-    mesh.triangle([(bow, u0), (mid_r, u1), (bottom, u2)], Vec3::new(1.0, 0.0, -0.5).normalize(), white);
-    mesh.triangle([(mid_l, u0), (bottom, u1), (stern_l, u2)], Vec3::NEG_X, blue_stripe);
-    mesh.triangle([(mid_r, u0), (stern_r, u1), (bottom, u2)], Vec3::X, blue_stripe);
+    mesh.triangle(
+        [(bow, u0), (bottom, u1), (mid_l, u2)],
+        Vec3::new(-1.0, 0.0, -0.5).normalize(),
+        white,
+    );
+    mesh.triangle(
+        [(bow, u0), (mid_r, u1), (bottom, u2)],
+        Vec3::new(1.0, 0.0, -0.5).normalize(),
+        white,
+    );
+    mesh.triangle(
+        [(mid_l, u0), (bottom, u1), (stern_l, u2)],
+        Vec3::NEG_X,
+        blue_stripe,
+    );
+    mesh.triangle(
+        [(mid_r, u0), (stern_r, u1), (bottom, u2)],
+        Vec3::X,
+        blue_stripe,
+    );
     mesh.triangle([(stern_l, u0), (bottom, u1), (stern_r, u2)], Vec3::Z, white);
 
     // Cubierta
@@ -1488,8 +1554,7 @@ fn spawn_parasol_cluster(
         world.spawn((
             Mesh3d(parasol_mesh.clone()),
             MeshMaterial3d(cloth_mat.clone()),
-            Transform::from_xyz(p.x, base, p.y)
-                .with_rotation(Quat::from_rotation_y(angle)),
+            Transform::from_xyz(p.x, base, p.y).with_rotation(Quat::from_rotation_y(angle)),
         ));
     }
 }
@@ -1500,7 +1565,13 @@ fn parasol_mesh() -> Mesh {
     const RADIUS: f32 = 1.6;
     const HEIGHT: f32 = 2.2;
     // Mástil de madera inclinado
-    mesh.beam(Vec3::ZERO, Vec3::new(0.15, HEIGHT, 0.0), 0.06, 0.06, Color::srgb(0.65, 0.52, 0.38));
+    mesh.beam(
+        Vec3::ZERO,
+        Vec3::new(0.15, HEIGHT, 0.0),
+        0.06,
+        0.06,
+        Color::srgb(0.65, 0.52, 0.38),
+    );
     // Cúpula octogonal a rayas de colores vivos
     let top = Vec3::new(0.15, HEIGHT + 0.4, 0.0);
     let rim_y = HEIGHT - 0.2;
@@ -1515,7 +1586,11 @@ fn parasol_mesh() -> Mesh {
             Color::srgb(0.96, 0.96, 0.96) // Blanco
         };
         let norm = Vec3::new(a0.cos(), 0.6, a0.sin()).normalize();
-        mesh.triangle([(p0, Vec2::ZERO), (p1, Vec2::X), (top, Vec2::new(0.5, 1.0))], norm, color);
+        mesh.triangle(
+            [(p0, Vec2::ZERO), (p1, Vec2::X), (top, Vec2::new(0.5, 1.0))],
+            norm,
+            color,
+        );
     }
     // Tumbona de madera
     mesh.beam(

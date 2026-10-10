@@ -100,12 +100,7 @@ fn items(page: Page) -> Vec<Item> {
 }
 
 /// Cómo se ve una opción, con su valor si tiene.
-fn row(
-    item: Item,
-    settings: &Settings,
-    capture: Option<Capture>,
-    window: Option<&Window>,
-) -> Row {
+fn row(item: Item, settings: &Settings, capture: Option<Capture>, window: Option<&Window>) -> Row {
     match item {
         Item::Start => Row::new("Comenzar"),
         Item::Options => Row::new("Opciones"),

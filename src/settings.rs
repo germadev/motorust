@@ -65,7 +65,11 @@ impl Resolution {
             Resolution::Dynamic if WEB => "Toda la página".into(),
             Resolution::Dynamic => match window {
                 Some(w) if w.physical_width() > 0 && w.physical_height() > 0 => {
-                    format!("Dinámica ({} × {})", w.physical_width(), w.physical_height())
+                    format!(
+                        "Dinámica ({} × {})",
+                        w.physical_width(),
+                        w.physical_height()
+                    )
                 }
                 _ => "Dinámica".into(),
             },

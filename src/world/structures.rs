@@ -533,20 +533,16 @@ fn spawn_chevron(
     };
     let yellow = Color::srgb(0.98, 0.84, 0.05);
     let black = Color::srgb(0.08, 0.08, 0.1);
-    let image = sign_image(
-        text,
-        black,
-        None,
-        yellow,
-        Some(black),
-        WIDTH / HEIGHT,
-    );
+    let image = sign_image(text, black, None, yellow, Some(black), WIDTH / HEIGHT);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [
             (Vec3::new(-WIDTH / 2.0, LIFT, 0.0), Vec2::new(0.0, 1.0)),
             (Vec3::new(WIDTH / 2.0, LIFT, 0.0), Vec2::new(1.0, 1.0)),
-            (Vec3::new(WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::new(1.0, 0.0)),
+            (
+                Vec3::new(WIDTH / 2.0, LIFT + HEIGHT, 0.0),
+                Vec2::new(1.0, 0.0),
+            ),
             (Vec3::new(-WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::ZERO),
         ],
         Vec3::Z,
@@ -606,20 +602,16 @@ fn spawn_brake_marker(
     let text = if marker.distance >= 100 { "100" } else { "50" };
     let white = Color::srgb(0.96, 0.96, 0.96);
     let black = Color::srgb(0.08, 0.08, 0.1);
-    let image = sign_image(
-        text,
-        black,
-        None,
-        white,
-        Some(black),
-        WIDTH / HEIGHT,
-    );
+    let image = sign_image(text, black, None, white, Some(black), WIDTH / HEIGHT);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [
             (Vec3::new(-WIDTH / 2.0, LIFT, 0.0), Vec2::new(0.0, 1.0)),
             (Vec3::new(WIDTH / 2.0, LIFT, 0.0), Vec2::new(1.0, 1.0)),
-            (Vec3::new(WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::new(1.0, 0.0)),
+            (
+                Vec3::new(WIDTH / 2.0, LIFT + HEIGHT, 0.0),
+                Vec2::new(1.0, 0.0),
+            ),
             (Vec3::new(-WIDTH / 2.0, LIFT + HEIGHT, 0.0), Vec2::ZERO),
         ],
         Vec3::Z,
@@ -658,4 +650,3 @@ fn spawn_brake_marker(
         ],
     ));
 }
-

@@ -61,11 +61,7 @@ pub enum SteerRate {
     Fast,
 }
 
-const STEER_RATES: [SteerRate; 3] = [
-    SteerRate::Slow,
-    SteerRate::Medium,
-    SteerRate::Fast,
-];
+const STEER_RATES: [SteerRate; 3] = [SteerRate::Slow, SteerRate::Medium, SteerRate::Fast];
 
 impl SteerRate {
     /// Factor que multiplica la rapidez con la que gira el teclado.

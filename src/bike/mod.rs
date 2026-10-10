@@ -1301,9 +1301,7 @@ mod tests {
     #[test]
     fn keyboard_steering_rate_option_changes_how_fast_it_turns_while_held() {
         let at = |values: &[f32], seconds: f32| values[(seconds / DT).round() as usize - 1];
-        let held = |rate: SteerRate| {
-            digital_steer_with_rate(0.0, rate.factor(), 1.0, DT, |_| 1.0)
-        };
+        let held = |rate: SteerRate| digital_steer_with_rate(0.0, rate.factor(), 1.0, DT, |_| 1.0);
         let slow = held(SteerRate::Slow);
         let medium = held(SteerRate::Medium);
         let fast = held(SteerRate::Fast);
