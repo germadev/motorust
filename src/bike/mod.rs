@@ -8,8 +8,6 @@ mod ai;
 mod chassis;
 mod model;
 
-use std::ops::Range;
-
 use bevy::{ecs::system::SystemParam, prelude::*};
 
 use crate::geometry::{approach, forward, heading_of, smoothstep, to_world, wrap_angle};
@@ -75,10 +73,11 @@ const WALL_ALIGN: f32 = 0.6;
 /// en ellas.
 const CORNER_DRIVE: f32 = 0.4;
 /// Desde qué parte del tope de la dirección se apura la curva: la moto agarra
-/// cada vez más, hasta tanto más (fracción) con la dirección a tope, despacio
-/// .. deprisa.
+/// cada vez más, hasta tanto más (fracción) con la dirección a tope. Igual a
+/// cualquier velocidad: si creciera deprisa, el final del recorrido del stick
+/// cerraría de golpe la curva.
 const CORNER_GRIP_FROM: f32 = 0.7;
-const CORNER_GRIP: Range<f32> = 0.6..1.4;
+const CORNER_GRIP: f32 = 0.6;
 /// Y solo desde aquí, casi a tope, el empuje de más se acaba, el motor empuja
 /// menos (fracción) y la moto pierde velocidad sola (m/s², deprisa) lo justo
 /// para cerrar las curvas más cerradas: en arcade, mantener el giro basta para
@@ -395,11 +394,8 @@ pub fn step(
     let steer_direct = input.steer_direct.clamp(-1.0, 1.0);
     let steer = (spring + steer_rate * dt + steer_direct).clamp(-1.0, 1.0);
     // Al apurar con la dirección a tope, la moto agarra más y cierra la curva.
-    // Más cuanto más deprisa: despacio manda el radio de giro.
-    let extra_grip = CORNER_GRIP
-        .start
-        .lerp(CORNER_GRIP.end, smoothstep(25.0, 60.0, speed.abs()));
-    let corner_grip = 1.0 + extra_grip * smoothstep(CORNER_GRIP_FROM, 1.0, steer.abs());
+    // Despacio no se nota: manda el radio de giro.
+    let corner_grip = 1.0 + CORNER_GRIP * smoothstep(CORNER_GRIP_FROM, 1.0, steer.abs());
     let max_yaw_rate = tuning.max_yaw_rate_with_grip(speed, corner_grip);
     // Con una rueda en el aire apenas se puede girar.
     let grip = state.chassis.steering_grip();
