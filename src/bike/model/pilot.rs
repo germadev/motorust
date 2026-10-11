@@ -212,6 +212,7 @@ pub(super) struct Pilot {
     tuck: f32,
     surge: f32,
     look: f32,
+    foot_down: f32,
 }
 
 /// Crea los huesos (hijos de `body`, en el espacio de la moto) y la malla.
@@ -255,6 +256,7 @@ pub(super) fn spawn(
         tuck: 0.0,
         surge: 0.0,
         look: 0.0,
+        foot_down: 1.0,
     });
 }
 
@@ -280,6 +282,8 @@ pub(super) struct Stance {
     pub look: f32,
     /// Inclinación de la moto (rad), positiva hacia la izquierda.
     pub lean: f32,
+    /// Bajar el pie al suelo en parado, de 0 a 1.
+    pub foot_down: f32,
 }
 
 /// Postura de cada hueso (posición y giro en el espacio de la moto).
@@ -373,7 +377,12 @@ fn torso(skeleton: &Skeleton, stance: &Stance, bend: f32) -> (Vec<Vec3>, Vec<Qua
     let mut position = vec![Vec3::ZERO; joints.len()];
     let mut rotation = vec![Quat::IDENTITY; joints.len()];
     let pitch = |angle: f32| Quat::from_rotation_x(-angle);
-    position[bones.hips] = stance.seat + Vec3::new(-HANG_OFF * stance.hang, 0.0, stance.surge);
+    let hip_shift = Vec3::new(
+        -HANG_OFF * stance.hang + 0.05 * stance.foot_down,
+        -0.06 * stance.foot_down,
+        stance.surge,
+    );
+    position[bones.hips] = stance.seat + hip_shift;
     rotation[bones.hips] = Quat::from_rotation_z(HANG_OFF_LEAN * 0.5 * stance.hang)
         * pitch(PELVIS_PITCH * bend)
         * joints[bones.hips].rotation;
@@ -537,6 +546,12 @@ pub(super) fn pose_pilots(
         pilot.surge = approach(pilot.surge, surge, POSE_RESPONSE * 1.5, dt);
         let look = super::look_angle(state, &tuning);
         pilot.look = approach(pilot.look, look, POSE_RESPONSE, dt);
+        let stopped = if state.grounded {
+            (1.0 - state.speed.abs() / crate::bike::STOPPED_SPEED).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        pilot.foot_down = approach(pilot.foot_down, stopped, POSE_RESPONSE, dt);
 
         let steering = transforms
             .get(rig.steering)
@@ -546,10 +561,12 @@ pub(super) fn pose_pilots(
             steering.transform_point((geometry.grip - geometry.steering_head) * mirror)
         };
         let peg = |side: f32| geometry.peg * Vec3::new(side, 1.0, 1.0);
+        let foot_ground = Vec3::new(0.38, 0.19, geometry.seat.z);
+        let right_peg = peg(1.0).lerp(foot_ground, pilot.foot_down);
         let stance = Stance {
             seat: geometry.seat,
             grips: [grip(1.0), grip(-1.0)],
-            pegs: [peg(1.0), peg(-1.0)],
+            pegs: [right_peg, peg(-1.0)],
             hang: pilot.hang,
             sit_up: pilot.sit_up,
             tuck: pilot.tuck,
@@ -557,6 +574,7 @@ pub(super) fn pose_pilots(
             wheelie: state.chassis.wheelie,
             look: pilot.look,
             lean: state.lean,
+            foot_down: pilot.foot_down,
         };
         for (entity, transform) in pilot
             .joints
@@ -612,6 +630,7 @@ mod tests {
             wheelie: 0.0,
             look: 0.0,
             lean: 0.0,
+            foot_down: 0.0,
         }
     }
 
@@ -635,6 +654,26 @@ mod tests {
                 };
                 hands_and_feet_reach(&skeleton, &stance);
             }
+        }
+    }
+
+    #[test]
+    fn right_foot_reaches_the_ground_when_stopped() {
+        for model in MODELS {
+            let skeleton = skeleton_of(model);
+            let geometry = model.geometry;
+            let foot_ground = Vec3::new(0.38, 0.19, geometry.seat.z);
+            let mut stance = stance_on(model);
+            stance.lean = crate::bike::STOPPED_LEAN;
+            stance.foot_down = 1.0;
+            stance.pegs[0] = foot_ground;
+            let posed = pose(&skeleton, &stance);
+            let right_foot = posed[skeleton.bones.legs[0][2]].translation;
+            assert!(
+                right_foot.distance(foot_ground) < 0.01,
+                "pie derecho en el suelo a {}",
+                right_foot.distance(foot_ground)
+            );
         }
     }
 

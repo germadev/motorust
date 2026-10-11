@@ -105,11 +105,16 @@ impl MenuInput<'_, '_> {
             start: false,
             options: keyboard.just_pressed(KeyCode::Tab),
         };
+        let mut dpad_down = false;
+        let mut dpad_up = false;
+        let mut dpad_right = false;
+        let mut dpad_left = false;
         let mut stick = Vec2::ZERO;
         for gamepad in &self.gamepads {
-            let pressed = |button| i32::from(gamepad.just_pressed(button));
-            request.step += pressed(GamepadButton::DPadDown) - pressed(GamepadButton::DPadUp);
-            request.side += pressed(GamepadButton::DPadRight) - pressed(GamepadButton::DPadLeft);
+            dpad_down |= gamepad.just_pressed(GamepadButton::DPadDown);
+            dpad_up |= gamepad.just_pressed(GamepadButton::DPadUp);
+            dpad_right |= gamepad.just_pressed(GamepadButton::DPadRight);
+            dpad_left |= gamepad.just_pressed(GamepadButton::DPadLeft);
             request.confirm |= gamepad.just_pressed(GamepadButton::South)
                 || gamepad.just_pressed(GamepadButton::Start);
             request.back |= gamepad.just_pressed(GamepadButton::East);
@@ -124,10 +129,17 @@ impl MenuInput<'_, '_> {
                 stick.y = y;
             }
         }
+        let pad_step = i32::from(dpad_down) - i32::from(dpad_up);
+        let pad_side = i32::from(dpad_right) - i32::from(dpad_left);
+        request.step += pad_step;
+        request.side += pad_side;
+
         // El stick mueve una vez cada vez que se inclina (arriba es positivo).
         let (vertical, horizontal) = &mut *self.held;
         request.step -= tilt(stick.y, vertical);
         request.side += tilt(stick.x, horizontal);
+        request.step = request.step.clamp(-1, 1);
+        request.side = request.side.clamp(-1, 1);
         request
     }
 }

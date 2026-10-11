@@ -347,27 +347,52 @@ fn checker() -> Image {
     image
 }
 
-/// Textura de agua para el mar: azules y turquesas vivos con ondulaciones
-/// suaves de olas, reflejos y crestas de espuma que se repiten armónicamente.
+/// Textura de agua para el mar: azules y turquesas vivos mediterráneos con ondulaciones
+/// suaves de olas armónicas y periódicas, sin saltos ni altas frecuencias para eliminar el muaré.
 fn water() -> Image {
-    const SIZE: u32 = 256;
+    const SIZE: u32 = 512;
+    let inv_size = std::f32::consts::TAU / SIZE as f32;
+    // Componentes armónicos estrictamente periódicos (frecuencias enteras):
+    // garantizan continuidad matemática en los bordes de repetición (sin costuras)
+    // y un oleaje amplio que previene el aliasing y el efecto muaré a la distancia.
+    let waves = [
+        (2.0, 1.0, 0.0f32, 0.35f32),
+        (-1.0, 2.0, 1.3, 0.25),
+        (3.0, -1.0, 2.6, 0.18),
+        (-2.0, 3.0, 0.9, 0.12),
+        (4.0, 2.0, 3.2, 0.07),
+        (1.0, -4.0, 1.8, 0.03),
+    ];
+    let deep_abyss = Color::srgb(0.015, 0.09, 0.28).to_srgba();
+    let ocean_blue = Color::srgb(0.03, 0.22, 0.44).to_srgba();
+    let turquoise = Color::srgb(0.06, 0.42, 0.56).to_srgba();
+    let wave_crest = Color::srgb(0.12, 0.58, 0.68).to_srgba();
+    let sun_foam = Color::srgb(0.24, 0.66, 0.74).to_srgba();
+
     let data = (0..SIZE * SIZE)
         .flat_map(|i| {
             let (x, y) = ((i % SIZE) as f32, (i / SIZE) as f32);
-            let point = Vec2::new(x, y);
-            let wave1 = (x * 0.08 + y * 0.05).sin();
-            let wave2 = ((x * 0.06 - y * 0.09) * 1.3).sin();
-            let detail = fbm(point / 12.0, 3);
-            let ripple = 0.5 + 0.3 * wave1 + 0.2 * wave2 + 0.25 * (detail - 0.5);
-            let deep = Color::srgb(0.03, 0.20, 0.52).to_srgba();
-            let turquoise = Color::srgb(0.08, 0.50, 0.68).to_srgba();
-            let highlight = Color::srgb(0.40, 0.78, 0.90).to_srgba();
-            let c = if ripple < 0.65 {
-                let t = (ripple / 0.65).clamp(0.0, 1.0);
-                deep.mix(&turquoise, t)
+            let u = x * inv_size;
+            let v = y * inv_size;
+            let mut sum = 0.0;
+            for &(nx, ny, phase, weight) in &waves {
+                sum += weight * (nx * u + ny * v + phase).sin();
+            }
+            let ripple = (0.5 + 0.5 * sum).clamp(0.0, 1.0);
+            let shaped = ripple * ripple * (3.0 - 2.0 * ripple);
+
+            let c = if shaped < 0.35 {
+                let t = shaped / 0.35;
+                deep_abyss.mix(&ocean_blue, t)
+            } else if shaped < 0.70 {
+                let t = (shaped - 0.35) / 0.35;
+                ocean_blue.mix(&turquoise, t)
+            } else if shaped < 0.90 {
+                let t = (shaped - 0.70) / 0.20;
+                turquoise.mix(&wave_crest, t)
             } else {
-                let t = ((ripple - 0.65) / 0.35).clamp(0.0, 1.0);
-                turquoise.mix(&highlight, t)
+                let t = (shaped - 0.90) / 0.10;
+                wave_crest.mix(&sun_foam, t)
             };
             [
                 (c.red * 255.0).round() as u8,

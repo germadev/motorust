@@ -91,10 +91,10 @@ impl ControllerBinding {
             },
             ControllerBinding::Gamepad(_) => match lang {
                 Language::Spanish => {
-                    "Gatillo R / A: Acelerar   ·   Gatillo L / X: Frenar\nStick / Cruceta: Girar   ·   B / Stick: Caballito"
+                    "Gatillo R / A: Acelerar   ·   Gatillo L / X: Frenar\nStick / Cruceta: Girar   ·   Gatillo R + A / Stick: Caballito"
                 }
                 Language::English => {
-                    "R Trigger / A: Throttle   ·   L Trigger / X: Brake\nStick / D-Pad: Steer   ·   B / Stick: Wheelie"
+                    "R Trigger / A: Throttle   ·   L Trigger / X: Brake\nStick / D-Pad: Steer   ·   R Trigger + A / Stick: Wheelie"
                 }
             },
         }
