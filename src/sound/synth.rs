@@ -663,6 +663,9 @@ mod tests {
             let samples = render(&controls, 0.5);
             samples.iter().map(|(l, _)| l * l).sum::<f32>() / samples.len() as f32
         };
-        assert!(power(1.0) > 1.25 * power(0.0), "el caballito ruge con más fuerza");
+        assert!(
+            power(1.0) > 1.25 * power(0.0),
+            "el caballito ruge con más fuerza"
+        );
     }
 }
