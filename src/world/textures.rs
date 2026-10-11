@@ -37,18 +37,42 @@ pub struct WorldTextures {
 impl FromWorld for WorldTextures {
     fn from_world(world: &mut World) -> Self {
         let mut images = world.resource_mut::<Assets<Image>>();
-        let mut tiled = |bytes: &[u8]| images.add(embedded(bytes, ImageAddressMode::Repeat));
-        let grass = tiled(include_bytes!("../../assets/textures/grass.jpg"));
-        let rock = tiled(include_bytes!("../../assets/textures/rock.jpg"));
-        let sand = tiled(include_bytes!("../../assets/textures/sand.jpg"));
-        let asphalt = tiled(include_bytes!("../../assets/textures/asphalt.jpg"));
-        let wall = tiled(include_bytes!("../../assets/textures/wall.jpg"));
-        let roof = tiled(include_bytes!("../../assets/textures/roof.jpg"));
-        let plaster = tiled(include_bytes!("../../assets/textures/plaster.jpg"));
+        let mut tiled = |bytes: &[u8], enhance: TextureEnhance| {
+            images.add(embedded(bytes, ImageAddressMode::Repeat, enhance))
+        };
+        let grass = tiled(
+            include_bytes!("../../assets/textures/grass.jpg"),
+            TextureEnhance::Grass,
+        );
+        let rock = tiled(
+            include_bytes!("../../assets/textures/rock.jpg"),
+            TextureEnhance::Rock,
+        );
+        let sand = tiled(
+            include_bytes!("../../assets/textures/sand.jpg"),
+            TextureEnhance::Sand,
+        );
+        let asphalt = tiled(
+            include_bytes!("../../assets/textures/asphalt.jpg"),
+            TextureEnhance::Asphalt,
+        );
+        let wall = tiled(
+            include_bytes!("../../assets/textures/wall.jpg"),
+            TextureEnhance::Wall,
+        );
+        let roof = tiled(
+            include_bytes!("../../assets/textures/roof.jpg"),
+            TextureEnhance::None,
+        );
+        let plaster = tiled(
+            include_bytes!("../../assets/textures/plaster.jpg"),
+            TextureEnhance::None,
+        );
         // El cielo da la vuelta en horizontal pero no en vertical.
         let sky = images.add(embedded(
             include_bytes!("../../assets/textures/sky.jpg"),
             ImageAddressMode::ClampToEdge,
+            TextureEnhance::None,
         ));
         let checker = images.add(checker());
         let panels = images.add(panels());
@@ -84,7 +108,17 @@ fn sampler(vertical: ImageAddressMode) -> ImageSampler {
     })
 }
 
-fn embedded(bytes: &[u8], vertical: ImageAddressMode) -> Image {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextureEnhance {
+    Grass,
+    Rock,
+    Sand,
+    Asphalt,
+    Wall,
+    None,
+}
+
+fn embedded(bytes: &[u8], vertical: ImageAddressMode, enhance: TextureEnhance) -> Image {
     let mut image = Image::from_buffer(
         bytes,
         ImageType::Extension("jpg"),
@@ -94,8 +128,157 @@ fn embedded(bytes: &[u8], vertical: ImageAddressMode) -> Image {
         RenderAssetUsages::RENDER_WORLD,
     )
     .expect("las texturas incrustadas son JPEG válidos");
+    enhance_texture(&mut image, enhance);
     generate_mipmaps(&mut image);
     image
+}
+
+/// Realce de contraste y micro-detalle para texturas retro estilo arcade:
+/// asfalto con más grano de árido, hierba más frondosa y viva, y roca con estratos más marcados.
+fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
+    if matches!(kind, TextureEnhance::None) {
+        return;
+    }
+    let width = image.width() as usize;
+    let height = image.height() as usize;
+    let Some(data) = image.data.as_mut() else {
+        return;
+    };
+
+    let orig = data.clone();
+    let get_pixel = |x: usize, y: usize| -> [f32; 3] {
+        let idx = (y * width + x) * 4;
+        [
+            orig[idx] as f32 / 255.0,
+            orig[idx + 1] as f32 / 255.0,
+            orig[idx + 2] as f32 / 255.0,
+        ]
+    };
+
+    for y in 0..height {
+        for x in 0..width {
+            let center = get_pixel(x, y);
+            // Desenfoque 3x3 continuo con repetición en los bordes para mantener la textura sin costuras
+            let mut blur = [0.0f32; 3];
+            for dy in [-1isize, 0, 1] {
+                for dx in [-1isize, 0, 1] {
+                    let sx = (x as isize + dx).rem_euclid(width as isize) as usize;
+                    let sy = (y as isize + dy).rem_euclid(height as isize) as usize;
+                    let p = get_pixel(sx, sy);
+                    for c in 0..3 {
+                        blur[c] += p[c] / 9.0;
+                    }
+                }
+            }
+
+            let mut r = center[0];
+            let mut g = center[1];
+            let mut b = center[2];
+
+            match kind {
+                TextureEnhance::Asphalt => {
+                    // Máscara de enfoque y aumento de contraste de luminancia para resaltar los granos de árido
+                    let high_pass = [
+                        center[0] - blur[0],
+                        center[1] - blur[1],
+                        center[2] - blur[2],
+                    ];
+                    r = (r + 0.95 * high_pass[0]).clamp(0.0, 1.0);
+                    g = (g + 0.95 * high_pass[1]).clamp(0.0, 1.0);
+                    b = (b + 0.95 * high_pass[2]).clamp(0.0, 1.0);
+
+                    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                    let contrasted_lum = ((lum - 0.5) * 1.36 + 0.5).clamp(0.0, 1.0);
+                    let ratio = if lum > 1e-4 {
+                        contrasted_lum / lum
+                    } else {
+                        1.0
+                    };
+                    r = (r * ratio).clamp(0.0, 1.0);
+                    g = (g * ratio).clamp(0.0, 1.0);
+                    b = (b * ratio).clamp(0.0, 1.0);
+                }
+                TextureEnhance::Grass => {
+                    let high_pass = [
+                        center[0] - blur[0],
+                        center[1] - blur[1],
+                        center[2] - blur[2],
+                    ];
+                    r = (r + 0.75 * high_pass[0]).clamp(0.0, 1.0);
+                    g = (g + 0.75 * high_pass[1]).clamp(0.0, 1.0);
+                    b = (b + 0.75 * high_pass[2]).clamp(0.0, 1.0);
+
+                    // Tonalidad verde pradera arcade de los 90, viva y luminosa
+                    g = (g * 1.16).min(1.0);
+                    r = (r * 0.91 + 0.035).clamp(0.0, 1.0);
+                    b = (b * 0.84).clamp(0.0, 1.0);
+                    g = ((g - 0.44) * 1.26 + 0.44).clamp(0.0, 1.0);
+                }
+                TextureEnhance::Rock => {
+                    // Fuerte relieve en fisuras y aristas de corte rocoso
+                    let high_pass = [
+                        center[0] - blur[0],
+                        center[1] - blur[1],
+                        center[2] - blur[2],
+                    ];
+                    r = (r + 1.15 * high_pass[0]).clamp(0.0, 1.0);
+                    g = (g + 1.15 * high_pass[1]).clamp(0.0, 1.0);
+                    b = (b + 1.15 * high_pass[2]).clamp(0.0, 1.0);
+
+                    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                    let contrasted_lum = ((lum - 0.52) * 1.38 + 0.52).clamp(0.0, 1.0);
+                    let ratio = if lum > 1e-4 {
+                        contrasted_lum / lum
+                    } else {
+                        1.0
+                    };
+                    r = (r * ratio * 1.06).clamp(0.0, 1.0);
+                    g = (g * ratio * 1.02).clamp(0.0, 1.0);
+                    b = (b * ratio * 0.95).clamp(0.0, 1.0);
+                }
+                TextureEnhance::Sand => {
+                    let high_pass = [
+                        center[0] - blur[0],
+                        center[1] - blur[1],
+                        center[2] - blur[2],
+                    ];
+                    r = (r + 0.65 * high_pass[0]).clamp(0.0, 1.0);
+                    g = (g + 0.65 * high_pass[1]).clamp(0.0, 1.0);
+                    b = (b + 0.65 * high_pass[2]).clamp(0.0, 1.0);
+                    // Arena cálida y luminosa
+                    r = (r * 1.07).min(1.0);
+                    g = (g * 1.02).min(1.0);
+                    b = (b * 0.92).clamp(0.0, 1.0);
+                }
+                TextureEnhance::Wall => {
+                    let high_pass = [
+                        center[0] - blur[0],
+                        center[1] - blur[1],
+                        center[2] - blur[2],
+                    ];
+                    r = (r + 0.85 * high_pass[0]).clamp(0.0, 1.0);
+                    g = (g + 0.85 * high_pass[1]).clamp(0.0, 1.0);
+                    b = (b + 0.85 * high_pass[2]).clamp(0.0, 1.0);
+                    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                    let contrasted_lum = ((lum - 0.5) * 1.25 + 0.5).clamp(0.0, 1.0);
+                    let ratio = if lum > 1e-4 {
+                        contrasted_lum / lum
+                    } else {
+                        1.0
+                    };
+                    r = (r * ratio).clamp(0.0, 1.0);
+                    g = (g * ratio).clamp(0.0, 1.0);
+                    b = (b * ratio).clamp(0.0, 1.0);
+                }
+                TextureEnhance::None => {}
+            }
+
+            let idx = (y * width + x) * 4;
+            data[idx] = (r * 255.0).round() as u8;
+            data[idx + 1] = (g * 255.0).round() as u8;
+            data[idx + 2] = (b * 255.0).round() as u8;
+        }
+    }
 }
 
 /// Dos por dos paneles de hormigón, cada uno algo distinto, con juntas
@@ -364,6 +547,7 @@ mod tests {
         let image = embedded(
             include_bytes!("../../assets/textures/plaster.jpg"),
             ImageAddressMode::Repeat,
+            TextureEnhance::None,
         );
         assert!(image.texture_descriptor.mip_level_count > 1);
     }

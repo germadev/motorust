@@ -64,7 +64,8 @@ pub fn spawn_road(
         }),
         StandardMaterial {
             base_color_texture: Some(textures.asphalt.clone()),
-            perceptual_roughness: 0.9,
+            perceptual_roughness: 0.84,
+            reflectance: 0.36,
             ..default()
         },
     );

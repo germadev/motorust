@@ -181,16 +181,17 @@ pub fn spawn_terrain(
     materials: &mut Assets<StandardMaterial>,
 ) {
     for (ground, mesh) in terrain.meshes() {
-        let (texture, roughness) = match ground {
-            Ground::Grass => (&textures.grass, 0.95),
-            Ground::Sand => (&textures.sand, 0.9),
-            Ground::Rock => (&textures.rock, 0.85),
+        let (texture, roughness, reflectance) = match ground {
+            Ground::Grass => (&textures.grass, 0.90, 0.18),
+            Ground::Sand => (&textures.sand, 0.88, 0.28),
+            Ground::Rock => (&textures.rock, 0.78, 0.42),
         };
         world.spawn((
             Mesh3d(meshes.add(mesh)),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color_texture: Some(texture.clone()),
                 perceptual_roughness: roughness,
+                reflectance,
                 ..default()
             })),
         ));
