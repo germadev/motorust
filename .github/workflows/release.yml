@@ -20,6 +20,18 @@ on:
           - minor
           - major
         default: patch
+      runner_preference:
+        description: Preferencia de runner (auto, self-hosted, github-hosted)
+        type: choice
+        options:
+          - auto
+          - self-hosted
+          - github-hosted
+        default: auto
+      cross_compile_windows:
+        description: Compilar Windows desde Linux (cross-compilation con cargo-xwin)
+        type: boolean
+        default: false
 
 # Una release detrás de otra, nunca dos a la vez.
 concurrency:
@@ -67,6 +79,9 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       version: ${{ needs.version.outputs.version }}
+      runner_preference: ${{ inputs.runner_preference || 'auto' }}
+      cross_compile_windows: ${{ inputs.cross_compile_windows || false }}
+    secrets: inherit
 
   pages:
     name: Cloudflare Pages y R2

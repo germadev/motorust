@@ -13,6 +13,19 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner_preference:
+        description: Preferencia de runner (auto, self-hosted, github-hosted)
+        type: choice
+        options:
+          - auto
+          - self-hosted
+          - github-hosted
+        default: auto
+      cross_compile_windows:
+        description: Compilar Windows desde Linux (cross-compilation con cargo-xwin)
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       version:
@@ -20,6 +33,16 @@ on:
         type: string
         required: false
         default: ""
+      runner_preference:
+        description: Preferencia de runner (auto, self-hosted, github-hosted)
+        type: string
+        required: false
+        default: auto
+      cross_compile_windows:
+        description: Compilar Windows desde Linux (cross-compilation con cargo-xwin)
+        type: boolean
+        required: false
+        default: false
 
 # En una PR, un push nuevo cancela el run anterior. Llamado desde release.yml,
 # el grupo es el de la release y no choca con los de aquí.
@@ -29,6 +52,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,19 +60,144 @@ env:
   # Lo que Bevy necesita para compilar en Linux (lo mismo que `make install`).
   LINUX_PACKAGES: >-
     g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0
-    libwayland-dev libxkbcommon-dev
+    libwayland-dev libxkbcommon-dev zip clang lld
 
 jobs:
+  detect-runner:
+    name: Detectar runners
+    runs-on: ubuntu-latest
+    outputs:
+      linux_runner: ${{ steps.detect.outputs.linux_runner }}
+      build_matrix: ${{ steps.detect.outputs.build_matrix }}
+    steps:
+      - name: Comprobar disponibilidad de runners
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_CHECK_TOKEN || secrets.PAT_TOKEN || github.token }}
+          PREFERENCE: ${{ inputs.runner_preference || 'auto' }}
+          CROSS_WINDOWS: ${{ inputs.cross_compile_windows || false }}
+        run: |
+          echo "=== Preferencia de runner: $PREFERENCE ==="
+
+          use_self_hosted_linux=false
+          use_self_hosted_macos=false
+
+          if [ "$PREFERENCE" = "self-hosted" ]; then
+            echo "Preferencia manual: forzar self-hosted."
+            use_self_hosted_linux=true
+          elif [ "$PREFERENCE" = "github-hosted" ]; then
+            echo "Preferencia manual: forzar GitHub-hosted."
+            use_self_hosted_linux=false
+          else
+            echo "Modo auto: consultando runners registrados en el repositorio..."
+            runners_json=""
+            if runners_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/runners" 2>/dev/null); then
+              echo "Respuesta de la API de runners recibida con éxito."
+
+              # Buscar runner Linux self-hosted online
+              online_linux=$(echo "$runners_json" | jq -r '
+                .runners[]?
+                | select(.status == "online")
+                | select(.os == "Linux" or (.labels[]?.name | ascii_downcase == "linux"))
+                | .name' | head -n 1)
+
+              if [ -n "$online_linux" ]; then
+                echo "✓ Runner self-hosted Linux online detectado: $online_linux"
+                use_self_hosted_linux=true
+              else
+                echo "✗ No hay runner self-hosted Linux online."
+              fi
+
+              # Buscar runner macOS self-hosted online (preparado para Mac mini)
+              online_macos=$(echo "$runners_json" | jq -r '
+                .runners[]?
+                | select(.status == "online")
+                | select(.os == "macOS" or (.labels[]?.name | ascii_downcase == "macos"))
+                | .name' | head -n 1)
+
+              if [ -n "$online_macos" ]; then
+                echo "✓ Runner self-hosted macOS online detectado: $online_macos"
+                use_self_hosted_macos=true
+              fi
+            else
+              echo "⚠️ No se pudo consultar la API de runners con el token actual."
+              echo "Para detección automática, añade un Personal Access Token (PAT) con permiso 'Administration: Read' en los Secrets como RUNNER_CHECK_TOKEN."
+              echo "Usando runners de GitHub por defecto para evitar bloqueos."
+            fi
+          fi
+
+          if [ "$use_self_hosted_linux" = true ]; then
+            echo "linux_runner=[\"self-hosted\", \"linux\"]" >> "$GITHUB_OUTPUT"
+            linux_os='["self-hosted", "linux"]'
+          else
+            echo "linux_runner=[\"ubuntu-latest\"]" >> "$GITHUB_OUTPUT"
+            linux_os='"ubuntu-latest"'
+          fi
+
+          if [ "$use_self_hosted_macos" = true ]; then
+            macos_arm_os='["self-hosted", "macos", "ARM64"]'
+          else
+            macos_arm_os='"macos-latest"'
+          fi
+
+          if [ "$CROSS_WINDOWS" = "true" ]; then
+            echo "✓ Cross-compilación a Windows habilitada: se compilará en el runner Linux."
+            windows_os="$linux_os"
+          else
+            windows_os='"windows-latest"'
+          fi
+
+          matrix_json=$(jq -n \
+            --argjson linux_os "$linux_os" \
+            --argjson windows_os "$windows_os" \
+            --argjson macos_os "$macos_arm_os" \
+            '{
+              include: [
+                {
+                  name: "Linux x86_64",
+                  os: $linux_os,
+                  target: "x86_64-unknown-linux-gnu"
+                },
+                {
+                  name: "Windows x86_64",
+                  os: $windows_os,
+                  target: "x86_64-pc-windows-msvc"
+                },
+                {
+                  name: "macOS Apple Silicon",
+                  os: $macos_os,
+                  target: "aarch64-apple-darwin"
+                },
+                {
+                  name: "macOS Intel",
+                  os: "macos-latest",
+                  target: "x86_64-apple-darwin"
+                }
+              ]
+            }')
+
+          echo "build_matrix=$(echo "$matrix_json" | jq -c .)" >> "$GITHUB_OUTPUT"
+          echo "Matriz configurada:"
+          echo "$matrix_json" | jq .
+
   test:
     name: Tests, formato y clippy
-    runs-on: ubuntu-latest
+    needs: detect-runner
+    runs-on: ${{ fromJSON(needs.detect-runner.outputs.linux_runner) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
       - name: Dependencias de Linux
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES
+        run: |
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES
+          elif command -v apt-get >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
+            apt-get update && apt-get install -y --no-install-recommends $LINUX_PACKAGES
+          else
+            echo "Continuando sin sudo apt-get (en runner self-hosted las dependencias deben estar preinstaladas)."
+          fi
       - uses: Swatinem/rust-cache@v2
       - name: Formato
         run: cargo fmt --check
@@ -59,23 +208,10 @@ jobs:
 
   build:
     name: Build ${{ matrix.name }}
-    needs: test
+    needs: [detect-runner, test]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: Linux x86_64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - name: Windows x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-          - name: macOS Apple Silicon
-            os: macos-latest
-            target: aarch64-apple-darwin
-          - name: macOS Intel
-            os: macos-latest
-            target: x86_64-apple-darwin
+      matrix: ${{ fromJSON(needs.detect-runner.outputs.build_matrix) }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -87,7 +223,14 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Dependencias de Linux
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES
+        run: |
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES
+          elif command -v apt-get >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
+            apt-get update && apt-get install -y --no-install-recommends $LINUX_PACKAGES
+          else
+            echo "Continuando sin sudo apt-get (en runner self-hosted las dependencias deben estar preinstaladas)."
+          fi
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -103,8 +246,16 @@ jobs:
           else
             echo "label=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
+      - name: Instalar cargo-xwin
+        if: runner.os == 'Linux' && contains(matrix.target, 'windows')
+        uses: taiki-e/install-action@cargo-xwin
       - name: Compilar
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ] && [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            cargo xwin build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
       - name: Empaquetar
         env:
           TARGET: ${{ matrix.target }}
@@ -113,9 +264,13 @@ jobs:
           name="motorust-$LABEL-$TARGET"
           mkdir -p "dist/$name"
           cp README.md assets/CREDITS.md "dist/$name/"
-          if [ "$RUNNER_OS" = Windows ]; then
+          if [[ "$TARGET" == *"windows"* ]]; then
             cp "target/$TARGET/release/motorust.exe" "dist/$name/"
-            (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null)
+            if command -v 7z >/dev/null 2>&1; then
+              (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null)
+            else
+              (cd dist && zip -r "$name.zip" "$name" > /dev/null)
+            fi
             rm -r "dist/$name"
           elif [ "$RUNNER_OS" = macOS ]; then
             # 1. Binario tradicional para terminal (.tar.gz)
@@ -149,8 +304,8 @@ jobs:
 
   wasm:
     name: Build WebAssembly
-    needs: test
-    runs-on: ubuntu-latest
+    needs: [detect-runner, test]
+    runs-on: ${{ fromJSON(needs.detect-runner.outputs.linux_runner) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
