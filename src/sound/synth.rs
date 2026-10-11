@@ -69,6 +69,8 @@ pub struct EngineParams {
     pub rpm: Param,
     /// Gas, de 0 a 1: con más gas suena más fuerte y más brillante.
     pub load: Param,
+    /// Levantamiento de la rueda delantera (caballito), de 0 a 1.
+    pub wheelie: Param,
     /// Volumen en cada oído.
     pub left: Param,
     pub right: Param,
@@ -218,12 +220,14 @@ struct EngineVoice {
     cycle: f32,
     rpm: f32,
     load: f32,
+    wheelie: f32,
     left: f32,
     right: f32,
     /// Pulso de presión y golpe de ruido de la última explosión.
     pulse: f32,
     burst: f32,
     resonances: [BandPass; 3],
+    wheelie_resonance: BandPass,
     body: f32,
     whine: f32,
     /// Petardeo al cortar gas: envolvente y su ruido filtrado.
@@ -237,11 +241,13 @@ impl Default for EngineVoice {
             cycle: 0.0,
             rpm: 0.0,
             load: 0.0,
+            wheelie: 0.0,
             left: 0.0,
             right: 0.0,
             pulse: 0.0,
             burst: 0.0,
             resonances: RESONANCES.map(|(center, q, _)| BandPass::tuned(center, q)),
+            wheelie_resonance: BandPass::tuned(620.0, 2.2),
             body: 0.0,
             whine: 0.0,
             pop: 0.0,
@@ -260,6 +266,7 @@ impl EngineVoice {
     ) -> (f32, f32) {
         self.rpm += (params.rpm.get() - self.rpm) * smooth;
         self.load += (params.load.get() - self.load) * smooth;
+        self.wheelie += (params.wheelie.get() - self.wheelie) * smooth;
         self.left += (params.left.get() - self.left) * smooth;
         self.right += (params.right.get() - self.right) * smooth;
         if self.left + self.right < 1e-4 {
@@ -267,10 +274,14 @@ impl EngineVoice {
         }
         let dt = 1.0 / SAMPLE_RATE as f32;
         let load = self.load.clamp(0.0, 1.0);
+        let wheelie = self.wheelie.clamp(0.0, 1.0);
+
+        // Al hacer caballito el motor brama con tono más agudo y desahogado.
+        let effective_rpm = self.rpm * (1.0 + 0.10 * wheelie);
 
         // Dos vueltas por ciclo: explota cada cilindro al pasar por su ángulo.
         let previous = self.cycle;
-        self.cycle = (self.cycle + self.rpm / 120.0 * dt).fract();
+        self.cycle = (self.cycle + effective_rpm / 120.0 * dt).fract();
         let wrapped = self.cycle < previous;
         for (cylinder, &at) in FIRING.iter().enumerate() {
             let fires = if wrapped {
@@ -298,20 +309,26 @@ impl EngineVoice {
         for (filter, &(_, _, weight)) in self.resonances.iter_mut().zip(&RESONANCES) {
             out += weight * filter.process(excite + 0.4 * rasp);
         }
+        // Rugido y resonancia abierta de la admisión y el escape en caballito.
+        if wheelie > 1e-3 {
+            let roar = self.wheelie_resonance.process(excite + 0.8 * rasp);
+            out += 0.85 * wheelie * roar;
+        }
         self.body += (excite - self.body) * decay.body;
         out += 1.2 * self.body + 0.15 * rasp;
 
-        self.whine = (self.whine + self.rpm * WHINE_PER_RPM * dt).fract();
-        out += WHINE * (0.3 + 0.7 * load) * (TAU * self.whine).sin();
+        self.whine = (self.whine + effective_rpm * WHINE_PER_RPM * dt).fract();
+        out += WHINE * (0.3 + 0.7 * load + 0.5 * wheelie) * (TAU * self.whine).sin();
 
         if self.pop > 1e-3 {
             out += self.pop * 3.0 * self.pop_tone.process(noise.next());
             self.pop *= decay.pop;
         }
 
-        // A fondo satura más: más áspero.
-        let drive = ENGINE_GAIN * (1.0 + 1.5 * load);
-        let loudness = 0.22 + 0.3 * load + 0.15 * (self.rpm / REDLINE).min(1.1);
+        // A fondo y en caballito satura más: más áspero y rotundo.
+        let drive = ENGINE_GAIN * (1.0 + 1.5 * load + 0.8 * wheelie);
+        let loudness = (0.22 + 0.3 * load + 0.15 * (effective_rpm / REDLINE).min(1.1))
+            * (1.0 + 0.28 * wheelie);
         let out = (out * drive).tanh() * loudness;
         (out * self.left, out * self.right)
     }
@@ -636,5 +653,16 @@ mod tests {
         assert!((l - r).abs() < 1e-5);
         let (l, r) = pan(1.0, 1.0);
         assert!(l.abs() < 1e-5 && (r - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn wheelie_sounds_louder_and_different() {
+        let power = |wheelie| {
+            let controls = engine_at(9000.0, 1.0);
+            controls.engines[0].wheelie.set(wheelie);
+            let samples = render(&controls, 0.5);
+            samples.iter().map(|(l, _)| l * l).sum::<f32>() / samples.len() as f32
+        };
+        assert!(power(1.0) > 1.25 * power(0.0), "el caballito ruge con más fuerza");
     }
 }

@@ -375,7 +375,8 @@ pub fn step(
     let mut speed = state.speed + accel * dt;
 
     // Resistencias: se oponen al movimiento, pero nunca lo invierten.
-    let mut resistance = tuning.rolling_resistance;
+    // Con un caballito solo una rueda pisa el asfalto, reduciendo la resistencia.
+    let mut resistance = tuning.rolling_resistance * (1.0 - 0.35 * state.chassis.wheelie_lift());
     if state.grounded && throttle == 0.0 && brake == 0.0 {
         resistance += tuning.engine_braking;
     }
@@ -1959,7 +1960,7 @@ mod tests {
         };
         let (up, down) = (accel(lifted.chassis), accel(Chassis::default()));
         assert!(
-            up > down * 1.08 && up < down * 1.2,
+            up > down * 1.25 && up < down * 1.8,
             "{up} frente a {down} m/s²"
         );
     }

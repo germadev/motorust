@@ -202,7 +202,7 @@ pub fn spawn_terrain(
         .mesh()
         .size(4.0 * EXTENT, 4.0 * EXTENT)
         .build();
-    let sea_tile = 20.0;
+    let sea_tile = 160.0;
     let sea_repeat = (4.0 * EXTENT) / sea_tile;
     if let Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) =
         sea_mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
@@ -215,10 +215,10 @@ pub fn spawn_terrain(
     world.spawn((
         Mesh3d(meshes.add(sea_mesh)),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.92, 0.96, 1.0),
+            base_color: Color::WHITE,
             base_color_texture: Some(textures.water.clone()),
-            perceptual_roughness: 0.12,
-            reflectance: 0.55,
+            perceptual_roughness: 0.22,
+            reflectance: 0.50,
             ..default()
         })),
         Transform::from_xyz(0.0, SEA_LEVEL, 0.0),

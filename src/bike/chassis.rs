@@ -18,28 +18,28 @@ use crate::geometry::smoothstep;
 pub const MAX_WHEELIE: f32 = 0.6;
 /// Caballito tirando del manillar a toda velocidad (rad), y la velocidad
 /// (m/s) desde la que ya no se levanta más.
-const FAST_WHEELIE: f32 = 0.35;
-const FAST_WHEELIE_SPEED: f32 = 60.0;
+const FAST_WHEELIE: f32 = 0.38;
+const FAST_WHEELIE_SPEED: f32 = 65.0;
 /// Lo que levanta la trasera una frenada a fondo a mucha velocidad (rad).
 const MAX_STOPPIE: f32 = 0.12;
 /// Caballito que sale solo al acelerar a fondo desde parado (rad), y la
 /// velocidad (m/s) a la que ya no sale.
-const LAUNCH_LIFT: f32 = 0.09;
-const LAUNCH_SPEED: f32 = 16.0;
+const LAUNCH_LIFT: f32 = 0.12;
+const LAUNCH_SPEED: f32 = 18.0;
 /// Gas mínimo (fracción) para poder levantar la rueda.
-const WHEELIE_MIN_THROTTLE: f32 = 0.3;
+const WHEELIE_MIN_THROTTLE: f32 = 0.25;
 /// Lo que se puede levantar el morro en el aire tirando del manillar (rad).
 const AIR_PITCH: f32 = 0.35;
 /// Rigidez del caballito (rad/s² por rad): sube despacio y cae deprisa,
 /// porque al bajar empuja la gravedad.
-const WHEELIE_RISE: f32 = 22.0;
+const WHEELIE_RISE: f32 = 24.0;
 const WHEELIE_FALL: f32 = 55.0;
 /// Amortiguación del caballito (1/s): poca, para que oscile un poco.
 const WHEELIE_DAMPING: f32 = 5.0;
 /// Lo que se gana con un caballito largo (fracción): de punta, y de empuje
 /// del motor, que con todo el peso en la rueda de atrás tracciona mejor.
-const WHEELIE_TOP_SPEED: f32 = 0.05;
-const WHEELIE_DRIVE: f32 = 0.15;
+const WHEELIE_TOP_SPEED: f32 = 0.16;
+const WHEELIE_DRIVE: f32 = 0.45;
 /// Parte del golpe de la rueda al caer que pasa a la suspensión.
 const TOUCHDOWN_KICK: f32 = 0.35;
 
@@ -116,8 +116,8 @@ impl Chassis {
 
     /// Cuánto cuenta el caballito para ganar velocidad (0..1): nada con la
     /// rueda apenas levantada, todo con un caballito largo.
-    fn wheelie_lift(&self) -> f32 {
-        smoothstep(0.15, 0.4, self.wheelie)
+    pub fn wheelie_lift(&self) -> f32 {
+        smoothstep(0.10, 0.30, self.wheelie)
     }
 
     /// Avanza el chasis un paso de `dt` segundos.
