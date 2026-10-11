@@ -641,7 +641,10 @@ mod tests {
             shown_returns.push(label.split(": ").last().unwrap().to_string());
             ret = ret.next(1);
         }
-        assert_eq!(shown_returns, ["rápido (actual)", "lenta", "media", "rápido (actual)"]);
+        assert_eq!(
+            shown_returns,
+            ["rápido (actual)", "lenta", "media", "rápido (actual)"]
+        );
         assert_eq!(ReturnRate::Slow.next(-1), ReturnRate::Fast);
         assert_eq!(ReturnRate::Fast.factor(), 1.0);
         assert!(ReturnRate::Slow.factor() < ReturnRate::Medium.factor());
