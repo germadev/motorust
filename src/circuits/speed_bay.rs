@@ -138,7 +138,14 @@ pub const SPEED_BAY: Circuit = Circuit {
             lateral: WALL_DISTANCE + 0.9,
             every: 40.0,
         }],
-        trees: &[Species::Broadleaf, Species::Cypress, Species::UmbrellaPine],
+        trees: &[
+            Species::Broadleaf,
+            Species::Cypress,
+            Species::UmbrellaPine,
+            Species::MaritimePine,
+            Species::Poplar,
+            Species::Almond,
+        ],
         forests: &[FOREST],
         houses: Houses {
             max: 9,

@@ -12,7 +12,7 @@ use bevy::{
 
 use super::scenery::{Coast, Scenery, Side};
 use super::textures::WorldTextures;
-use crate::geometry::{fbm, smoothstep};
+use crate::geometry::{fbm, smoothstep, value_noise};
 use crate::track::{Nearest, Track, WALL_DISTANCE};
 
 pub const SEA_LEVEL: f32 = -1.0;
@@ -29,9 +29,9 @@ const EXTENT: f32 = 3500.0;
 /// Cuánto crece cada celda respecto a la anterior fuera de la zona fina.
 const COARSE_GROWTH: f32 = 1.15;
 /// Tamaño (m) que cubre cada repetición de las texturas.
-const GRASS_TILE: f32 = 7.0;
-const SAND_TILE: f32 = 6.0;
-const ROCK_TILE: f32 = 9.0;
+const GRASS_TILE: f32 = 11.0;
+const SAND_TILE: f32 = 8.5;
+const ROCK_TILE: f32 = 20.0;
 /// Las caras más inclinadas que esto son roca.
 const CLIFF_NORMAL_Y: f32 = 0.8;
 /// Por debajo de esta altura, cerca del mar, hay arena.
@@ -148,7 +148,8 @@ impl Terrain {
                     let [a, b, c] = vertices.map(|(i, j)| position(i, j));
                     let face = (b - a).cross(c - a).normalize();
                     let height = (a.y + b.y + c.y) / 3.0;
-                    let builder = match classify(height, face) {
+                    let ground_type = classify(height, face);
+                    let builder = match ground_type {
                         Ground::Grass => &mut grass,
                         Ground::Sand => &mut sand,
                         Ground::Rock => &mut rock,
@@ -157,10 +158,46 @@ impl Terrain {
                         let index = j * width + i;
                         let p = position(i, j);
                         let uv = match builder.shared_vertices {
-                            Some(_) => Vec2::new(p.x, p.z),
-                            None => rock_projection(p, face),
+                            Some(_) => {
+                                let warp = Vec2::new(
+                                    fbm(Vec2::new(p.x, p.z) * 0.035, 2) - 0.5,
+                                    fbm(Vec2::new(p.z + 41.0, p.x - 29.0) * 0.035, 2) - 0.5,
+                                ) * 2.2;
+                                Vec2::new(p.x + warp.x, p.z + warp.y)
+                            }
+                            None => {
+                                // Continuous 3D domain warp based on world coordinates before projection.
+                                // Warping in 3D breaks world-elevation synchronicity and introduces
+                                // natural undulating strata following the mountain curvature.
+                                let warp_x =
+                                    fbm(Vec2::new(p.z * 0.022 + 13.0, p.y * 0.032 - 7.0), 3) - 0.5;
+                                let warp_y =
+                                    fbm(Vec2::new(p.x * 0.025 - 29.0, p.z * 0.025 + 41.0), 3) - 0.5;
+                                let warp_z =
+                                    fbm(Vec2::new(p.x * 0.022 + 37.0, p.y * 0.032 + 19.0), 3) - 0.5;
+                                let warped_p =
+                                    p + Vec3::new(warp_x * 9.0, warp_y * 7.5, warp_z * 9.0);
+
+                                let proj = rock_projection(warped_p, face);
+
+                                // Apply 14-degree geological dip angle so rock layers follow a realistic tilt
+                                let dip_angle = 0.244f32;
+                                let cos_dip = dip_angle.cos();
+                                let sin_dip = dip_angle.sin();
+                                let tilted_u = proj.x * cos_dip - proj.y * sin_dip;
+                                let tilted_v = proj.x * sin_dip + proj.y * cos_dip;
+
+                                let micro_warp = Vec2::new(
+                                    fbm(Vec2::new(tilted_u, tilted_v) * 0.05, 2) - 0.5,
+                                    fbm(Vec2::new(tilted_v + 50.0, tilted_u - 30.0) * 0.05, 2)
+                                        - 0.5,
+                                ) * 2.5;
+
+                                Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
+                            }
                         };
-                        builder.push(index, p, normals[index], uv);
+                        let color = ground_vertex_color(ground_type, p, normals[index]);
+                        builder.push(index, p, normals[index], uv, color);
                     }
                 }
             }
@@ -486,17 +523,123 @@ fn locate(axis: &[f32], value: f32) -> (usize, f32) {
     (i, (value - axis[i]) / (axis[i + 1] - axis[i]))
 }
 
-/// Coordenadas de textura de la roca: proyectada desde el lado al que más
-/// mira cada cara, para que las paredes no salgan estiradas.
+/// Rock texture coordinates: planar projection from dominant face normal
+/// with continuous coordinate orientation.
 fn rock_projection(point: Vec3, face: Vec3) -> Vec2 {
     let abs = face.abs();
     if abs.y > 0.75 {
         Vec2::new(point.x, point.z)
     } else if abs.x > abs.z {
-        Vec2::new(point.z, -point.y)
+        let u = if face.x > 0.0 { point.z } else { -point.z };
+        Vec2::new(u, -point.y)
     } else {
-        Vec2::new(point.x, -point.y)
+        let u = if face.z > 0.0 { -point.x } else { point.x };
+        Vec2::new(u, -point.y)
     }
+}
+
+fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+    let color = match ground {
+        Ground::Grass => {
+            // Natural macro variation across tens of meters (bright meadows, shaded hollows, golden knolls)
+            let macro_n = fbm(Vec2::new(p.x * 0.012, p.z * 0.012), 3);
+            let detail_n = value_noise(Vec2::new(p.x * 0.045 + 17.0, p.z * 0.045 - 23.0));
+            let steepness = (1.0 - normal.y).clamp(0.0, 1.0);
+
+            // Three harmonious arcade tones:
+            // 1. Vibrant lush meadow green
+            let lush = Color::srgb(0.92, 1.05, 0.88);
+            // 2. Warm golden sunny slope green
+            let sunny = Color::srgb(1.05, 1.01, 0.85);
+            // 3. Deep green natural shade
+            let deep = Color::srgb(0.84, 0.93, 0.82);
+
+            let base_tint = if macro_n > 0.5 {
+                lush.mix(&sunny, (macro_n - 0.5) * 2.0)
+            } else {
+                deep.mix(&lush, macro_n * 2.0)
+            };
+
+            // Subtle micro-relief accent and drier embankments on steeper inclines
+            let earthy = Color::srgb(1.02, 0.95, 0.82);
+            base_tint.mix(
+                &earthy,
+                (steepness * 1.8 + (detail_n - 0.5) * 0.3).clamp(0.0, 0.55),
+            )
+        }
+        Ground::Rock => {
+            // 1. Macro massif geological formation (scale ~120m):
+            // Regional variations across mountain ranges:
+            // - Warm Mediterranean ochre/terracotta sandstone
+            // - Sun-baked golden coastal limestone
+            // - Dark volcanic slate/basalt
+            let massif = fbm(Vec2::new(p.x * 0.007 + 100.0, p.z * 0.007 - 100.0), 3);
+            let mineral_patch = fbm(Vec2::new(p.x * 0.018 - 45.0, p.z * 0.018 + 75.0), 2);
+
+            let golden_limestone = Color::srgb(1.14, 1.06, 0.92);
+            let ochre_sandstone = Color::srgb(1.18, 0.94, 0.80);
+            let slate_basalt = Color::srgb(0.76, 0.80, 0.88);
+            let pale_granite = Color::srgb(0.96, 0.96, 0.94);
+
+            let base_rock = if massif > 0.55 {
+                let t = (massif - 0.55) / 0.45;
+                golden_limestone.mix(&ochre_sandstone, t)
+            } else if massif < 0.45 {
+                let t = (0.45 - massif) / 0.45;
+                pale_granite.mix(&slate_basalt, t)
+            } else {
+                let t = (massif - 0.45) * 10.0;
+                pale_granite.mix(&golden_limestone, t)
+            };
+
+            // 2. Tilted sedimentary strata layers (scale ~6m - 14m):
+            let dip_plane = p.y * 0.28 + (p.x * 0.08 - p.z * 0.06);
+            let strata_noise = fbm(Vec2::new(p.x * 0.02, p.z * 0.02), 2) * 1.8;
+            let strata_phase = (dip_plane + strata_noise).sin();
+            let strata_factor = (strata_phase * 0.5 + 0.5).powf(1.4);
+
+            let strata_dark = Color::srgb(0.70, 0.68, 0.72);
+            let strata_light = Color::srgb(1.18, 1.12, 1.04);
+            let layered = if strata_factor > 0.5 {
+                base_rock.mix(&strata_light, (strata_factor - 0.5) * 0.75)
+            } else {
+                base_rock.mix(&strata_dark, (0.5 - strata_factor) * 0.65)
+            };
+
+            // 3. Directional sun exposure & ambient occlusion in crevices:
+            let sun_dir = Vec3::new(0.55, 0.82, -0.35).normalize();
+            let sun_dot = normal.dot(sun_dir).clamp(-1.0, 1.0);
+            let sun_highlight = (sun_dot * 0.5 + 0.5).powf(1.3);
+            let ao = (0.52 + 0.48 * normal.y.max(0.0)).clamp(0.52, 1.0);
+
+            // 4. Subtle moss and lichen on sheltered rock ledges:
+            let moss_noise = fbm(Vec2::new(p.x * 0.035 - 15.0, p.z * 0.035 + 30.0), 2);
+            let mossy = Color::srgb(0.76, 0.88, 0.68);
+            let sheltered = (normal.y > 0.25 && normal.y < 0.82 && moss_noise > 0.56) as i32 as f32;
+            let moss_tint = (moss_noise - 0.56).max(0.0) * 1.5 * sheltered;
+
+            // 5. Mineral patch accents:
+            let mineral_dark = Color::srgb(0.85, 0.82, 0.80);
+            let with_minerals = layered.mix(&mineral_dark, (mineral_patch * 0.5).clamp(0.0, 0.4));
+
+            let lit = with_minerals.mix(&Color::srgb(1.22, 1.16, 1.04), sun_highlight * 0.35);
+            let shaded = lit.mix(&Color::srgb(0.56, 0.56, 0.62), (1.0 - ao) * 0.65);
+            shaded.mix(&mossy, moss_tint.clamp(0.0, 0.45))
+        }
+        Ground::Sand => {
+            // Moisture gradient near sea level and windblown dune variations
+            let moisture = ((BEACH_HEIGHT - p.y) / (BEACH_HEIGHT - SEA_LEVEL)).clamp(0.0, 1.0);
+            let dune = value_noise(Vec2::new(p.x * 0.05, p.z * 0.05));
+
+            let dry_sand = Color::srgb(1.03, 1.01, 0.95);
+            let wet_sand = Color::srgb(0.78, 0.74, 0.68);
+            let dune_tint = Color::srgb(1.05, 0.98, 0.90);
+
+            let beach = dry_sand.mix(&dune_tint, (dune - 0.5) * 0.3);
+            beach.mix(&wet_sand, (moisture * 1.1).clamp(0.0, 1.0))
+        }
+    };
+    color.to_linear().to_f32_array()
 }
 
 /// Acumula los triángulos de un tipo de suelo.
@@ -505,6 +648,7 @@ struct Builder {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    colors: Vec<[f32; 4]>,
     indices: Vec<u32>,
     /// Para compartir vértices entre triángulos: índice nuevo de cada vértice
     /// de la rejilla. La roca no los comparte, porque cada cara proyecta su
@@ -520,7 +664,7 @@ impl Builder {
         }
     }
 
-    fn push(&mut self, grid_index: usize, position: Vec3, normal: Vec3, uv: Vec2) {
+    fn push(&mut self, grid_index: usize, position: Vec3, normal: Vec3, uv: Vec2, color: [f32; 4]) {
         if let Some(shared) = &mut self.shared_vertices
             && shared[grid_index] != u32::MAX
         {
@@ -531,6 +675,7 @@ impl Builder {
         self.positions.push(position.to_array());
         self.normals.push(normal.to_array());
         self.uvs.push(uv.to_array());
+        self.colors.push(color);
         self.indices.push(index);
         if let Some(shared) = &mut self.shared_vertices {
             shared[grid_index] = index;
@@ -546,6 +691,7 @@ impl Builder {
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.colors)
         .with_inserted_indices(Indices::U32(self.indices))
     }
 }

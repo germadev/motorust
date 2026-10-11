@@ -6,7 +6,10 @@
 
 mod ai;
 mod chassis;
+mod grass_kickup;
 mod model;
+
+pub use grass_kickup::{GrassKickup, GrassKickupPlugin, GrassParticle};
 
 use bevy::{ecs::system::SystemParam, prelude::*};
 
@@ -94,7 +97,7 @@ pub struct BikePlugin;
 
 impl Plugin for BikePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(BikeModelPlugin)
+        app.add_plugins((BikeModelPlugin, GrassKickupPlugin))
             .init_resource::<BikeTuning>()
             .init_resource::<Race>()
             .init_resource::<SplitChoices>()
@@ -749,6 +752,7 @@ impl BikeAssets<'_> {
                 PreviousBikeState(state),
                 BikeInput::default(),
                 BikeColor(entry.color.into()),
+                GrassKickup::default(),
                 Transform::from_translation(to_world(state.position, SURFACE_Y))
                     .with_rotation(Quat::from_rotation_y(state.heading)),
                 Visibility::default(),
@@ -1195,6 +1199,8 @@ fn restart_race(
     track: Res<Track>,
     mut race: ResMut<Race>,
     mut bikes: Query<(&GridPosition, &mut BikeState, &mut PreviousBikeState)>,
+    particles: Query<Entity, With<GrassParticle>>,
+    mut commands: Commands,
 ) {
     if !settings
         .controls
@@ -1207,6 +1213,9 @@ fn restart_race(
         *state = BikeState::parked_on(&track, track.grid_slot(grid.0));
         // Sin estado anterior distinto, la interpolación no dibuja un "viaje".
         previous.0 = *state;
+    }
+    for particle in &particles {
+        commands.entity(particle).despawn();
     }
 }
 

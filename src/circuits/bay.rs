@@ -94,7 +94,14 @@ pub const BAY: Circuit = Circuit {
             lateral: WALL_DISTANCE + 0.9,
             every: 44.0,
         }],
-        trees: &[Species::UmbrellaPine, Species::Cypress, Species::Olive],
+        trees: &[
+            Species::UmbrellaPine,
+            Species::Cypress,
+            Species::Olive,
+            Species::MaritimePine,
+            Species::Almond,
+            Species::Poplar,
+        ],
         forests: &[],
         houses: Houses {
             max: 12,

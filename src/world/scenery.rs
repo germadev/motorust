@@ -171,6 +171,12 @@ pub enum Species {
     Tall,
     /// Árbol de hoja ancha, de copa redonda y verde claro.
     Broadleaf,
+    /// Maritime pine with tiered branches and coastal habit.
+    MaritimePine,
+    /// Slender poplar / aspen with upright crown and bright green foliage.
+    Poplar,
+    /// Almond / Mediterranean flowering tree with warm pink-tinted blossom.
+    Almond,
 }
 
 /// Las casas: cuántas como mucho, de qué colores y, si hace falta, solo en

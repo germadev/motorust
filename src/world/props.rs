@@ -18,9 +18,9 @@ use crate::track::{Track, WALL_DISTANCE};
 
 const LAMP_HEIGHT: f32 = 7.6;
 /// Los árboles se reparten hasta esta distancia del circuito.
-const TREE_MARGIN: f32 = 230.0;
-const TREE_CANDIDATES: u32 = 12_000;
-const MAX_TREES: usize = 800;
+const TREE_MARGIN: f32 = 280.0;
+const TREE_CANDIDATES: u32 = 32_000;
+const MAX_TREES: usize = 2_200;
 const HOUSE_SPACING: f32 = 40.0;
 const FLOOR_HEIGHT: f32 = 3.1;
 /// En los bosques, un árbol cada tantos metros a lo largo de la carretera y
@@ -377,57 +377,329 @@ fn gable_roof(width: f32, depth: f32, eaves: f32) -> (Mesh, Mesh) {
     (slopes.build(), gables.build())
 }
 
-/// Malla y colocación de una pieza de un árbol.
-type TreePart = (Handle<Mesh>, Transform);
-/// El tronco de una especie y sus variantes de copa.
-type TreeModel = (Handle<Mesh>, Transform, Vec<TreePart>);
-
-/// Tronco (de dónde a dónde, radios) y copa (centro y semiejes) de cada
-/// especie.
-fn shape(species: Species) -> (Vec3, f32, Vec3, Vec3) {
-    match species {
-        Species::UmbrellaPine => (
-            Vec3::new(0.5, 6.6, 0.0),
-            0.28,
-            Vec3::new(0.5, 7.2, 0.0),
-            Vec3::new(4.6, 1.5, 4.6),
-        ),
-        Species::Cypress => (
-            Vec3::new(0.0, 1.4, 0.0),
-            0.22,
-            Vec3::new(0.0, 4.8, 0.0),
-            Vec3::new(1.1, 4.4, 1.1),
-        ),
-        Species::Olive => (
-            Vec3::new(0.25, 2.2, 0.0),
-            0.26,
-            Vec3::new(0.25, 3.3, 0.0),
-            Vec3::new(2.8, 2.0, 2.8),
-        ),
-        Species::Tall => (
-            Vec3::new(0.0, 8.0, 0.0),
-            0.32,
-            Vec3::new(0.0, 11.5, 0.0),
-            Vec3::new(3.2, 5.8, 3.2),
-        ),
-        Species::Broadleaf => (
-            Vec3::new(0.2, 3.0, 0.0),
-            0.3,
-            Vec3::new(0.2, 5.0, 0.0),
-            Vec3::new(3.6, 3.0, 3.6),
-        ),
-    }
+/// Una variante de árbol: piezas de tronco/ramas y piezas de copa.
+struct TreeVariant {
+    wood: Vec<(Handle<Mesh>, Transform)>,
+    crowns: Vec<(Handle<Mesh>, Transform)>,
 }
 
 /// Colores de la copa en sombra y al sol.
 fn foliage(species: Species) -> (Color, Color) {
     match species {
-        Species::UmbrellaPine => (Color::srgb(0.08, 0.2, 0.05), Color::srgb(0.3, 0.5, 0.15)),
-        Species::Cypress => (Color::srgb(0.04, 0.13, 0.05), Color::srgb(0.15, 0.32, 0.12)),
-        Species::Olive => (Color::srgb(0.2, 0.26, 0.12), Color::srgb(0.5, 0.58, 0.32)),
-        Species::Tall => (Color::srgb(0.03, 0.11, 0.04), Color::srgb(0.12, 0.3, 0.1)),
-        Species::Broadleaf => (Color::srgb(0.1, 0.27, 0.06), Color::srgb(0.36, 0.6, 0.18)),
+        Species::UmbrellaPine => (Color::srgb(0.06, 0.18, 0.05), Color::srgb(0.28, 0.48, 0.14)),
+        Species::Cypress => (Color::srgb(0.03, 0.12, 0.04), Color::srgb(0.14, 0.32, 0.11)),
+        Species::Olive => (Color::srgb(0.18, 0.25, 0.12), Color::srgb(0.48, 0.58, 0.30)),
+        Species::Tall => (Color::srgb(0.03, 0.11, 0.04), Color::srgb(0.12, 0.30, 0.10)),
+        Species::Broadleaf => (Color::srgb(0.08, 0.24, 0.05), Color::srgb(0.35, 0.60, 0.18)),
+        Species::MaritimePine => (Color::srgb(0.04, 0.16, 0.06), Color::srgb(0.22, 0.44, 0.16)),
+        Species::Poplar => (Color::srgb(0.11, 0.28, 0.06), Color::srgb(0.42, 0.66, 0.20)),
+        Species::Almond => (Color::srgb(0.40, 0.26, 0.30), Color::srgb(0.92, 0.74, 0.78)),
     }
+}
+
+fn branch(
+    meshes: &mut Assets<Mesh>,
+    from: Vec3,
+    to: Vec3,
+    r_start: f32,
+    r_end: f32,
+) -> (Handle<Mesh>, Transform) {
+    let len = (to - from).length();
+    let mesh = meshes.add(tube(r_start, r_end, len));
+    let tf = between(from, to);
+    (mesh, tf)
+}
+
+fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVariant> {
+    const VARIANTS: u32 = 3;
+    let mut variants = Vec::with_capacity(VARIANTS as usize);
+    for variant in 0..VARIANTS {
+        let seed = variant * 47 + kind as u32 * 17;
+        let v = match kind {
+            Species::UmbrellaPine => {
+                let (dx, dz) = match variant {
+                    0 => (0.3, 0.0),
+                    1 => (-0.35, 0.2),
+                    _ => (0.2, -0.3),
+                };
+                let trunk_top = Vec3::new(dx, 5.0, dz);
+                let wood = vec![
+                    branch(meshes, Vec3::new(0.0, -0.3, 0.0), trunk_top, 0.30, 0.22),
+                    branch(
+                        meshes,
+                        trunk_top,
+                        trunk_top + Vec3::new(1.6, 1.5, 0.6),
+                        0.18,
+                        0.12,
+                    ),
+                    branch(
+                        meshes,
+                        trunk_top,
+                        trunk_top + Vec3::new(-1.5, 1.4, -0.6),
+                        0.18,
+                        0.12,
+                    ),
+                ];
+                let crowns = vec![
+                    (
+                        meshes.add(crown_mesh(seed + 1, CrownStyle::Umbrella, foliage(kind))),
+                        Transform::from_translation(trunk_top + Vec3::new(0.0, 2.1, 0.0))
+                            .with_scale(Vec3::new(4.6, 1.4, 4.6)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 2, CrownStyle::Umbrella, foliage(kind))),
+                        Transform::from_translation(trunk_top + Vec3::new(1.7, 1.8, 0.6))
+                            .with_scale(Vec3::new(2.7, 1.1, 2.7)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 3, CrownStyle::Umbrella, foliage(kind))),
+                        Transform::from_translation(trunk_top + Vec3::new(-1.6, 1.7, -0.6))
+                            .with_scale(Vec3::new(2.5, 1.1, 2.5)),
+                    ),
+                ];
+                TreeVariant { wood, crowns }
+            }
+            Species::Cypress => {
+                let (scale_w, scale_h) = match variant {
+                    0 => (1.15, 4.8),
+                    1 => (1.05, 5.3),
+                    _ => (1.25, 4.5),
+                };
+                let wood = vec![branch(
+                    meshes,
+                    Vec3::new(0.0, -0.3, 0.0),
+                    Vec3::new(0.0, 1.4, 0.0),
+                    0.20,
+                    0.15,
+                )];
+                let crowns = vec![(
+                    meshes.add(crown_mesh(seed + 1, CrownStyle::Spire, foliage(kind))),
+                    Transform::from_xyz(0.0, 4.8, 0.0)
+                        .with_scale(Vec3::new(scale_w, scale_h, scale_w)),
+                )];
+                TreeVariant { wood, crowns }
+            }
+            Species::Olive => {
+                let (dx, dz) = match variant {
+                    0 => (0.25, 0.0),
+                    1 => (-0.2, 0.25),
+                    _ => (0.1, -0.2),
+                };
+                let base_top = Vec3::new(dx, 1.8, dz);
+                let wood = vec![
+                    branch(meshes, Vec3::new(0.0, -0.3, 0.0), base_top, 0.28, 0.20),
+                    branch(
+                        meshes,
+                        base_top,
+                        base_top + Vec3::new(0.9, 1.0, 0.4),
+                        0.16,
+                        0.10,
+                    ),
+                    branch(
+                        meshes,
+                        base_top,
+                        base_top + Vec3::new(-0.8, 0.9, -0.3),
+                        0.16,
+                        0.10,
+                    ),
+                ];
+                let crowns = vec![
+                    (
+                        meshes.add(crown_mesh(seed + 1, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(base_top + Vec3::new(0.0, 1.5, 0.0))
+                            .with_scale(Vec3::new(2.2, 1.6, 2.2)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 2, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(base_top + Vec3::new(1.0, 1.1, 0.4))
+                            .with_scale(Vec3::new(1.8, 1.4, 1.8)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 3, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(base_top + Vec3::new(-0.9, 1.0, -0.3))
+                            .with_scale(Vec3::new(1.7, 1.3, 1.7)),
+                    ),
+                ];
+                TreeVariant { wood, crowns }
+            }
+            Species::Broadleaf => {
+                let (dx, dz) = match variant {
+                    0 => (0.15, 0.0),
+                    1 => (-0.2, 0.15),
+                    _ => (0.1, -0.15),
+                };
+                let trunk_top = Vec3::new(dx, 3.2, dz);
+                let wood = vec![
+                    branch(meshes, Vec3::new(0.0, -0.3, 0.0), trunk_top, 0.34, 0.24),
+                    branch(
+                        meshes,
+                        trunk_top,
+                        trunk_top + Vec3::new(1.3, 1.3, 0.5),
+                        0.18,
+                        0.11,
+                    ),
+                    branch(
+                        meshes,
+                        trunk_top,
+                        trunk_top + Vec3::new(-1.2, 1.2, -0.4),
+                        0.18,
+                        0.11,
+                    ),
+                ];
+                let crowns = vec![
+                    (
+                        meshes.add(crown_mesh(seed + 1, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(trunk_top + Vec3::new(0.0, 2.2, 0.0))
+                            .with_scale(Vec3::new(3.2, 2.8, 3.2)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 2, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(trunk_top + Vec3::new(1.4, 1.4, 0.5))
+                            .with_scale(Vec3::new(2.2, 2.0, 2.2)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 3, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(trunk_top + Vec3::new(-1.3, 1.3, -0.4))
+                            .with_scale(Vec3::new(2.1, 1.9, 2.1)),
+                    ),
+                ];
+                TreeVariant { wood, crowns }
+            }
+            Species::Tall => {
+                let (h1, h2) = match variant {
+                    0 => (8.2, 11.6),
+                    1 => (8.8, 12.4),
+                    _ => (7.8, 11.0),
+                };
+                let wood = vec![branch(
+                    meshes,
+                    Vec3::new(0.0, -0.3, 0.0),
+                    Vec3::new(0.0, 9.8, 0.0),
+                    0.35,
+                    0.18,
+                )];
+                let crowns = vec![
+                    (
+                        meshes.add(crown_mesh(seed + 1, CrownStyle::ConicalTier, foliage(kind))),
+                        Transform::from_xyz(0.0, h2, 0.0).with_scale(Vec3::new(2.5, 4.4, 2.5)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 2, CrownStyle::ConicalTier, foliage(kind))),
+                        Transform::from_xyz(0.0, h1, 0.0).with_scale(Vec3::new(3.4, 4.0, 3.4)),
+                    ),
+                ];
+                TreeVariant { wood, crowns }
+            }
+            Species::MaritimePine => {
+                let (dx, dz) = match variant {
+                    0 => (0.3, 0.0),
+                    1 => (-0.3, 0.3),
+                    _ => (0.2, -0.3),
+                };
+                let trunk_top = Vec3::new(dx, 6.8, dz);
+                let wood = vec![
+                    branch(meshes, Vec3::new(0.0, -0.3, 0.0), trunk_top, 0.32, 0.20),
+                    branch(
+                        meshes,
+                        Vec3::new(dx * 0.7, 5.0, dz * 0.7),
+                        Vec3::new(dx * 0.7 + 1.3, 5.8, dz * 0.7 + 0.5),
+                        0.16,
+                        0.10,
+                    ),
+                    branch(
+                        meshes,
+                        Vec3::new(dx * 0.8, 6.0, dz * 0.8),
+                        Vec3::new(dx * 0.8 - 1.2, 6.7, dz * 0.8 - 0.4),
+                        0.15,
+                        0.09,
+                    ),
+                ];
+                let crowns = vec![
+                    (
+                        meshes.add(crown_mesh(seed + 1, CrownStyle::Umbrella, foliage(kind))),
+                        Transform::from_translation(trunk_top + Vec3::new(0.0, 1.2, 0.0))
+                            .with_scale(Vec3::new(3.2, 1.5, 3.2)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 2, CrownStyle::Umbrella, foliage(kind))),
+                        Transform::from_xyz(dx * 0.7 + 1.4, 6.0, dz * 0.7 + 0.5)
+                            .with_scale(Vec3::new(2.3, 1.2, 2.3)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 3, CrownStyle::Umbrella, foliage(kind))),
+                        Transform::from_xyz(dx * 0.8 - 1.3, 6.9, dz * 0.8 - 0.4)
+                            .with_scale(Vec3::new(2.1, 1.1, 2.1)),
+                    ),
+                ];
+                TreeVariant { wood, crowns }
+            }
+            Species::Poplar => {
+                let (scale_w, scale_h) = match variant {
+                    0 => (1.8, 5.4),
+                    1 => (1.6, 5.8),
+                    _ => (1.9, 5.0),
+                };
+                let wood = vec![branch(
+                    meshes,
+                    Vec3::new(0.0, -0.3, 0.0),
+                    Vec3::new(0.0, 3.4, 0.0),
+                    0.22,
+                    0.14,
+                )];
+                let crowns = vec![(
+                    meshes.add(crown_mesh(seed + 1, CrownStyle::Cloud, foliage(kind))),
+                    Transform::from_xyz(0.0, 6.0, 0.0)
+                        .with_scale(Vec3::new(scale_w, scale_h, scale_w)),
+                )];
+                TreeVariant { wood, crowns }
+            }
+            Species::Almond => {
+                let (dx, dz) = match variant {
+                    0 => (0.15, 0.0),
+                    1 => (-0.15, 0.2),
+                    _ => (0.1, -0.15),
+                };
+                let base_top = Vec3::new(dx, 1.8, dz);
+                let wood = vec![
+                    branch(meshes, Vec3::new(0.0, -0.3, 0.0), base_top, 0.24, 0.16),
+                    branch(
+                        meshes,
+                        base_top,
+                        base_top + Vec3::new(0.9, 0.9, 0.4),
+                        0.13,
+                        0.08,
+                    ),
+                    branch(
+                        meshes,
+                        base_top,
+                        base_top + Vec3::new(-0.8, 0.8, -0.3),
+                        0.13,
+                        0.08,
+                    ),
+                ];
+                let crowns = vec![
+                    (
+                        meshes.add(crown_mesh(seed + 1, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(base_top + Vec3::new(0.0, 1.4, 0.0))
+                            .with_scale(Vec3::new(2.1, 1.5, 2.1)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 2, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(base_top + Vec3::new(1.0, 1.0, 0.4))
+                            .with_scale(Vec3::new(1.7, 1.3, 1.7)),
+                    ),
+                    (
+                        meshes.add(crown_mesh(seed + 3, CrownStyle::Cloud, foliage(kind))),
+                        Transform::from_translation(base_top + Vec3::new(-0.9, 0.9, -0.3))
+                            .with_scale(Vec3::new(1.6, 1.2, 1.6)),
+                    ),
+                ];
+                TreeVariant { wood, crowns }
+            }
+        };
+        variants.push(v);
+    }
+    variants
 }
 
 /// Árboles sueltos alrededor del circuito, más juntos cerca de la
@@ -450,32 +722,14 @@ fn spawn_trees(
         perceptual_roughness: 0.95,
         ..default()
     });
-    // Mallas compartidas: unas pocas variantes de copa por especie.
+    // Shared meshes: model variants per species
     let mut species: Vec<Species> = scenery.trees.to_vec();
-    if !scenery.forests.is_empty() {
+    if !scenery.forests.is_empty() && !species.contains(&Species::Tall) {
         species.push(Species::Tall);
     }
-    let models: Vec<(Species, TreeModel)> = species
+    let models: Vec<(Species, Vec<TreeVariant>)> = species
         .iter()
-        .map(|&kind| {
-            let (top, radius, crown, size) = shape(kind);
-            let trunk = assets
-                .meshes
-                .add(tube(radius, radius * 0.65, top.length() + 0.3));
-            let crowns = (0..VARIANTS)
-                .map(|variant| {
-                    let mesh = crown_mesh(variant * 31 + kind as u32 * 7, foliage(kind));
-                    (
-                        assets.meshes.add(mesh),
-                        Transform::from_translation(crown).with_scale(size),
-                    )
-                })
-                .collect();
-            (
-                kind,
-                (trunk, between(Vec3::new(0.0, -0.3, 0.0), top), crowns),
-            )
-        })
+        .map(|&kind| (kind, build_tree_variants(kind, &mut assets.meshes)))
         .collect();
     let model = |kind: Species| {
         &models
@@ -505,28 +759,31 @@ fn spawn_trees(
     };
     let plant = |world: &mut ChildSpawnerCommands, kind: Species, position: Vec2, seed: u32| {
         let random = |k: u32| random01(seed * 8 + k);
-        let (trunk, trunk_transform, crowns) = model(kind);
-        let (crown, crown_transform) =
-            &crowns[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
-        let scale = 0.8 + 0.5 * random(5);
-        world.spawn((
+        let variants = model(kind);
+        let variant = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
+        let scale = 0.75 + 0.60 * random(5);
+        let mut entity = world.spawn((
             Transform::from_xyz(position.x, terrain.height(position), position.y)
                 .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
                 .with_scale(Vec3::splat(scale)),
             Visibility::default(),
-            children![
-                (
-                    Mesh3d(trunk.clone()),
-                    MeshMaterial3d(bark.clone()),
-                    *trunk_transform
-                ),
-                (
-                    Mesh3d(crown.clone()),
-                    MeshMaterial3d(leaves.clone()),
-                    *crown_transform
-                ),
-            ],
         ));
+        entity.with_children(|parent| {
+            for (mesh, transform) in &variant.wood {
+                parent.spawn((
+                    Mesh3d(mesh.clone()),
+                    MeshMaterial3d(bark.clone()),
+                    *transform,
+                ));
+            }
+            for (mesh, transform) in &variant.crowns {
+                parent.spawn((
+                    Mesh3d(mesh.clone()),
+                    MeshMaterial3d(leaves.clone()),
+                    *transform,
+                ));
+            }
+        });
     };
 
     let (min, max) = track.bounds();
@@ -541,8 +798,8 @@ fn spawn_trees(
             (min.y - TREE_MARGIN).lerp(max.y + TREE_MARGIN, random(1)),
         );
         let distance = track.distance_to_centerline(position);
-        // Más árboles cerca de la carretera: dan sensación de velocidad.
-        let density = 0.3 + 0.7 * (1.0 - smoothstep(25.0, 150.0, distance));
+        // More trees near the track for sense of speed, while also populating hills and valleys
+        let density = 0.40 + 0.60 * (1.0 - smoothstep(25.0, 160.0, distance));
         if distance < WALL_DISTANCE + 4.0 || random(2) > density || !fits(position, distance) {
             continue;
         }
@@ -995,9 +1252,21 @@ fn spawn_buoys(world: &mut ChildSpawnerCommands, buoys: &[Vec2], assets: &mut As
     }
 }
 
-/// Copa de árbol: una esfera abollada con colores más oscuros abajo y por
-/// dentro, y más claros arriba, donde le da el sol.
-fn crown_mesh(seed: u32, (shade, sunlit): (Color, Color)) -> Mesh {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CrownStyle {
+    /// Broad, flattened umbrella canopy for stone and maritime pines
+    Umbrella,
+    /// Slender conical spire with vertical fluting for cypresses and poplars
+    Spire,
+    /// Organic cloud lobes for broadleaf trees, olive trees, and almond trees
+    Cloud,
+    /// Stepped tiered cone with foliage skirts for firs, conifers, and tall trees
+    ConicalTier,
+}
+
+/// Tree crown sculpted according to species style, with volumetric shading
+/// and directional sun plus ambient light illumination.
+fn crown_mesh(seed: u32, style: CrownStyle, (shade, sunlit): (Color, Color)) -> Mesh {
     let mut mesh = Sphere::new(1.0)
         .mesh()
         .ico(3)
@@ -1009,17 +1278,59 @@ fn crown_mesh(seed: u32, (shade, sunlit): (Color, Color)) -> Mesh {
         .expect("la esfera tiene posiciones")
         .to_vec();
     let mut colors = Vec::with_capacity(positions.len());
+    let sun_dir = Vec3::new(0.55, 0.82, -0.35).normalize();
     let bumpy: Vec<[f32; 3]> = positions
         .iter()
         .map(|&[x, y, z]| {
             let p = Vec3::new(x, y, z);
+            let angle = z.atan2(x);
+            let r_xz = (x * x + z * z).sqrt();
             let lumps = value_noise(Vec2::new(x * 2.3 + y * 1.4, z * 2.3 - y * 0.9) + offset);
             let fine = value_noise(Vec2::new(x * 6.1 - z * 2.0, y * 6.1 + z) + offset);
-            let radius = 0.82 + 0.3 * lumps + 0.08 * fine;
-            let light = (0.5 + 0.5 * y) * 0.75 + 0.25 * fine;
-            let color = shade.mix(&sunlit, light.clamp(0.0, 1.0));
+
+            let shaped = match style {
+                CrownStyle::Umbrella => {
+                    let horiz = 1.0 + 0.35 * (1.0 - y.abs());
+                    let new_y = if y > 0.15 {
+                        0.15 + (y - 0.15) * 0.45
+                    } else {
+                        y * 0.85
+                    };
+                    let r_mod = 0.88 + 0.22 * lumps + 0.08 * fine;
+                    Vec3::new(x * horiz * r_mod, new_y * r_mod, z * horiz * r_mod)
+                }
+                CrownStyle::Spire => {
+                    let t = ((1.0 - y) * 0.5).clamp(0.0, 1.0);
+                    let radius_factor =
+                        t.powf(0.55) * (1.0 - (y.max(0.0) * 0.95).powf(2.0)).max(0.06);
+                    let flute = (angle * 6.0).sin() * 0.10;
+                    let r_mod = (radius_factor + flute) * (0.88 + 0.15 * fine);
+                    Vec3::new(
+                        x / r_xz.max(1e-4) * r_mod,
+                        y * 1.15,
+                        z / r_xz.max(1e-4) * r_mod,
+                    )
+                }
+                CrownStyle::Cloud => {
+                    let lobe = (angle * 3.0).sin() * (y * 2.5).cos() * 0.16;
+                    let r_mod = 0.84 + 0.26 * lumps + 0.08 * fine + lobe;
+                    p * r_mod
+                }
+                CrownStyle::ConicalTier => {
+                    let tier_phase = ((y + 1.0) * 2.5).rem_euclid(1.0);
+                    let skirt = 1.0 + 0.24 * (1.0 - tier_phase);
+                    let taper = ((1.0 - y) * 0.5).clamp(0.15, 1.0);
+                    let r_mod = taper * skirt * (0.85 + 0.15 * fine);
+                    Vec3::new(x / r_xz.max(1e-4) * r_mod, y, z / r_xz.max(1e-4) * r_mod)
+                }
+            };
+
+            let sun_dot = shaped.normalize().dot(sun_dir);
+            let light = (0.5 + 0.5 * sun_dot) * 0.72 + 0.28 * fine;
+            let ao = (0.35 + 0.65 * (shaped.y + 1.0) * 0.5).clamp(0.0, 1.0);
+            let color = shade.mix(&sunlit, (light * ao).clamp(0.0, 1.0));
             colors.push(color.to_linear().to_f32_array());
-            (p * radius).to_array()
+            shaped.to_array()
         })
         .collect();
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, bumpy);

@@ -155,6 +155,15 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
         ]
     };
 
+    let mut sum_lum = 0.0f32;
+    for idx in (0..width * height * 4).step_by(4) {
+        let r0 = orig[idx] as f32 / 255.0;
+        let g0 = orig[idx + 1] as f32 / 255.0;
+        let b0 = orig[idx + 2] as f32 / 255.0;
+        sum_lum += 0.299 * r0 + 0.587 * g0 + 0.114 * b0;
+    }
+    let avg_lum = sum_lum / (width * height) as f32;
+
     for y in 0..height {
         for x in 0..width {
             let center = get_pixel(x, y);
@@ -202,37 +211,71 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
                         center[1] - blur[1],
                         center[2] - blur[2],
                     ];
-                    r = (r + 0.75 * high_pass[0]).clamp(0.0, 1.0);
-                    g = (g + 0.75 * high_pass[1]).clamp(0.0, 1.0);
-                    b = (b + 0.75 * high_pass[2]).clamp(0.0, 1.0);
+                    // Gentle macro-gradient detrending to eliminate repetitive tiling blotches
+                    let blur_lum = 0.299 * blur[0] + 0.587 * blur[1] + 0.114 * blur[2];
+                    let detrend = (avg_lum - blur_lum) * 0.40;
+                    r = (r + 0.58 * high_pass[0] + detrend).clamp(0.0, 1.0);
+                    g = (g + 0.58 * high_pass[1] + detrend).clamp(0.0, 1.0);
+                    b = (b + 0.58 * high_pass[2] + detrend).clamp(0.0, 1.0);
 
-                    // Tonalidad verde pradera arcade de los 90, viva y luminosa
-                    g = (g * 1.16).min(1.0);
-                    r = (r * 0.91 + 0.035).clamp(0.0, 1.0);
-                    b = (b * 0.84).clamp(0.0, 1.0);
-                    g = ((g - 0.44) * 1.26 + 0.44).clamp(0.0, 1.0);
+                    // 90s arcade meadow green hue, vibrant and balanced
+                    g = (g * 1.15).min(1.0);
+                    r = (r * 0.92 + 0.03).clamp(0.0, 1.0);
+                    b = (b * 0.85).clamp(0.0, 1.0);
                 }
                 TextureEnhance::Rock => {
-                    // Fuerte relieve en fisuras y aristas de corte rocoso
+                    // Dual-phase seamless blend to break the prominent continuous horizontal crack in rock.jpg
+                    let half_w = width / 2;
+                    let half_h = height / 2;
+                    let ox = (x + half_w) % width;
+                    let oy = (y + half_h) % height;
+                    let phase2 = get_pixel(ox, oy);
+
+                    // Organic periodic blending weight that tiles seamlessly across 512x512
+                    let fx = x as f32 / width as f32 * std::f32::consts::TAU;
+                    let fy = y as f32 / height as f32 * std::f32::consts::TAU;
+                    let harmonic = (fx * 2.0).sin() * (fy * 3.0).cos() * 0.26
+                        + (fx * 4.0 + fy * 2.0).sin() * 0.14;
+                    let blend_w = (0.5 + harmonic).clamp(0.18, 0.82);
+
+                    let base_r = center[0] * (1.0 - blend_w) + phase2[0] * blend_w;
+                    let base_g = center[1] * (1.0 - blend_w) + phase2[1] * blend_w;
+                    let base_b = center[2] * (1.0 - blend_w) + phase2[2] * blend_w;
+
+                    // Wide-kernel macro detrending (17x17) to eliminate large repeating corner blotches
+                    let mut macro_sum = [0.0f32; 3];
+                    let step = (width / 16).max(8) as isize;
+                    for mdy in [-step, 0, step] {
+                        for mdx in [-step, 0, step] {
+                            let msx = (x as isize + mdx).rem_euclid(width as isize) as usize;
+                            let msy = (y as isize + mdy).rem_euclid(height as isize) as usize;
+                            let mp = get_pixel(msx, msy);
+                            for c in 0..3 {
+                                macro_sum[c] += mp[c] / 9.0;
+                            }
+                        }
+                    }
+                    let macro_lum =
+                        0.299 * macro_sum[0] + 0.587 * macro_sum[1] + 0.114 * macro_sum[2];
+                    let detrend = (avg_lum - macro_lum) * 0.45;
+
+                    // Crisp high-pass micro-relief on stone fissures without overpowering black bars
                     let high_pass = [
                         center[0] - blur[0],
                         center[1] - blur[1],
                         center[2] - blur[2],
                     ];
-                    r = (r + 1.15 * high_pass[0]).clamp(0.0, 1.0);
-                    g = (g + 1.15 * high_pass[1]).clamp(0.0, 1.0);
-                    b = (b + 1.15 * high_pass[2]).clamp(0.0, 1.0);
+                    r = (base_r + 0.72 * high_pass[0] + detrend).clamp(0.0, 1.0);
+                    g = (base_g + 0.72 * high_pass[1] + detrend).clamp(0.0, 1.0);
+                    b = (base_b + 0.72 * high_pass[2] + detrend).clamp(0.0, 1.0);
 
+                    // Luminous, warm Mediterranean limestone/granite tone curve
                     let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                    let contrasted_lum = ((lum - 0.52) * 1.38 + 0.52).clamp(0.0, 1.0);
-                    let ratio = if lum > 1e-4 {
-                        contrasted_lum / lum
-                    } else {
-                        1.0
-                    };
-                    r = (r * ratio * 1.06).clamp(0.0, 1.0);
-                    g = (g * ratio * 1.02).clamp(0.0, 1.0);
-                    b = (b * ratio * 0.95).clamp(0.0, 1.0);
+                    let target_lum = ((lum - 0.48) * 1.16 + 0.48).clamp(0.0, 1.0);
+                    let ratio = if lum > 1e-4 { target_lum / lum } else { 1.0 };
+                    r = (r * ratio * 1.06 + 0.015).clamp(0.0, 1.0);
+                    g = (g * ratio * 1.02 + 0.01).clamp(0.0, 1.0);
+                    b = (b * ratio * 0.96).clamp(0.0, 1.0);
                 }
                 TextureEnhance::Sand => {
                     let high_pass = [
@@ -240,13 +283,15 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
                         center[1] - blur[1],
                         center[2] - blur[2],
                     ];
-                    r = (r + 0.65 * high_pass[0]).clamp(0.0, 1.0);
-                    g = (g + 0.65 * high_pass[1]).clamp(0.0, 1.0);
-                    b = (b + 0.65 * high_pass[2]).clamp(0.0, 1.0);
-                    // Arena cálida y luminosa
-                    r = (r * 1.07).min(1.0);
+                    let blur_lum = 0.299 * blur[0] + 0.587 * blur[1] + 0.114 * blur[2];
+                    let detrend = (avg_lum - blur_lum) * 0.35;
+                    r = (r + 0.55 * high_pass[0] + detrend).clamp(0.0, 1.0);
+                    g = (g + 0.55 * high_pass[1] + detrend).clamp(0.0, 1.0);
+                    b = (b + 0.55 * high_pass[2] + detrend).clamp(0.0, 1.0);
+                    // Warm, luminous sand
+                    r = (r * 1.06).min(1.0);
                     g = (g * 1.02).min(1.0);
-                    b = (b * 0.92).clamp(0.0, 1.0);
+                    b = (b * 0.93).clamp(0.0, 1.0);
                 }
                 TextureEnhance::Wall => {
                     let high_pass = [
