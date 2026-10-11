@@ -224,7 +224,7 @@ impl Default for Controls {
             brake: Binding::new(&[K::KeyS, K::ArrowDown], &[B::LeftTrigger2, B::West]),
             left: Binding::new(&[K::KeyA, K::ArrowLeft], &[B::DPadLeft]),
             right: Binding::new(&[K::KeyD, K::ArrowRight], &[B::DPadRight]),
-            wheelie: Binding::new(&[K::Space, K::ShiftLeft], &[B::East]),
+            wheelie: Binding::new(&[K::Space, K::ShiftLeft], &[]),
             restart: Binding::new(&[K::KeyR], &[B::Select]),
             pause: Binding::new(&[K::Escape], &[B::Start]),
         }
@@ -327,10 +327,15 @@ impl Controls {
                 names.join(", ")
             }
         };
+        let buttons = if action == Action::Wheelie && binding.buttons.is_empty() {
+            "RT + A".to_string()
+        } else {
+            list(binding.buttons.iter().map(|&b| button_name(b)).collect())
+        };
         format!(
             "{}   ·   {}",
             list(binding.keys.iter().map(|&k| key_name(k)).collect()),
-            list(binding.buttons.iter().map(|&b| button_name(b)).collect())
+            buttons
         )
     }
 }
@@ -798,6 +803,10 @@ mod tests {
         assert_eq!(button_name(GamepadButton::RightTrigger2), "RT");
         let controls = Controls::default();
         assert_eq!(controls.describe(Action::Throttle), "W, Arriba   ·   RT, A");
+        assert_eq!(
+            controls.describe(Action::Wheelie),
+            "Espacio, Mayús izq.   ·   RT + A"
+        );
         assert_eq!(controls.first_key(Action::Pause), "Esc");
     }
 }

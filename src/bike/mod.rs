@@ -951,7 +951,7 @@ fn read_controller_binding(
 
                 let pulled_back =
                     (-gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0) - 0.3) / 0.7;
-                let wheelie_btn = if gamepad.pressed(GamepadButton::East) {
+                let wheelie_btn = if trigger_r > 0.2 && south > 0.5 {
                     1.0
                 } else {
                     0.0
@@ -1037,8 +1037,23 @@ fn read_player_input(
             let digital = |action| if button(action) > 0.5 { 1.0 } else { 0.0 };
             pressed += digital(Action::Left) - digital(Action::Right);
             let pulled_back = (-gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0) - 0.3) / 0.7;
+            let trigger_r = gamepad
+                .get(GamepadButton::RightTrigger2)
+                .unwrap_or(0.0)
+                .max(gamepad.get(GamepadButton::RightTrigger).unwrap_or(0.0));
+            let south = if gamepad.pressed(GamepadButton::South) {
+                1.0
+            } else {
+                0.0
+            };
+            let both_throttles = if trigger_r > 0.2 && south > 0.5 {
+                1.0
+            } else {
+                0.0
+            };
             wheelie = wheelie
                 .max(pulled_back.clamp(0.0, 1.0))
+                .max(both_throttles)
                 .max(button(Action::Wheelie));
         }
 
