@@ -191,11 +191,7 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
                     // tono pizarra neutro, legible con sol y sombra, sin quedar negro empastado
                     let lum = 0.299 * r + 0.587 * g + 0.114 * b;
                     let target_lum = (lum * 1.38 + 0.025).clamp(0.0, 1.0);
-                    let ratio = if lum > 1e-4 {
-                        target_lum / lum
-                    } else {
-                        1.0
-                    };
+                    let ratio = if lum > 1e-4 { target_lum / lum } else { 1.0 };
                     r = (r * ratio).clamp(0.0, 1.0);
                     g = (g * ratio).clamp(0.0, 1.0);
                     b = (b * ratio).clamp(0.0, 1.0);
