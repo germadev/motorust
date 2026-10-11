@@ -42,11 +42,13 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 22px;
-      padding: 0 16px;
+      gap: 18px;
+      padding: 24px 16px;
       background: radial-gradient(circle at 50% 40%, #1b2230 0%, var(--bg) 70%);
       transition: opacity 0.6s ease;
       text-align: center;
+      box-sizing: border-box;
+      overflow-y: auto;
     }
     [data-motorust="ready"] #loader {
       opacity: 0;
@@ -54,7 +56,7 @@
     }
     .logo {
       margin: 0;
-      font-size: clamp(44px, 11vw, 96px);
+      font-size: clamp(40px, 9vw, 84px);
       font-weight: 900;
       font-style: italic;
       letter-spacing: 0.04em;
@@ -64,7 +66,7 @@
       color: var(--rust);
     }
     .version {
-      margin: -14px 0 4px;
+      margin: -12px 0 2px;
       font-size: 13px;
       font-weight: 700;
       letter-spacing: 0.12em;
@@ -98,20 +100,144 @@
       margin: 0;
       min-height: 1.4em;
       color: var(--soft);
-      font-size: 16px;
-    }
-    .tips {
-      margin: 0;
-      max-width: 560px;
-      color: var(--soft);
-      font-size: 14px;
-      line-height: 1.6;
+      font-size: 15px;
     }
     [data-motorust="failed"] #status {
       color: #ff8a7a;
     }
     [data-motorust="failed"] .bar {
       display: none;
+    }
+
+    /* Botón de inicio cuando termina la descarga */
+    #start-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 13px 36px;
+      font-family: inherit;
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #ffffff;
+      background: linear-gradient(135deg, #ff7d2b 0%, var(--rust) 100%);
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      border-radius: 9999px;
+      cursor: pointer;
+      box-shadow: 0 0 24px rgba(230, 106, 31, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      animation: pulse-glow 1.8s infinite ease-in-out;
+    }
+    #start-btn:hover {
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 0 34px rgba(230, 106, 31, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+    #start-btn:active {
+      transform: translateY(1px) scale(0.98);
+    }
+    #start-btn:focus-visible {
+      outline: 3px solid #ffffff;
+      outline-offset: 3px;
+    }
+    #start-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      animation: none;
+      transform: none;
+    }
+    @keyframes pulse-glow {
+      0%, 100% {
+        box-shadow: 0 0 20px rgba(230, 106, 31, 0.45);
+      }
+      50% {
+        box-shadow: 0 0 36px rgba(230, 106, 31, 0.85);
+      }
+    }
+
+    /* Panel de descargas para escritorio */
+    .downloads {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: min(560px, 100%);
+      margin-top: 4px;
+    }
+    .downloads-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--soft);
+      opacity: 0.85;
+    }
+    .dl-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .dl-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: var(--ink);
+      text-decoration: none;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+    .dl-card:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: var(--rust);
+      transform: translateY(-2px);
+      color: #ffffff;
+    }
+    .dl-card.recommended {
+      border-color: rgba(230, 106, 31, 0.6);
+      background: rgba(230, 106, 31, 0.08);
+      position: relative;
+    }
+    .dl-card.recommended::after {
+      content: "TU SISTEMA";
+      position: absolute;
+      top: -7px;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 1px 5px;
+      background: var(--rust);
+      color: #fff;
+      border-radius: 4px;
+    }
+    .dl-icon {
+      width: 20px;
+      height: 20px;
+      opacity: 0.9;
+    }
+    .dl-title {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .dl-sub {
+      font-size: 10px;
+      color: var(--soft);
+      line-height: 1.2;
+    }
+
+    .tips {
+      margin: 0;
+      max-width: 560px;
+      color: var(--soft);
+      font-size: 13px;
+      line-height: 1.5;
     }
     a {
       color: var(--rust);
@@ -126,12 +252,40 @@
     <h1 class="logo">MOTO<span>RUST</span></h1>
     <div class="version" id="game-version">v0.0.1</div>
     <div class="bar"><div id="progress"></div></div>
+    <button id="start-btn" type="button">Iniciar juego</button>
     <p id="status">Descargando el juego…</p>
+
+    <div class="downloads" id="downloads">
+      <span class="downloads-label">Descargar versión de escritorio</span>
+      <div class="dl-grid">
+        <a id="dl-win" class="dl-card" href="#" download>
+          <svg class="dl-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/></svg>
+          <span class="dl-title">Windows</span>
+          <span class="dl-sub">64-bit (.zip)</span>
+        </a>
+        <a id="dl-linux" class="dl-card" href="#" download>
+          <svg class="dl-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12.002 0c-3.1 0-5.618 2.518-5.618 5.618 0 .895.21 1.741.583 2.493-2.61.854-4.52 3.328-4.52 6.257 0 2.215 1.107 4.184 2.784 5.378-.06.33-.095.669-.095 1.015 0 1.787.974 3.239 2.176 3.239.569 0 1.091-.327 1.487-.87.92.545 2.02.87 3.203.87s2.283-.325 3.203-.87c.396.543.918.87 1.487.87 1.202 0 2.176-1.452 2.176-3.239 0-.346-.035-.685-.095-1.015 1.677-1.194 2.784-3.163 2.784-5.378 0-2.929-1.91-5.403-4.52-6.257.373-.752.583-1.598.583-2.493 0-3.1-2.518-5.618-5.618-5.618z"/></svg>
+          <span class="dl-title">Linux</span>
+          <span class="dl-sub">x86_64 (.tar.gz)</span>
+        </a>
+        <a id="dl-mac-arm" class="dl-card" href="#" download>
+          <svg class="dl-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.63 1.35-.57.66-.88 1.72-.94 2.78.99.08 2.03-.53 2.65-1.28z"/></svg>
+          <span class="dl-title">macOS</span>
+          <span class="dl-sub">Apple Silicon (.app)</span>
+        </a>
+        <a id="dl-mac-intel" class="dl-card" href="#" download>
+          <svg class="dl-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.63 1.35-.57.66-.88 1.72-.94 2.78.99.08 2.03-.53 2.65-1.28z"/></svg>
+          <span class="dl-title">macOS</span>
+          <span class="dl-sub">Intel (.app)</span>
+        </a>
+      </div>
+    </div>
+
     <p class="tips">
       Teclado: W/S o las flechas para acelerar y frenar, A/D para girar.
       Mando: gatillos y stick izquierdo (pulsa un botón para que el navegador lo vea).
       Alt+Enter o Cmd+Enter: pantalla completa.
-      <br><a href="https://github.com/germadev/motorust">Código en GitHub</a>
+      <br><a href="https://github.com/germadev/motorust" target="_blank" rel="noopener">Código en GitHub</a>
     </p>
   </div>
 
@@ -166,12 +320,45 @@
     // build.sh pone aquí el tamaño del .wasm, para la barra de progreso (el
     // servidor lo manda comprimido y no siempre dice cuánto ocupa).
     const WASM_BYTES = 0;
+    const GAME_VERSION = "0.0.1";
 
     const page = document.documentElement;
     const status = document.getElementById("status");
     const progress = document.getElementById("progress");
     const canvas = document.getElementById("motorust");
+    const startBtn = document.getElementById("start-btn");
     const megabytes = (bytes) => (bytes / 1048576).toFixed(1).replace(".", ",");
+
+    // Configuración de los enlaces de descarga de escritorio
+    const versionText = document.getElementById("game-version")?.textContent?.trim().replace(/^v/, "") || GAME_VERSION;
+    const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+    const downloads = {
+      "dl-win": `motorust-${versionText}-x86_64-pc-windows-msvc.zip`,
+      "dl-linux": `motorust-${versionText}-x86_64-unknown-linux-gnu.tar.gz`,
+      "dl-mac-arm": `motorust-${versionText}-aarch64-apple-darwin-app.zip`,
+      "dl-mac-intel": `motorust-${versionText}-x86_64-apple-darwin-app.zip`,
+    };
+
+    for (const [id, file] of Object.entries(downloads)) {
+      const a = document.getElementById(id);
+      if (a) {
+        a.href = isLocal
+          ? `https://github.com/germadev/motorust/releases/download/v${versionText}/${file}`
+          : `./downloads/${file}`;
+        a.setAttribute("download", file);
+      }
+    }
+
+    // Detectar el sistema operativo para destacar la descarga recomendada
+    const ua = navigator.userAgent.toLowerCase();
+    const platform = (navigator.userAgentData?.platform || navigator.platform || "").toLowerCase();
+    if (platform.includes("win") || ua.includes("windows")) {
+      document.getElementById("dl-win")?.classList.add("recommended");
+    } else if (platform.includes("linux") || ua.includes("linux")) {
+      document.getElementById("dl-linux")?.classList.add("recommended");
+    } else if (platform.includes("mac") || ua.includes("macintosh")) {
+      document.getElementById("dl-mac-arm")?.classList.add("recommended");
+    }
 
     const fail = (message) => {
       if (page.dataset.motorust === "ready") return;
@@ -226,8 +413,36 @@
         throw new Error("este navegador no tiene WebGL2");
       }
       const bytes = await download("./motorust_bg.wasm");
+
+      // Descarga de WASM completada: mostrar botón de inicio en lugar de arrancar inmediatamente
+      progress.style.width = "100%";
+      status.textContent = "Descarga completada";
+      startBtn.style.display = "inline-flex";
+      startBtn.focus();
+
+      await new Promise((resolve) => {
+        let started = false;
+        const triggerStart = () => {
+          if (started) return;
+          started = true;
+          window.removeEventListener("keydown", onKey);
+          resolve();
+        };
+        const onKey = (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            triggerStart();
+          }
+        };
+        startBtn.addEventListener("click", triggerStart, { once: true });
+        window.addEventListener("keydown", onKey);
+      });
+
+      startBtn.disabled = true;
+      startBtn.style.display = "none";
       page.dataset.motorust = "starting";
       status.textContent = "Preparando la pista…";
+
       // Deja que se pinte el cartel antes de que el juego ocupe el hilo.
       await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
       await init({ module_or_path: bytes });

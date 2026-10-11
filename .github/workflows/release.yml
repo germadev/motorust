@@ -93,12 +93,24 @@ jobs:
         with:
           name: web-dist
           path: dist/web
-      - name: Subir motorust_bg.wasm a Cloudflare R2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: motorust-*
+          path: dist/binaries
+          merge-multiple: true
+      - name: Subir motorust_bg.wasm y binarios a Cloudflare R2
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put motorust/motorust_bg.wasm --file=dist/web/motorust_bg.wasm --content-type=application/wasm
+          command: |
+            r2 object put motorust/motorust_bg.wasm --file=dist/web/motorust_bg.wasm --content-type=application/wasm
+            r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.zip --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.zip
+            r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
+            r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-aarch64-apple-darwin-app.zip --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-aarch64-apple-darwin-app.zip
+            r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin-app.zip --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin-app.zip
+            r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-aarch64-apple-darwin.tar.gz --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-aarch64-apple-darwin.tar.gz
+            r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin.tar.gz --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin.tar.gz
       - name: Quitar .wasm de dist/web (supera el límite de 25 MiB de Pages)
         run: rm dist/web/motorust_bg.wasm
       - name: Desplegar a Cloudflare Pages

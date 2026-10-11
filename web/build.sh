@@ -23,7 +23,7 @@ wasm-bindgen --target web --no-typescript --remove-name-section --remove-produce
   --out-dir "$out" target/wasm32-unknown-unknown/release/motorust.wasm
 bytes=$(wc -c < "$out/motorust_bg.wasm" | tr -d ' ')
 version=$(grep '^version = ' Cargo.toml | head -n 1 | cut -d'"' -f 2)
-sed "s/const WASM_BYTES = 0;/const WASM_BYTES = $bytes/; s/<div class=\"version\" id=\"game-version\">[^<]*<\/div>/<div class=\"version\" id=\"game-version\">v$version<\/div>/" web/index.html > "$out/index.html"
+sed "s/const WASM_BYTES = 0;/const WASM_BYTES = $bytes/; s/const GAME_VERSION = \"[^\"]*\";/const GAME_VERSION = \"$version\";/; s/<div class=\"version\" id=\"game-version\">[^<]*<\/div>/<div class=\"version\" id=\"game-version\">v$version<\/div>/" web/index.html > "$out/index.html"
 cp web/favicon.png "$out/favicon.png"
 [ -f web/favicon.ico ] && cp web/favicon.ico "$out/favicon.ico"
 ls -l "$out"
