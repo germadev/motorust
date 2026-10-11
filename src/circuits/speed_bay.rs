@@ -22,11 +22,11 @@ use crate::track::{Banking, Layout, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 /// Dónde están las cosas, en metros desde la meta.
-const SEAFRONT: Span = span(2480.0, 290.0);
-const TUNNEL: Span = span(560.0, 820.0);
-const FOREST: Span = span(1700.0, 2000.0);
-const BRIDGE: Span = span(2190.0, 2270.0);
-const TOWN: Span = span(2300.0, 2520.0);
+const SEAFRONT: Span = span(2560.0, 260.0);
+const TUNNEL: Span = span(510.0, 750.0);
+const FOREST: Span = span(1640.0, 1960.0);
+const BRIDGE: Span = span(2340.0, 2420.0);
+const TOWN: Span = span(2430.0, 2580.0);
 
 pub const SPEED_BAY: Circuit = Circuit {
     name: "Speed Bay",
@@ -39,11 +39,18 @@ pub const SPEED_BAY: Circuit = Circuit {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         // La bajada tras el cambio de rasante, peraltada.
-        banking: &[Banking {
-            from: 320.0,
-            to: 450.0,
-            factor: 2.5,
-        }],
+        banking: &[
+            Banking {
+                from: 320.0,
+                to: 450.0,
+                factor: 2.5,
+            },
+            Banking {
+                from: 560.0,
+                to: 680.0,
+                factor: 2.0,
+            },
+        ],
     },
     scenery: Scenery {
         coast: Coast::AroundTrack(&COAST),
@@ -53,9 +60,9 @@ pub const SPEED_BAY: Circuit = Circuit {
         terraces: &[
             // El gran hotel, sobre el mar.
             Terrace {
-                center: Vec2::new(190.0, -920.0),
+                center: Vec2::new(215.0, -425.0),
                 radius: 48.0,
-                height: 22.0,
+                height: 16.0,
             },
         ],
         mountains,
@@ -72,12 +79,12 @@ pub const SPEED_BAY: Circuit = Circuit {
                 style: WallStyle::Railing,
             },
             WallRun {
-                span: span(2400.0, 280.0),
+                span: span(2480.0, 250.0),
                 side: Side::Right,
                 style: WallStyle::Hedge,
             },
             WallRun {
-                span: span(1250.0, 1650.0),
+                span: span(1250.0, 1600.0),
                 side: Side::Left,
                 style: WallStyle::Concrete,
             },
@@ -118,7 +125,7 @@ pub const SPEED_BAY: Circuit = Circuit {
                 accent: None,
             },
             Billboard {
-                along: 2360.0,
+                along: 2450.0,
                 side: Side::Left,
                 text: "BEVY",
                 color: Color::srgb(0.1, 0.1, 0.1),
@@ -144,25 +151,25 @@ pub const SPEED_BAY: Circuit = Circuit {
         },
         palms: &[
             Row {
-                span: span(2400.0, 280.0),
+                span: span(2480.0, 250.0),
                 side: Side::Right,
                 lateral: WALL_DISTANCE + 4.0,
                 every: 15.0,
             },
             Row {
-                span: span(2420.0, 250.0),
+                span: span(2500.0, 220.0),
                 side: Side::Left,
                 lateral: WALL_DISTANCE + 6.0,
                 every: 38.0,
             },
         ],
         hotels: &[Row {
-            span: span(2450.0, 270.0),
+            span: span(2500.0, 240.0),
             side: Side::Right,
             lateral: WALL_DISTANCE + 30.0,
             every: 38.0,
         }],
-        grand_hotel: Some((1010.0, 50.0)),
+        grand_hotel: Some((880.0, 50.0)),
         buoys: &[
             Vec2::new(-62.0, -60.0),
             Vec2::new(-80.0, -190.0),
@@ -197,27 +204,27 @@ pub const SPEED_BAY: Circuit = Circuit {
         ],
         chevrons: &[
             ChevronSign {
-                along: 360.0,
+                along: 320.0,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
             ChevronSign {
-                along: 470.0,
+                along: 440.0,
                 side: Side::Right,
                 direction: ChevronDirection::Left,
             },
             ChevronSign {
-                along: 880.0,
+                along: 610.0,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
             ChevronSign {
-                along: 1110.0,
+                along: 1090.0,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
             ChevronSign {
-                along: 1820.0,
+                along: 1750.0,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
@@ -240,22 +247,22 @@ pub const SPEED_BAY: Circuit = Circuit {
         ],
         brake_markers: &[
             BrakeMarker {
-                along: 270.0,
+                along: 240.0,
                 side: Side::Left,
                 distance: 100,
             },
             BrakeMarker {
-                along: 300.0,
+                along: 270.0,
                 side: Side::Left,
                 distance: 50,
             },
             BrakeMarker {
-                along: 430.0,
+                along: 400.0,
                 side: Side::Right,
                 distance: 100,
             },
             BrakeMarker {
-                along: 460.0,
+                along: 430.0,
                 side: Side::Right,
                 distance: 50,
             },
@@ -263,168 +270,179 @@ pub const SPEED_BAY: Circuit = Circuit {
     },
 };
 
-const CONTROL_POINTS: [Vec2; 30] = [
-    // 1. El paseo marítimo, hacia el norte
+const CONTROL_POINTS: [Vec2; 44] = [
+    // 1. Paseo marítimo, hacia el norte (-Z)
     Vec2::new(0.0, 0.0),
-    Vec2::new(0.0, -110.0),
-    Vec2::new(0.0, -220.0),
-    Vec2::new(-3.0, -290.0),
-    // 2. Curva a la derecha que baja fuerte y peraltada
-    Vec2::new(18.0, -355.0),
-    Vec2::new(38.0, -415.0),
-    // y curva a la izquierda que sube hasta la cresta de roca por el túnel
-    Vec2::new(42.0, -485.0),
-    Vec2::new(40.0, -565.0), // túnel
-    Vec2::new(45.0, -665.0), // túnel
-    Vec2::new(55.0, -755.0), // salida del túnel
-    // 3. Bajando: curvas enlazadas junto al acantilado
-    Vec2::new(52.0, -835.0),
-    Vec2::new(80.0, -895.0),
-    // y curva a la derecha hacia el gran hotel
-    Vec2::new(155.0, -925.0),
-    Vec2::new(230.0, -905.0),
-    // 4. El paso estrecho entre rocas con carteles
-    Vec2::new(285.0, -865.0),
-    Vec2::new(345.0, -825.0),
-    // y la carretera de la costa este, entre colinas verdes (montaña rusa con eses suaves)
-    Vec2::new(390.0, -750.0),
-    Vec2::new(400.0, -645.0),
-    Vec2::new(425.0, -545.0),
-    Vec2::new(415.0, -435.0),
-    // 5. El bosque de árboles altos con su curva amplia a la derecha
-    Vec2::new(440.0, -340.0),
-    Vec2::new(455.0, -230.0),
-    Vec2::new(435.0, -120.0),
-    Vec2::new(385.0, -35.0),
-    // 6. El puente de arcos rojos sobre la ría
-    Vec2::new(315.0, 35.0),
-    Vec2::new(235.0, 90.0),
-    // y el pueblo con sus soportales antes de volver al paseo
-    Vec2::new(165.0, 120.0),
-    Vec2::new(100.0, 140.0),
-    Vec2::new(35.0, 128.0),
-    Vec2::new(0.0, 68.0),
+    Vec2::new(0.0, -85.0),
+    Vec2::new(0.0, -170.0),
+    Vec2::new(-2.0, -245.0),
+    // 2. Cresta, bajada peraltada y subida hacia el túnel
+    Vec2::new(12.0, -310.0),
+    Vec2::new(32.0, -370.0),
+    Vec2::new(52.0, -440.0),
+    Vec2::new(65.0, -510.0),
+    // Túnel y arco norte de la península (oeste)
+    Vec2::new(65.0, -560.0),
+    Vec2::new(79.6, -595.4),
+    Vec2::new(115.0, -610.0),
+    Vec2::new(150.4, -595.4),
+    Vec2::new(165.0, -560.0),
+    // 3. Descenso junto al acantilado y el gran hotel hacia el sur (+Z)
+    Vec2::new(165.0, -510.0),
+    Vec2::new(164.0, -430.0),
+    Vec2::new(163.0, -350.0),
+    Vec2::new(162.5, -260.0),
+    // 4. Paso estrecho entre rocas con carteles y Checkpoint 1 (horquilla)
+    Vec2::new(162.5, -200.0),
+    Vec2::new(175.7, -168.2),
+    Vec2::new(207.5, -155.0),
+    Vec2::new(239.3, -168.2),
+    Vec2::new(252.5, -200.0),
+    // 5. Costa este, subiendo hacia el bosque (montaña rusa)
+    Vec2::new(252.5, -260.0),
+    Vec2::new(252.0, -340.0),
+    Vec2::new(252.0, -420.0),
+    Vec2::new(252.0, -510.0),
+    // 6. Bosque en lo alto, curva amplia a derechas y Checkpoint 2
+    Vec2::new(252.0, -570.0),
+    Vec2::new(266.1, -603.9),
+    Vec2::new(300.0, -618.0),
+    Vec2::new(333.9, -603.9),
+    Vec2::new(348.0, -570.0),
+    // 7. Bajada desde el bosque hacia el puente de arcos rojos
+    Vec2::new(348.0, -510.0),
+    Vec2::new(340.0, -400.0),
+    Vec2::new(325.0, -280.0),
+    Vec2::new(305.0, -160.0),
+    Vec2::new(275.0, -50.0),
+    Vec2::new(235.0, 40.0),
+    // 8. El puente sobre la ría y el pueblo con soportales de vuelta a meta
+    Vec2::new(185.0, 85.0),
+    Vec2::new(135.0, 100.0),
+    Vec2::new(80.0, 95.0),
+    Vec2::new(35.0, 80.0),
+    Vec2::new(14.0, 58.0),
+    Vec2::new(2.0, 35.0),
+    Vec2::new(0.0, 18.0),
 ];
 
-const ELEVATION: [(f32, f32); 35] = [
+const ELEVATION: [(f32, f32); 39] = [
     (0.0, 0.0),
     (150.0, 0.0),
-    (230.0, 0.6),
-    // El cambio de rasante al final del paseo y la bajada de la curva.
-    (300.0, 4.5),
-    (335.0, 6.2),
-    (385.0, 3.6),
-    (430.0, 1.0),
-    (465.0, 0.4),
-    // La subida hasta el túnel y por dentro de él.
-    (530.0, 2.5),
-    (600.0, 6.0),
-    (690.0, 10.0),
-    (780.0, 14.0),
-    (820.0, 15.0),
-    // La bajada a la salida, junto al acantilado.
-    (900.0, 10.5),
-    (970.0, 8.0),
-    (1040.0, 8.0),
-    (1110.0, 8.5),
-    (1180.0, 9.5),
-    (1260.0, 7.0),
-    // La montaña rusa de la costa.
-    (1336.0, 11.5),
-    (1430.0, 5.0),
-    (1495.0, 9.0),
-    (1600.0, 2.5),
-    (1640.0, 3.0),
-    (1700.0, 8.0),
-    (1780.0, 16.5),
-    (1810.0, 17.5),
-    // El bosque, bajando hasta el puente.
-    (1900.0, 15.0),
-    (2000.0, 13.0),
-    (2100.0, 11.0),
-    (2172.0, 10.0),
-    (2288.0, 9.5),
-    (2350.0, 7.0),
-    (2420.0, 4.0),
-    (2480.0, 1.0),
+    (210.0, 0.5),
+    (290.0, 4.8),
+    (330.0, 6.8),
+    (390.0, 3.8),
+    (440.0, 1.2),
+    (470.0, 0.6),
+    (530.0, 3.5),
+    (610.0, 9.5),
+    (690.0, 15.5),
+    (770.0, 21.0),
+    (810.0, 22.5),
+    (880.0, 17.5),
+    (960.0, 12.5),
+    (1040.0, 9.0),
+    (1110.0, 8.2),
+    (1180.0, 8.0),
+    (1240.0, 9.0),
+    (1310.0, 14.0),
+    (1350.0, 16.5),
+    (1420.0, 11.5),
+    (1470.0, 7.8),
+    (1540.0, 13.0),
+    (1580.0, 15.8),
+    (1650.0, 10.8),
+    (1700.0, 7.0),
+    (1770.0, 12.0),
+    (1840.0, 17.0),
+    (1910.0, 22.0),
+    (1960.0, 24.5),
+    (2040.0, 19.0),
+    (2120.0, 14.0),
+    (2200.0, 10.0),
+    (2270.0, 8.5),
+    (2350.0, 6.5),
+    (2430.0, 4.0),
+    (2510.0, 1.5),
+    (2580.0, 0.4),
 ];
 
-const COAST: [(f32, f32); 22] = [
+const COAST: [(f32, f32); 20] = [
     (0.0, 34.0),
-    (290.0, 34.0),
-    (380.0, 90.0),
-    (500.0, 170.0),
-    (720.0, 170.0),
-    (830.0, 70.0),
-    (900.0, 50.0),
-    (960.0, 130.0),
-    (1060.0, 140.0),
-    (1150.0, 55.0),
-    (1250.0, 27.0),
-    (1700.0, 27.0),
-    (1790.0, 70.0),
-    (1900.0, 110.0),
-    (2090.0, 80.0),
-    (2160.0, 40.0),
-    (2195.0, -170.0),
-    (2265.0, -170.0),
+    (270.0, 34.0),
+    (360.0, 80.0),
+    (500.0, 130.0),
+    (700.0, 130.0),
+    (850.0, 65.0),
+    (1000.0, 45.0),
+    (1100.0, 45.0),
+    (1300.0, 32.0),
+    (1700.0, 32.0),
+    (1850.0, 80.0),
+    (2000.0, 65.0),
+    (2200.0, 45.0),
     (2300.0, 38.0),
-    (2400.0, 32.0),
-    (2500.0, 34.0),
+    (2340.0, -170.0),
+    (2410.0, -170.0),
+    (2440.0, 38.0),
+    (2520.0, 34.0),
     (2600.0, 34.0),
+    (2680.0, 34.0),
 ];
 
 const MASSIFS: [Massif; 8] = [
     // La cresta que cruza el túnel.
-    massif(-60.0, -630.0, 90.0, 30.0),
-    massif(35.0, -690.0, 110.0, 34.0),
-    massif(135.0, -660.0, 80.0, 26.0),
-    // Rocas sobre el pueblo y junto a la costa este.
-    massif(120.0, 40.0, 55.0, 18.0),
-    massif(300.0, -620.0, 60.0, 22.0),
+    massif(115.0, -620.0, 90.0, 30.0),
+    massif(70.0, -580.0, 70.0, 26.0),
+    massif(160.0, -580.0, 70.0, 26.0),
+    // Rocas sobre el pueblo y el paso entre rocas.
+    massif(100.0, 40.0, 50.0, 18.0),
+    massif(205.0, -150.0, 55.0, 20.0),
+    // Cresta del bosque.
+    massif(300.0, -620.0, 80.0, 28.0),
     // Islotes.
-    massif(-190.0, -880.0, 32.0, 13.0),
-    massif(560.0, -120.0, 36.0, 15.0),
-    massif(300.0, 250.0, 28.0, 11.0),
+    massif(-180.0, -780.0, 32.0, 13.0),
+    massif(460.0, -120.0, 36.0, 15.0),
 ];
 
 const CUTTINGS: [Cutting; 7] = [
     // El túnel, con roca a los dos lados desde antes de entrar.
     Cutting {
-        span: span(560.0, 820.0),
+        span: span(510.0, 750.0),
         side: Side::Left,
         height: 24.0,
     },
     Cutting {
-        span: span(560.0, 820.0),
+        span: span(510.0, 750.0),
         side: Side::Right,
         height: 24.0,
     },
     // El acantilado a la salida del túnel.
     Cutting {
-        span: span(820.0, 990.0),
+        span: span(750.0, 920.0),
         side: Side::Right,
         height: 16.0,
     },
     // El paso entre rocas, después del hotel.
     Cutting {
-        span: span(1080.0, 1185.0),
+        span: span(1060.0, 1180.0),
         side: Side::Right,
         height: 14.0,
     },
     Cutting {
-        span: span(1110.0, 1185.0),
+        span: span(1060.0, 1180.0),
         side: Side::Left,
         height: 10.0,
     },
     // Roca a la izquierda antes del puente y a la derecha después.
     Cutting {
-        span: span(2100.0, 2170.0),
+        span: span(2250.0, 2330.0),
         side: Side::Left,
         height: 14.0,
     },
     Cutting {
-        span: span(2290.0, 2410.0),
+        span: span(2430.0, 2520.0),
         side: Side::Right,
         height: 16.0,
     },
