@@ -180,6 +180,9 @@ fn buttons(gamepad: &GCExtendedGamepad) -> [f32; BUTTONS.len()] {
     // SAFETY: GameController desde el hilo principal.
     unsafe {
         let dpad: Retained<GCControllerDirectionPad> = gamepad.dpad();
+        let dpad_val = |b: Retained<GCControllerButtonInput>| {
+            if b.isPressed() { 1.0 } else { 0.0 }
+        };
         [
             value(gamepad.buttonA()),
             value(gamepad.buttonB()),
@@ -194,10 +197,10 @@ fn buttons(gamepad: &GCExtendedGamepad) -> [f32; BUTTONS.len()] {
             optional(gamepad.buttonHome()),
             optional(gamepad.leftThumbstickButton()),
             optional(gamepad.rightThumbstickButton()),
-            value(dpad.up()),
-            value(dpad.down()),
-            value(dpad.left()),
-            value(dpad.right()),
+            dpad_val(dpad.up()),
+            dpad_val(dpad.down()),
+            dpad_val(dpad.left()),
+            dpad_val(dpad.right()),
         ]
     }
 }

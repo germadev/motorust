@@ -726,10 +726,11 @@ pub(super) fn reach_grips(
 }
 
 /// Coloca los huesos de las piernas para que los pies sigan en las
-/// estriberas se mueva como se mueva la cadera, y saca la rodilla de dentro
-/// de la curva hacia el suelo.
+/// estriberas se mueva como se mueva la cadera (o bajen el pie al suelo en
+/// parado), y saca la rodilla de dentro de la curva hacia el suelo.
 pub(super) fn reach_pegs(
     rigs: Query<&Rig>,
+    bikes: Query<&BikeState>,
     riders: Query<(&Rider, &Transform), Without<Leg>>,
     mut legs: Query<(&Leg, &mut Transform), Without<Rider>>,
 ) {
@@ -742,7 +743,18 @@ pub(super) fn reach_pegs(
             continue;
         };
         let hip = pelvis.transform_point((HIP_JOINT - HIPS) * mirror(leg.side));
-        let ankle = rig.geometry.peg * mirror(leg.side);
+        let mut ankle = rig.geometry.peg * mirror(leg.side);
+        if leg.side > 0.0 {
+            let stopped = bikes.get(leg.bike).map_or(0.0, |state| {
+                if state.grounded {
+                    (1.0 - state.speed.abs() / crate::bike::STOPPED_SPEED).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                }
+            });
+            let foot_ground = Vec3::new(0.38, 0.19, rig.geometry.peg.z - 0.04);
+            ankle = ankle.lerp(foot_ground, stopped);
+        }
         // Inclinación positiva = hacia la izquierda: la pierna de dentro es la izquierda.
         let inside = (-rider.hang * leg.side).max(0.0);
         let pole = knee_pole(leg.side, hip, ankle, inside);

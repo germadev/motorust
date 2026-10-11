@@ -65,9 +65,53 @@ pub struct ClaimedPads(pub Vec<String>);
 impl ClaimedPads {
     /// Si el mando de gilrs que se llama `name` ya lo lee otro.
     pub fn has(&self, name: &str) -> bool {
-        self.0
-            .iter()
-            .any(|claimed| claimed.eq_ignore_ascii_case(name))
+        let name_norm = name.to_ascii_lowercase();
+        self.0.iter().any(|claimed| {
+            let claimed_norm = claimed.to_ascii_lowercase();
+            if claimed_norm == name_norm
+                || claimed_norm.contains(&name_norm)
+                || name_norm.contains(&claimed_norm)
+            {
+                return true;
+            }
+            // En macOS, GameController usa el vendorName ("DualSense Wireless Controller",
+            // "Xbox Wireless Controller", "DUALSHOCK 4 Wireless Controller", etc.)
+            // mientras que gilrs/IOKit suele llamarlo "Wireless Controller", "Sony Interactive
+            // Entertainment Wireless Controller", "Microsoft Xbox Controller", etc.
+            let is_generic_wireless = name_norm == "wireless controller"
+                || name_norm == "wireless gamepad"
+                || name_norm.starts_with("controller");
+            let claimed_is_wireless = claimed_norm.contains("controller")
+                || claimed_norm.contains("dualsense")
+                || claimed_norm.contains("dualshock")
+                || claimed_norm.contains("xbox");
+            if is_generic_wireless && claimed_is_wireless {
+                return true;
+            }
+            let is_sony = claimed_norm.contains("dualsense")
+                || claimed_norm.contains("dualshock")
+                || claimed_norm.contains("playstation")
+                || claimed_norm.contains("sony");
+            let gilrs_sony = name_norm.contains("sony")
+                || name_norm.contains("playstation")
+                || name_norm.contains("wireless controller");
+            if is_sony && gilrs_sony {
+                return true;
+            }
+            let is_xbox = claimed_norm.contains("xbox") || claimed_norm.contains("gulikit");
+            let gilrs_xbox = name_norm.contains("xbox")
+                || name_norm.contains("xinput")
+                || name_norm.contains("gulikit");
+            if is_xbox && gilrs_xbox {
+                return true;
+            }
+            let is_nintendo = claimed_norm.contains("switch") || claimed_norm.contains("nintendo");
+            let gilrs_nintendo = name_norm.contains("switch") || name_norm.contains("nintendo");
+            if is_nintendo && gilrs_nintendo {
+                return true;
+            }
+            false
+        })
     }
 }
 

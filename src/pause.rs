@@ -215,6 +215,7 @@ pub fn running(pause: Res<Pause>) -> bool {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Page {
     Main,
+    QuitConfirm,
     Debug,
 }
 
@@ -223,7 +224,9 @@ enum Action {
     Resume,
     MainMenu,
     OpenDebug,
-    Quit,
+    OpenQuitConfirm,
+    CancelQuit,
+    ConfirmQuit,
     NextStickLimit,
     NextKeyboardLimit,
     NextKeyboardRate,
@@ -267,11 +270,27 @@ fn items(page: Page, options: &DebugOptions, lang: Language) -> Vec<(String, Act
                         Language::Spanish => "Salir del juego".into(),
                         Language::English => "Exit game".into(),
                     },
-                    Action::Quit,
+                    Action::OpenQuitConfirm,
                 ));
             }
             items
         }
+        Page::QuitConfirm => vec![
+            (
+                match lang {
+                    Language::Spanish => "Cancelar".into(),
+                    Language::English => "Cancel".into(),
+                },
+                Action::CancelQuit,
+            ),
+            (
+                match lang {
+                    Language::Spanish => "Salir del juego".into(),
+                    Language::English => "Exit game".into(),
+                },
+                Action::ConfirmQuit,
+            ),
+        ],
         Page::Debug => vec![
             (
                 match lang {
@@ -397,13 +416,13 @@ fn use_pause_menu(
         pause.selected =
             (pause.selected as i32 + request.step).rem_euclid(items.len() as i32) as usize;
     }
-    // Pausa, Esc o B: atrás desde depuración y, desde el menú, seguir.
+    // Pausa, Esc o B: atrás desde confirmación de salida y depuración; desde el menú, seguir.
     // Izquierda y derecha cambian la opción de depuración.
     let action = if toggle || request.back {
-        Some(if page == Page::Debug {
-            Action::Back
-        } else {
-            Action::Resume
+        Some(match page {
+            Page::QuitConfirm => Action::CancelQuit,
+            Page::Debug => Action::Back,
+            Page::Main => Action::Resume,
         })
     } else if request.confirm
         || (request.side != 0
@@ -434,7 +453,19 @@ fn use_pause_menu(
                 selected: 0,
             };
         }
-        Some(Action::Quit) => {
+        Some(Action::OpenQuitConfirm) => {
+            *pause = Pause {
+                page: Some(Page::QuitConfirm),
+                selected: 0,
+            };
+        }
+        Some(Action::CancelQuit) => {
+            *pause = Pause {
+                page: Some(Page::Main),
+                selected: 3,
+            };
+        }
+        Some(Action::ConfirmQuit) => {
             exit.write(AppExit::Success);
         }
         Some(Action::NextStickLimit) => {
@@ -509,6 +540,10 @@ fn show_pause_menu(
             Language::Spanish => "PAUSA",
             Language::English => "PAUSE",
         },
+        Page::QuitConfirm => match lang {
+            Language::Spanish => "¿SALIR DEL JUEGO?",
+            Language::English => "EXIT GAME?",
+        },
         Page::Debug => match lang {
             Language::Spanish => "DEPURACIÓN",
             Language::English => "DEBUG",
@@ -518,11 +553,23 @@ fn show_pause_menu(
         .into_iter()
         .map(|(label, _)| Row::new(label))
         .collect();
-    let hint = match lang {
-        Language::Spanish => {
-            "Arriba y abajo: elegir   ·   Enter o A: aceptar   ·   Esc o B: volver"
-        }
-        Language::English => "Up and down: choose   ·   Enter or A: accept   ·   Esc or B: back",
+    let hint = match page {
+        Page::QuitConfirm => match lang {
+            Language::Spanish => {
+                "Arriba y abajo: elegir   ·   Enter o A: aceptar   ·   Esc o B: cancelar"
+            }
+            Language::English => {
+                "Up and down: choose   ·   Enter or A: accept   ·   Esc or B: cancel"
+            }
+        },
+        _ => match lang {
+            Language::Spanish => {
+                "Arriba y abajo: elegir   ·   Enter o A: aceptar   ·   Esc o B: volver"
+            }
+            Language::English => {
+                "Up and down: choose   ·   Enter or A: accept   ·   Esc or B: back"
+            }
+        },
     };
     commands
         .spawn((
@@ -566,11 +613,16 @@ mod tests {
                 Action::Resume,
                 Action::MainMenu,
                 Action::OpenDebug,
-                Action::Quit
+                Action::OpenQuitConfirm
             ]
         );
-        // La opción de depuración dice cómo está y pasa por los tres niveles
-        // antes de volver a no limitar.
+        let quit_confirm: Vec<Action> = items(Page::QuitConfirm, &options, Language::Spanish)
+            .into_iter()
+            .map(|i| i.1)
+            .collect();
+        assert_eq!(quit_confirm, [Action::CancelQuit, Action::ConfirmQuit]);
+
+        // La opción de limitar el giro del stick con la velocidad.
         let mut limit = options.stick_limit;
         let mut shown = Vec::new();
         for _ in 0..5 {
@@ -674,6 +726,7 @@ mod tests {
         assert_eq!(main_en[0], "Resume");
         assert_eq!(main_en[1], "Return to main menu");
         assert_eq!(main_en[2], "Debug");
+        assert_eq!(main_en[3], "Exit game");
         let debug_en = items(Page::Debug, &options, Language::English);
         assert!(debug_en[0].0.ends_with("medium"));
         assert!(debug_en[3].0.ends_with("fast (current)"));

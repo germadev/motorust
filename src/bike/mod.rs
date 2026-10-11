@@ -73,11 +73,10 @@ const WALL_ALIGN: f32 = 0.6;
 /// en ellas.
 const CORNER_DRIVE: f32 = 0.4;
 /// Desde qué parte del tope de la dirección se apura la curva: la moto agarra
-/// cada vez más, hasta tanto más (fracción) con la dirección a tope. Igual a
-/// cualquier velocidad: si creciera deprisa, el final del recorrido del stick
-/// cerraría de golpe la curva.
+/// cada vez más, hasta tanto más (fracción) con la dirección a tope, despacio
+/// .. deprisa.
 const CORNER_GRIP_FROM: f32 = 0.7;
-const CORNER_GRIP: f32 = 0.6;
+const CORNER_GRIP: std::ops::Range<f32> = 0.6..1.4;
 /// Y solo desde aquí, casi a tope, el empuje de más se acaba, el motor empuja
 /// menos (fracción) y la moto pierde velocidad sola (m/s², deprisa) lo justo
 /// para cerrar las curvas más cerradas: en arcade, mantener el giro basta para
@@ -85,6 +84,11 @@ const CORNER_GRIP: f32 = 0.6;
 const CORNER_LOSS_FROM: f32 = 0.85;
 const CORNER_POWER_CUT: f32 = 0.6;
 const CORNER_SCRUB: f32 = 35.0;
+
+/// Inclinación de la moto en parado con el pie derecho en el suelo (rad).
+pub const STOPPED_LEAN: f32 = -0.12;
+/// Por debajo de esta velocidad la moto se inclina en parado y el piloto baja el pie (m/s).
+pub const STOPPED_SPEED: f32 = 2.5;
 
 pub struct BikePlugin;
 
@@ -201,7 +205,7 @@ impl BikeState {
             steer_rate: 0.0,
             steer_direct: 0.0,
             grass: 0.0,
-            lean: 0.0,
+            lean: STOPPED_LEAN,
             elevation: 0.0,
             climb: 0.0,
             grounded: true,
@@ -250,7 +254,7 @@ struct PreviousBikeState(BikeState);
 struct LeanPivot;
 
 /// Parámetros de conducción. Es un recurso para poder ajustarlos en caliente.
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone, Copy, Debug)]
 pub struct BikeTuning {
     /// Punta en asfalto (m/s).
     pub max_speed: f32,
@@ -394,8 +398,11 @@ pub fn step(
     let steer_direct = input.steer_direct.clamp(-1.0, 1.0);
     let steer = (spring + steer_rate * dt + steer_direct).clamp(-1.0, 1.0);
     // Al apurar con la dirección a tope, la moto agarra más y cierra la curva.
-    // Despacio no se nota: manda el radio de giro.
-    let corner_grip = 1.0 + CORNER_GRIP * smoothstep(CORNER_GRIP_FROM, 1.0, steer.abs());
+    // Más cuanto más deprisa: despacio manda el radio de giro.
+    let extra_grip = CORNER_GRIP
+        .start
+        .lerp(CORNER_GRIP.end, smoothstep(25.0, 60.0, speed.abs()));
+    let corner_grip = 1.0 + extra_grip * smoothstep(CORNER_GRIP_FROM, 1.0, steer.abs());
     let max_yaw_rate = tuning.max_yaw_rate_with_grip(speed, corner_grip);
     // Con una rueda en el aire apenas se puede girar.
     let grip = state.chassis.steering_grip();
@@ -406,8 +413,15 @@ pub fn step(
     // Inclinación según cuánto agarre pide la curva: poco giro, poca
     // inclinación, y del todo solo al apurar. (La de equilibrio frente a la
     // gravedad, con un agarre tan alto, tumbaría la moto con muy poco giro.)
+    // En parado la moto apoya el pie derecho y se inclina un poco hacia ese lado.
+    let stopped = if state.grounded {
+        (1.0 - speed.abs() / STOPPED_SPEED).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let grip_used = (speed * yaw_rate / tuning.max_lateral_accel).clamp(-1.0, 1.0);
-    let target_lean = tuning.max_lean * grip_used.abs().powf(LEAN_CURVE).copysign(grip_used);
+    let dynamic_lean = tuning.max_lean * grip_used.abs().powf(LEAN_CURVE).copysign(grip_used);
+    let target_lean = dynamic_lean * (1.0 - stopped) + STOPPED_LEAN * stopped;
     // Se tumba deprisa y se levanta suave. Al cambiar de lado en una curva,
     // también se tumba deprisa hacia el lado contrario.
     let leaning_in = (target_lean.abs() > state.lean.abs() && target_lean * state.lean >= 0.0)
@@ -796,6 +810,7 @@ fn spawn_grid(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn read_controller_binding(
     binding: ControllerBinding,
     keyboard: &ButtonInput<KeyCode>,
@@ -804,6 +819,7 @@ fn read_controller_binding(
     speed: f32,
     dt: f32,
     digital: &mut DigitalSteer,
+    analog: &mut AnalogSteer,
 ) -> BikeInput {
     match binding {
         ControllerBinding::Wasd => {
@@ -910,8 +926,9 @@ fn read_controller_binding(
                 let throttle = trigger_r.max(south);
                 let brake = trigger_l.max(west);
 
-                let mut steer = -stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0));
-                steer *= reach_with(options.stick_limit, speed);
+                let raw_steer = -stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0))
+                    * reach_with(options.stick_limit, speed);
+                let steer = analog.update(raw_steer, dt);
 
                 let dpad_left = if gamepad.pressed(GamepadButton::DPadLeft) {
                     1.0f32
@@ -968,6 +985,8 @@ fn read_player_input(
     mut other_players: Query<(&mut BikeInput, &BikeState, &LocalPlayer), Without<Player>>,
     mut digital_p1: Local<DigitalSteer>,
     mut digital_p2: Local<DigitalSteer>,
+    mut analog_p1: Local<AnalogSteer>,
+    mut analog_p2: Local<AnalogSteer>,
 ) {
     let (mut input, state) = player.into_inner();
     let dt = time.delta_secs();
@@ -982,6 +1001,7 @@ fn read_player_input(
                 state.speed,
                 dt,
                 &mut digital_p1,
+                &mut analog_p1,
             );
         }
         for (mut p2_input, p2_state, local_player) in &mut other_players {
@@ -994,6 +1014,7 @@ fn read_player_input(
                     p2_state.speed,
                     dt,
                     &mut digital_p2,
+                    &mut analog_p2,
                 );
             }
         }
@@ -1020,7 +1041,8 @@ fn read_player_input(
                 .max(button(Action::Wheelie));
         }
 
-        steer *= reach_with(options.stick_limit, state.speed);
+        let raw_steer = steer * reach_with(options.stick_limit, state.speed);
+        let steer = analog_p1.update(raw_steer, dt);
         let steer_direct = digital_p1.update(
             pressed.clamp(-1.0, 1.0),
             reach_with(options.keyboard_limit, state.speed),
@@ -1115,11 +1137,34 @@ impl DigitalSteer {
     }
 }
 
+/// Dirección suavizada del stick: al tumbar hacia la curva (`leaning_in`), avanza
+/// a un ritmo progresivo parecido a la cruceta o el teclado; al soltar o enderezar
+/// hacia el centro, recupera de inmediato para mantener toda la agilidad.
+#[derive(Default)]
+struct AnalogSteer {
+    value: f32,
+}
+
+impl AnalogSteer {
+    fn update(&mut self, target: f32, dt: f32) -> f32 {
+        // Al girar hacia el otro lado, aborta el giro anterior de inmediato
+        // (igual que hace DigitalSteer en teclado/cruceta) para que la respuesta
+        // sea instantánea.
+        if target != 0.0 && self.value * target < 0.0 {
+            self.value = 0.0;
+        }
+        let leaning_in = target.abs() > self.value.abs();
+        let rate = if leaning_in { 3.8 } else { 12.0 };
+        self.value = move_toward(self.value, target, rate * dt);
+        self.value
+    }
+}
+
 /// Curva de respuesta del stick: cerca del centro gira poco, para corregir
 /// la trazada con precisión, y a fondo gira todo.
 fn stick_steer(x: f32) -> f32 {
     const DEAD_ZONE: f32 = 0.08;
-    const EXPONENT: f32 = 1.6;
+    const EXPONENT: f32 = 1.35;
     let pushed = ((x.abs() - DEAD_ZONE) / (1.0 - DEAD_ZONE)).clamp(0.0, 1.0);
     pushed.powf(EXPONENT).copysign(x)
 }
@@ -1407,6 +1452,43 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn analog_steer_leans_in_progressively_and_returns_fast() {
+        let mut analog = AnalogSteer::default();
+        let dt = 1.0 / 120.0;
+        let mut frames_in = 0;
+        while analog.value < 0.99 {
+            analog.update(1.0, dt);
+            frames_in += 1;
+        }
+        let time_in = frames_in as f32 * dt;
+        assert!((0.2..0.4).contains(&time_in), "tumbar tarda {time_in} s");
+
+        let mut frames_out = 0;
+        while analog.value > 0.01 {
+            analog.update(0.0, dt);
+            frames_out += 1;
+        }
+        let time_out = frames_out as f32 * dt;
+        assert!(
+            (0.05..0.15).contains(&time_out),
+            "volver al centro tarda {time_out} s"
+        );
+        assert!(
+            time_out < time_in * 0.5,
+            "vuelve mucho más rápido de lo que tumba"
+        );
+
+        // Al cambiar de lado, aborta el lado anterior y empieza de inmediato
+        analog.update(1.0, dt);
+        assert!(analog.value > 0.0);
+        analog.update(-1.0, dt);
+        assert!(
+            analog.value < 0.0,
+            "empieza de inmediato hacia el otro lado"
+        );
     }
 
     #[test]
@@ -2093,5 +2175,38 @@ mod tests {
         let (track, mut state) = against_left_wall(0.1);
         hit_walls(&mut state, &track);
         assert!(state.speed > 35.0);
+    }
+
+    #[test]
+    fn stopped_bike_leans_and_straightens_with_speed() {
+        let tuning = BikeTuning::default();
+        let parked = BikeState::parked_at((Vec2::ZERO, 0.0));
+        assert_eq!(parked.lean, STOPPED_LEAN);
+
+        let still = step(
+            &parked,
+            &BikeInput::default(),
+            &Ground::flat(Surface::Asphalt),
+            &tuning,
+            1.0,
+        );
+        assert!((still.lean - STOPPED_LEAN).abs() < 1e-4);
+
+        let mut moving = parked;
+        let input = BikeInput {
+            throttle: 1.0,
+            ..default()
+        };
+        for _ in 0..(2.0 / DT) as usize {
+            moving = step(
+                &moving,
+                &input,
+                &Ground::flat(Surface::Asphalt),
+                &tuning,
+                DT,
+            );
+        }
+        assert!(moving.speed > STOPPED_SPEED);
+        assert!(moving.lean.abs() < 0.02);
     }
 }
