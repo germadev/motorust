@@ -3443,7 +3443,7 @@ dependencies = [
 
 [[package]]
 name = "motorust"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "bevy",
  "gilrs",
