@@ -177,20 +177,22 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
 
             match kind {
                 TextureEnhance::Asphalt => {
-                    // Máscara de enfoque y aumento de contraste de luminancia para resaltar los granos de árido
+                    // Micro-grano de árido sutil y natural, sin ruido de destellos
                     let high_pass = [
                         center[0] - blur[0],
                         center[1] - blur[1],
                         center[2] - blur[2],
                     ];
-                    r = (r + 0.95 * high_pass[0]).clamp(0.0, 1.0);
-                    g = (g + 0.95 * high_pass[1]).clamp(0.0, 1.0);
-                    b = (b + 0.95 * high_pass[2]).clamp(0.0, 1.0);
+                    r = (r + 0.40 * high_pass[0]).clamp(0.0, 1.0);
+                    g = (g + 0.40 * high_pass[1]).clamp(0.0, 1.0);
+                    b = (b + 0.40 * high_pass[2]).clamp(0.0, 1.0);
 
+                    // Curva de luminosidad calibrada para asfalto de circuito:
+                    // tono pizarra neutro, legible con sol y sombra, sin quedar negro empastado
                     let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                    let contrasted_lum = ((lum - 0.5) * 1.36 + 0.5).clamp(0.0, 1.0);
+                    let target_lum = (lum * 1.38 + 0.025).clamp(0.0, 1.0);
                     let ratio = if lum > 1e-4 {
-                        contrasted_lum / lum
+                        target_lum / lum
                     } else {
                         1.0
                     };
@@ -545,9 +547,9 @@ mod tests {
     #[test]
     fn embedded_textures_decode() {
         let image = embedded(
-            include_bytes!("../../assets/textures/plaster.jpg"),
+            include_bytes!("../../assets/textures/asphalt.jpg"),
             ImageAddressMode::Repeat,
-            TextureEnhance::None,
+            TextureEnhance::Asphalt,
         );
         assert!(image.texture_descriptor.mip_level_count > 1);
     }

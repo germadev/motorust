@@ -840,6 +840,7 @@ fn read_controller_binding(
                 (left - right).clamp(-1.0, 1.0),
                 reach_with(options.keyboard_limit, speed),
                 options.keyboard_rate.factor(),
+                options.keyboard_return.factor(),
                 dt,
             );
             BikeInput {
@@ -885,6 +886,7 @@ fn read_controller_binding(
                 (left - right).clamp(-1.0, 1.0),
                 reach_with(options.keyboard_limit, speed),
                 options.keyboard_rate.factor(),
+                options.keyboard_return.factor(),
                 dt,
             );
             BikeInput {
@@ -929,6 +931,7 @@ fn read_controller_binding(
                     (dpad_left - dpad_right).clamp(-1.0, 1.0),
                     reach_with(options.keyboard_limit, speed),
                     options.keyboard_rate.factor(),
+                    options.keyboard_return.factor(),
                     dt,
                 );
 
@@ -1026,6 +1029,7 @@ fn read_player_input(
             pressed.clamp(-1.0, 1.0),
             reach_with(options.keyboard_limit, state.speed),
             options.keyboard_rate.factor(),
+            options.keyboard_return.factor(),
             dt,
         );
 
@@ -1068,8 +1072,15 @@ struct DigitalSteer {
 impl DigitalSteer {
     /// Avanza `dt` segundos con `pressed` pulsado (-1, 0 o 1), girando como
     /// mucho `reach` (de 0 a 1) y con una rapidez multiplicada por `rate_factor`.
-    /// Solo suaviza lo que se pulsa: sin pulsar, vuelve al centro y la moto no gira.
-    fn update(&mut self, pressed: f32, reach: f32, rate_factor: f32, dt: f32) -> f32 {
+    /// Al soltar (sin pulsar), vuelve al centro con rapidez multiplicada por `return_factor`.
+    fn update(
+        &mut self,
+        pressed: f32,
+        reach: f32,
+        rate_factor: f32,
+        return_factor: f32,
+        dt: f32,
+    ) -> f32 {
         if pressed != self.pressed {
             // Si se pulsa hacia el otro lado estando inclinado o recuperando,
             // aborta la recuperación para empezar de inmediato hacia el nuevo
@@ -1088,7 +1099,11 @@ impl DigitalSteer {
             }
             let returning = pressed == 0.0;
             let (start, accel, target) = if returning {
-                (DIGITAL_RELEASE_START, DIGITAL_RELEASE_ACCEL, 0.0)
+                (
+                    DIGITAL_RELEASE_START * return_factor,
+                    DIGITAL_RELEASE_ACCEL * return_factor,
+                    0.0,
+                )
             } else {
                 (
                     DIGITAL_STEER_START * rate_factor,
@@ -1209,7 +1224,7 @@ fn interpolate_bikes(
 mod tests {
     use std::f32::consts::FRAC_PI_2;
 
-    use crate::pause::SteerRate;
+    use crate::pause::{ReturnRate, SteerRate};
 
     use super::*;
 
@@ -1372,6 +1387,18 @@ mod tests {
         dt: f32,
         pressed: impl Fn(f32) -> f32,
     ) -> Vec<f32> {
+        digital_steer_with_rates(speed, rate_factor, 1.0, seconds, dt, pressed)
+    }
+
+    /// Igual, con multiplicadores de rapidez al pulsar y al soltar.
+    fn digital_steer_with_rates(
+        speed: f32,
+        rate_factor: f32,
+        return_factor: f32,
+        seconds: f32,
+        dt: f32,
+        pressed: impl Fn(f32) -> f32,
+    ) -> Vec<f32> {
         let mut digital = DigitalSteer::default();
         (0..(seconds / dt).round() as usize)
             .map(|frame| {
@@ -1379,6 +1406,7 @@ mod tests {
                     pressed(frame as f32 * dt),
                     digital_reach(speed),
                     rate_factor,
+                    return_factor,
                     dt,
                 )
             })
@@ -1399,7 +1427,7 @@ mod tests {
             let pressed = if frame < release { 1.0 } else { 0.0 };
             let input = BikeInput {
                 throttle: 1.0,
-                steer_direct: digital.update(pressed, digital_reach(state.speed), 1.0, DT),
+                steer_direct: digital.update(pressed, digital_reach(state.speed), 1.0, 1.0, DT),
                 ..default()
             };
             state = step(&state, &input, &Ground::flat(Surface::Asphalt), &tuning, DT);
@@ -1560,6 +1588,32 @@ mod tests {
         assert_eq!(at(&fast, 0.35), 1.0);
         assert!(at(&slow, 0.35) < 0.8);
         assert_eq!(at(&slow, 0.8), 1.0);
+    }
+
+    #[test]
+    fn keyboard_steering_return_option_changes_how_fast_it_returns_when_released() {
+        let at = |values: &[f32], seconds: f32| values[(seconds / DT).round() as usize - 1];
+        let released = |rate: ReturnRate| {
+            digital_steer_with_rates(0.0, 1.0, rate.factor(), 1.5, DT, |t| {
+                if t < 0.5 { 1.0 } else { 0.0 }
+            })
+        };
+        let slow = released(ReturnRate::Slow);
+        let medium = released(ReturnRate::Medium);
+        let fast = released(ReturnRate::Fast);
+
+        // A los 0.5 s todos han llegado al tope.
+        assert_eq!(at(&slow, 0.5), 1.0);
+        assert_eq!(at(&medium, 0.5), 1.0);
+        assert_eq!(at(&fast, 0.5), 1.0);
+
+        // Al soltar (a los 0.8 s, 0.3 s tras soltar), rápido ha recuperado más que medio, y medio más que lento.
+        assert!(at(&fast, 0.8) < at(&medium, 0.8));
+        assert!(at(&medium, 0.8) < at(&slow, 0.8));
+
+        // Rápido (actual) vuelve al centro antes que lento.
+        assert_eq!(at(&fast, 1.15), 0.0);
+        assert!(at(&slow, 1.15) > 0.0);
     }
 
     #[test]

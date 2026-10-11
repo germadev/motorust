@@ -38,6 +38,9 @@ pub struct DebugOptions {
     /// Con el teclado o la cruceta, cuánto gira al dejar pulsada la tecla
     /// (de entrada, medio).
     pub keyboard_rate: SteerRate,
+    /// Con el teclado o la cruceta, la rapidez con la que recupera al soltar
+    /// la tecla de girar (de entrada, rápido - actual).
+    pub keyboard_return: ReturnRate,
     /// Si se ve en la carrera la leyenda con los controles (de entrada, no).
     pub show_legend: bool,
 }
@@ -48,6 +51,7 @@ impl Default for DebugOptions {
             stick_limit: TurnLimit::Medium,
             keyboard_limit: TurnLimit::Medium,
             keyboard_rate: SteerRate::Medium,
+            keyboard_return: ReturnRate::Fast,
             show_legend: false,
         }
     }
@@ -92,6 +96,48 @@ impl SteerRate {
     /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta.
     fn next(self, step: i32) -> Self {
         cycle(&STEER_RATES, self, step)
+    }
+}
+
+/// Rapidez con la que recupera el teclado o la cruceta al soltar la tecla de
+/// girar: lenta, media o rápido (actual).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ReturnRate {
+    Slow,
+    Medium,
+    Fast,
+}
+
+const RETURN_RATES: [ReturnRate; 3] = [ReturnRate::Slow, ReturnRate::Medium, ReturnRate::Fast];
+
+impl ReturnRate {
+    /// Factor que multiplica la rapidez de recuperación al soltar.
+    pub fn factor(self) -> f32 {
+        match self {
+            ReturnRate::Slow => 0.5,
+            ReturnRate::Medium => 0.75,
+            ReturnRate::Fast => 1.0,
+        }
+    }
+
+    fn name(self, lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => match self {
+                ReturnRate::Slow => "lenta",
+                ReturnRate::Medium => "media",
+                ReturnRate::Fast => "rápido (actual)",
+            },
+            Language::English => match self {
+                ReturnRate::Slow => "slow",
+                ReturnRate::Medium => "medium",
+                ReturnRate::Fast => "fast (current)",
+            },
+        }
+    }
+
+    /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta.
+    fn next(self, step: i32) -> Self {
+        cycle(&RETURN_RATES, self, step)
     }
 }
 
@@ -181,6 +227,7 @@ enum Action {
     NextStickLimit,
     NextKeyboardLimit,
     NextKeyboardRate,
+    NextKeyboardReturn,
     ToggleLegend,
     SearchGamepads,
     Back,
@@ -268,6 +315,19 @@ fn items(page: Page, options: &DebugOptions, lang: Language) -> Vec<(String, Act
             (
                 match lang {
                     Language::Spanish => format!(
+                        "Teclado y cruceta: al soltar la tecla de girar: {}",
+                        options.keyboard_return.name(lang)
+                    ),
+                    Language::English => format!(
+                        "Keyboard and D-pad: return rate when released: {}",
+                        options.keyboard_return.name(lang)
+                    ),
+                },
+                Action::NextKeyboardReturn,
+            ),
+            (
+                match lang {
+                    Language::Spanish => format!(
                         "Leyenda de los controles: {}",
                         if options.show_legend {
                             "se ve"
@@ -349,7 +409,11 @@ fn use_pause_menu(
         || (request.side != 0
             && matches!(
                 items[pause.selected].1,
-                Action::NextStickLimit | Action::NextKeyboardLimit | Action::ToggleLegend
+                Action::NextStickLimit
+                    | Action::NextKeyboardLimit
+                    | Action::NextKeyboardRate
+                    | Action::NextKeyboardReturn
+                    | Action::ToggleLegend
             ))
     {
         Some(items[pause.selected].1)
@@ -388,6 +452,12 @@ fn use_pause_menu(
             options.keyboard_rate =
                 options
                     .keyboard_rate
+                    .next(if request.side < 0 { -1 } else { 1 });
+        }
+        Some(Action::NextKeyboardReturn) => {
+            options.keyboard_return =
+                options
+                    .keyboard_return
                     .next(if request.side < 0 { -1 } else { 1 });
         }
         Some(Action::ToggleLegend) => {
@@ -550,13 +620,39 @@ mod tests {
         assert_eq!(SteerRate::Fast.factor(), 1.0);
         assert!(SteerRate::Slow.factor() < SteerRate::Medium.factor());
         assert!(SteerRate::Medium.factor() < SteerRate::Fast.factor());
-        // La leyenda de los controles, oculta de entrada.
+        // La velocidad a la que recupera al soltar: rápido (actual) de entrada, y pasa por lenta y media.
         assert_eq!(
             items(Page::Debug, &options, Language::Spanish)[3].1,
-            Action::ToggleLegend
+            Action::NextKeyboardReturn
         );
         assert!(
             items(Page::Debug, &options, Language::Spanish)[3]
+                .0
+                .ends_with("rápido (actual)")
+        );
+        let mut ret = options.keyboard_return;
+        let mut shown_returns = Vec::new();
+        for _ in 0..4 {
+            let options = DebugOptions {
+                keyboard_return: ret,
+                ..default()
+            };
+            let label = items(Page::Debug, &options, Language::Spanish)[3].0.clone();
+            shown_returns.push(label.split(": ").last().unwrap().to_string());
+            ret = ret.next(1);
+        }
+        assert_eq!(shown_returns, ["rápido (actual)", "lenta", "media", "rápido (actual)"]);
+        assert_eq!(ReturnRate::Slow.next(-1), ReturnRate::Fast);
+        assert_eq!(ReturnRate::Fast.factor(), 1.0);
+        assert!(ReturnRate::Slow.factor() < ReturnRate::Medium.factor());
+        assert!(ReturnRate::Medium.factor() < ReturnRate::Fast.factor());
+        // La leyenda de los controles, oculta de entrada.
+        assert_eq!(
+            items(Page::Debug, &options, Language::Spanish)[4].1,
+            Action::ToggleLegend
+        );
+        assert!(
+            items(Page::Debug, &options, Language::Spanish)[4]
                 .0
                 .ends_with("oculta")
         );
@@ -577,5 +673,6 @@ mod tests {
         assert_eq!(main_en[2], "Debug");
         let debug_en = items(Page::Debug, &options, Language::English);
         assert!(debug_en[0].0.ends_with("medium"));
+        assert!(debug_en[3].0.ends_with("fast (current)"));
     }
 }
