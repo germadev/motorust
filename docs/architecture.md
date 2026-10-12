@@ -18,7 +18,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 |---|---|
 | `src/main.rs` | Builds the app, registers the plugins and sets the simulation rate (120 Hz). |
 | `src/geometry.rs` | Ground-plane conventions (`Vec2(x, z)`, heading) and shared numeric helpers (noise, seeded randomness, smoothing). |
-| `src/track.rs` | The circuit layout: centreline (a closed Catmull-Rom curve through control points), elevation, banking and queries (nearest point, height, slope, grid slots). Where the track passes over itself, the queries for something on it (`nearest_at`, `road_height_at`) take its height and answer for the stretch at its level. Also the branches: open roads off the lap (`side_roads`, numbered in `Nearest::road`) that every query also looks at, lying on the lap's surface while they share its road, and the vertical loops between them (`Loop`). Knows nothing about rendering. |
+| `src/track.rs` | The circuit layout: centreline (a closed Catmull-Rom curve through control points), elevation, banking and queries (nearest point, height, slope, grid slots). Where the track passes over itself, the queries for something on it (`nearest_at`, `road_height_at`) take its height and answer for the stretch at its level. Also the branches: open roads off the lap (`side_roads`, numbered in `Nearest::road`) that every query also looks at, lying on the lap's surface while they share its road and climbing or dropping smoothly to their loop once apart, and the vertical loops between them (`Loop`). Knows nothing about rendering. |
 | `src/circuits/` | The tracks: `bay.rs` (Bahía, "the Bay"), `turbo_bay.rs` (Turbo Bay) and `loop_island.rs` (Loop Island), each with its layout and scenery, and `mod.rs`, which lists them and tracks the one in use. See [tracks.md](tracks.md). |
 | `src/world/mod.rs` | The world around the road for the chosen track, under a summer sky; rebuilt when the track changes. |
 | `src/world/scenery.rs` | The data that describes a track's scenery: coast, hills, crags and rock walls, what lines the road (walls, tunnels, bridges, arches, signs) and the props. |
@@ -79,7 +79,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 
 ## Tests
 
-There are **213 tests**, all headless. Run them with:
+There are **216 tests**, all headless. Run them with:
 
 ```sh
 cargo test   # or: make test
@@ -92,11 +92,11 @@ CI runs them on every push and PR, together with `cargo fmt --check` and `cargo 
 | Bike physics (`src/bike/mod.rs`) | 49 | Top speed, braking and reversing, steering build-up and release at any frame rate, lean, grass, walls, jumps, wheelies, flat-out laps without touching the walls, the starting lineup, gamepad triggers that do not quite return to zero. |
 | Crashes and grass (`src/bike/crash.rs`, `src/bike/grass_kickup.rs`) | 25 | Bumps, rubs and t-bones between bikes, wall hits, falls (also off a loop, down to the road below), slides and loose limbs, rejoining the track, grass kicked up with speed. |
 | Chassis (`src/bike/chassis.rs`) | 9 | Wheelies, squat, dive, landing compression, suspension in the air. |
-| Rivals (`src/bike/ai.rs`) | 5 | A rival completes a lap without leaving the track, goes round a stopped bike, takes short jumps over the crests and, if it takes the branches, rides round the loop and back; a pack races a lap with hardly any falls. |
+| Rivals (`src/bike/ai.rs`) | 6 | A rival completes a lap without leaving the track, goes round a stopped bike, takes short jumps over the crests and, if it takes the branches, rides round the loop and back, with its wheels on the ground all the way from the loop back onto the lap; a pack races a lap with hardly any falls. |
 | Loops (`src/bike/loop_ride.rs`) | 5 | Going round and out beside the mouth, coming back down too slow, falling off, going in at the mouth. |
 | Bike and rider models (`src/bike/model/`) | 27 | Imported parts and wheels on the ground, open exhausts, rigged riders, hands on the grips and feet on the pegs on every bike, liveries, race numbers. |
-| Track (`src/track.rs`) | 15 | Drivable curves, rideable slopes and banking, walls of distant stretches that do not meet, the grid, branches that leave and join the lap along it and on its surface, and bikes on a branch finding its road. |
-| World and tracks (`src/world/`, `src/circuits/`) | 28 | Terrain hugs the road and keeps it dry, sea and mountains where expected, kerbs only in corners, textures decode, houses fit, loops clear of the road, waterfalls down rock walls, wooden bridges fenced, checkpoints, Turbo Bay passing over its own tunnel. |
+| Track (`src/track.rs`) | 16 | Drivable curves, rideable slopes and banking, walls of distant stretches that do not meet, the grid, branches that leave and join the lap along it and on its surface, climb and drop smoothly once apart from it, and bikes on a branch finding its road. |
+| World and tracks (`src/world/`, `src/circuits/`) | 29 | Terrain hugs the road and keeps it dry, sea and mountains where expected, kerbs only in corners, textures decode, houses fit, loops clear of the road, waterfalls down rock walls, wooden bridges fenced, checkpoints, Turbo Bay passing over its own tunnel, Loop Island's branch forking before the crest in a long curve. |
 | Meshes (`src/shapes.rs`) | 9 | Faces point outwards, sections and bone weights are consistent. |
 | Sound (`src/sound/`) | 9 | Gear changes, throttle loudness, panning, one-shot sounds. |
 | Other (geometry, settings, camera, minimap, menus, HUD) | 32 | Heading conventions, settings survive a save and load, one action per key, map projection, menu items. |

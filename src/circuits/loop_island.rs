@@ -5,9 +5,9 @@
 //! 1. The start straight runs north between palm trees and sunflowers, with
 //!    a crest where the bike takes off.
 //! 2. A long right-hander climbs round the island's own loop, and S-bends
-//!    roll on east over the hills. Just after the crest, a branch forks off
-//!    to the right, cuts inside the corner and goes round the loop, upside
-//!    down at the top, before it joins the lap again on the S-bends.
+//!    roll on east over the hills. On the climb to the crest, a branch forks
+//!    off to the right, sweeps inside the corner and goes round the loop,
+//!    upside down at the top, before it joins the lap again on the S-bends.
 //! 3. The road climbs into a tunnel through a checkerboard ridge and comes
 //!    out by a waterfall, high above the sea, into a long banked right-hander.
 //! 4. Down past a second waterfall, a wooden bridge crosses an inlet where
@@ -29,8 +29,10 @@ const START: Span = span(2060.0, 290.0);
 const TUNNEL: Span = span(770.0, 870.0);
 const BRIDGE: Span = span(1230.0, 1310.0);
 const SHORE: Span = span(1660.0, 1960.0);
-/// The stretch of lap the branch with the loop leaves out.
-const SHORTCUT: Span = span(215.0, 615.0);
+/// The stretch of lap the branch with the loop leaves out: it forks off on
+/// the climb to the crest of the start straight, so the turn off the lap is
+/// a long, gentle one.
+const SHORTCUT: Span = span(110.0, 637.0);
 
 /// Sonic blue and gold.
 const BLUE: Color = Color::srgb(0.08, 0.28, 0.85);
@@ -65,31 +67,46 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         branches: &[Branch {
             from: SHORTCUT.from,
             to: SHORTCUT.to,
-            // Round to the right, then north-east to the loop.
+            // A long right-hander (about 160 m radius) round to the north-east,
+            // over the shoulder of the crest and gently down to the loop.
             approach: &[
-                Vec2::new(1.0, -227.6),
-                Vec2::new(4.4, -238.9),
-                Vec2::new(10.0, -249.3),
-                Vec2::new(17.4, -258.3),
+                Vec2::new(0.5, -122.5),
+                Vec2::new(2.0, -135.0),
+                Vec2::new(4.4, -147.3),
+                Vec2::new(7.8, -159.4),
+                Vec2::new(12.2, -171.2),
+                Vec2::new(17.4, -182.6),
+                Vec2::new(23.6, -193.6),
+                Vec2::new(30.6, -204.0),
+                Vec2::new(38.3, -213.9),
             ],
             vertical_loop: VerticalLoop {
-                mouth: Vec2::new(70.5, -311.4),
+                mouth: Vec2::new(82.2, -258.5),
                 // North-east.
                 heading: -FRAC_PI_4,
-                height: 4.5,
+                height: 5.5,
                 radius: 16.0,
                 shift: -16.0,
             },
-            // On north-east, round to the right, and onto the lap.
+            // On north-east, round to the right (200 m radius), straight on
+            // towards the lap, and onto it in a last long right-hander
+            // (340 m radius), climbing gently all the way.
             exit: &[
-                Vec2::new(124.2, -342.5),
-                Vec2::new(132.4, -349.5),
-                Vec2::new(141.5, -355.2),
-                Vec2::new(151.5, -359.4),
-                Vec2::new(161.9, -362.0),
-                Vec2::new(188.5, -366.5),
-                Vec2::new(215.1, -371.0),
-                Vec2::new(241.6, -375.6),
+                Vec2::new(137.5, -290.6),
+                Vec2::new(146.5, -298.2),
+                Vec2::new(156.3, -305.9),
+                Vec2::new(166.1, -313.6),
+                Vec2::new(175.8, -321.3),
+                Vec2::new(185.6, -329.0),
+                Vec2::new(195.1, -336.2),
+                Vec2::new(204.8, -343.0),
+                Vec2::new(214.7, -349.5),
+                Vec2::new(224.8, -355.7),
+                Vec2::new(235.2, -361.5),
+                Vec2::new(245.7, -366.9),
+                Vec2::new(256.5, -372.0),
+                Vec2::new(267.4, -376.7),
+                Vec2::new(278.4, -381.0),
             ],
         }],
     },
@@ -144,8 +161,9 @@ pub const LOOP_ISLAND: Circuit = Circuit {
             },
         ],
         billboards: &[
+            // Just before the branch forks off to the right.
             Billboard {
-                along: 150.0,
+                along: 95.0,
                 side: Side::Right,
                 text: "MOTORUST",
                 color: Color::srgb(0.1, 0.1, 0.12),
@@ -190,6 +208,13 @@ pub const LOOP_ISLAND: Circuit = Circuit {
             Row {
                 span: span(300.0, 520.0),
                 side: Side::Left,
+                lateral: WALL_DISTANCE + 8.0,
+                every: 30.0,
+            },
+            // Inside the first long corner, round the branch.
+            Row {
+                span: span(220.0, 520.0),
+                side: Side::Right,
                 lateral: WALL_DISTANCE + 8.0,
                 every: 30.0,
             },
@@ -505,4 +530,31 @@ fn mountains(point: Vec2) -> f32 {
         away.normalize_or_zero().dot(Vec2::new(-0.6, -0.8)),
     );
     smoothstep(1500.0, 2700.0, away.length()) * facing * 260.0 * (0.4 + 0.6 * fbm(point / 320.0, 4))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::track::Track;
+
+    #[test]
+    fn the_branch_forks_before_the_crest_and_turns_gently() {
+        let track = Track::new(&LOOP_ISLAND.layout);
+        // The crest of the start straight, where the bike takes off.
+        let crest = (0..track.index_at(START.to))
+            .max_by(|&a, &b| track.elevations()[a].total_cmp(&track.elevations()[b]))
+            .unwrap();
+        let crest = crest as f32 * track.step_length();
+        assert!(SHORTCUT.from < crest - 50.0, "the crest is at {crest} m");
+        // The road to the loop turns off the lap in a long, easy curve, and
+        // the road back is no tighter than the lap where it joins it.
+        let looped = track.loops()[0];
+        for (road, tightest) in [(looped.approach, 100.0), (looped.exit, 75.0)] {
+            let road = track.road(road);
+            for i in 1..road.sample_count() - 1 {
+                let radius = 1.0 / road.curvature(i).abs();
+                assert!(radius > tightest, "{radius} m at {i}");
+            }
+        }
+    }
 }
