@@ -1,12 +1,12 @@
 # Tracks
 
-Motorust has three tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All three are closed coastal roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners.
+Motorust has three tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All three are closed coastal roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners. Loop Island also has a branch: an alternative route off the lap that goes round a loop the bikes ride upside down.
 
 | Track | Length | In the game's words |
 |---|---|---|
 | [Bahía](#bahía) ("the Bay") | 1.6 km | "Una carretera junto al mar, con cuestas, peraltes y un salto en la recta de meta" (a seaside road with slopes, banking and a jump on the start straight) |
-| [Turbo Bay](#turbo-bay) | 2.5 km | "Inspirada en Moto Racer: paseo marítimo, túnel bajo la propia pista, gran hotel, bosque y puente rojo" (inspired by *Moto Racer*: seafront, a tunnel under the track itself, grand hotel, forest and red bridge) |
-| [Loops Hill](#loops-hill) | 2.1 km | "Inspirada en Sonic: colinas de tierra a cuadros, rizos, girasoles, tótems y cascadas" (inspired by Sonic: checkerboard hills, loops, sunflowers, totems and waterfalls) |
+| [Turbo Bay](#turbo-bay) | 3.1 km | "Inspirada en Moto Racer: paseo marítimo, túnel bajo la propia pista, puerto de montaña y puente rojo" (inspired by *Moto Racer*: seafront, a tunnel under the track itself, a mountain pass and red bridge) |
+| [Loop Island](#loop-island) | 2.1 km | "Inspirada en Sonic: un desvío con un rizo para dar la vuelta, tierra a cuadros y cascadas" (inspired by Sonic: a branch with a loop to ride, checkered hills and waterfalls) |
 
 Distances below are in metres from the finish line, as in the track data.
 
@@ -28,7 +28,7 @@ Bahía is the first track: *Moto Racer*'s Speed Bay reimagined as a Mediterranea
 
 ![Racing out of the blue start arch on Turbo Bay's seafront](images/turbo-bay.jpg)
 
-Turbo Bay is inspired by Speed Bay in *Moto Racer*. It is a figure of eight on a hilly island, with the sea all around and two bays cutting in towards the island's waist. The first loop runs clockwise, with the sea on the left; the second runs anticlockwise, with the sea on the right. Halfway round the lap, the road comes back over the ridge it went through in a tunnel. Its data is in `src/circuits/turbo_bay.rs`. The curbs are blue and white.
+Turbo Bay is inspired by Speed Bay in *Moto Racer*. It is a figure of eight on a hilly island, with the sea all around and two bays cutting in towards the island's waist. The first loop runs clockwise, with the sea on the left; the second runs anticlockwise, with the sea on the right, and climbs a mountain at the island's northern tip. Two thirds of the way round the lap, the road comes back over the ridge it went through in a tunnel. Its data is in `src/circuits/turbo_bay.rs`. The curbs are blue and white.
 
 The coastline is drawn on its own (`Coast::Outline`), not as a distance from the road, so its bays, headlands and the river mouth under the bridge do not follow the track. Hills, a rocky ridge at the waist and islets offshore complete the island.
 
@@ -44,39 +44,47 @@ A lap, in order:
    - A steep right-hander, heavily banked, drops almost to the water at the north-west point.
    - The road climbs east into a lit tunnel (505–625 m) through the ridge at the island's waist.
 3. **The grand hotel and the rock pass** (about 625–990 m). Out of the tunnel, past palms and an old-style grand hotel on a headland above the south-east bay, to a pass between rocks with billboards and a red "CHECKPOINT" arch (960 m).
-4. **The east coast road** (about 1000–1280 m). It runs behind a white concrete barrier, with the sea on the right. It is a roller coaster: a crest where the bike jumps with the sea straight ahead, a dip, and a long climb.
-5. **The forest** (about 1300–1660 m). Tall trees line both sides of a long left-hander round the island's highest ground, 44 m above the start, and a second "CHECKPOINT" arch (1600 m). A lighthouse stands on the headland to the north.
-6. **Over the tunnel** (about 1660–1900 m). The road runs down the ridge and crosses over the tunnel, about 18 m above the road inside it, on the grassy hill the tunnel goes through.
-7. **The bay shore and the bridge** (about 1900–2255 m). The road runs down the shore of the south-east bay behind a concrete barrier to a bridge with red arches over the mouth of a river (2170–2255 m).
-8. **The town** (about 2280 m to the finish). The road passes the town and its arcades, with rock on the right, and turns back onto the seafront.
+4. **The east coast road** (about 1000–1280 m). It runs behind a white concrete barrier, with the sea on the right. It is a roller coaster: a crest where the bike jumps with the sea straight ahead, a dip, and the start of a long climb.
+5. **The mountain road** (about 1280–1720 m). The road climbs on north in S-bends, with rock walls on the left and the barrier and the cliffs above the sea on the right, up to 11 % at its steepest. Half way up it dips, then climbs again to the summit at the island's northern tip, 52 m above the start, round a long left-hander with a lighthouse on the cape below. A rocky crag stands inside the bends.
+6. **The forest** (about 1660–2160 m). Down the west side through tall trees, along the cliffs of the north bay: a hump, a dip and a rise past a second "CHECKPOINT" arch (1980 m), then a right-hand kink onto the ridge.
+7. **Over the tunnel** (about 2160–2450 m). The road runs down the ridge and crosses over the tunnel, about 18 m above the road inside it, on the grassy hill the tunnel goes through.
+8. **The bay shore and the bridge** (about 2450–2805 m). The road runs down the shore of the south-east bay behind a concrete barrier to a bridge with red arches over the mouth of a river (2720–2805 m).
+9. **The town** (about 2830 m to the finish). The road passes the town and its arcades, with rock on the right, and turns back onto the seafront.
 
-## Loops Hill
+![The mountain road climbing north between rock walls, with the cliffs and the sea on the right](images/turbo-bay-mountain.jpg)
 
-![A giant loop on a checkerboard hill beside the first long corner of Loops Hill](images/loops-hill.jpg)
+![The summit at the island's northern tip, with the lighthouse on its cape below](images/turbo-bay-summit.jpg)
 
-Loops Hill is inspired by Green Hill, the first zone of *Sonic the Hedgehog*: a roller coaster of a road under a blue sky, running clockwise round an island of green hills with the sea all round. Its data is in `src/circuits/loops_hill.rs`, and its landmarks are drawn by `src/world/landmarks.rs`.
+## Loop Island
+
+![The branch inside Loop Island's first long corner: the road to the loop, the loop, and the road back to the lap](images/loop-island.jpg)
+
+Loop Island is inspired by Green Hill, the first zone of *Sonic the Hedgehog*: a roller coaster of a road under a blue sky, running clockwise round an island of green hills with the sea all round. Its data is in `src/circuits/loop_island.rs`, and its landmarks are drawn by `src/world/landmarks.rs`.
 
 - **Scenery.**
   - Every cliff, rock wall and mesa is checkerboard earth: chocolate and caramel squares under a grass top. The walls along the road are low blocks of the same earth, with hedges on the start straight.
   - Palm trees, round broadleaf trees and rows of tall sunflowers turned towards the road.
-  - Two giant loops, each on a block of checkerboard earth beside the road. They stand in the plane of the road, so you see them side on as you ride past, as in the original game.
+  - The loop of the branch (see below), and a giant loop on a block of checkerboard earth inland from the south shore, in the plane of the road, so you see it side on as you ride past, as in the original game.
   - Carved totem poles with eyes, beaks and wings.
   - Distant mountains across the sea to the north and west; to the south and east, open sea.
-- **Start.** A blue "LOOPS HILL" arch with a grandstand on the right. The curbs are yellow and blue.
+- **Start.** A blue "LOOP ISLAND" arch with a grandstand on the right. The curbs are yellow and blue.
 - **A lap, in order:**
   1. **The start straight** (0–290 m), north between palms and sunflowers. A crest at about 195 m makes the bike take off.
-  2. **The first loop** (about 300–520 m). A long right-hander climbs past the first loop, on the outside, then S-bends roll on east over the hills to a red "CHECKPOINT" arch (700 m).
+  2. **The first long corner** (about 300–540 m). A long right-hander climbs round the loop of the branch, then S-bends roll on east over the hills to a red "CHECKPOINT" arch (700 m).
   3. **The tunnel** (770–870 m). The road climbs through a ridge of checkerboard earth in a tunnel lined with it, its highest point, 18 m above the start.
   4. **The waterfalls** (about 880–1230 m). Out of the tunnel, a waterfall pours down the rock wall on the left into a long right-hander banked like a velodrome. The road drops past a second waterfall, on the right.
   5. **The wooden bridge** (1230–1310 m). A deck of planks on log piers, with a wooden fence on each side, crosses an inlet where the sea runs in under the road.
-  6. **The S-bends** (about 1340–1650 m). A crest, the second "CHECKPOINT" arch (1420 m), totem poles and the second loop, inland on the right.
+  6. **The S-bends** (about 1340–1650 m). A crest, the second "CHECKPOINT" arch (1420 m), totem poles and the giant loop, inland on the right.
   7. **The south shore** (1660–1960 m). A beach road with palms on the sea side and sunflowers on the other, a last jump at about 1775 m, and a banked right-hander back to the start.
+- **The branch with the loop.** Just after the crest of the start straight (215 m), a narrower road forks off to the right. It curves inside the first long corner and runs north-east, its walls closing in, to the mouth of a loop of checkerboard earth with a 16 m radius. The running surface is asphalt with yellow and blue curbs, between low walls of the same earth. The bikes ride round it, upside down at the top, and come out beside the mouth, as in Sonic's loops. The road back curves east and joins the lap on the S-bends (615 m). It is a little longer than the lap it leaves out, and two of the rivals always take it.
+
+![Two bikes riding round the loop, one upside down at the top](images/loop-island-loop.jpg)
 
 ## Editing or adding a track
 
 ### Where tracks live
 
-Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs` and `loops_hill.rs`). A `Circuit` has four fields:
+Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs` and `loop_island.rs`). A `Circuit` has four fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -98,6 +106,7 @@ When a different track is picked, the world is rebuilt from its `Circuit` (see [
 - **`control_points`**: points in metres on the ground plane (`Vec2(x, z)`), in race order. The centre line is a closed centripetal Catmull-Rom curve through all of them, resampled every 2 m. The start is at the first point, and the start straight runs towards −Z.
 - **`elevation`**: the height profile, as pairs of (metres from the finish line, road height in metres). The profile is closed and interpolated smoothly between pairs. Heights are added to a base level 2 m above the sea; every track starts the profile at 0 on the finish line.
 - **`banking`**: banking comes automatically from curvature. The tighter the corner, the more the road tilts inwards, up to a fixed maximum. A `Banking { from, to, factor }` span multiplies it between two distances, still capped at the maximum. A factor above 1 banks more and below 1 banks less.
+- **`branches`**: alternative routes off the lap, each with a loop the bikes ride (see [Branches and loops](#branches-and-loops)). Most tracks have none: `branches: &[]`.
 
 The road is 14 m wide plus curbs, and the walls stand 11.5 m from the centre line (`WALL_DISTANCE`).
 
@@ -150,7 +159,19 @@ pub const LAYOUT: Layout = Layout {
 };
 ```
 
-In a real track, the layout goes straight into the `Circuit`, as in `turbo_bay.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...] }`.
+In a real track, the layout goes straight into the `Circuit`, as in `turbo_bay.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[] }`. (The example needs `branches: &[]` too.)
+
+### Branches and loops
+
+A `Branch` (`src/track.rs`) is a road that forks off the lap and joins it again further on, with a vertical loop in the middle:
+
+- **`from`, `to`**: where it leaves the lap and where it joins it again, in metres from the finish line. Pick straight, gentle stretches of the lap.
+- **`approach`**: control points of the road from the fork to the loop, and **`exit`**: those of the road from the loop back to the lap. Each road is an open Catmull-Rom curve, like the centre line of the lap. It starts on the lap's centre line, going its way, and ends on it; give points along a smooth curve that peels away (an arc a dozen metres apart works well). The last 50 m into the loop and the first 50 m out of it are added for you, straight along it.
+- **`vertical_loop`**: a `VerticalLoop { mouth, heading, height, radius, shift }`. `mouth` is where the bikes go in (the middle of the running surface at the bottom), `heading` the way they go in and come out, `height` the height of the road there (like the heights of `elevation`), `radius` that of the running surface, and `shift` how far to the left (negative: to the right) the way out is from the way in. The running surface drifts sideways as it goes round so that it does not run into itself; the shift must be more than the width of the running surface.
+
+The roads off the lap are narrower than the lap (10 m of asphalt plus curbs). While a branch shares the lap's road, it lies on the lap's surface, so the two are one road, with the lap's walls; once its walls part from the lap's, it goes over to its own height and banking. Its walls close in to the running surface of the loop over the last 70 m before it, and open out again after it. Where the two roads meet, neither draws walls, lines or curbs on the other's road.
+
+Round the loop, a bike runs on rails (`src/bike/loop_ride.rs`): it follows the running surface, steering does nothing and other bikes and walls are left out. Its speed comes from the engine, the brake and the resistances as on the road, plus the part of gravity along the surface. Too slow to reach the side, it comes back down and can reverse out of the mouth; past the side, too slow for the surface to hold it, it falls off and drops to the road below, with its rider. The chase camera turns over with it.
 
 ### Scenery
 
@@ -168,10 +189,10 @@ In a real track, the layout goes straight into the `Circuit`, as in `turbo_bay.r
 | `walls` | Wall style per span and side: `WallRun { span, side, style }`. `WallStyle` is `Stone` (the default everywhere else), `Concrete` (white barrier), `Railing` (green seafront railing), `Hedge` (hedge on a low wall) or `Checkered` (blocks of checkerboard earth). The first run that covers a point wins, so a run over `LAP` after the others sets the default. |
 | `tunnels` | Spans that run through a tunnel. Another stretch of the track may pass over a tunnel (see [Layout](#layout)): there the ground stays down at the level of the tunnel, under its rock, and the rock carries the road above, just below its asphalt. Where the tunnel's top is gentle, grass grows on it unless the soil is checkerboard. |
 | `bridges` | Spans carried by a bridge, built as `bridge_style` says: `RedArches` (a concrete deck under two red arches, with concrete walls) or `Wooden` (planks on log piers, with a wooden fence instead of walls). |
-| `soil` | What cliffs, rock walls and the rock around tunnels are made of: `Soil::Rock` (natural rock with strata) or `Soil::Checkered` (Loops Hill's checkerboard earth, which also lines the tunnels). |
+| `soil` | What cliffs, rock walls and the rock around tunnels are made of: `Soil::Rock` (natural rock with strata) or `Soil::Checkered` (Loop Island's checkerboard earth, which also lines the tunnels). |
 | `gantries` | Arches over the road: `Gantry { along, color, text }`. Without text they carry a chequered board. |
 | `billboards` | Roadside signs: `Billboard { along, side, text, color, accent }`, where `accent` recolours the text from a given letter. |
-| `lamps`, `palms`, `hotels` | Rows along the road: `Row { span, side, lateral, every }`, at `lateral` metres from the centre line, one every `every` metres. Hotels are tall and colourful. |
+| `lamps`, `palms`, `hotels` | Rows along the road: `Row { span, side, lateral, every }`, at `lateral` metres from the centre line, one every `every` metres. Hotels are tall and colourful. Nothing in a row stands on a branch or right beside its walls. |
 | `trees`, `forests` | Species of the scattered trees (umbrella pine, cypress, olive, broadleaf), and spans of dense forest with tall trees on both sides. |
 | `houses` | `Houses { max, paints, spans }`: how many at most, their paint colours, and optionally the spans they are limited to. |
 | `grand_hotel` | `Some((along, lateral))`: an old-style grand hotel at that point of the lap and signed distance from the road (positive to the left). |
@@ -184,7 +205,7 @@ In a real track, the layout goes straight into the `Circuit`, as in `turbo_bay.r
 | `brake_markers` | Roadside braking countdown signs (100 m, 50 m) before corners: `BrakeMarker { along, side, distance }`. |
 | `sunflowers` | Rows of tall sunflowers turned towards the road: `Row { span, side, lateral, every }`. They only grow on grass. |
 | `totems` | Carved totem poles beside the road, facing it: `Totem { along, side }`. |
-| `loops` | Giant loops on a block of checkerboard earth: `Loop { along, side, lateral, radius }`, with `lateral` the distance from the centre line to the middle of the loop. |
+| `loops` | Giant loops on a block of checkerboard earth, to look at: `Loop { along, side, lateral, radius }`, with `lateral` the distance from the centre line to the middle of the loop. The loops the bikes ride belong to the branches of the layout. |
 | `rings` | Lines of golden rings spinning over the road: `Rings { along, count, lateral, height }`, one every 6 m from `along`, `lateral` metres to the left of the centre line and `height` metres above the road. No track has them now. |
 | `waterfalls` | Waterfalls with flowing water down the rock wall of a cutting: `Waterfall { along, side, width }`. Put a `Cutting` on that side first. |
 
@@ -202,5 +223,6 @@ Run `cargo test` (or `make test`, see [building.md](building.md)) after any chan
 - **A flat-out lap.** Full throttle, never braking and only steering towards the road ahead, completes a lap within 60 seconds without touching the walls and stays almost entirely on the asphalt.
 - **Landmarks.** No loop's block comes within 2 m of the walls, rings float over the asphalt within reach of a bike, and every waterfall pours down a rock wall more than 6 m high.
 - **Short jumps.** Each jump lasts under 0.75 s and rises less than 1.3 m, and flat out a rival does take off over the crests (at least twice in 70 seconds).
+- **Branches.** Each starts and ends on the lap's centre line, going its way, on the lap's surface; its roads go into and out of the loop straight, level and with the walls closed in; corners and slopes stay rideable; once apart from the lap its walls never meet the lap's again; a bike on it finds its road; and a rival that takes the branches goes round the loop and back onto the lap.
 
-Some tests cover a single track: for example, that Bahía has sea to the west and mountains to the north-east; that Turbo Bay is an island with its bays and a river under the bridge, that its banked span banks more than its curvature alone would, and that it passes over its own tunnel, with each level found by the bikes on it and the ground kept down under the tunnel's rock; and that Loops Hill is an island of checkerboard cliffs with the sea under its wooden bridge.
+Some tests cover a single track: for example, that Bahía has sea to the west and mountains to the north-east; that Turbo Bay is an island with its bays and a river under the bridge, that its banked span banks more than its curvature alone would, and that it passes over its own tunnel, with each level found by the bikes on it and the ground kept down under the tunnel's rock; that Loop Island is an island of checkerboard cliffs with the sea under its wooden bridge, and that a pack of rivals races a lap of it (and of the Bay) with at most two falls, the two that take its branch going round the loop. The loop riding itself is tested on its own: going round, coming back down too slow, falling off, and going in at the mouth.

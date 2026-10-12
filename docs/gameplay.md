@@ -84,9 +84,20 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 - **Brakes.** The brake slows you down and, once stopped, reverses.
 - **Engine braking.** Letting go of the throttle slows the bike down, and harder the faster you go, as the engine revs higher and the air pushes back: about 4 m/s² at 50 km/h and 7–8 m/s² at 250 km/h, still far from the brake.
 
+### Branches and loops
+
+On Loop Island a branch forks off the lap to the right just after the start straight's crest (see [tracks.md](tracks.md#loop-island)). Keep right to take it, or stay on the lap. Its walls close in before a loop of checkerboard earth:
+
+- **Round the loop** the bike follows the running surface by itself: steering does nothing, and nobody can hit you. The throttle and the brake still work, and gravity slows you on the way up and speeds you up on the way down. The camera turns over with you.
+- **Fast enough,** you go round, upside down at the top, and come out beside the mouth, on the road back to the lap. Off the throttle that takes about 130 km/h at the mouth; with the throttle open, the engine carries you round from much slower.
+- **Too slow to reach the side,** you come back down and stop on the slope; reverse to roll out of the mouth, or open the throttle to try again.
+- **Past the side but too slow,** the loop no longer holds you: bike and rider fall to the road below, and the bike is put back on the road once everything is still, as after any fall.
+
+Two of the rivals always take the branch.
+
 ### Rivals
 
-Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole.
+Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole. On Loop Island two of them take the branch and go round the loop, flat out.
 
 ## Race HUD
 

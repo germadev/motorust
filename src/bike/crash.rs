@@ -1064,6 +1064,42 @@ mod tests {
         assert_eq!(state, still);
     }
 
+    #[test]
+    fn falling_off_a_loop_bike_and_rider_drop_to_the_road() {
+        let track = Track::default();
+        let pose = track.grid_slot(0);
+        let road = track.road_height(pose.0);
+        // Upside down near the top of a loop, 25 m up, going backwards slowly.
+        let mut state = BikeState {
+            elevation: road + 25.0,
+            pitch: 3.0,
+            lean: 0.0,
+            ..BikeState::parked_on(&track, pose)
+        };
+        let mut knock = Knock::default();
+        let ahead = forward(state.heading);
+        let velocity = Vec3::new(-ahead.x, 0.5, -ahead.y) * 4.0;
+        let mut crash = fall_off(&mut state, &mut knock, velocity, &track);
+        assert!(crash.is_down() && !state.grounded);
+        assert!((crash.rider.height - 25.0).abs() < 1e-3);
+        let dt = 1.0 / 120.0;
+        let mut landed = None;
+        for step in 0..(MAX_DOWN_TIME / dt) as usize {
+            slide(&mut state, &mut knock, &mut crash, &track, dt);
+            if state.grounded && landed.is_none() {
+                landed = Some(step as f32 * dt);
+            }
+        }
+        // It drops as fast as a falling body would: 25 m in a little over
+        // two seconds.
+        let landed = landed.expect("the bike reaches the road");
+        assert!((2.0..2.8).contains(&landed), "{landed} s");
+        let ground = track.road_height_at(state.position, state.elevation);
+        assert!((state.elevation - ground).abs() < 1e-3);
+        assert!(!crash.rider.is_airborne(), "the rider lands too");
+        assert!(state.pitch.abs() < 0.2, "the bike ends up on its side");
+    }
+
     fn crash_on_the_straight(speed: f32) -> (Track, BikeState, Knock, CrashState) {
         let track = Track::default();
         let pose = track.grid_slot(0);

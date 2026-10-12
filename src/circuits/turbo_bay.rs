@@ -15,7 +15,7 @@
 //! 4. The east coast road rises and falls behind a white barrier, with the
 //!    sea on the right.
 //! 5. A mountain road climbs on north in S-bends between rock walls, dips,
-//!    and climbs again to the summit at the island's northern tip, 54 m up,
+//!    and climbs again to the summit at the island's northern tip, 52 m up,
 //!    round a long left-hander with the sea and a lighthouse below.
 //! 6. Down through a forest it rolls over a hump, dips and rises again, then
 //!    runs down the ridge and crosses over the tunnel, down the shore of the
@@ -383,7 +383,7 @@ const CONTROL_POINTS: [Vec2; 42] = [
 
 /// Up and down all the way: from the seafront to the water's edge, up
 /// through the tunnel and along the coast, up the mountain to the summit,
-/// 54 m up, down through the forest, rolling, and down the ridge, about 18 m
+/// 52 m up, down through the forest, rolling, and down the ridge, about 18 m
 /// over the tunnel, to the bridge and the town.
 const ELEVATION: [(f32, f32); 47] = [
     (0.0, 0.0),

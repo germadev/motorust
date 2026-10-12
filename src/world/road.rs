@@ -406,10 +406,7 @@ fn walls(
             next if next == segments => false,
             next => visible[next],
         };
-        for index in 0..segments {
-            if !visible[index] {
-                continue;
-            }
+        for (index, _) in visible.iter().enumerate().filter(|&(_, &shown)| shown) {
             let next = index + 1;
             let outward = |i: usize| {
                 let toward = line.offset_point(i, side) - line.offset_point(i, 0.0);

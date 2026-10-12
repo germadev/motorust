@@ -497,7 +497,17 @@ mod tests {
 
     #[test]
     fn a_pack_of_rivals_races_without_wrecking_each_other() {
-        let track = Track::default();
+        // On the Bay, and on Loop Island, with the rivals that take its
+        // branch going round the loop.
+        for circuit in [&crate::circuits::CIRCUITS[0], &crate::circuits::CIRCUITS[2]] {
+            pack_race(&Track::new(&circuit.layout), circuit.name);
+        }
+    }
+
+    /// The rivals of [`crate::bike::GRID`] race a lap of `track` from the
+    /// grid: they all get round, hardly anyone falls, and nobody leaves the
+    /// road. Those that take the branches go round the loops.
+    fn pack_race(track: &Track, name: &str) {
         let tuning = BikeTuning::default();
         let dt = 1.0 / 120.0;
         let mut pack: Vec<Racer> = crate::bike::GRID
@@ -507,7 +517,7 @@ mod tests {
                 rival.map(|rival| Racer {
                     rival,
                     line: Line(rival.lane),
-                    state: BikeState::parked_on(&track, track.grid_slot(slot)),
+                    state: BikeState::parked_on(track, track.grid_slot(slot)),
                     knock: Knock::default(),
                     crash: CrashState::default(),
                 })
@@ -535,14 +545,14 @@ mod tests {
                         &mut racer.state,
                         &mut racer.knock,
                         &mut racer.crash,
-                        &track,
+                        track,
                         dt,
                     );
                     if racer.crash.is_over() {
                         let (position, heading, lateral) =
-                            rejoin_pose(&track, racer.state.position, racer.state.elevation, &[]);
+                            rejoin_pose(track, racer.state.position, racer.state.elevation, &[]);
                         racer.state = BikeState::parked_at_level(
-                            &track,
+                            track,
                             (position, heading),
                             racer.state.elevation,
                         );
@@ -559,7 +569,7 @@ mod tests {
                     .map(|(_, other)| *other)
                     .collect();
                 let (target, limit) =
-                    plan_line(&racer.rival, racer.line.0, &racer.state, &track, &others);
+                    plan_line(&racer.rival, racer.line.0, &racer.state, track, &others);
                 let rate = LINE_RATE + LINE_RATE_PER_SPEED * racer.state.speed.abs();
                 racer.line.0 = move_toward(racer.line.0, target, rate * dt);
                 let input = decide(
@@ -567,22 +577,30 @@ mod tests {
                     racer.line.0,
                     limit,
                     &racer.state,
-                    &track,
+                    track,
                     &tuning,
                 );
+                // Round a loop, on rails.
+                if racer.state.ride.is_some() {
+                    racer.state = advance(&racer.state, &input, track, &tuning, dt);
+                    continue;
+                }
                 let wall;
                 (racer.state, wall) =
-                    advance_hitting_walls(&racer.state, &input, &track, &tuning, dt);
+                    advance_hitting_walls(&racer.state, &input, track, &tuning, dt);
                 if let Some(hit) = wall.filter(wall_knocks_down) {
                     racer.crash = fall_against_wall(&mut racer.state, &mut racer.knock, &hit);
                     falls += 1;
                 }
-                crate::bike::carry(&mut racer.state, &mut racer.knock, &track, dt);
+                crate::bike::carry(&mut racer.state, &mut racer.knock, track, dt);
             }
             for j in 1..pack.len() {
                 let (before, after) = pack.split_at_mut(j);
                 let b = &mut after[0];
                 for a in before.iter_mut() {
+                    if a.state.ride.is_some() || b.state.ride.is_some() {
+                        continue;
+                    }
                     let contact = crate::bike::collide(
                         Body {
                             state: &mut a.state,
@@ -610,8 +628,9 @@ mod tests {
             }
             for (i, racer) in pack.iter().enumerate() {
                 assert!(
-                    track.distance_to_centerline(racer.state.position) < 11.5,
-                    "el rival {i} se ha salido en {:?}",
+                    racer.state.ride.is_some()
+                        || track.distance_to_centerline(racer.state.position) < 11.5,
+                    "el rival {i} se ha salido de {name} en {:?}",
                     racer.state.position
                 );
                 let index = track.nearest_index(racer.state.position) as i64;
@@ -619,11 +638,11 @@ mod tests {
                 last[i] = index;
             }
         }
-        assert!(falls <= 2, "se caen {falls} veces");
+        assert!(falls <= 2, "se caen {falls} veces en {name}");
         for (i, progress) in progress.iter().enumerate() {
             assert!(
                 *progress > n,
-                "el rival {i} no da la vuelta: {progress} de {n}"
+                "el rival {i} no da la vuelta a {name}: {progress} de {n}"
             );
         }
     }

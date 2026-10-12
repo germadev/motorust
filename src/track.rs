@@ -678,10 +678,12 @@ impl Track {
             }
             best.map(|(_, index)| index)
         };
+        let nearest = closest(&|_| true).unwrap_or(0);
+        let reach = self.centerline[nearest].distance(point) + LEVEL_SPREAD;
         height
             .and_then(|height| closest(&|index| on_level_with(self.elevation[index], height)))
-            .or_else(|| closest(&|_| true))
-            .unwrap_or(0)
+            .filter(|&index| self.centerline[index].distance(point) <= reach)
+            .unwrap_or(nearest)
     }
 
     /// El punto de la línea central (no solo de sus vértices) más cercano,
@@ -707,7 +709,10 @@ impl Track {
             nearest = closer(nearest, here);
             on_level = closer(on_level, level);
         }
-        on_level.or(nearest).expect("el trazado tiene puntos")
+        let nearest = nearest.expect("el trazado tiene puntos");
+        on_level
+            .filter(|level| level.distance <= nearest.distance + LEVEL_SPREAD)
+            .unwrap_or(nearest)
     }
 
     /// The nearest point of this road's own centre line to `point`, and the
@@ -976,6 +981,11 @@ fn closer(a: Option<Nearest>, b: Option<Nearest>) -> Option<Nearest> {
 /// as on it (m): a bike in the air over a crest, a rider thrown up. Where
 /// the track passes over itself, the two stretches are much further apart.
 const LEVEL_REACH: f32 = 6.0;
+/// How much further than the nearest road the road at something's level
+/// may be and still be the one under it (m): where the track passes over
+/// itself, the two stretches are close. Something high in the air (falling
+/// off a loop) is not over some far stretch that happens to be that high.
+const LEVEL_SPREAD: f32 = 2.0 * WALL_DISTANCE;
 
 /// Whether something at `height` is on the level of road at `road` (see
 /// [`Track::nearest_at`]).
