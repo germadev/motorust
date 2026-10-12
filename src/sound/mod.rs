@@ -6,7 +6,11 @@
 //! marcha, que sube al llegar arriba y baja al caer. Los motores de los
 //! rivales se oyen menos cuanto más lejos, a un lado o al otro, y más agudos
 //! al acercarse que al alejarse (efecto Doppler). Con M se silencia todo.
+//!
+//! Each track also has its music ([`music`]), which plays during the race
+//! well below the engines.
 
+mod music;
 mod synth;
 
 use std::sync::Arc;
@@ -61,6 +65,7 @@ impl Plugin for SoundPlugin {
         let controls = Arc::new(Controls::default());
         controls.master.set(MASTER);
         app.add_audio_source::<Mix>()
+            .add_audio_source::<music::SongSource>()
             .insert_resource(SoundControls(controls))
             .init_resource::<Blip>()
             .add_systems(Startup, start_mixer)
@@ -76,7 +81,8 @@ impl Plugin for SoundPlugin {
                     toggle_mute,
                 )
                     .chain(),
-            );
+            )
+            .add_systems(Update, music::play_music.after(toggle_mute));
     }
 }
 

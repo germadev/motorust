@@ -17,7 +17,7 @@
 
 use bevy::prelude::*;
 
-use super::Circuit;
+use super::{Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
 use std::f32::consts::FRAC_PI_4;
 
@@ -46,6 +46,10 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                   dar la vuelta, tierra a cuadros y cascadas",
     description_en: "Inspired by Sonic: a branch with a loop to ride,\n\
                      checkered hills and waterfalls",
+    song: Song {
+        mp3: include_bytes!("../../assets/music/loop_island.mp3"),
+        loudness: -10.9,
+    },
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,

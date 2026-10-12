@@ -24,7 +24,7 @@
 
 use bevy::prelude::*;
 
-use super::Circuit;
+use super::{Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{Banking, Layout, WALL_DISTANCE};
 use crate::world::scenery::*;
@@ -49,6 +49,10 @@ pub const TURBO_BAY: Circuit = Circuit {
                   la propia pista, puerto de montaña y puente rojo",
     description_en: "Inspired by Moto Racer: seafront, a tunnel under\n\
                      the track itself, a mountain pass and red bridge",
+    song: Song {
+        mp3: include_bytes!("../../assets/music/turbo_bay.mp3"),
+        loudness: -12.1,
+    },
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,

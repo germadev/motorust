@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use super::Circuit;
+use super::{Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{Layout, WALL_DISTANCE};
 use crate::world::scenery::*;
@@ -17,6 +17,10 @@ pub const BAY: Circuit = Circuit {
                   y un salto en la recta de meta",
     description_en: "A seaside road with slopes, banked turns\n\
                      and a jump on the main straight",
+    song: Song {
+        mp3: include_bytes!("../../assets/music/bahia.mp3"),
+        loudness: -12.6,
+    },
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,

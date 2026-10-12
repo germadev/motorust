@@ -15,6 +15,9 @@ serde = { version = "1", features = ["derive"] }
 gilrs = "0.11"
 # Para detectar el idioma del sistema y ponerlo por defecto.
 sys-locale = "0.3"
+# The same version Bevy uses, to decode the tracks' MP3 music and loop it
+# straight from the bytes built into the game (see src/sound/music.rs).
+rodio = { version = "0.22", default-features = false, features = ["mp3"] }
 
 # En macOS, los mandos que conoce el sistema se leen con GameController, el
 # framework de Apple (ver src/gamepads/apple.rs).

@@ -228,7 +228,7 @@ Gamepads are read with **gilrs** and fed into Bevy's input, like `bevy::gilrs` d
 
 ## Sound
 
-All sound is synthesised in real time, with no recordings. The synthesiser runs on the audio thread (`src/sound/synth.rs`). The game only decides what plays, how loud, and from where (`src/sound/mod.rs`).
+Every sound effect is synthesised in real time, with no recordings. The synthesiser runs on the audio thread (`src/sound/synth.rs`). The game only decides what plays, how loud, and from where (`src/sound/mod.rs`). The only recordings are the tracks' music.
 
 - **Engines.** Each bike has a 1000 cc Grand Prix V4 that revs to 17,500 rpm. It has a "big bang" firing order: two pairs of explosions close together give it a deep, rough roar.
 - **Gearbox.** A six-speed straight-cut gearbox that whines. You hear:
@@ -240,5 +240,6 @@ All sound is synthesised in real time, with no recordings. The synthesiser runs 
 - **Rivals.** Rival engines are louder the closer they are, panned left or right. They sound higher-pitched approaching than moving away (the Doppler effect), so you hear them come and go.
 - **Surroundings.** Wind that grows with speed; tyres when you push in corners or brake hard; grass; impacts against walls; landings.
 - **Menus.** Moving through menus clicks. On the bike select screen, the chosen bike idles and revs when you switch to it.
+- **Music.** Each track has its own song (`assets/music/`), which loops during the race (`src/sound/music.rs`). It plays well below the bike: every song is brought to the same loudness, about 13 dB under your engine flat out (and still under it off the throttle), so the revs, gear changes, tyres and impacts are always heard over it. It fades in when the race starts and out when you leave it.
 
-Pausing muffles the race. **M** mutes and unmutes everything. In the browser, sound starts after the first key press or click, because browsers do not allow audio before that.
+Pausing muffles the race and turns the music down. **M** mutes and unmutes everything, music included. In the browser, sound starts after the first key press or click, because browsers do not allow audio before that.
