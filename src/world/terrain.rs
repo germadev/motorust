@@ -10,7 +10,7 @@ use bevy::{
     asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
 };
 
-use super::scenery::{Coast, Scenery, Side};
+use super::scenery::{Coast, Scenery, Side, Soil};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep, value_noise};
 use crate::track::{Nearest, Track, WALL_DISTANCE};
@@ -32,6 +32,8 @@ const COARSE_GROWTH: f32 = 1.15;
 const GRASS_TILE: f32 = 11.0;
 const SAND_TILE: f32 = 8.5;
 const ROCK_TILE: f32 = 20.0;
+/// Size (m) of each repetition of the checkerboard earth: two by two squares.
+const SOIL_TILE: f32 = 7.0;
 /// Las caras más inclinadas que esto son roca.
 const CLIFF_NORMAL_Y: f32 = 0.8;
 /// Por debajo de esta altura, cerca del mar, hay arena.
@@ -56,6 +58,8 @@ pub struct Terrain {
     zs: Vec<f32>,
     /// Alturas por filas: `heights[z * xs.len() + x]`.
     heights: Vec<f32>,
+    /// What the steep faces are made of.
+    soil: Soil,
 }
 
 impl Terrain {
@@ -99,7 +103,12 @@ impl Terrain {
                     .collect()
             })
         };
-        Self { xs, zs, heights }
+        Self {
+            xs,
+            zs,
+            heights,
+            soil: scenery.soil,
+        }
     }
 
     /// Altura del terreno en un punto (interpolada en la rejilla).
@@ -201,6 +210,9 @@ impl Terrain {
                                 ) * 2.2;
                                 Vec2::new(p.x + warp.x, p.z + warp.y)
                             }
+                            // Checkerboard earth: straight rows at the same
+                            // heights on every cliff, as in Green Hill.
+                            None if self.soil == Soil::Checkered => rock_projection(p, face),
                             None => {
                                 // Continuous 3D domain warp based on world coordinates before projection.
                                 // Warping in 3D breaks world-elevation synchronicity and introduces
@@ -232,7 +244,11 @@ impl Terrain {
                                 Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
                             }
                         };
-                        let color = ground_vertex_color(ground_type, p, normals[index]);
+                        let color = if self.soil == Soil::Checkered && ground_type == Ground::Rock {
+                            soil_vertex_color(p, normals[index])
+                        } else {
+                            ground_vertex_color(ground_type, p, normals[index])
+                        };
                         builder.push(index, p, normals[index], uv, color);
                     }
                 }
@@ -241,7 +257,13 @@ impl Terrain {
         [
             (Ground::Grass, grass.build(GRASS_TILE)),
             (Ground::Sand, sand.build(SAND_TILE)),
-            (Ground::Rock, rock.build(ROCK_TILE)),
+            (
+                Ground::Rock,
+                rock.build(match self.soil {
+                    Soil::Rock => ROCK_TILE,
+                    Soil::Checkered => SOIL_TILE,
+                }),
+            ),
         ]
     }
 }
@@ -254,10 +276,11 @@ pub fn spawn_terrain(
     materials: &mut Assets<StandardMaterial>,
 ) {
     for (ground, mesh) in terrain.meshes() {
-        let (texture, roughness, reflectance) = match ground {
-            Ground::Grass => (&textures.grass, 0.90, 0.18),
-            Ground::Sand => (&textures.sand, 0.88, 0.28),
-            Ground::Rock => (&textures.rock, 0.78, 0.42),
+        let (texture, roughness, reflectance) = match (ground, terrain.soil) {
+            (Ground::Grass, _) => (&textures.grass, 0.90, 0.18),
+            (Ground::Sand, _) => (&textures.sand, 0.88, 0.28),
+            (Ground::Rock, Soil::Rock) => (&textures.rock, 0.78, 0.42),
+            (Ground::Rock, Soil::Checkered) => (&textures.soil, 0.92, 0.2),
         };
         world.spawn((
             Mesh3d(meshes.add(mesh)),
@@ -678,6 +701,19 @@ fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
     color.to_linear().to_f32_array()
 }
 
+/// Checkerboard earth only needs light and shade: its colours are in the
+/// texture. Faces towards the sun are lighter and a little warmer, faces
+/// away from it darker, with broad, faint patches.
+fn soil_vertex_color(p: Vec3, normal: Vec3) -> [f32; 4] {
+    let sun = Vec3::new(0.55, 0.82, -0.35).normalize();
+    let lit = (normal.dot(sun) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let patch = fbm(Vec2::new(p.x, p.z) * 0.02, 2);
+    let shade = 0.78 + 0.32 * lit + 0.1 * (patch - 0.5);
+    Color::srgb(shade * 1.04, shade, shade * 0.96)
+        .to_linear()
+        .to_f32_array()
+}
+
 /// Acumula los triángulos de un tipo de suelo.
 #[derive(Default)]
 struct Builder {
@@ -831,6 +867,29 @@ mod tests {
             "{}",
             terrain.height(below)
         );
+    }
+
+    #[test]
+    fn green_hill_is_an_island_of_checkerboard_cliffs() {
+        let circuit = &CIRCUITS[2];
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        assert_eq!(terrain.soil, Soil::Checkered);
+        // Sea all round, beyond the beach of the south shore and offshore
+        // to the west, and the sea comes in under the middle of the bridge.
+        assert!(terrain.height(Vec2::new(200.0, 260.0)) < SEA_LEVEL);
+        assert!(terrain.height(Vec2::new(-300.0, -200.0)) < SEA_LEVEL);
+        let bridge = circuit.scenery.bridges[0];
+        let middle = track.index_at((bridge.from + bridge.to) / 2.0);
+        assert!(terrain.height(track.offset_point(middle, 0.0)) < SEA_LEVEL);
+        // The walls of the tunnel stand well above the road.
+        let tunnel = circuit.scenery.tunnels[0];
+        let index = track.index_at((tunnel.from + tunnel.to) / 2.0);
+        let road = track.surface_point(index, 0.0).y;
+        for side in [-1.0, 1.0] {
+            let wall = terrain.height(track.offset_point(index, side * (FLAT + 15.0)));
+            assert!(wall - road > 10.0, "{} m", wall - road);
+        }
     }
 
     #[test]

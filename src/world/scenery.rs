@@ -125,6 +125,27 @@ pub enum WallStyle {
     Railing,
     /// Seto sobre un murete.
     Hedge,
+    /// Blocks of brown checkerboard earth, as in Green Hill.
+    Checkered,
+}
+
+/// What the steep faces of the terrain (cliffs, rock walls and the rock
+/// around the tunnels) are made of.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Soil {
+    /// Natural rock with tilted strata.
+    Rock,
+    /// Brown checkerboard earth under a grass top, as in Green Hill.
+    Checkered,
+}
+
+/// How the bridges are built.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BridgeStyle {
+    /// A concrete deck under two red steel arches.
+    RedArches,
+    /// A wooden deck of planks on log piers, with a wooden fence on each side.
+    Wooden,
 }
 
 /// Un tramo con otro muro distinto del de piedra a un lado.
@@ -231,6 +252,52 @@ pub struct Scenery {
     pub beach_parasols: &'static [ParasolCluster],
     /// Carteles de aviso de frenada (100 m, 50 m).
     pub brake_markers: &'static [BrakeMarker],
+    /// What cliffs and rock walls are made of.
+    pub soil: Soil,
+    pub bridge_style: BridgeStyle,
+    /// Rows of tall sunflowers turned towards the road.
+    pub sunflowers: &'static [Row],
+    /// Carved totem poles beside the road.
+    pub totems: &'static [Totem],
+    /// Giant vertical loops standing beside the road.
+    pub loops: &'static [Loop],
+    /// Lines of spinning golden rings floating over the road.
+    pub rings: &'static [Rings],
+    /// Waterfalls pouring down the rock walls of the cuttings.
+    pub waterfalls: &'static [Waterfall],
+}
+
+/// A carved totem pole beside the road, facing it.
+pub struct Totem {
+    pub along: f32,
+    pub side: Side,
+}
+
+/// A giant vertical loop on a block of earth beside the road, in the plane
+/// of the road: from the road it is seen side on, as in a 2D platformer.
+pub struct Loop {
+    pub along: f32,
+    pub side: Side,
+    /// Distance from the centre line to the middle of the loop (m).
+    pub lateral: f32,
+    /// Radius of the running surface inside the loop (m).
+    pub radius: f32,
+}
+
+/// A line of `count` golden rings over the road from `along` on, `lateral`
+/// metres to the left of the centre line and `height` metres above the road.
+pub struct Rings {
+    pub along: f32,
+    pub count: u32,
+    pub lateral: f32,
+    pub height: f32,
+}
+
+/// A waterfall `width` metres wide down the rock wall of a cutting.
+pub struct Waterfall {
+    pub along: f32,
+    pub side: Side,
+    pub width: f32,
 }
 
 /// Un faro costero sobre un peñasco o cabo.

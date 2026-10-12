@@ -19,17 +19,18 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/main.rs` | Builds the app, registers the plugins and sets the simulation rate (120 Hz). |
 | `src/geometry.rs` | Ground-plane conventions (`Vec2(x, z)`, heading) and shared numeric helpers (noise, seeded randomness, smoothing). |
 | `src/track.rs` | The circuit layout: centreline (a closed Catmull-Rom curve through control points), elevation, banking and queries (nearest point, height, slope, grid slots). Knows nothing about rendering. |
-| `src/circuits/` | The tracks: `bay.rs` (Bahía, "the Bay") and `speed_bay.rs` (Speed Bay), each with its layout and scenery, and `mod.rs`, which lists them and tracks the one in use. See [tracks.md](tracks.md). |
+| `src/circuits/` | The tracks: `bay.rs` (Bahía, "the Bay"), `speed_bay.rs` (Speed Bay) and `green_hill.rs` (Green Hill), each with its layout and scenery, and `mod.rs`, which lists them and tracks the one in use. See [tracks.md](tracks.md). |
 | `src/world/mod.rs` | The world around the road for the chosen track, under a summer sky; rebuilt when the track changes. |
 | `src/world/scenery.rs` | The data that describes a track's scenery: coast, hills, crags and rock walls, what lines the road (walls, tunnels, bridges, arches, signs) and the props. |
-| `src/world/terrain.rs` | Terrain with sea, beaches, rock, hills, inlets and flat areas, computed once on a grid that is fine near the road and coarser towards the horizon (multi-threaded on the desktop). |
-| `src/world/road.rs` | Asphalt, lines, kerbs in the corners, walls (stone, concrete, railings or hedges) and the arches over the road, following the track's height and banking. |
-| `src/world/structures.rs` | Tunnels cut through the rock, arched bridges over the water and billboards. |
+| `src/world/terrain.rs` | Terrain with sea, beaches, rock (or checkerboard earth), hills, inlets and flat areas, computed once on a grid that is fine near the road and coarser towards the horizon (multi-threaded on the desktop). |
+| `src/world/road.rs` | Asphalt, lines, kerbs in the corners, walls (stone, concrete, railings, hedges or checkerboard earth) and the arches over the road, following the track's height and banking. |
+| `src/world/structures.rs` | Tunnels cut through the rock, bridges over the water (red arches or wooden) and billboards. |
 | `src/world/props.rs` | Street lamps, trees and forests, palms, houses, tall hotels, the grand old hotel and buoys, placed pseudo-randomly but always the same way. |
+| `src/world/landmarks.rs` | Green Hill landmarks: giant loops on blocks of checkerboard earth, totem poles, sunflowers, spinning golden rings and waterfalls with flowing water. |
 | `src/world/lettering.rs` | Chunky pixel lettering, like 90s games, for the finish arches, banners and signs. |
 | `src/world/quads.rs` | Mesh builder made of flat quads and triangles that orient themselves the way they are asked to. |
 | `src/world/sky.rs` | Sky dome with a summer-sky photo, always centred on the camera so it looks infinitely far away. |
-| `src/world/textures.rs` | Scenery textures (CC0 photos from Poly Haven), embedded, with mipmaps computed at startup. |
+| `src/world/textures.rs` | Scenery textures (CC0 photos from Poly Haven), embedded, plus procedural ones (checkerboards, water, crowds, checkerboard earth, waterfalls, planks), with mipmaps computed at startup. |
 | `src/bike/mod.rs` | The bike: controls, arcade physics (`step`), collisions with walls and other bikes, interpolation, the starting grid and the `ROSTER` of bikes. |
 | `src/bike/chassis.rs` | Wheelies and suspension: damped springs that advance with the fixed-step physics. |
 | `src/bike/crash.rs` | Contacts between bikes as impulses between two rigid bodies (momentum, restitution, friction, spin), the knock the tyres scrub off afterwards, when a rider goes down, the slide of the fallen bike and the thrown rider, and where the bike rejoins the track. |
@@ -76,7 +77,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 
 ## Tests
 
-There are **139 tests**, all headless. Run them with:
+There are **200 tests**, all headless. Run them with:
 
 ```sh
 cargo test   # or: make test
@@ -86,15 +87,16 @@ CI runs them on every push and PR, together with `cargo fmt --check` and `cargo 
 
 | Area | Tests | What they check (examples) |
 |---|---|---|
-| Bike physics (`src/bike/mod.rs`) | 35 | Top speed, braking and reversing, steering build-up and release at any frame rate, lean, grass, walls, jumps, wheelies, flat-out laps without touching the walls, the starting lineup. |
+| Bike physics (`src/bike/mod.rs`) | 48 | Top speed, braking and reversing, steering build-up and release at any frame rate, lean, grass, walls, jumps, wheelies, flat-out laps without touching the walls, the starting lineup. |
+| Crashes and grass (`src/bike/crash.rs`, `src/bike/grass_kickup.rs`) | 24 | Bumps, rubs and t-bones between bikes, wall hits, falls, slides and loose limbs, rejoining the track, grass kicked up with speed. |
 | Chassis (`src/bike/chassis.rs`) | 9 | Wheelies, squat, dive, landing compression, suspension in the air. |
-| Rivals (`src/bike/ai.rs`) | 3 | A rival completes a lap without leaving the track and goes round a stopped bike. |
-| Bike and rider models (`src/bike/model/`) | 26 | Imported parts and wheels on the ground, open exhausts, rigged riders, hands on the grips and feet on the pegs on every bike, liveries, race numbers. |
+| Rivals (`src/bike/ai.rs`) | 4 | A rival completes a lap without leaving the track, goes round a stopped bike and takes short jumps over the crests. |
+| Bike and rider models (`src/bike/model/`) | 27 | Imported parts and wheels on the ground, open exhausts, rigged riders, hands on the grips and feet on the pegs on every bike, liveries, race numbers. |
 | Track (`src/track.rs`) | 12 | Drivable curves, rideable slopes and banking, walls of distant stretches that do not meet, the grid. |
-| World (`src/world/`) | 17 | Terrain hugs the road and keeps it dry, sea and mountains where expected, kerbs only in corners, textures decode, houses fit. |
+| World and tracks (`src/world/`, `src/circuits/`) | 27 | Terrain hugs the road and keeps it dry, sea and mountains where expected, kerbs only in corners, textures decode, houses fit, loops clear of the road, waterfalls down rock walls, wooden bridges fenced, checkpoints. |
 | Meshes (`src/shapes.rs`) | 9 | Faces point outwards, sections and bone weights are consistent. |
-| Sound (`src/sound/`) | 8 | Gear changes, throttle loudness, panning, one-shot sounds. |
-| Other (geometry, settings, camera, minimap, menus, HUD) | 20 | Heading conventions, settings survive a save and load, one action per key, map projection, menu items. |
+| Sound (`src/sound/`) | 9 | Gear changes, throttle loudness, panning, one-shot sounds. |
+| Other (geometry, settings, camera, minimap, menus, HUD) | 31 | Heading conventions, settings survive a save and load, one action per key, map projection, menu items. |
 
 The track tests run on every circuit: when you change a track, they tell you if it has impossible corners, excessive slopes, overlaps itself, or if the terrain covers the road or leaves it in the air (see [tracks.md](tracks.md)).
 

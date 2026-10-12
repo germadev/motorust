@@ -6,6 +6,7 @@
 use bevy::prelude::*;
 
 use super::Assets3d;
+use super::landmarks;
 use super::quads::MeshBuilder;
 use super::scenery::{
     Boat, BoatKind, Grandstand, Houses, Lighthouse, ParasolCluster, Row, Scenery, Species, span,
@@ -29,7 +30,7 @@ const FOREST_EVERY: f32 = 5.0;
 const FOREST_DEPTH: usize = 4;
 
 /// Un sitio ocupado por un edificio: su centro y su radio.
-type Footprint = (Vec2, f32);
+pub(super) type Footprint = (Vec2, f32);
 
 pub fn spawn_props(
     world: &mut ChildSpawnerCommands,
@@ -67,6 +68,29 @@ pub fn spawn_props(
     for row in scenery.palms {
         occupied.extend(spawn_palms(world, track, terrain, row, assets));
     }
+    occupied.extend(landmarks::spawn_loops(
+        world,
+        track,
+        terrain,
+        scenery.loops,
+        assets,
+    ));
+    occupied.extend(landmarks::spawn_totems(
+        world,
+        track,
+        terrain,
+        scenery.totems,
+        assets,
+    ));
+    occupied.extend(landmarks::spawn_sunflowers(
+        world,
+        track,
+        terrain,
+        scenery.sunflowers,
+        assets,
+    ));
+    landmarks::spawn_rings(world, track, scenery.rings, assets);
+    landmarks::spawn_waterfalls(world, track, terrain, scenery.waterfalls, assets);
     spawn_trees(world, track, terrain, scenery, &occupied, assets);
     spawn_buoys(world, scenery.buoys, assets);
     for lighthouse in scenery.lighthouses {
@@ -82,7 +106,7 @@ pub fn spawn_props(
 
 /// Puntos de una fila a lo largo de la carretera: el punto del trazado y la
 /// posición, cada `every` metros desde la mitad del primer hueco.
-fn row_points(track: &Track, row: &Row) -> Vec<(usize, Vec2)> {
+pub(super) fn row_points(track: &Track, row: &Row) -> Vec<(usize, Vec2)> {
     let lap = track.lap_length();
     let length = row.span.length(lap);
     let count = (length / row.every).floor() as usize;

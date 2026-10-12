@@ -2,6 +2,7 @@
 //! la bordea y el decorado de la pista elegida ([`crate::circuits`]), bajo
 //! un cielo de verano. Al cambiar de pista se vuelve a construir.
 
+mod landmarks;
 mod lettering;
 mod props;
 mod quads;
@@ -30,6 +31,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<textures::WorldTextures>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
+            .add_systems(Update, (landmarks::spin, landmarks::flow))
             .add_systems(OnEnter(GameState::Tracks), cache_all_circuits)
             .add_systems(OnExit(GameState::Tracks), unload_unused_circuits)
             .add_systems(

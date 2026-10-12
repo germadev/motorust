@@ -3,7 +3,7 @@
 //! incrustadas en el ejecutable y sus mipmaps se calculan al arrancar, así no
 //! parpadean a lo lejos.
 
-use crate::geometry::{fbm, value_noise};
+use crate::geometry::{fbm, random01, value_noise};
 use bevy::{
     asset::RenderAssetUsages,
     image::{
@@ -32,6 +32,12 @@ pub struct WorldTextures {
     pub water: Handle<Image>,
     /// Gradas de público con ropa de colores vivos como en los arcades de los 90.
     pub crowd: Handle<Image>,
+    /// Two by two squares of brown checkerboard earth, as in Green Hill.
+    pub soil: Handle<Image>,
+    /// Streaks of falling water, repeating downwards.
+    pub falls: Handle<Image>,
+    /// Wooden planks laid across, for the wooden bridges.
+    pub planks: Handle<Image>,
 }
 
 impl FromWorld for WorldTextures {
@@ -78,6 +84,9 @@ impl FromWorld for WorldTextures {
         let panels = images.add(panels());
         let water = images.add(water());
         let crowd = images.add(crowd());
+        let soil = images.add(soil());
+        let falls = images.add(falls());
+        let planks = images.add(planks());
         Self {
             sky,
             grass,
@@ -91,6 +100,9 @@ impl FromWorld for WorldTextures {
             panels,
             water,
             crowd,
+            soil,
+            falls,
+            planks,
         }
     }
 }
@@ -463,6 +475,101 @@ fn water() -> Image {
     image
 }
 
+/// An sRGB texture of `width` × `height` pixels that repeats both ways, with
+/// its mipmaps, from the colour of each pixel.
+fn tiling(width: u32, height: u32, pixel: impl Fn(u32, u32) -> Color) -> Image {
+    let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let data = (0..width * height)
+        .flat_map(|i| {
+            let color = pixel(i % width, i / width).to_srgba();
+            [byte(color.red), byte(color.green), byte(color.blue), 255]
+        })
+        .collect();
+    let mut image = Image::new(
+        Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = sampler(ImageAddressMode::Repeat);
+    generate_mipmaps(&mut image);
+    image
+}
+
+/// Green Hill earth: two by two squares, chocolate and caramel, each with a
+/// light bevel on its upper and left edges, a dark one on the others, and
+/// some grain.
+fn soil() -> Image {
+    const SIZE: u32 = 256;
+    const HALF: u32 = SIZE / 2;
+    const BEVEL: u32 = 7;
+    let dark = Color::srgb(0.42, 0.21, 0.07);
+    let light = Color::srgb(0.80, 0.46, 0.16);
+    tiling(SIZE, SIZE, |x, y| {
+        let (px, py) = (x % HALF, y % HALF);
+        let base = if (x < HALF) == (y < HALF) {
+            light
+        } else {
+            dark
+        };
+        let point = Vec2::new(x as f32, y as f32);
+        let grain = 0.08 * (fbm(point / 9.0, 3) - 0.5) + 0.05 * (value_noise(point / 2.0) - 0.5);
+        let shade = if px < BEVEL || py < BEVEL {
+            1.18
+        } else if px >= HALF - BEVEL || py >= HALF - BEVEL {
+            0.72
+        } else {
+            1.0
+        };
+        Color::LinearRgba(base.to_linear() * (shade + grain))
+    })
+}
+
+/// Falling water: blue with white streaks of foam running down, which
+/// repeat seamlessly in both directions.
+fn falls() -> Image {
+    const WIDTH: u32 = 128;
+    const HEIGHT: u32 = 256;
+    let deep = Color::srgb(0.12, 0.42, 0.78).to_linear();
+    let foam = Color::srgb(0.92, 0.97, 1.0).to_linear();
+    tiling(WIDTH, HEIGHT, |x, y| {
+        let u = x as f32 / WIDTH as f32 * std::f32::consts::TAU;
+        let v = y as f32 / HEIGHT as f32 * std::f32::consts::TAU;
+        // Streaks: thin across, long down, wavering a little.
+        let waver = 0.4 * (v * 2.0 + u * 3.0).sin();
+        let streaks = 0.5
+            + 0.25 * (u * 9.0 + waver).sin()
+            + 0.15 * (u * 23.0 + 1.3 + (v * 3.0).sin()).sin()
+            + 0.1 * (u * 5.0 - v * 2.0).sin();
+        let t = ((streaks - 0.45) * 2.4).clamp(0.0, 1.0);
+        Color::LinearRgba(deep.mix(&foam, t * t))
+    })
+}
+
+/// Wooden planks laid across: eight boards, each of its own tone, with
+/// dark gaps and grain along them.
+fn planks() -> Image {
+    const SIZE: u32 = 128;
+    const BOARDS: u32 = 8;
+    let wood = Color::srgb(0.58, 0.36, 0.18).to_linear();
+    tiling(SIZE, SIZE, |x, y| {
+        let board = y * BOARDS / SIZE;
+        let within = (y * BOARDS) % SIZE;
+        if within < BOARDS * 2 {
+            return Color::srgb(0.16, 0.09, 0.04);
+        }
+        let tone = 0.82 + 0.3 * random01(board + 17);
+        let point = Vec2::new(x as f32 / 14.0, y as f32 * 1.6 + board as f32 * 31.0);
+        let grain = 0.85 + 0.3 * value_noise(point);
+        Color::LinearRgba(wood * (tone * grain))
+    })
+}
+
 /// Público pixelado para las gradas: filas de espectadores con ropa de colores vivos
 /// como en los juegos de carreras arcade de los 90.
 fn crowd() -> Image {
@@ -608,6 +715,52 @@ mod tests {
         // El último nivel es la media: gris, no negro ni blanco.
         let last = &image.data.take().unwrap()[expected as usize - 4..];
         assert!(last[0] > 100 && last[0] < 220);
+    }
+
+    /// The colour of a pixel of the first mip level.
+    fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
+        let width = image.texture_descriptor.size.width;
+        let at = ((y * width + x) * 4) as usize;
+        let data = image.data.as_ref().expect("the texture has its pixels");
+        [data[at], data[at + 1], data[at + 2], data[at + 3]]
+    }
+
+    #[test]
+    fn checkerboard_earth_alternates_two_browns() {
+        let soil = soil();
+        let (light, dark) = (pixel(&soil, 64, 64), pixel(&soil, 192, 64));
+        // Brown: more red than green, more green than blue.
+        for brown in [light, dark] {
+            assert!(brown[0] > brown[1] && brown[1] > brown[2], "{brown:?}");
+        }
+        assert!(light[0] > dark[0] + 40, "{light:?} {dark:?}");
+        // Diagonally, the same square again.
+        assert_eq!(pixel(&soil, 192, 192)[0] / 16, light[0] / 16);
+    }
+
+    #[test]
+    fn falling_water_repeats_without_seams() {
+        let falls = falls();
+        let (width, height) = (
+            falls.texture_descriptor.size.width,
+            falls.texture_descriptor.size.height,
+        );
+        let step = |a: [u8; 4], b: [u8; 4]| (0..3).map(|c| a[c].abs_diff(b[c])).max().unwrap();
+        // Across each seam, no bigger a step than between neighbours inside.
+        for x in (0..width).step_by(7) {
+            let inside = (1..height)
+                .map(|y| step(pixel(&falls, x, y - 1), pixel(&falls, x, y)))
+                .max()
+                .unwrap();
+            assert!(step(pixel(&falls, x, height - 1), pixel(&falls, x, 0)) <= inside);
+        }
+        for y in (0..height).step_by(7) {
+            let inside = (1..width)
+                .map(|x| step(pixel(&falls, x - 1, y), pixel(&falls, x, y)))
+                .max()
+                .unwrap();
+            assert!(step(pixel(&falls, width - 1, y), pixel(&falls, 0, y)) <= inside);
+        }
     }
 
     #[test]

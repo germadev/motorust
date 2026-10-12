@@ -1,12 +1,14 @@
-//! Las obras de la carretera: túneles abiertos en la roca, puentes de arcos
-//! sobre el agua y carteles publicitarios.
+//! The works along the road: tunnels cut through the rock, bridges over the
+//! water (with red arches, or of wood) and billboards.
 
 use bevy::prelude::*;
 
 use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
-use super::scenery::{Billboard, BrakeMarker, ChevronDirection, ChevronSign, Scenery, Span};
+use super::scenery::{
+    Billboard, BrakeMarker, BridgeStyle, ChevronDirection, ChevronSign, Scenery, Soil, Span,
+};
 use super::terrain::Terrain;
 use crate::geometry::fbm;
 use crate::track::{SURFACE_Y, Track, WALL_DISTANCE};
@@ -30,6 +32,14 @@ const HANGER_EVERY: usize = 2;
 const BRIDGE_RED: Color = Color::srgb(0.72, 0.1, 0.07);
 /// Grosor del tablero del puente (m).
 const DECK_DEPTH: f32 = 1.6;
+/// Wooden bridges: what each repetition of the planks covers (m), how far
+/// above the asphalt they lie (over its paint), how tall the fence is (m)
+/// and the colours of the wood.
+const PLANK_TILE: f32 = 4.0;
+const PLANK_LIFT: f32 = 0.02;
+const FENCE_HEIGHT: f32 = 1.2;
+const POST_WOOD: Color = Color::srgb(0.34, 0.2, 0.09);
+const RAIL_WOOD: Color = Color::srgb(0.52, 0.33, 0.15);
 
 pub fn spawn_structures(
     world: &mut ChildSpawnerCommands,
@@ -42,19 +52,35 @@ pub fn spawn_structures(
     for tunnel in scenery.tunnels {
         let indices = indices(track, *tunnel, lap);
         let parts = tunnel_meshes(track, terrain, &indices);
-        let rock = StandardMaterial {
-            base_color: Color::srgb(0.85, 0.75, 0.6),
-            base_color_texture: Some(assets.textures.rock.clone()),
-            perceptual_roughness: 0.9,
-            ..default()
+        let rock = match scenery.soil {
+            Soil::Rock => StandardMaterial {
+                base_color: Color::srgb(0.85, 0.75, 0.6),
+                base_color_texture: Some(assets.textures.rock.clone()),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
+            Soil::Checkered => StandardMaterial {
+                base_color_texture: Some(assets.textures.soil.clone()),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
         };
-        // Cálido y algo iluminado por las lámparas, como en Moto Racer.
-        let lining = StandardMaterial {
-            base_color: Color::srgb(0.95, 0.78, 0.52),
-            base_color_texture: Some(assets.textures.panels.clone()),
-            emissive: LinearRgba::rgb(0.12, 0.08, 0.035),
-            perceptual_roughness: 0.85,
-            ..default()
+        // Warm and lit by the lamps, as in Moto Racer; through checkerboard
+        // earth, a cave of it.
+        let lining = match scenery.soil {
+            Soil::Rock => StandardMaterial {
+                base_color: Color::srgb(0.95, 0.78, 0.52),
+                base_color_texture: Some(assets.textures.panels.clone()),
+                emissive: LinearRgba::rgb(0.12, 0.08, 0.035),
+                perceptual_roughness: 0.85,
+                ..default()
+            },
+            Soil::Checkered => StandardMaterial {
+                base_color_texture: Some(assets.textures.soil.clone()),
+                emissive: LinearRgba::rgb(0.1, 0.06, 0.02),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
         };
         let concrete = StandardMaterial {
             base_color: Color::srgb(0.75, 0.73, 0.7),
@@ -88,6 +114,25 @@ pub fn spawn_structures(
     }
     for bridge in scenery.bridges {
         let indices = indices(track, *bridge, lap);
+        if scenery.bridge_style == BridgeStyle::Wooden {
+            let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices);
+            world.spawn((
+                Mesh3d(assets.meshes.add(planks)),
+                MeshMaterial3d(assets.materials.add(StandardMaterial {
+                    base_color_texture: Some(assets.textures.planks.clone()),
+                    perceptual_roughness: 0.85,
+                    ..default()
+                })),
+            ));
+            world.spawn((
+                Mesh3d(assets.meshes.add(logs)),
+                MeshMaterial3d(assets.materials.add(StandardMaterial {
+                    perceptual_roughness: 0.9,
+                    ..default()
+                })),
+            ));
+            continue;
+        }
         let (deck, arches) = bridge_meshes(track, terrain, &indices);
         world.spawn((
             Mesh3d(assets.meshes.add(deck)),
@@ -426,6 +471,92 @@ fn bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, 
         }
     }
     (deck.build(), arches.build())
+}
+
+/// A wooden bridge: planks laid across from fence to fence over the road and
+/// on the sides and underside of the deck (the first mesh), and the logs
+/// (the second): a fence of posts and two rails on each side, and piers of
+/// two logs and a crossbeam down to the water.
+fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, Mesh) {
+    let mut planks = MeshBuilder::default();
+    let mut logs = MeshBuilder::default();
+    let edge = WALL_DISTANCE + 0.8;
+    let step = track.step_length();
+    let road = |i: usize, lateral: f32| track.surface_point(i, lateral);
+    let deck = |i: usize, lateral: f32| road(i, lateral) + Vec3::Y * (SURFACE_Y + PLANK_LIFT);
+    let down = Vec3::Y * (DECK_DEPTH + SURFACE_Y + PLANK_LIFT);
+    let across = 2.0 * edge / PLANK_TILE;
+    for (k, pair) in indices.windows(2).enumerate() {
+        let (i, j) = (pair[0], pair[1]);
+        let (v0, v1) = (
+            k as f32 * step / PLANK_TILE,
+            (k + 1) as f32 * step / PLANK_TILE,
+        );
+        // The boards run across the road: along them is U.
+        for (lift, facing) in [(Vec3::ZERO, Vec3::Y), (down, Vec3::NEG_Y)] {
+            planks.quad(
+                [
+                    (deck(i, -edge) - lift, Vec2::new(0.0, v0)),
+                    (deck(j, -edge) - lift, Vec2::new(0.0, v1)),
+                    (deck(j, edge) - lift, Vec2::new(across, v1)),
+                    (deck(i, edge) - lift, Vec2::new(across, v0)),
+                ],
+                facing,
+                Color::WHITE,
+            );
+        }
+        for side in [-1.0, 1.0] {
+            let out = road(i, side * (edge + 1.0)) - road(i, side * edge);
+            let thick = DECK_DEPTH / PLANK_TILE;
+            planks.quad(
+                [
+                    (deck(i, side * edge), Vec2::new(0.0, v0)),
+                    (deck(j, side * edge), Vec2::new(0.0, v1)),
+                    (deck(j, side * edge) - down, Vec2::new(thick, v1)),
+                    (deck(i, side * edge) - down, Vec2::new(thick, v0)),
+                ],
+                out,
+                Color::WHITE,
+            );
+            // The fence: a post every other point, rails between them.
+            let fence =
+                |i: usize, height: f32| deck(i, side * (WALL_DISTANCE + 0.2)) + Vec3::Y * height;
+            for (at, wanted) in [(i, k % 2 == 0), (j, k + 2 == indices.len())] {
+                if !wanted {
+                    continue;
+                }
+                logs.beam(
+                    fence(at, -0.3),
+                    fence(at, FENCE_HEIGHT),
+                    0.3,
+                    0.3,
+                    POST_WOOD,
+                );
+            }
+            for height in [FENCE_HEIGHT - 0.12, FENCE_HEIGHT * 0.5] {
+                logs.beam(fence(i, height), fence(j, height), 0.17, 0.17, RAIL_WOOD);
+            }
+        }
+    }
+    // Piers at the ends, at the quarters and in the middle.
+    let last = indices.len() - 1;
+    for k in [0, last / 4, last / 2, 3 * last / 4, last] {
+        let i = indices[k];
+        let mut tops = [Vec3::ZERO; 2];
+        for (top, side) in tops.iter_mut().zip([-1.0, 1.0]) {
+            *top = road(i, side * (edge - 1.2)) - Vec3::Y * DECK_DEPTH;
+            let ground = terrain.height(Vec2::new(top.x, top.z)).min(top.y) - 2.0;
+            logs.beam(Vec3::new(top.x, ground, top.z), *top, 1.1, 1.1, POST_WOOD);
+        }
+        logs.beam(
+            tops[0] - Vec3::Y * 0.6,
+            tops[1] - Vec3::Y * 0.6,
+            0.7,
+            0.7,
+            RAIL_WOOD,
+        );
+    }
+    (planks.build(), logs.build())
 }
 
 /// Un cartel con un rótulo, sobre dos postes detrás del muro, mirando a los
