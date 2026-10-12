@@ -32,7 +32,7 @@ pub struct WorldTextures {
     pub water: Handle<Image>,
     /// Gradas de público con ropa de colores vivos como en los arcades de los 90.
     pub crowd: Handle<Image>,
-    /// Two by two squares of brown checkerboard earth, as in Green Hill.
+    /// Two by two squares of brown checkerboard earth, as in Loops Hill.
     pub soil: Handle<Image>,
     /// Streaks of falling water, repeating downwards.
     pub falls: Handle<Image>,
@@ -412,13 +412,19 @@ fn water() -> Image {
     // Componentes armónicos estrictamente periódicos (frecuencias enteras):
     // garantizan continuidad matemática en los bordes de repetición (sin costuras)
     // y un oleaje amplio que previene el aliasing y el efecto muaré a la distancia.
+    // The broadest swells are gentler than the rest: strong, they would
+    // show the texture repeating as a grid of blotches seen from afar.
     let waves = [
-        (2.0, 1.0, 0.0f32, 0.35f32),
-        (-1.0, 2.0, 1.3, 0.25),
-        (3.0, -1.0, 2.6, 0.18),
+        (2.0, 1.0, 0.0f32, 0.24f32),
+        (-1.0, 2.0, 1.3, 0.2),
+        (3.0, -1.0, 2.6, 0.16),
         (-2.0, 3.0, 0.9, 0.12),
-        (4.0, 2.0, 3.2, 0.07),
-        (1.0, -4.0, 1.8, 0.03),
+        (4.0, 2.0, 3.2, 0.09),
+        (1.0, -4.0, 1.8, 0.07),
+        (5.0, -3.0, 0.4, 0.06),
+        (-6.0, 1.0, 2.2, 0.05),
+        (3.0, 6.0, 1.1, 0.04),
+        (-7.0, -4.0, 2.9, 0.03),
     ];
     let deep_abyss = Color::srgb(0.015, 0.09, 0.28).to_srgba();
     let ocean_blue = Color::srgb(0.03, 0.22, 0.44).to_srgba();
@@ -501,7 +507,7 @@ fn tiling(width: u32, height: u32, pixel: impl Fn(u32, u32) -> Color) -> Image {
     image
 }
 
-/// Green Hill earth: two by two squares, chocolate and caramel, each with a
+/// Loops Hill earth: two by two squares, chocolate and caramel, each with a
 /// light bevel on its upper and left edges, a dark one on the others, and
 /// some grain.
 fn soil() -> Image {

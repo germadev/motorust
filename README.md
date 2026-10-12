@@ -3,15 +3,16 @@
 Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 [Bevy](https://bevy.org) 0.19.
 
-![The Motorust welcome screen, with the camera flying over Speed Bay](docs/images/welcome.jpg)
+![The Motorust welcome screen, with the camera flying over the seafront of Turbo Bay](docs/images/welcome.jpg)
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Three tracks.** Bahía is a Mediterranean coast road. Speed Bay is modelled
-  on Moto Racer's own track and has a seafront, a tunnel, a bridge and a forest.
-  Green Hill, inspired by Sonic the Hedgehog, rolls round an island of
-  checkerboard hills with loops, sunflowers, totems, waterfalls and rings. All
-  have steep slopes, crests and banked curves.
+- **Three tracks.** Bahía is a Mediterranean coast road. Turbo Bay, inspired
+  by Moto Racer's Speed Bay, is a figure of eight on a hilly island: a
+  seafront, a tunnel that the track later passes over, a forest and a bridge.
+  Loops Hill, inspired by Sonic the Hedgehog, rolls round an island of
+  checkerboard hills with loops, sunflowers, totems and waterfalls. All have
+  steep slopes, crests and banked curves.
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
 - **Arcade handling.** Lean into corners at full throttle, pop wheelies, take
@@ -23,7 +24,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
   (including the macOS GameController framework). It runs on Linux, Windows,
   macOS and the web.
 
-![Eight bikes racing past the giant checkerboard loop on Green Hill](docs/images/green-hill-loop.jpg)
+![Eight bikes racing past the giant checkerboard loop on Loops Hill](docs/images/loops-hill-loop.jpg)
 
 ## Quick start
 
@@ -45,7 +46,7 @@ The browser version is deployed to Cloudflare Pages (<https://motorust.germade.d
 | Throttle | W / ↑ | Right trigger / A |
 | Brake and reverse | S / ↓ | Left trigger / X |
 | Steer | A, D / ←, → | Left stick / D-pad |
-| Wheelie | Space / Left Shift | B / left stick back |
+| Wheelie | Space / Left Shift | B |
 | Look around | | Right stick |
 | Restart | R | Select |
 | Pause | Esc | Start |

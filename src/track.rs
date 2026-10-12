@@ -237,42 +237,106 @@ impl Track {
     }
 
     /// Índice del punto de la línea central más cercano a `point`.
+    #[cfg(test)]
     pub fn nearest_index(&self, point: Vec2) -> usize {
-        self.centerline
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| {
-                a.distance_squared(point)
-                    .total_cmp(&b.distance_squared(point))
-            })
-            .map_or(0, |(index, _)| index)
+        self.nearest_index_on(point, None)
+    }
+
+    /// Like [`Self::nearest_index`], for something at `height`: where the
+    /// track passes over itself, the point of the stretch at its level.
+    pub fn nearest_index_at(&self, point: Vec2, height: f32) -> usize {
+        self.nearest_index_on(point, Some(height))
+    }
+
+    fn nearest_index_on(&self, point: Vec2, height: Option<f32>) -> usize {
+        let closest = |on_level: &dyn Fn(usize) -> bool| {
+            let mut best: Option<(f32, usize)> = None;
+            for (index, at) in self.centerline.iter().enumerate() {
+                let distance = at.distance_squared(point);
+                if best.is_none_or(|(least, _)| distance < least) && on_level(index) {
+                    best = Some((distance, index));
+                }
+            }
+            best.map(|(_, index)| index)
+        };
+        height
+            .and_then(|height| closest(&|index| on_level_with(self.elevation[index], height)))
+            .or_else(|| closest(&|_| true))
+            .unwrap_or(0)
     }
 
     /// El punto de la línea central (no solo de sus vértices) más cercano.
+    /// Seen from above: where the track passes over itself, it may be on
+    /// either stretch. For something on the track, see [`Self::nearest_at`].
     pub fn nearest(&self, point: Vec2) -> Nearest {
-        self.segments()
-            .enumerate()
-            .map(|(index, (a, b))| {
-                let ab = b - a;
-                let t = ((point - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
-                let closest = a + ab * t;
-                let left = Vec2::new(ab.y, -ab.x).normalize();
-                Nearest {
-                    point: closest,
-                    distance: point.distance(closest),
-                    index,
-                    t,
-                    lateral: (point - closest).dot(left),
-                }
-            })
+        self.nearest_on(point, None)
+    }
+
+    /// Like [`Self::nearest`], for something at `height` (a bike, its
+    /// rider): where the track passes over itself, the point on the stretch
+    /// at its level, so a bike in the tunnel underneath stays on its road and
+    /// one on the road above stays on that one.
+    pub fn nearest_at(&self, point: Vec2, height: f32) -> Nearest {
+        self.nearest_on(point, Some(height))
+    }
+
+    fn nearest_on(&self, point: Vec2, height: Option<f32>) -> Nearest {
+        let (mut nearest, mut on_level): (Option<Nearest>, Option<Nearest>) = (None, None);
+        for index in 0..self.centerline.len() {
+            let here = self.project(index, point);
+            let closer =
+                |best: &Option<Nearest>| best.is_none_or(|best| here.distance < best.distance);
+            if closer(&nearest) {
+                nearest = Some(here);
+            }
+            if let Some(height) = height
+                && closer(&on_level)
+                && on_level_with(self.height_beside(&here), height)
+            {
+                on_level = Some(here);
+            }
+        }
+        on_level.or(nearest).expect("el trazado tiene puntos")
+    }
+
+    /// Like [`Self::nearest`], looking only at the `count` segments of the
+    /// centre line from `from` on (going round past the finish line).
+    pub fn nearest_among(&self, point: Vec2, from: usize, count: usize) -> Nearest {
+        let n = self.centerline.len();
+        (from..from + count.max(1))
+            .map(|index| self.project(index % n, point))
             .min_by(|a, b| a.distance.total_cmp(&b.distance))
-            .expect("el trazado tiene puntos")
+            .expect("hay algún tramo")
+    }
+
+    /// The point of the segment from `index` to the next point of the centre
+    /// line nearest to `point`.
+    fn project(&self, index: usize, point: Vec2) -> Nearest {
+        let n = self.centerline.len();
+        let (a, b) = (self.centerline[index], self.centerline[(index + 1) % n]);
+        let ab = b - a;
+        let t = ((point - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
+        let closest = a + ab * t;
+        let left = Vec2::new(ab.y, -ab.x).normalize();
+        Nearest {
+            point: closest,
+            distance: point.distance(closest),
+            index,
+            t,
+            lateral: (point - closest).dot(left),
+        }
     }
 
     /// Altura de la carretera (con su peralte) en un punto. Más allá de los
     /// muros sigue la inclinación que tiene en ellos.
     pub fn road_height(&self, point: Vec2) -> f32 {
         self.height_beside(&self.nearest(point))
+    }
+
+    /// Like [`Self::road_height`], under something at `height` (see
+    /// [`Self::nearest_at`]).
+    pub fn road_height_at(&self, point: Vec2, height: f32) -> f32 {
+        self.height_beside(&self.nearest_at(point, height))
     }
 
     /// Altura de la carretera junto a un punto ya localizado.
@@ -316,11 +380,12 @@ impl Track {
     }
 
     /// Pendiente de la carretera en la dirección `direction` (unitaria): metros
-    /// que sube por cada metro que se avanza.
-    pub fn grade(&self, point: Vec2, direction: Vec2) -> f32 {
+    /// que sube por cada metro que se avanza, under something at `height`
+    /// (see [`Self::nearest_at`]).
+    pub fn grade(&self, point: Vec2, direction: Vec2, height: f32) -> f32 {
         const REACH: f32 = 0.75;
-        let ahead = self.road_height(point + direction * REACH);
-        let behind = self.road_height(point - direction * REACH);
+        let ahead = self.road_height_at(point + direction * REACH, height);
+        let behind = self.road_height_at(point - direction * REACH, height);
         (ahead - behind) / (2.0 * REACH)
     }
 
@@ -384,6 +449,17 @@ impl Track {
     }
 }
 
+/// How far above or below the road something on it can be and still count
+/// as on it (m): a bike in the air over a crest, a rider thrown up. Where
+/// the track passes over itself, the two stretches are much further apart.
+const LEVEL_REACH: f32 = 6.0;
+
+/// Whether something at `height` is on the level of road at `road` (see
+/// [`Track::nearest_at`]).
+fn on_level_with(road: f32, height: f32) -> bool {
+    (road - height).abs() <= LEVEL_REACH
+}
+
 /// Altura de un perfil cerrado de `lap` metros en el punto `s`, con una curva
 /// suave (Hermite con tangentes de Catmull-Rom) que pasa por los puntos dados.
 fn profile_height(points: &[(f32, f32)], lap: f32, s: f32) -> f32 {
@@ -406,6 +482,12 @@ fn profile_height(points: &[(f32, f32)], lap: f32, s: f32) -> f32 {
         + (t3 - 2.0 * t2 + t) * tangent1
         + (-2.0 * t3 + 3.0 * t2) * p2.1
         + (t3 - t2) * tangent2
+}
+
+/// Points about `spacing` metres apart along the smooth closed curve through
+/// `points`, drawn like the centre line of a track: for coastlines.
+pub fn closed_curve(points: &[Vec2], spacing: f32) -> Vec<Vec2> {
+    resample(&sample_spline(points), spacing)
 }
 
 /// Muestrea densamente la curva Catmull-Rom centrípeta cerrada que pasa por
@@ -539,8 +621,18 @@ mod tests {
 
     #[test]
     fn walls_of_distant_stretches_do_not_meet() {
-        for (name, track) in every_track() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let (name, track) = (circuit.name, Track::new(&circuit.layout));
             let n = track.centerline.len();
+            let lap = track.lap_length();
+            let in_tunnel = |i: usize| {
+                let along = i as f32 * track.step;
+                circuit
+                    .scenery
+                    .tunnels
+                    .iter()
+                    .any(|span| span.contains(along, lap))
+            };
             // Puntos cercanos sobre el trazado pueden estar cerca en el
             // espacio; más allá, entre sus muros tiene que haber sitio para el
             // escenario.
@@ -549,8 +641,18 @@ mod tests {
             for i in 0..n {
                 for j in i + neighborhood..n.min(i + n - neighborhood) {
                     let distance = track.centerline[i].distance(track.centerline[j]);
+                    if distance > clearance {
+                        continue;
+                    }
+                    // Unless one passes over the other, which goes through a
+                    // tunnel well below.
+                    let (low, high) = if track.elevation[i] < track.elevation[j] {
+                        (i, j)
+                    } else {
+                        (j, i)
+                    };
                     assert!(
-                        distance > clearance,
+                        in_tunnel(low) && track.elevation[high] - track.elevation[low] > 12.0,
                         "los puntos {i} y {j} de {name} se tocan"
                     );
                 }

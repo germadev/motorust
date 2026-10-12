@@ -38,6 +38,9 @@ const DISC_RADIUS: f32 = 0.45;
 const DISC_SPACING: f32 = 0.6;
 /// Beyond this distance between centres two bikes cannot touch (m).
 const REACH: f32 = 2.0 * (DISC_SPACING + DISC_RADIUS);
+/// Nor this far apart up or down (m): one rides over the other where the
+/// track passes over itself.
+const OTHER_LEVEL: f32 = 4.0;
 /// Coefficient of restitution of a bike-to-bike contact: mostly plastic.
 const RESTITUTION: f32 = 0.25;
 /// Friction between fairings, leathers and tyres rubbing at the contact.
@@ -365,7 +368,7 @@ impl ThrownRider {
     /// looks again until none is.
     fn keep_off_walls(&mut self, track: &Track) {
         for _ in 0..4 {
-            let contact = wall_contact(track, self.position, &self.footprint());
+            let contact = wall_contact(track, self.position, self.altitude(), &self.footprint());
             if contact.is_none() {
                 break;
             }
@@ -423,7 +426,7 @@ impl ThrownRider {
                 };
             }
         } else {
-            let drag = drag_factor(track, self.position, RIDER_SLIDE);
+            let drag = drag_factor(track, self.position, self.altitude(), RIDER_SLIDE);
             self.velocity = shrink(self.velocity, drag * GRAVITY * dt);
             self.roll_rate = move_toward(self.roll_rate, 0.0, TUMBLE_FRICTION * dt);
         }
@@ -444,7 +447,12 @@ impl ThrownRider {
         }
         self.swing(accel, elapsed, dt);
         self.keep_off_walls(track);
-        self.ground = track.road_height(self.position);
+        self.ground = track.road_height_at(self.position, self.altitude());
+    }
+
+    /// How high the body is above the sea (m): over the road it was last on.
+    fn altitude(&self) -> f32 {
+        self.ground + self.height
     }
 }
 
@@ -555,7 +563,9 @@ impl Contact {
 /// exchanges the impulse of the hit. Returns the contact if there was one.
 pub fn collide(mut a: Body, mut b: Body) -> Option<Contact> {
     let centers = a.state.position - b.state.position;
-    if centers.length_squared() >= REACH * REACH {
+    if centers.length_squared() >= REACH * REACH
+        || (a.state.elevation - b.state.elevation).abs() > OTHER_LEVEL
+    {
         return None;
     }
     let (pa, pb) = closest_points(segment(a.state), segment(b.state));
@@ -680,7 +690,7 @@ pub fn carry(state: &mut BikeState, knock: &mut Knock, track: &Track, dt: f32) {
             knock.yaw_rate = 0.0;
         }
     }
-    let contact = wall_contact(track, state.position, &footprint(state));
+    let contact = wall_contact(track, state.position, state.elevation, &footprint(state));
     contain(&mut state.position, &mut knock.velocity, contact);
 }
 
@@ -765,16 +775,16 @@ pub fn slide(
     dt: f32,
 ) {
     crash.elapsed += dt;
-    let drag = drag_factor(track, state.position, BIKE_SLIDE);
+    let drag = drag_factor(track, state.position, state.elevation, BIKE_SLIDE);
     knock.velocity = shrink(knock.velocity, drag * GRAVITY * dt);
     knock.yaw_rate = approach(knock.yaw_rate, 0.0, SLIDE_SPIN_DAMPING, dt);
     state.position += knock.velocity * dt;
     state.heading += knock.yaw_rate * dt;
-    let contact = wall_contact(track, state.position, &footprint(state));
+    let contact = wall_contact(track, state.position, state.elevation, &footprint(state));
     contain(&mut state.position, &mut knock.velocity, contact);
     state.lean = approach(state.lean, crash.fall_side * DOWN_LEAN, FALL_RATE, dt);
     state.pitch = approach(state.pitch, 0.0, FALL_RATE, dt);
-    state.elevation = track.road_height(state.position);
+    state.elevation = track.road_height_at(state.position, state.elevation);
     state.climb = 0.0;
     state.grounded = true;
 
@@ -787,11 +797,12 @@ pub fn slide(
     crash.still = if still { crash.still + dt } else { 0.0 };
 }
 
-/// Where a bike that ended up at `at` rejoins: on the asphalt next to it,
-/// facing along the track, away from the bikes at `others`. Returns the
-/// position, the heading and the distance to the left of the centre line.
-pub fn rejoin_pose(track: &Track, at: Vec2, others: &[Vec2]) -> (Vec2, f32, f32) {
-    let nearest = track.nearest(at);
+/// Where a bike that ended up at `at`, at `height`, rejoins: on the
+/// asphalt next to it, facing along the track, away from the bikes at
+/// `others`. Returns the position, the heading and the distance to the left
+/// of the centre line.
+pub fn rejoin_pose(track: &Track, at: Vec2, height: f32, others: &[Vec2]) -> (Vec2, f32, f32) {
+    let nearest = track.nearest_at(at, height);
     let (_, heading) = track.pose_at(nearest.index);
     let limit = track.half_width() - REJOIN_MARGIN;
     let wanted = nearest.lateral.clamp(-limit, limit);
@@ -824,9 +835,9 @@ pub fn rejoin_pose(track: &Track, at: Vec2, others: &[Vec2]) -> (Vec2, f32, f32)
     (place(lateral), heading, lateral)
 }
 
-/// Drag factor at `point` for the given (asphalt, grass) pair.
-fn drag_factor(track: &Track, point: Vec2, (asphalt, grass): (f32, f32)) -> f32 {
-    match track.surface_beside(&track.nearest(point)) {
+/// Drag factor at `point`, at `height`, for the given (asphalt, grass) pair.
+fn drag_factor(track: &Track, point: Vec2, height: f32, (asphalt, grass): (f32, f32)) -> f32 {
+    match track.surface_beside(&track.nearest_at(point, height)) {
         Surface::Asphalt => asphalt,
         Surface::Grass => grass,
     }
@@ -1059,7 +1070,7 @@ mod tests {
             assert!(seconds <= MAX_DOWN_TIME + DT, "never ends");
         }
         assert!(seconds >= MIN_DOWN_TIME);
-        let (point, heading, lateral) = rejoin_pose(&track, state.position, &[]);
+        let (point, heading, lateral) = rejoin_pose(&track, state.position, state.elevation, &[]);
         assert!(lateral.abs() <= track.half_width() - REJOIN_MARGIN + 1e-3);
         assert!(point.distance(state.position) < 5.0);
         let (_, along) = track.pose_at(track.nearest(point).index);
@@ -1070,7 +1081,7 @@ mod tests {
     fn a_bike_rejoins_beside_a_bike_in_the_way() {
         let track = Track::default();
         let (point, _) = track.grid_slot(0);
-        let (spot, _, _) = rejoin_pose(&track, point, &[point]);
+        let (spot, _, _) = rejoin_pose(&track, point, track.road_height(point), &[point]);
         assert!(spot.distance(point) >= REJOIN_ROOM);
         let nearest = track.nearest(spot);
         assert!(nearest.lateral.abs() <= track.half_width());
