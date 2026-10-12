@@ -128,6 +128,43 @@ pub struct Race {
     pub started: bool,
 }
 
+/// A gamepad's throttle and brake only count once they have been seen at
+/// rest since the race was set up. Cross/A confirms in the menus and also
+/// accelerates, so the press that enters the race must not start the bike;
+/// nor must a trigger that does not read zero while the player is not
+/// touching it.
+#[derive(Default)]
+struct PadArming {
+    /// Per gamepad, whether its throttle and brake have been seen at rest.
+    armed: bevy::platform::collections::HashMap<Entity, [bool; 2]>,
+    /// Whether the race had started, to start over when a new one is set up.
+    started: bool,
+}
+
+/// Below this a gamepad control counts as released.
+const AT_REST: f32 = 0.1;
+const THROTTLE: usize = 0;
+const BRAKE: usize = 1;
+
+impl PadArming {
+    /// Called every frame with whether the race has started: when a new race
+    /// is set up (or restarted), every control has to be released again.
+    fn track(&mut self, started: bool) {
+        if self.started && !started {
+            self.armed.clear();
+        }
+        self.started = started;
+    }
+
+    /// What control `slot` ([`THROTTLE`] or [`BRAKE`]) of `pad` reading
+    /// `value` counts for: nothing until it has been seen at rest.
+    fn filter(&mut self, pad: Entity, slot: usize, value: f32) -> f32 {
+        let armed = &mut self.armed.entry(pad).or_default()[slot];
+        *armed |= value < AT_REST;
+        if *armed { value } else { 0.0 }
+    }
+}
+
 /// Puesto de salida de cada moto ([`Track::grid_slot`]), para volver a él al
 /// reiniciar la carrera.
 #[derive(Component, Clone, Copy)]
@@ -843,6 +880,7 @@ fn read_controller_binding(
     dt: f32,
     digital: &mut DigitalSteer,
     analog: &mut AnalogSteer,
+    arming: &mut PadArming,
 ) -> BikeInput {
     match binding {
         ControllerBinding::Wasd => {
@@ -946,8 +984,8 @@ fn read_controller_binding(
                 } else {
                     0.0
                 };
-                let throttle = trigger_r.max(south);
-                let brake = trigger_l.max(west);
+                let throttle = arming.filter(entity, THROTTLE, trigger_r.max(south));
+                let brake = arming.filter(entity, BRAKE, trigger_l.max(west));
 
                 let raw_steer = -stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0))
                     * reach_with(options.stick_limit, speed);
@@ -1007,13 +1045,16 @@ fn read_player_input(
     options: Res<DebugOptions>,
     player: Single<(&mut BikeInput, &BikeState), With<Player>>,
     mut other_players: Query<(&mut BikeInput, &BikeState, &LocalPlayer), Without<Player>>,
-    mut digital_p1: Local<DigitalSteer>,
-    mut digital_p2: Local<DigitalSteer>,
-    mut analog_p1: Local<AnalogSteer>,
-    mut analog_p2: Local<AnalogSteer>,
+    mut digital: Local<[DigitalSteer; 2]>,
+    mut analog: Local<[AnalogSteer; 2]>,
+    mut arming: Local<PadArming>,
+    names: Query<&Name, With<Gamepad>>,
 ) {
     let (mut input, state) = player.into_inner();
     let dt = time.delta_secs();
+    arming.track(race.started);
+    let [digital_p1, digital_p2] = &mut *digital;
+    let [analog_p1, analog_p2] = &mut *analog;
 
     if *game_mode == GameMode::SplitScreen {
         if let Some(binding) = local_players.p1 {
@@ -1024,8 +1065,9 @@ fn read_player_input(
                 &options,
                 state.speed,
                 dt,
-                &mut digital_p1,
-                &mut analog_p1,
+                digital_p1,
+                analog_p1,
+                &mut arming,
             );
         }
         for (mut p2_input, p2_state, local_player) in &mut other_players {
@@ -1037,8 +1079,9 @@ fn read_player_input(
                     &options,
                     p2_state.speed,
                     dt,
-                    &mut digital_p2,
-                    &mut analog_p2,
+                    digital_p2,
+                    analog_p2,
+                    &mut arming,
                 );
             }
         }
@@ -1053,11 +1096,13 @@ fn read_player_input(
         let mut wheelie = key(Action::Wheelie);
 
         let mut active_pad_entity: Option<Entity> = None;
+        // What is pressing the throttle, to tell in the log what starts the race.
+        let mut throttle_from = (throttle > 0.0).then(|| "teclado".to_string());
 
         for (entity, gamepad) in &gamepads {
             let button = |action| controls.button_value(action, gamepad);
-            let p_throttle = button(Action::Throttle);
-            let p_brake = button(Action::Brake);
+            let p_throttle = arming.filter(entity, THROTTLE, button(Action::Throttle));
+            let p_brake = arming.filter(entity, BRAKE, button(Action::Brake));
             let p_steer = stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0));
             let digital = |action| if button(action) > 0.5 { 1.0f32 } else { 0.0f32 };
             let p_pressed: f32 = digital(Action::Left) - digital(Action::Right);
@@ -1092,6 +1137,14 @@ fn read_player_input(
                 active_pad_entity = Some(entity);
             }
 
+            if p_throttle > throttle {
+                let name = names.get(entity).map_or("mando", |name| name.as_str());
+                throttle_from = Some(format!(
+                    "{name}: RT {:.2}, A {:.2}",
+                    gamepad.get(GamepadButton::RightTrigger2).unwrap_or(0.0),
+                    gamepad.get(GamepadButton::South).unwrap_or(0.0),
+                ));
+            }
             throttle = throttle.max(p_throttle);
             brake = brake.max(p_brake);
             steer -= p_steer;
@@ -1126,6 +1179,12 @@ fn read_player_input(
             steer_direct,
             wheelie,
         };
+        if throttle > 0.0 && !race.started {
+            info!(
+                "Empieza la carrera: acelerador {throttle:.2} ({})",
+                throttle_from.as_deref().unwrap_or("?")
+            );
+        }
     }
 
     let p2_throttles = other_players.iter().any(|(inp, _, _)| inp.throttle > 0.0);
@@ -2026,6 +2085,48 @@ mod tests {
         let distance = track.distance_to_centerline(state.position);
         assert!(distance <= WALL_DISTANCE - BIKE_HALF_WIDTH + 1e-3);
         assert!(state.speed < 40.0 * (1.0 - IMPACT_SPEED_LOSS) + 0.5);
+    }
+
+    #[test]
+    fn a_button_held_from_the_menu_does_not_start_the_bike() {
+        let pad = Entity::from_raw_u32(1).unwrap();
+        let mut arming = PadArming::default();
+        arming.track(false);
+        // Cross confirmed the bike and is still held when the race appears.
+        assert_eq!(arming.filter(pad, THROTTLE, 1.0), 0.0);
+        assert_eq!(arming.filter(pad, THROTTLE, 1.0), 0.0);
+        // Once released, the next press accelerates.
+        assert_eq!(arming.filter(pad, THROTTLE, 0.0), 0.0);
+        assert_eq!(arming.filter(pad, THROTTLE, 0.7), 0.7);
+        // The brake is armed on its own.
+        assert_eq!(arming.filter(pad, BRAKE, 0.0), 0.0);
+        assert_eq!(arming.filter(pad, BRAKE, 0.4), 0.4);
+    }
+
+    #[test]
+    fn a_trigger_that_does_not_read_zero_at_rest_does_not_start_the_bike() {
+        let pad = Entity::from_raw_u32(1).unwrap();
+        let mut arming = PadArming::default();
+        arming.track(false);
+        for _ in 0..100 {
+            assert_eq!(arming.filter(pad, THROTTLE, 0.2), 0.0);
+        }
+    }
+
+    #[test]
+    fn controls_must_be_released_again_for_a_new_race() {
+        let pad = Entity::from_raw_u32(1).unwrap();
+        let mut arming = PadArming::default();
+        arming.track(false);
+        assert_eq!(arming.filter(pad, THROTTLE, 0.0), 0.0);
+        assert_eq!(arming.filter(pad, THROTTLE, 1.0), 1.0);
+        arming.track(true);
+        assert_eq!(arming.filter(pad, THROTTLE, 1.0), 1.0, "racing, it counts");
+        // Restart (or a new race) while holding the throttle.
+        arming.track(false);
+        assert_eq!(arming.filter(pad, THROTTLE, 1.0), 0.0);
+        assert_eq!(arming.filter(pad, THROTTLE, 0.0), 0.0);
+        assert_eq!(arming.filter(pad, THROTTLE, 1.0), 1.0);
     }
 
     #[test]
