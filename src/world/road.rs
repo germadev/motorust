@@ -9,6 +9,7 @@ use super::lettering::sign_image;
 use super::quads::MeshBuilder;
 use super::scenery::{BridgeStyle, Gantry, Scenery, Side, WallStyle};
 use super::terrain::Terrain;
+use super::textures::WorldTextures;
 use crate::track::{CURB_WIDTH, SURFACE_Y, Track, WALL_DISTANCE};
 
 /// Tamaño (m) que cubre cada repetición de la textura del asfalto.
@@ -49,7 +50,6 @@ pub fn spawn_road(
     scenery: &Scenery,
     assets: &mut Assets3d,
 ) {
-    let half = track.half_width();
     let textures = assets.textures;
     let mut spawn = |mesh: Mesh, material: StandardMaterial| {
         world.spawn((
@@ -58,9 +58,132 @@ pub fn spawn_road(
         ));
     };
 
+    // The lap, and the roads off it.
+    for number in 0..=track.side_roads().len() {
+        let road = Road { track, number };
+        spawn_surface(&mut spawn, road, terrain, scenery, textures);
+    }
+
+    // Línea de meta: una franja de tablero de ajedrez de lado a lado.
+    let checkered = || StandardMaterial {
+        base_color_texture: Some(textures.checker.clone()),
+        perceptual_roughness: 0.7,
+        ..default()
+    };
+    spawn(finish_line(track), checkered());
+
+    // Parrilla de salida con cajones pintados para las motos.
     spawn(
-        ribbon(track, -half, half, 0.0, ASPHALT_TILE, |_| {
-            Some(Color::WHITE)
+        starting_grid(track),
+        StandardMaterial {
+            base_color: Color::WHITE,
+            perceptual_roughness: 0.6,
+            ..default()
+        },
+    );
+
+    // Huellas de derrape y frenada en las curvas para dar dinamismo al asfalto.
+    if let Some(skids) = skid_marks(track) {
+        spawn(
+            skids,
+            StandardMaterial {
+                base_color: Color::srgb(0.12, 0.12, 0.14),
+                perceptual_roughness: 0.95,
+                ..default()
+            },
+        );
+    }
+
+    for gantry in scenery.gantries {
+        spawn_gantry(world, track, gantry, assets);
+    }
+}
+
+/// A road to build: the lap (number 0), or a road off it (see
+/// [`crate::track::Nearest::road`]).
+#[derive(Clone, Copy)]
+struct Road<'a> {
+    track: &'a Track,
+    number: usize,
+}
+
+impl<'a> Road<'a> {
+    /// Its own centre line.
+    fn line(&self) -> &'a Track {
+        self.track.road(self.number)
+    }
+
+    /// Point of its surface `lateral` metres to the left of point `index`
+    /// of its centre line: where a road off the lap shares the lap's road,
+    /// on the lap's surface.
+    fn surface_point(&self, index: usize, lateral: f32) -> Vec3 {
+        self.track.surface_point_on(self.number, index, lateral)
+    }
+
+    /// Where its paint, curbs and asphalt go above the asphalt of the lap:
+    /// a road off the lap is drawn over it where they meet.
+    fn lift(&self) -> f32 {
+        if self.number == 0 {
+            0.0
+        } else {
+            SIDE_ROAD_LIFT
+        }
+    }
+
+    /// Whether `point` is on the asphalt (or the curbs) of another road.
+    fn on_other_asphalt(&self, point: Vec2) -> bool {
+        self.track.on_other_road(self.number, point, |road, _| {
+            road.half_width() + CURB_WIDTH - 0.1
+        })
+    }
+
+    /// Whether `point` is between the walls of another road.
+    fn between_other_walls(&self, point: Vec2) -> bool {
+        self.track
+            .on_other_road(self.number, point, |road, nearest| {
+                road.wall_at(nearest.index) - 0.3
+            })
+    }
+
+    /// Whether point `index` of the centre line is in the straight into or
+    /// out of a loop.
+    fn at_a_loop(&self, index: usize) -> bool {
+        let line = self.line();
+        self.track.loops().iter().any(|looped| {
+            let from_loop = if looped.approach == self.number {
+                line.length() - index as f32 * line.step_length()
+            } else if looped.exit == self.number {
+                index as f32 * line.step_length()
+            } else {
+                f32::INFINITY
+            };
+            from_loop < LOOP_STRAIGHT
+        })
+    }
+}
+
+/// How far above the asphalt of the lap a road off it goes where they meet
+/// (m).
+const SIDE_ROAD_LIFT: f32 = 0.01;
+/// The road into a loop and out of it has curbs, like the running surface
+/// of the loop, over this much of it (m).
+const LOOP_STRAIGHT: f32 = 30.0;
+
+/// The asphalt, the paint, the curbs and the walls of one road.
+fn spawn_surface(
+    spawn: &mut impl FnMut(Mesh, StandardMaterial),
+    road: Road,
+    terrain: &Terrain,
+    scenery: &Scenery,
+    textures: &WorldTextures,
+) {
+    let line = road.line();
+    let half = line.half_width();
+    // The asphalt, except where it lies under the lap's.
+    let covered = |corners: [Vec2; 4]| corners.iter().all(|&p| road.on_other_asphalt(p));
+    spawn(
+        ribbon(road, -half, half, 0.0, ASPHALT_TILE, |_, corners| {
+            (road.number == 0 || !covered(corners)).then_some(Color::WHITE)
         }),
         StandardMaterial {
             base_color_texture: Some(textures.asphalt.clone()),
@@ -71,45 +194,51 @@ pub fn spawn_road(
     );
 
     // Pinturas: líneas blancas a los lados, discontinua en el centro y pianos
-    // de dos colores solo en las curvas.
+    // de dos colores solo en las curvas (and into and out of the loops).
+    // Not where they would cross another road's asphalt, so where two roads
+    // meet, their asphalt is one.
     let painted = || StandardMaterial {
         perceptual_roughness: 0.7,
         ..default()
     };
-    let white = |_| Some(Color::WHITE);
+    let clear = |corners: [Vec2; 4]| {
+        let middle = corners.iter().sum::<Vec2>() / 4.0;
+        !road.on_other_asphalt(middle)
+    };
+    let white = |_, corners| clear(corners).then_some(Color::WHITE);
     let edge = half - EDGE_LINE_INSET;
     spawn(
-        ribbon(track, edge - LINE_WIDTH, edge, PAINT_LIFT, 1.0, white),
+        ribbon(road, edge - LINE_WIDTH, edge, PAINT_LIFT, 1.0, white),
         painted(),
     );
     spawn(
-        ribbon(track, -edge, -edge + LINE_WIDTH, PAINT_LIFT, 1.0, white),
+        ribbon(road, -edge, -edge + LINE_WIDTH, PAINT_LIFT, 1.0, white),
         painted(),
     );
-    let dashes = |index: usize| (index % (DASH.0 + DASH.1) < DASH.0).then_some(Color::WHITE);
+    let dashes = |index: usize, corners| {
+        (index % (DASH.0 + DASH.1) < DASH.0 && clear(corners)).then_some(Color::WHITE)
+    };
     let center = LINE_WIDTH / 2.0;
     spawn(
-        ribbon(track, -center, center, PAINT_LIFT, 1.0, dashes),
+        ribbon(road, -center, center, PAINT_LIFT, 1.0, dashes),
         painted(),
     );
-    let curbs = |index: usize| {
-        let curved = track.smoothed_curvature(index, 4) > 1.0 / CURB_RADIUS;
-        curved.then_some(scenery.curbs[index % 2])
+    let curbs = |index: usize, corners| {
+        let curved = line.smoothed_curvature(index, 4) > 1.0 / CURB_RADIUS;
+        ((curved || road.at_a_loop(index)) && clear(corners)).then_some(scenery.curbs[index % 2])
     };
     spawn(
-        ribbon(track, half, half + CURB_WIDTH, 0.0, 1.0, curbs),
+        ribbon(road, half, half + CURB_WIDTH, 0.0, 1.0, curbs),
         painted(),
     );
     spawn(
-        ribbon(track, -half - CURB_WIDTH, -half, 0.0, 1.0, curbs),
+        ribbon(road, -half - CURB_WIDTH, -half, 0.0, 1.0, curbs),
         painted(),
     );
 
     // Los muros, cada uno con su aspecto.
-    let lap = track.lap_length();
-    let style = |index: usize, side: Side| {
-        wall_style(scenery, lap, index as f32 * track.step_length(), side)
-    };
+    let lap = road.track.lap_length();
+    let style = |index: usize, side: Side| wall_style(scenery, lap, line.lap_along_at(index), side);
     for (wanted, height, material) in [
         (
             WallStyle::Stone,
@@ -150,14 +279,14 @@ pub fn spawn_road(
             },
         ),
     ] {
-        let mesh = walls(track, terrain, height, |index, side| {
+        let mesh = walls(road, terrain, height, |index, side| {
             style(index, side) == Some(wanted)
         });
         if let Some(mesh) = mesh {
             spawn(mesh, material);
         }
     }
-    if let Some(mesh) = railing(track, |index, side| {
+    if let Some(mesh) = railing(road, |index, side| {
         style(index, side) == Some(WallStyle::Railing)
     }) {
         spawn(
@@ -167,40 +296,6 @@ pub fn spawn_road(
                 ..default()
             },
         );
-    }
-
-    // Línea de meta: una franja de tablero de ajedrez de lado a lado.
-    let checkered = || StandardMaterial {
-        base_color_texture: Some(textures.checker.clone()),
-        perceptual_roughness: 0.7,
-        ..default()
-    };
-    spawn(finish_line(track), checkered());
-
-    // Parrilla de salida con cajones pintados para las motos.
-    spawn(
-        starting_grid(track),
-        StandardMaterial {
-            base_color: Color::WHITE,
-            perceptual_roughness: 0.6,
-            ..default()
-        },
-    );
-
-    // Huellas de derrape y frenada en las curvas para dar dinamismo al asfalto.
-    if let Some(skids) = skid_marks(track) {
-        spawn(
-            skids,
-            StandardMaterial {
-                base_color: Color::srgb(0.12, 0.12, 0.14),
-                perceptual_roughness: 0.95,
-                ..default()
-            },
-        );
-    }
-
-    for gantry in scenery.gantries {
-        spawn_gantry(world, track, gantry, assets);
     }
 }
 
@@ -226,24 +321,33 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
 
 /// Cinta que sigue la carretera entre dos desplazamientos laterales (`from <
 /// to`, positivo = izquierda), `lift` metros por encima del asfalto. Cada
-/// tramo lleva el color que diga `paint`, o no se pinta si es `None`.
+/// tramo lleva el color que diga `paint` (from its number and its corners on
+/// the ground), o no se pinta si es `None`.
 fn ribbon(
-    track: &Track,
+    road: Road,
     from: f32,
     to: f32,
     lift: f32,
     tile: f32,
-    paint: impl Fn(usize) -> Option<Color>,
+    paint: impl Fn(usize, [Vec2; 4]) -> Option<Color>,
 ) -> Mesh {
     debug_assert!(from < to, "la cinta va de derecha a izquierda");
-    let step = track.step_length();
+    let line = road.line();
+    let step = line.step_length();
     let mut mesh = MeshBuilder::default();
-    for index in 0..track.sample_count() {
-        let Some(color) = paint(index) else {
+    for index in 0..line.segment_count() {
+        let corners = [
+            line.offset_point(index, from),
+            line.offset_point(index + 1, from),
+            line.offset_point(index + 1, to),
+            line.offset_point(index, to),
+        ];
+        let Some(color) = paint(index, corners) else {
             continue;
         };
-        let at =
-            |i: usize, lateral: f32| track.surface_point(i, lateral) + Vec3::Y * (SURFACE_Y + lift);
+        let at = |i: usize, lateral: f32| {
+            road.surface_point(i, lateral) + Vec3::Y * (SURFACE_Y + lift + road.lift())
+        };
         let (v0, v1) = (index as f32 * step / tile, (index + 1) as f32 * step / tile);
         let (u0, u1) = (0.0, (to - from) / tile);
         mesh.quad(
@@ -262,43 +366,58 @@ fn ribbon(
 
 /// Muros de `height` de alto a los dos lados, donde diga `wanted`. Donde
 /// detrás sube la roca, no hace falta muro: la pared del peñasco cierra la
-/// carretera. `None` si no hay ninguno.
+/// carretera. Nor where they would stand on another road, where two roads
+/// meet. `None` si no hay ninguno.
 fn walls(
-    track: &Track,
+    road: Road,
     terrain: &Terrain,
     height: f32,
     wanted: impl Fn(usize, Side) -> bool,
 ) -> Option<Mesh> {
-    let step = track.step_length();
-    let n = track.sample_count();
+    let line = road.line();
+    let step = line.step_length();
+    let segments = line.segment_count();
     let mut mesh = MeshBuilder::default();
     for (side, wall_side) in [(1.0, Side::Left), (-1.0, Side::Right)] {
-        let (inner, outer) = (
-            side * WALL_DISTANCE,
-            side * (WALL_DISTANCE + WALL_THICKNESS),
-        );
+        let inner = |i: usize| side * line.wall_at(i);
+        let outer = |i: usize| side * (line.wall_at(i) + WALL_THICKNESS);
         let cliff = |index: usize| {
-            let behind = track.offset_point(index, side * (WALL_DISTANCE + 5.0));
-            terrain.height(behind) - track.surface_point(index, inner).y > CLIFF_RISE
+            let behind = line.offset_point(index, inner(index) + side * 5.0);
+            terrain.height(behind) - road.surface_point(index, inner(index)).y > CLIFF_RISE
         };
-        let visible: Vec<bool> = (0..n)
-            .map(|i| wanted(i, wall_side) && !cliff(i) && !cliff((i + 1) % n))
+        let visible: Vec<bool> = (0..segments)
+            .map(|i| {
+                let middle =
+                    (line.offset_point(i, inner(i)) + line.offset_point(i + 1, inner(i + 1))) / 2.0;
+                wanted(i, wall_side)
+                    && !cliff(i)
+                    && !cliff(i + 1)
+                    && !road.between_other_walls(middle)
+            })
             .collect();
-        for index in 0..n {
-            if !visible[index] {
-                continue;
-            }
+        // Whether the wall goes on before or after a stretch.
+        let before = |i: usize| match i {
+            0 if line.is_closed() => visible[segments - 1],
+            0 => false,
+            _ => visible[i - 1],
+        };
+        let after = |i: usize| match i + 1 {
+            next if next == segments && line.is_closed() => visible[0],
+            next if next == segments => false,
+            next => visible[next],
+        };
+        for (index, _) in visible.iter().enumerate().filter(|&(_, &shown)| shown) {
             let next = index + 1;
             let outward = |i: usize| {
-                let toward = track.offset_point(i, side) - track.offset_point(i, 0.0);
+                let toward = line.offset_point(i, side) - line.offset_point(i, 0.0);
                 Vec3::new(toward.x, 0.0, toward.y)
             };
-            let top = |i: usize| track.surface_point(i, inner).y + SURFACE_Y + height;
+            let top = |i: usize| road.surface_point(i, inner(i)).y + SURFACE_Y + height;
             let point = |i: usize, lateral: f32, y: f32| {
-                let ground = track.surface_point(i, lateral);
-                Vec3::new(ground.x, y, ground.z)
+                let ground = line.offset_point(i, lateral);
+                Vec3::new(ground.x, y, ground.y)
             };
-            let bottom = |i: usize, lateral: f32| track.surface_point(i, lateral).y - WALL_FOOTING;
+            let bottom = |i: usize, lateral: f32| road.surface_point(i, lateral).y - WALL_FOOTING;
             let (u0, u1) = (
                 index as f32 * step / WALL_TILE,
                 next as f32 * step / WALL_TILE,
@@ -306,20 +425,24 @@ fn walls(
             let v = |from: f32, to: f32| (to - from) / WALL_TILE;
             let face_normal = outward(index);
             // Cara hacia la carretera, cara de arriba y cara de fuera.
-            for (lateral, facing) in [(inner, -face_normal), (outer, face_normal)] {
-                let height = v(bottom(index, lateral), top(index));
+            for (lateral, facing) in [
+                (&inner as &dyn Fn(usize) -> f32, -face_normal),
+                (&outer, face_normal),
+            ] {
+                let (here, there) = (lateral(index), lateral(next));
+                let height = v(bottom(index, here), top(index));
                 mesh.quad(
                     [
                         (
-                            point(index, lateral, bottom(index, lateral)),
+                            point(index, here, bottom(index, here)),
                             Vec2::new(u0, height),
                         ),
                         (
-                            point(next, lateral, bottom(next, lateral)),
+                            point(next, there, bottom(next, there)),
                             Vec2::new(u1, height),
                         ),
-                        (point(next, lateral, top(next)), Vec2::new(u1, 0.0)),
-                        (point(index, lateral, top(index)), Vec2::new(u0, 0.0)),
+                        (point(next, there, top(next)), Vec2::new(u1, 0.0)),
+                        (point(index, here, top(index)), Vec2::new(u0, 0.0)),
                     ],
                     facing,
                     Color::WHITE,
@@ -328,31 +451,40 @@ fn walls(
             let thickness = WALL_THICKNESS / WALL_TILE;
             mesh.quad(
                 [
-                    (point(index, inner, top(index)), Vec2::new(u0, 0.0)),
-                    (point(next, inner, top(next)), Vec2::new(u1, 0.0)),
-                    (point(next, outer, top(next)), Vec2::new(u1, thickness)),
-                    (point(index, outer, top(index)), Vec2::new(u0, thickness)),
+                    (point(index, inner(index), top(index)), Vec2::new(u0, 0.0)),
+                    (point(next, inner(next), top(next)), Vec2::new(u1, 0.0)),
+                    (
+                        point(next, outer(next), top(next)),
+                        Vec2::new(u1, thickness),
+                    ),
+                    (
+                        point(index, outer(index), top(index)),
+                        Vec2::new(u0, thickness),
+                    ),
                 ],
                 Vec3::Y,
                 Color::WHITE,
             );
             // Remates donde el muro empieza o acaba junto a la roca.
             let along = |i: usize| {
-                let (a, b) = (track.offset_point(i, 0.0), track.offset_point(i + 1, 0.0));
+                let (a, b) = (line.offset_point(i, 0.0), line.offset_point(i + 1, 0.0));
                 Vec3::new(b.x - a.x, 0.0, b.y - a.y)
             };
             for (at, facing, open) in [
-                (index, -along(index), !visible[(index + n - 1) % n]),
-                (next, along(index), !visible[next % n]),
+                (index, -along(index), !before(index)),
+                (next, along(index), !after(index)),
             ] {
                 if open {
-                    let (bi, bo) = (bottom(at, inner), bottom(at, outer));
+                    let (bi, bo) = (bottom(at, inner(at)), bottom(at, outer(at)));
                     mesh.quad(
                         [
-                            (point(at, inner, bi), Vec2::new(0.0, v(bi, top(at)))),
-                            (point(at, outer, bo), Vec2::new(thickness, v(bo, top(at)))),
-                            (point(at, outer, top(at)), Vec2::new(thickness, 0.0)),
-                            (point(at, inner, top(at)), Vec2::ZERO),
+                            (point(at, inner(at), bi), Vec2::new(0.0, v(bi, top(at)))),
+                            (
+                                point(at, outer(at), bo),
+                                Vec2::new(thickness, v(bo, top(at))),
+                            ),
+                            (point(at, outer(at), top(at)), Vec2::new(thickness, 0.0)),
+                            (point(at, inner(at), top(at)), Vec2::ZERO),
                         ],
                         facing,
                         Color::WHITE,
@@ -366,19 +498,20 @@ fn walls(
 
 /// Barandilla de paseo marítimo donde diga `wanted`: postes y dos barras
 /// verdes, sobre el sitio de los muros.
-fn railing(track: &Track, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
-    let n = track.sample_count();
+fn railing(road: Road, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
+    let line = road.line();
+    let segments = line.segment_count();
     let mut mesh = MeshBuilder::default();
     for side in [Side::Left, Side::Right] {
-        let lateral = side.sign() * (WALL_DISTANCE + 0.2);
         let at = |i: usize, height: f32| {
-            track.surface_point(i, lateral) + Vec3::Y * (SURFACE_Y + height)
+            let lateral = side.sign() * (line.wall_at(i) + 0.2);
+            road.surface_point(i, lateral) + Vec3::Y * (SURFACE_Y + height)
         };
-        for index in 0..n {
+        for index in 0..segments {
             if !wanted(index, side) {
                 continue;
             }
-            let next = (index + 1) % n;
+            let next = (index + 1) % line.sample_count();
             mesh.beam(
                 at(index, -0.3),
                 at(index, RAILING_HEIGHT),

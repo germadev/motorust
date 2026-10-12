@@ -1,11 +1,13 @@
-//! Loops Hill: a lap inspired by Green Hill, the first zone of Sonic the
+//! Loop Island: a lap inspired by Green Hill, the first zone of Sonic the
 //! Hedgehog. A roller coaster of a road, clockwise round an island of green
 //! hills under a blue sky, with the sea all around.
 //!
 //! 1. The start straight runs north between palm trees and sunflowers, with
 //!    a crest where the bike takes off.
-//! 2. A long right-hander climbs past a giant loop standing on a block of
-//!    checkerboard earth, and S-bends roll on east over the hills.
+//! 2. A long right-hander climbs round the island's own loop, and S-bends
+//!    roll on east over the hills. Just after the crest, a branch forks off
+//!    to the right, cuts inside the corner and goes round the loop, upside
+//!    down at the top, before it joins the lap again on the S-bends.
 //! 3. The road climbs into a tunnel through a checkerboard ridge and comes
 //!    out by a waterfall, high above the sea, into a long banked right-hander.
 //! 4. Down past a second waterfall, a wooden bridge crosses an inlet where
@@ -17,7 +19,9 @@ use bevy::prelude::*;
 
 use super::Circuit;
 use crate::geometry::{fbm, smoothstep};
-use crate::track::{Banking, Layout, WALL_DISTANCE};
+use std::f32::consts::FRAC_PI_4;
+
+use crate::track::{Banking, Branch, Layout, VerticalLoop, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 /// Where things are, in metres from the finish line.
@@ -25,19 +29,21 @@ const START: Span = span(2060.0, 290.0);
 const TUNNEL: Span = span(770.0, 870.0);
 const BRIDGE: Span = span(1230.0, 1310.0);
 const SHORE: Span = span(1660.0, 1960.0);
+/// The stretch of lap the branch with the loop leaves out.
+const SHORTCUT: Span = span(215.0, 615.0);
 
 /// Sonic blue and gold.
 const BLUE: Color = Color::srgb(0.08, 0.28, 0.85);
 const GOLD: Color = Color::srgb(1.0, 0.8, 0.1);
 const RED: Color = Color::srgb(0.8, 0.08, 0.06);
 
-pub const LOOPS_HILL: Circuit = Circuit {
-    name: "Loops Hill",
-    name_en: "Loops Hill",
-    description: "Inspirada en Sonic: colinas de tierra a cuadros,\n\
-                  rizos, girasoles, tótems y cascadas",
-    description_en: "Inspired by Sonic: checkered hills, loops,\n\
-                     sunflowers, totems and waterfalls",
+pub const LOOP_ISLAND: Circuit = Circuit {
+    name: "Loop Island",
+    name_en: "Loop Island",
+    description: "Inspirada en Sonic: un desvío con un rizo para\n\
+                  dar la vuelta, tierra a cuadros y cascadas",
+    description_en: "Inspired by Sonic: a branch with a loop to ride,\n\
+                     checkered hills and waterfalls",
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
@@ -55,6 +61,37 @@ pub const LOOPS_HILL: Circuit = Circuit {
                 factor: 1.5,
             },
         ],
+        // Inside the first long corner, round the loop.
+        branches: &[Branch {
+            from: SHORTCUT.from,
+            to: SHORTCUT.to,
+            // Round to the right, then north-east to the loop.
+            approach: &[
+                Vec2::new(1.0, -227.6),
+                Vec2::new(4.4, -238.9),
+                Vec2::new(10.0, -249.3),
+                Vec2::new(17.4, -258.3),
+            ],
+            vertical_loop: VerticalLoop {
+                mouth: Vec2::new(70.5, -311.4),
+                // North-east.
+                heading: -FRAC_PI_4,
+                height: 4.5,
+                radius: 16.0,
+                shift: -16.0,
+            },
+            // On north-east, round to the right, and onto the lap.
+            exit: &[
+                Vec2::new(124.2, -342.5),
+                Vec2::new(132.4, -349.5),
+                Vec2::new(141.5, -355.2),
+                Vec2::new(151.5, -359.4),
+                Vec2::new(161.9, -362.0),
+                Vec2::new(188.5, -366.5),
+                Vec2::new(215.1, -371.0),
+                Vec2::new(241.6, -375.6),
+            ],
+        }],
     },
     scenery: Scenery {
         coast: Coast::AroundTrack(&COAST),
@@ -93,7 +130,7 @@ pub const LOOPS_HILL: Circuit = Circuit {
             Gantry {
                 along: 0.0,
                 color: BLUE,
-                text: Some("LOOPS HILL"),
+                text: Some("LOOP ISLAND"),
             },
             Gantry {
                 along: 700.0,
@@ -108,7 +145,7 @@ pub const LOOPS_HILL: Circuit = Circuit {
         ],
         billboards: &[
             Billboard {
-                along: 245.0,
+                along: 150.0,
                 side: Side::Right,
                 text: "MOTORUST",
                 color: Color::srgb(0.1, 0.1, 0.12),
@@ -145,7 +182,7 @@ pub const LOOPS_HILL: Circuit = Circuit {
                 every: 22.0,
             },
             Row {
-                span: span(110.0, 290.0),
+                span: span(110.0, 200.0),
                 side: Side::Right,
                 lateral: WALL_DISTANCE + 6.0,
                 every: 26.0,
@@ -182,7 +219,7 @@ pub const LOOPS_HILL: Circuit = Circuit {
                 every: 28.0,
             },
             Row {
-                span: span(520.0, 740.0),
+                span: span(640.0, 740.0),
                 side: Side::Right,
                 lateral: WALL_DISTANCE + 9.0,
                 every: 28.0,
@@ -251,7 +288,7 @@ pub const LOOPS_HILL: Circuit = Circuit {
                 every: 14.0,
             },
             Row {
-                span: span(520.0, 740.0),
+                span: span(640.0, 740.0),
                 side: Side::Right,
                 lateral: WALL_DISTANCE + 2.5,
                 every: 14.0,
@@ -285,14 +322,8 @@ pub const LOOPS_HILL: Circuit = Circuit {
                 side: Side::Left,
             },
         ],
+        // The loop to ride is the branch's (see the layout).
         loops: &[
-            // On the outside of the first long corner.
-            Loop {
-                along: 430.0,
-                side: Side::Left,
-                lateral: 46.0,
-                radius: 14.0,
-            },
             // Inland from the south shore.
             Loop {
                 along: 1590.0,
@@ -432,13 +463,7 @@ const MASSIFS: [Massif; 10] = [
     massif(300.0, 260.0, 28.0, 10.0),
 ];
 
-const CUTTINGS: [Cutting; 6] = [
-    // A ledge after the crest of the start straight.
-    Cutting {
-        span: span(205.0, 290.0),
-        side: Side::Right,
-        height: 12.0,
-    },
+const CUTTINGS: [Cutting; 5] = [
     // The tunnel, with earth on both sides from before the mouth.
     Cutting {
         span: span(740.0, 900.0),

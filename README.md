@@ -9,10 +9,11 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 - **Three tracks.** Bahía is a Mediterranean coast road. Turbo Bay, inspired
   by Moto Racer's Speed Bay, is a figure of eight on a hilly island: a
-  seafront, a tunnel that the track later passes over, a forest and a bridge.
-  Loops Hill, inspired by Sonic the Hedgehog, rolls round an island of
-  checkerboard hills with loops, sunflowers, totems and waterfalls. All have
-  steep slopes, crests and banked curves.
+  seafront, a tunnel that the track later passes over, a mountain road up to
+  a lighthouse cape, a forest and a bridge. Loop Island, inspired by Sonic the
+  Hedgehog, rolls round an island of checkerboard hills with sunflowers,
+  totems and waterfalls, and a branch off the lap goes round a loop you ride
+  upside down. All have steep slopes, crests and banked curves.
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
 - **Arcade handling.** Lean into corners at full throttle, pop wheelies, take
@@ -24,7 +25,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
   (including the macOS GameController framework). It runs on Linux, Windows,
   macOS and the web.
 
-![Eight bikes racing past the giant checkerboard loop on Loops Hill](docs/images/loops-hill-loop.jpg)
+![Two bikes riding round the checkerboard loop on Loop Island's branch, one upside down at the top](docs/images/loop-island-loop.jpg)
 
 ## Quick start
 

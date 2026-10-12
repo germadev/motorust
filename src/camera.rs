@@ -45,6 +45,9 @@ const LOOK_DEADZONE: f32 = 0.4;
 const LOOK_RESPONSE: f32 = 6.0;
 /// Lo que tarda la cámara en ir de una pantalla de menú a la siguiente (s).
 const GLIDE_TIME: f32 = 1.2;
+/// How fast the camera comes back upright after leaving a loop the wrong
+/// way, falling off it (1/s).
+const UPRIGHT_RESPONSE: f32 = 6.0;
 
 pub struct ChaseCameraPlugin;
 
@@ -101,6 +104,10 @@ struct ChaseCamera {
     /// Hacia dónde mira respecto a la moto (rad, positivo a la izquierda),
     /// ya suavizado.
     look: f32,
+    /// How far the camera is turned head over heels with the bike, about
+    /// its own sideways axis: round a loop it goes round with the bike.
+    /// `None` is upright.
+    tilt: Option<Quat>,
 }
 
 /// El stick derecho del mando que más se esté moviendo (x a la derecha, y
@@ -342,12 +349,23 @@ fn stick_direction(stick: Vec2) -> Option<f32> {
 /// Dónde va la cámara y a qué punto mira, a `distance` de la moto en `target`
 /// orientada hacia `heading`: detrás de la moto según esa dirección, mirando
 /// por delante de ella.
+#[cfg(test)]
 fn chase_view(target: Vec3, heading: f32, distance: f32) -> (Vec3, Vec3) {
-    let behind = Quat::from_rotation_y(heading) * Vec3::Z;
-    let position = target + behind * distance + Vec3::Y * HEIGHT;
+    let (position, look_at, _) = tilted_chase_view(target, heading, distance, Quat::IDENTITY);
+    (position, look_at)
+}
+
+/// Like [`chase_view`], with the view turned by `tilt` (in the frame of
+/// the bike, after its heading): behind and above the bike in that frame.
+/// Also returns which way is up for the camera.
+fn tilted_chase_view(target: Vec3, heading: f32, distance: f32, tilt: Quat) -> (Vec3, Vec3, Vec3) {
+    let frame = Quat::from_rotation_y(heading) * tilt;
+    let (behind, up) = (frame * Vec3::Z, frame * Vec3::Y);
+    let position = target + behind * distance + up * HEIGHT;
     (
         position,
-        target - behind * LOOK_AHEAD + Vec3::Y * LOOK_HEIGHT,
+        target - behind * LOOK_AHEAD + up * LOOK_HEIGHT,
+        up,
     )
 }
 
@@ -400,8 +418,14 @@ fn follow_player(
         };
 
         // El Transform de la moto ya viene interpolado y solo lleva guiñada (la
-        // inclinación va en un hijo).
+        // inclinación va en un hijo) y cabeceo. Round a loop the pitch goes
+        // past the vertical, so the heading comes from the bike itself.
         let (bike_yaw, _, _) = bike_transform.rotation.to_euler(EulerRot::YXZ);
+        let bike_yaw = if state.ride.is_some() {
+            state.heading
+        } else {
+            bike_yaw
+        };
         let yaw = match chase.yaw {
             Some(yaw) if down => yaw,
             Some(yaw) => {
@@ -437,10 +461,25 @@ fn follow_player(
         let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.start, SURGE.end);
         chase.surge = approach(chase.surge, surge, SURGE_RESPONSE, dt);
         let distance = DISTANCE.start.lerp(DISTANCE.end, speed_factor) + chase.surge;
-        let (position, look_at) =
-            chase_view(bike_transform.translation, yaw + chase.look, distance);
+        // Round a loop the camera turns over with the bike, behind and above
+        // it in its own frame; off it, it comes back upright.
+        chase.tilt = if state.ride.is_some() {
+            Some(Quat::from_rotation_y(-state.heading) * bike_transform.rotation)
+        } else {
+            chase.tilt.and_then(|tilt| {
+                let blend = 1.0 - (-UPRIGHT_RESPONSE * dt).exp();
+                let tilt = tilt.slerp(Quat::IDENTITY, blend);
+                (tilt.angle_between(Quat::IDENTITY) > 1e-3).then_some(tilt)
+            })
+        };
+        let (position, look_at, up) = tilted_chase_view(
+            bike_transform.translation,
+            yaw + chase.look,
+            distance,
+            chase.tilt.unwrap_or(Quat::IDENTITY),
+        );
         transform.translation = position;
-        transform.look_at(look_at, Vec3::Y);
+        transform.look_at(look_at, up);
 
         if let Projection::Perspective(perspective) = projection.as_mut() {
             perspective.fov = FOV.start.lerp(FOV.end, speed_factor);

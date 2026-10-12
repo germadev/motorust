@@ -68,6 +68,12 @@ pub fn spawn_props(
     for row in scenery.palms {
         occupied.extend(spawn_palms(world, track, terrain, row, assets));
     }
+    occupied.extend(landmarks::spawn_ridden_loops(
+        world,
+        track,
+        scenery.curbs,
+        assets,
+    ));
     occupied.extend(landmarks::spawn_loops(
         world,
         track,
@@ -105,7 +111,8 @@ pub fn spawn_props(
 }
 
 /// Puntos de una fila a lo largo de la carretera: el punto del trazado y la
-/// posición, cada `every` metros desde la mitad del primer hueco.
+/// posición, cada `every` metros desde la mitad del primer hueco. None on a
+/// road off the lap or next to its walls.
 pub(super) fn row_points(track: &Track, row: &Row) -> Vec<(usize, Vec2)> {
     let lap = track.lap_length();
     let length = row.span.length(lap);
@@ -118,6 +125,9 @@ pub(super) fn row_points(track: &Track, row: &Row) -> Vec<(usize, Vec2)> {
                 index,
                 track.offset_point(index, row.side.sign() * row.lateral),
             )
+        })
+        .filter(|&(_, point)| {
+            !track.on_other_road(0, point, |road, nearest| road.wall_at(nearest.index) + 2.0)
         })
         .collect()
 }

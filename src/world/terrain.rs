@@ -149,18 +149,33 @@ impl Terrain {
     /// triangles of its grid, which can poke inside the walls next to a rock
     /// face) stands [`EARTH_RISE`] above the road, or [`WALL_DISTANCE`] if it
     /// does not before the walls. Looks half way to the next points too, so
-    /// a bump between two of them is not missed. See [`Track::set_edges`].
-    pub fn track_edges(&self, track: &Track) -> Vec<[f32; 2]> {
+    /// a bump between two of them is not missed. The lap first, then each
+    /// road off it, short of its own walls. See [`Track::set_edges`].
+    pub fn track_edges(&self, track: &Track) -> Vec<Vec<[f32; 2]>> {
+        std::iter::once(track)
+            .chain(track.side_roads())
+            .map(|road| self.road_edges(road))
+            .collect()
+    }
+
+    /// Like [`Self::track_edges`], for one road.
+    fn road_edges(&self, track: &Track) -> Vec<[f32; 2]> {
         let n = track.sample_count();
         let steps = ((WALL_DISTANCE - track.half_width()) / EDGE_STEP).ceil() as usize;
         (0..n)
             .map(|index| {
+                let wall = track.wall_at(index);
                 [1.0, -1.0].map(|side| {
                     (0..=steps)
-                        .map(|k| (track.half_width() + k as f32 * EDGE_STEP).min(WALL_DISTANCE))
+                        .map(|k| (track.half_width() + k as f32 * EDGE_STEP).min(wall))
                         .find(|&lateral| {
-                            [n - 1, 0, 1].iter().any(|&offset| {
-                                let other = (index + offset) % n;
+                            [-1, 0, 1].iter().any(|&offset| {
+                                let other = index as isize + offset;
+                                let other = if track.is_closed() {
+                                    other.rem_euclid(n as isize) as usize
+                                } else {
+                                    other.clamp(0, n as isize - 1) as usize
+                                };
                                 let here = track.surface_point(index, side * lateral);
                                 let there = track.surface_point(other, side * lateral);
                                 // Here and half way to the neighbour.
@@ -169,7 +184,7 @@ impl Terrain {
                                 })
                             })
                         })
-                        .unwrap_or(WALL_DISTANCE)
+                        .unwrap_or(wall)
                 })
             })
             .collect()
@@ -233,7 +248,7 @@ impl Terrain {
                                 Vec2::new(p.x + warp.x, p.z + warp.y)
                             }
                             // Checkerboard earth: straight rows at the same
-                            // heights on every cliff, as in Loops Hill.
+                            // heights on every cliff, as in Loop Island.
                             None if self.soil == Soil::Checkered => rock_projection(p, face),
                             None => {
                                 // Continuous 3D domain warp based on world coordinates before projection.
@@ -421,11 +436,9 @@ struct Shaper<'a> {
 
 impl<'a> Shaper<'a> {
     fn new(track: &'a Track, scenery: &'a Scenery) -> Self {
-        let road_field = track
-            .centerline()
-            .iter()
-            .zip(track.elevations())
-            .step_by(4)
+        let road_field = std::iter::once(track)
+            .chain(track.side_roads())
+            .flat_map(|road| road.centerline().iter().zip(road.elevations()).step_by(4))
             .map(|(&point, &height)| (point, height))
             .collect();
         let lap = track.lap_length();
@@ -911,6 +924,8 @@ mod tests {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let edges = terrain.track_edges(&track);
+            assert_eq!(edges.len(), 1 + track.side_roads().len());
+            let edges = &edges[0];
             assert_eq!(edges.len(), track.sample_count());
             let mut inside = 0;
             for (index, sides) in edges.iter().enumerate() {
@@ -998,7 +1013,7 @@ mod tests {
     }
 
     #[test]
-    fn loops_hill_is_an_island_of_checkerboard_cliffs() {
+    fn loop_island_is_an_island_of_checkerboard_cliffs() {
         let circuit = &CIRCUITS[2];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);

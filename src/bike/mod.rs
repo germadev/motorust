@@ -8,12 +8,14 @@ mod ai;
 mod chassis;
 mod crash;
 mod grass_kickup;
+mod loop_ride;
 mod model;
 
 #[cfg(test)]
 use crash::{Body, carry, collide};
 pub use crash::{CrashState, Knock};
 pub use grass_kickup::{GrassKickup, GrassKickupPlugin, GrassParticle};
+pub use loop_ride::Ride;
 
 use bevy::input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest};
 use bevy::{ecs::system::SystemParam, prelude::*};
@@ -278,6 +280,10 @@ pub struct BikeState {
     pub accel: f32,
     /// Caballito y suspensión.
     pub chassis: Chassis,
+    /// Where it is on a vertical loop, while it rides one (see
+    /// [`loop_ride`]): then the position, the height and the pitch follow
+    /// the running surface.
+    pub ride: Option<Ride>,
 }
 
 impl BikeState {
@@ -297,6 +303,7 @@ impl BikeState {
             pitch: 0.0,
             accel: 0.0,
             chassis: Chassis::default(),
+            ride: None,
         }
     }
 
@@ -622,6 +629,9 @@ pub fn advance(
     tuning: &BikeTuning,
     dt: f32,
 ) -> BikeState {
+    if let Some(ride) = state.ride {
+        return loop_ride::ride(state, input, &track.loops()[ride.index], tuning, dt).0;
+    }
     advance_hitting_walls(state, input, track, tuning, dt).0
 }
 
@@ -643,6 +653,7 @@ pub fn advance_hitting_walls(
     let wall = hit_walls(&mut next, track);
     let ground_height = track.road_height_at(next.position, next.elevation);
     settle(&mut next, &ground, ground_height, dt);
+    loop_ride::enter(&mut next, track);
     (next, wall)
 }
 
@@ -702,7 +713,7 @@ pub fn wall_contact(
         .fold(0.0, f32::max);
     let nearest = track.nearest_at(center, height);
     let spread = (reach / track.step_length()).ceil() as usize + 1;
-    if nearest.distance + reach <= track.closest_edge_near(nearest.index, spread) {
+    if nearest.distance + reach <= track.closest_edge_near(&nearest, spread) {
         return None;
     }
     parts
@@ -862,36 +873,43 @@ pub const ROSTER: [Entry; 8] = [
 
 /// Quién sale de cada puesto de la parrilla ([`Track::grid_slot`]), de la
 /// pole hacia atrás: los rivales, del más hábil al menos, y el jugador el
-/// último, para tener a quién adelantar. De cada rival, su habilidad y su
-/// carril en carrera.
+/// último, para tener a quién adelantar. For each rival, its skill, its lane
+/// in the race and whether it takes the branches with a loop.
 const GRID: [Option<Rival>; 8] = [
     Some(Rival {
         skill: 0.95,
         lane: 2.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.94,
         lane: -2.0,
+        loops: true,
     }),
     Some(Rival {
         skill: 0.92,
         lane: 4.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.91,
         lane: -4.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.9,
         lane: 0.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.89,
         lane: 1.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.88,
         lane: -1.0,
+        loops: true,
     }),
     None,
 ];
@@ -1520,6 +1538,18 @@ fn simulate_bikes(
         .collect();
     for (entity, input, mut state, mut previous, mut knock, mut crash, line, impact) in &mut bikes {
         previous.0 = *state;
+        if let Some(ride) = state.ride.filter(|_| !crash.is_down()) {
+            let outcome;
+            let looped = &track.loops()[ride.index];
+            (*state, outcome) = loop_ride::ride(&state, input, looped, &tuning, dt);
+            if let loop_ride::Outcome::Fell(velocity) = outcome {
+                *crash = crash::fall_off(&mut state, &mut knock, velocity, &track);
+                if let Some(mut impact) = impact {
+                    impact.record(1.0, true);
+                }
+            }
+            continue;
+        }
         if !crash.is_down() {
             let wall;
             (*state, wall) = advance_hitting_walls(&state, input, &track, &tuning, dt);
@@ -1588,6 +1618,10 @@ fn separate_bikes(
         ],
     ) = pairs.fetch_next()
     {
+        // A bike on a loop runs on rails, clear of the others.
+        if state_a.ride.is_some() || state_b.ride.is_some() {
+            continue;
+        }
         let (down_a, down_b) = (crash_a.is_down(), crash_b.is_down());
         let (from_a, from_b) = (state_a.position, state_b.position);
         let contact = crash::collide(
@@ -1691,7 +1725,8 @@ fn interpolate_bikes(
         let position = from.position.lerp(to.position, alpha);
         let elevation = from.elevation.lerp(to.elevation, alpha);
         let heading = from.heading.lerp(to.heading, alpha);
-        let pitch = from.pitch.lerp(to.pitch, alpha);
+        // Out of a loop the pitch goes from a whole turn back to about zero.
+        let pitch = from.pitch + wrap_angle(to.pitch - from.pitch) * alpha;
         transform.translation = to_world(position, elevation + SURFACE_Y);
         transform.rotation = Quat::from_rotation_y(heading) * Quat::from_rotation_x(pitch);
     }
@@ -2779,7 +2814,7 @@ mod tests {
         for sides in &mut edges[45..=55] {
             sides[0] = WALL_DISTANCE - 2.0;
         }
-        track.set_edges(edges);
+        track.set_edges(vec![edges]);
         let hit = hit_walls(&mut state, &track).expect("hits the earth");
         assert!(hit.into > 30.0, "head on: {hit:?}");
         for &(point, radius) in &footprint(&state) {

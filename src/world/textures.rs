@@ -32,7 +32,7 @@ pub struct WorldTextures {
     pub water: Handle<Image>,
     /// Gradas de público con ropa de colores vivos como en los arcades de los 90.
     pub crowd: Handle<Image>,
-    /// Two by two squares of brown checkerboard earth, as in Loops Hill.
+    /// Two by two squares of brown checkerboard earth, as in Loop Island.
     pub soil: Handle<Image>,
     /// Streaks of falling water, repeating downwards.
     pub falls: Handle<Image>,
@@ -507,7 +507,7 @@ fn tiling(width: u32, height: u32, pixel: impl Fn(u32, u32) -> Color) -> Image {
     image
 }
 
-/// Loops Hill earth: two by two squares, chocolate and caramel, each with a
+/// Loop Island earth: two by two squares, chocolate and caramel, each with a
 /// light bevel on its upper and left edges, a dark one on the others, and
 /// some grain.
 fn soil() -> Image {

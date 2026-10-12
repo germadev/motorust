@@ -131,7 +131,7 @@ pub enum WallStyle {
     Railing,
     /// Seto sobre un murete.
     Hedge,
-    /// Blocks of brown checkerboard earth, as in Loops Hill.
+    /// Blocks of brown checkerboard earth, as in Loop Island.
     Checkered,
 }
 
@@ -141,7 +141,7 @@ pub enum WallStyle {
 pub enum Soil {
     /// Natural rock with tilted strata.
     Rock,
-    /// Brown checkerboard earth under a grass top, as in Loops Hill.
+    /// Brown checkerboard earth under a grass top, as in Loop Island.
     Checkered,
 }
 

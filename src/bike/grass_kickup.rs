@@ -197,7 +197,7 @@ pub fn kick_up_grass(
     };
 
     for (state, mut kickup) in &mut bikes {
-        if !state.grounded || state.speed < 2.0 {
+        if !state.grounded || state.speed < 2.0 || state.ride.is_some() {
             kickup.accumulator = 0.0;
             continue;
         }
