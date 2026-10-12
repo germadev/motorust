@@ -214,8 +214,10 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bike::crash::{CrashState, fall, rejoin_pose, slide};
-    use crate::bike::{BikeState, Body, Knock, advance};
+    use crate::bike::crash::{
+        CrashState, fall, fall_against_wall, rejoin_pose, slide, wall_knocks_down,
+    };
+    use crate::bike::{BikeState, Body, Knock, advance, advance_hitting_walls};
 
     #[test]
     fn rival_laps_the_track_without_leaving_it() {
@@ -386,7 +388,13 @@ mod tests {
                     &track,
                     &tuning,
                 );
-                racer.state = advance(&racer.state, &input, &track, &tuning, dt);
+                let wall;
+                (racer.state, wall) =
+                    advance_hitting_walls(&racer.state, &input, &track, &tuning, dt);
+                if let Some(hit) = wall.filter(wall_knocks_down) {
+                    racer.crash = fall_against_wall(&mut racer.state, &mut racer.knock, &hit);
+                    falls += 1;
+                }
                 crate::bike::carry(&mut racer.state, &mut racer.knock, &track, dt);
             }
             for j in 1..pack.len() {

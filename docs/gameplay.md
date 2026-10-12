@@ -66,7 +66,7 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 ### Grass, walls and other bikes
 
 - **Grass.** Brushing it after running wide barely slows you. Staying on it slows you gradually to about 130 km/h, but it never stops you. Back on the asphalt, you recover twice as fast.
-- **Walls.** Walls close off the road on both sides. Scraping one turns the bike parallel to it so you keep going. Hitting one head-on costs most of your speed.
+- **Walls.** Walls close off the road on both sides. Scraping one turns the bike parallel to it so you keep going. Hitting one head-on costs most of your speed. No part of the bike goes into a wall: not the front wheel when you hit it at an angle, nor the rider leaning towards it. Hitting a wall hard brings you down: going into it at more than about 36 km/h (straight into it at that speed, or a 12° hit at 180 km/h). That is a generous arcade margin; scrapes and bumps are ridden out.
 - **Other bikes.** Contacts between bikes follow real momentum: both bikes weigh the same with their riders, the hit is mostly plastic (fairings and bodies do not bounce) and the fairings rub with some friction.
   - Rubbing fairings side by side pushes both bikes apart; the tyres scrub the sideways shove off in a fraction of a second and you keep riding. A nudge from behind slows the one behind and pushes the one in front on.
   - A rider only goes down when the tyres cannot take the hit: a big sideways jolt (a T-bone, a hard swipe at speed), a hit that spins the bike, or hitting another bike with the front wheel much faster than it goes. Contacts at walking pace never bring anyone down.

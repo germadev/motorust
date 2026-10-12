@@ -107,7 +107,13 @@ impl Plugin for BikePlugin {
             .add_systems(OnEnter(GameState::Race), spawn_grid)
             .add_systems(
                 FixedUpdate,
-                (ai::drive_rivals, simulate_bikes, separate_bikes).chain(),
+                (
+                    ai::drive_rivals,
+                    simulate_bikes,
+                    separate_bikes,
+                    rumble_controllers,
+                )
+                    .chain(),
             )
             .add_systems(
                 RunFixedMainLoop,
@@ -185,6 +191,33 @@ pub struct CollisionImpact {
     pub timer: f32,
     /// Intensidad normalizada del choque (de 0 a 1).
     pub intensity: f32,
+    /// A new hit not yet felt in the controller: how hard (0 to 1) and
+    /// whether the rider went down.
+    pub unfelt: Option<(f32, bool)>,
+}
+
+impl CollisionImpact {
+    /// Records a hit of `strength` (0 to 1); `falls` if the rider went down.
+    /// Only a new hit is felt: bikes leaning on each other, or on a wall,
+    /// would otherwise rumble on every step.
+    pub fn record(&mut self, strength: f32, falls: bool) {
+        let fresh = self.timer == 0.0;
+        let (timer, intensity) = if falls {
+            (0.5, 1.0)
+        } else {
+            (0.25, 0.35 + 0.65 * strength)
+        };
+        self.timer = self.timer.max(timer);
+        self.intensity = if fresh {
+            intensity
+        } else {
+            self.intensity.max(intensity)
+        };
+        if fresh || falls {
+            let (was, fell) = self.unfelt.unwrap_or((0.0, false));
+            self.unfelt = Some((was.max(strength), fell || falls));
+        }
+    }
 }
 
 /// Lo que pide el piloto en este momento. Al jugador lo rellena el teclado o
@@ -567,6 +600,7 @@ pub fn settle(state: &mut BikeState, ground: &Ground, ground_height: f32, dt: f3
 }
 
 /// Un paso completo de una moto en el circuito: conducción, muros y suelo.
+#[cfg(test)]
 pub fn advance(
     state: &BikeState,
     input: &BikeInput,
@@ -574,6 +608,17 @@ pub fn advance(
     tuning: &BikeTuning,
     dt: f32,
 ) -> BikeState {
+    advance_hitting_walls(state, input, track, tuning, dt).0
+}
+
+/// Like [`advance`], also telling whether the bike hit a wall in this step.
+pub fn advance_hitting_walls(
+    state: &BikeState,
+    input: &BikeInput,
+    track: &Track,
+    tuning: &BikeTuning,
+    dt: f32,
+) -> (BikeState, Option<WallHit>) {
     let nearest = track.nearest(state.position);
     let ground = Ground {
         surface: track.surface_beside(&nearest),
@@ -581,25 +626,94 @@ pub fn advance(
         crest: track.crest(&nearest),
     };
     let mut next = step(state, input, &ground, tuning, dt);
-    hit_walls(&mut next, track);
+    let wall = hit_walls(&mut next, track);
     let ground_height = track.road_height(next.position);
     settle(&mut next, &ground, ground_height, dt);
-    next
+    (next, wall)
+}
+
+/// Speed into a wall below which hitting it is not felt in the controller
+/// (m/s): scraping along it.
+const WALL_FELT: f32 = 2.0;
+
+/// Half the distance between the circles at the two ends of a bike that the
+/// walls see (m); each is [`BIKE_HALF_WIDTH`] wide, so the bike reaches
+/// about a metre ahead and behind its centre, like the model.
+const WALL_REACH: f32 = 0.6;
+/// How far to the side the rider's shoulders and helmet go when the bike
+/// leans (m, times the sine of the lean), and how wide they are (m). Fallen,
+/// the top of the bike lying on its side reaches about as far.
+const LEAN_REACH: f32 = 0.9;
+const LEAN_RADIUS: f32 = 0.25;
+
+/// The parts of a bike that can touch a wall, seen from above, as circles
+/// (centre and radius): its two ends, and the rider leaning out to one side
+/// (or the top of the bike, once it lies on that side).
+pub fn footprint(state: &BikeState) -> [(Vec2, f32); 3] {
+    let ahead = forward(state.heading);
+    let left = -ahead.perp();
+    [
+        (state.position + ahead * WALL_REACH, BIKE_HALF_WIDTH),
+        (state.position - ahead * WALL_REACH, BIKE_HALF_WIDTH),
+        (
+            state.position + left * state.lean.sin() * LEAN_REACH,
+            LEAN_RADIUS,
+        ),
+    ]
+}
+
+/// The part of `parts` (circles of something centred at `center`) that goes
+/// deepest into a wall, if any: the wall's normal (out of the track) and how
+/// deep it is (m).
+pub fn wall_contact(track: &Track, center: Vec2, parts: &[(Vec2, f32)]) -> Option<(Vec2, f32)> {
+    // Far from the walls, one look at the centre is enough.
+    let reach = parts
+        .iter()
+        .map(|&(point, radius)| point.distance(center) + radius)
+        .fold(0.0, f32::max);
+    if track.nearest(center).distance + reach <= WALL_DISTANCE {
+        return None;
+    }
+    parts
+        .iter()
+        .filter_map(|&(point, radius)| {
+            let nearest = track.nearest(point);
+            let depth = nearest.distance + radius - WALL_DISTANCE;
+            let out = (point - nearest.point).try_normalize()?;
+            (depth > 0.0).then_some((out, depth))
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/// A bike hitting a wall.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WallHit {
+    /// Out of the track, perpendicular to the wall.
+    pub normal: Vec2,
+    /// Velocity before the hit (m/s).
+    pub before: Vec2,
+    /// Speed into the wall (m/s).
+    pub into: f32,
+    /// Where the bike touched it, from its centre.
+    pub at: Vec2,
 }
 
 /// Mantiene la moto entre los muros que bordean la carretera. Si se mete en
 /// uno, la saca y le quita velocidad según lo de frente que haya sido el golpe
 /// (rozarlo apenas frena, darse de cara la frena mucho) y la pone paralela al
-/// muro, para que siga en vez de quedarse clavada.
-pub fn hit_walls(state: &mut BikeState, track: &Track) {
-    let limit = WALL_DISTANCE - BIKE_HALF_WIDTH;
-    let nearest = track.nearest(state.position);
-    if nearest.distance <= limit {
-        return;
-    }
-    // Hacia fuera de la pista, perpendicular al muro.
-    let normal = (state.position - nearest.point) / nearest.distance;
-    state.position = nearest.point + normal * limit;
+/// muro, para que siga en vez de quedarse clavada. No part of the bike (see
+/// [`footprint`]) goes into the wall: not its front wheel when it hits at an
+/// angle, nor the rider leaning towards it. Returns the hit, if there was one.
+pub fn hit_walls(state: &mut BikeState, track: &Track) -> Option<WallHit> {
+    let parts = footprint(state);
+    let (normal, depth) = wall_contact(track, state.position, &parts)?;
+    let at = parts
+        .iter()
+        .map(|&(point, radius)| point - state.position + normal * radius)
+        .max_by(|a, b| a.dot(normal).total_cmp(&b.dot(normal)))
+        .unwrap_or(Vec2::ZERO);
+    state.position -= normal * depth;
+    let before = forward(state.heading) * state.speed;
     let moving = forward(state.heading) * state.speed.signum();
     // Se pierde la velocidad contra el muro, no la que va a lo largo.
     let impact = moving.dot(normal).max(0.0);
@@ -613,6 +727,12 @@ pub fn hit_walls(state: &mut BikeState, track: &Track) {
         };
         state.heading += wrap_angle(heading_of(along) - state.heading) * WALL_ALIGN;
     }
+    Some(WallHit {
+        normal,
+        before,
+        into: before.dot(normal).max(0.0),
+        at,
+    })
 }
 
 fn move_toward(value: f32, target: f32, max_delta: f32) -> f32 {
@@ -1348,6 +1468,7 @@ fn simulate_bikes(
         &mut Knock,
         &mut CrashState,
         Option<&mut ai::Line>,
+        Option<&mut CollisionImpact>,
     )>,
 ) {
     let dt = time.delta_secs();
@@ -1355,10 +1476,21 @@ fn simulate_bikes(
         .iter()
         .map(|(entity, _, state, ..)| (entity, state.position))
         .collect();
-    for (entity, input, mut state, mut previous, mut knock, mut crash, line) in &mut bikes {
+    for (entity, input, mut state, mut previous, mut knock, mut crash, line, impact) in &mut bikes {
         previous.0 = *state;
         if !crash.is_down() {
-            *state = advance(&state, input, &track, &tuning, dt);
+            let wall;
+            (*state, wall) = advance_hitting_walls(&state, input, &track, &tuning, dt);
+            if let Some(hit) = wall {
+                let falls = crash::wall_knocks_down(&hit);
+                if falls {
+                    *crash = crash::fall_against_wall(&mut state, &mut knock, &hit);
+                }
+                // A scrape is not felt; a bump is, more the harder it was.
+                if let Some(mut impact) = impact.filter(|_| hit.into > WALL_FELT) {
+                    impact.record((hit.into / crash::WALL_FALL).min(1.0), falls);
+                }
+            }
             crash::carry(&mut state, &mut knock, &track, dt);
             continue;
         }
@@ -1385,24 +1517,18 @@ fn simulate_bikes(
 }
 
 /// Resolves the contacts between bikes (see [`crash`]): they push each other,
-/// and the riders that cannot ride the hit out go down. The players feel it
-/// in their controllers.
-#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+/// and the riders that cannot ride the hit out go down. A bike pushed into a
+/// wall stays out of it.
+#[allow(clippy::type_complexity)]
 fn separate_bikes(
     time: Res<Time>,
+    track: Res<Track>,
     mut bikes: Query<(
-        Entity,
         &mut BikeState,
         &mut Knock,
         &mut CrashState,
         Option<&mut CollisionImpact>,
     )>,
-    mut rumble: MessageWriter<GamepadRumbleRequest>,
-    game_mode: Option<Res<GameMode>>,
-    local_players: Option<Res<LocalPlayersConfig>>,
-    active_controller: Option<Res<crate::gamepads::ActiveController>>,
-    p1_bikes: Query<(), With<Player>>,
-    locals: Query<&LocalPlayer>,
 ) {
     let dt = time.delta_secs();
     for (.., impact) in &mut bikes {
@@ -1411,19 +1537,17 @@ fn separate_bikes(
         }
     }
 
-    // For each local player, how hard the hit they feel was (0..1) and
-    // whether they went down.
-    let mut felt: [Option<(f32, bool)>; 2] = [None, None];
     let mut pairs = bikes.iter_combinations_mut();
     while let Some(
         [
-            (entity_a, mut state_a, mut knock_a, mut crash_a, impact_a),
-            (entity_b, mut state_b, mut knock_b, mut crash_b, impact_b),
+            (mut state_a, mut knock_a, mut crash_a, impact_a),
+            (mut state_b, mut knock_b, mut crash_b, impact_b),
         ],
     ) = pairs.fetch_next()
     {
         let (down_a, down_b) = (crash_a.is_down(), crash_b.is_down());
-        let Some(contact) = crash::collide(
+        let (from_a, from_b) = (state_a.position, state_b.position);
+        let contact = crash::collide(
             crash::Body {
                 state: &mut state_a,
                 knock: &mut knock_a,
@@ -1434,7 +1558,15 @@ fn separate_bikes(
                 knock: &mut knock_b,
                 down: down_b,
             },
-        ) else {
+        );
+        for (state, from) in [(&mut state_a, from_a), (&mut state_b, from_b)] {
+            if state.position != from
+                && let Some((out, depth)) = wall_contact(&track, state.position, &footprint(state))
+            {
+                state.position -= out * depth;
+            }
+        }
+        let Some(contact) = contact else {
             continue;
         };
         if contact.a.falls {
@@ -1444,39 +1576,24 @@ fn separate_bikes(
             *crash_b = crash::fall(&mut state_b, &mut knock_b, &contact.b);
         }
         let severity = contact.severity();
-        for (entity, impact, falls) in [
-            (entity_a, impact_a, contact.a.falls),
-            (entity_b, impact_b, contact.b.falls),
-        ] {
-            // Only a new hit is felt: bikes leaning on each other would
-            // otherwise rumble on every step.
-            let fresh = impact.as_ref().is_none_or(|impact| impact.timer == 0.0);
+        for (impact, falls) in [(impact_a, contact.a.falls), (impact_b, contact.b.falls)] {
             if let Some(mut impact) = impact {
-                let (timer, intensity) = if falls {
-                    (0.5, 1.0)
-                } else {
-                    (0.25, 0.35 + 0.65 * severity)
-                };
-                impact.timer = impact.timer.max(timer);
-                impact.intensity = if fresh {
-                    intensity
-                } else {
-                    impact.intensity.max(intensity)
-                };
-            }
-            let player = match locals.get(entity) {
-                Ok(local) => Some(local.0),
-                Err(_) => p1_bikes.contains(entity).then_some(0),
-            };
-            if let Some(slot) = player.and_then(|player| felt.get_mut(player))
-                && (fresh || falls)
-            {
-                let (was, fell) = slot.unwrap_or((0.0, false));
-                *slot = Some((was.max(severity), fell || falls));
+                impact.record(severity, falls);
             }
         }
     }
+}
 
+/// The players feel their new hits, against bikes or walls, in their
+/// controllers: harder the harder the hit, and hardest when they go down.
+#[allow(clippy::type_complexity)]
+fn rumble_controllers(
+    mut bikes: Query<(&mut CollisionImpact, Has<Player>, Option<&LocalPlayer>)>,
+    mut rumble: MessageWriter<GamepadRumbleRequest>,
+    game_mode: Option<Res<GameMode>>,
+    local_players: Option<Res<LocalPlayersConfig>>,
+    active_controller: Option<Res<crate::gamepads::ActiveController>>,
+) {
     let pads = if game_mode.is_some_and(|mode| *mode == GameMode::SplitScreen) {
         let pad = |binding: Option<ControllerBinding>| match binding {
             Some(ControllerBinding::Gamepad(pad)) => Some(pad),
@@ -1487,14 +1604,22 @@ fn separate_bikes(
         // With one player, only the controller in use rumbles.
         [active_controller.and_then(|active| active.gamepad), None]
     };
-    for (felt, pad) in felt.into_iter().zip(pads) {
-        let (Some((severity, fell)), Some(gamepad)) = (felt, pad) else {
+    for (mut impact, player, local) in &mut bikes {
+        let Some((strength, fell)) = impact.unfelt.take() else {
+            continue;
+        };
+        let slot = match local {
+            Some(local) => local.0,
+            None if player => 0,
+            None => continue,
+        };
+        let Some(&Some(gamepad)) = pads.get(slot) else {
             continue;
         };
         let (milliseconds, strong, weak) = if fell {
             (500, 0.75, 0.95)
         } else {
-            let strength = 0.4 + 0.6 * severity;
+            let strength = 0.4 + 0.6 * strength;
             (250, 0.35 * strength, 0.65 * strength)
         };
         rumble.write(GamepadRumbleRequest::Add {
@@ -1537,6 +1662,8 @@ fn interpolate_bikes(
 #[cfg(test)]
 mod tests {
     use std::f32::consts::FRAC_PI_2;
+
+    use bevy::ecs::system::RunSystemOnce;
 
     use crate::pause::{ReturnRate, SteerRate};
 
@@ -2465,6 +2592,92 @@ mod tests {
             on_grass < steps / 20,
             "fuera del asfalto de {name} {on_grass} pasos"
         );
+    }
+
+    /// How far the part of the bike deepest into a wall is into it (m).
+    fn into_wall(track: &Track, state: &BikeState) -> f32 {
+        footprint(state)
+            .iter()
+            .map(|&(point, radius)| track.distance_to_centerline(point) + radius - WALL_DISTANCE)
+            .fold(f32::MIN, f32::max)
+    }
+
+    #[test]
+    fn no_part_of_the_bike_goes_into_a_wall_it_hits_at_an_angle() {
+        for heading in [0.3, 0.8, FRAC_PI_2] {
+            // Fast enough to cross most of a metre in a step.
+            let (track, mut state) = against_left_wall(heading);
+            state.position = track.offset_point(50, WALL_DISTANCE - 1.0);
+            state.speed = 80.0;
+            for _ in 0..30 {
+                state.position += forward(state.heading) * state.speed * DT;
+                hit_walls(&mut state, &track);
+                assert!(into_wall(&track, &state) < 1e-3, "{heading}: {state:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_rider_leaning_towards_a_wall_does_not_go_into_it() {
+        // Along the left wall, leaning left at full lean.
+        let (track, mut state) = against_left_wall(0.0);
+        state.position = track.offset_point(50, WALL_DISTANCE - BIKE_HALF_WIDTH);
+        state.lean = BikeTuning::default().max_lean;
+        let hit = hit_walls(&mut state, &track).expect("the rider touches the wall");
+        assert!(into_wall(&track, &state) < 1e-3);
+        assert!(
+            hit.into.abs() < 1e-3,
+            "riding along it is not a hit: {hit:?}"
+        );
+        let gap = WALL_DISTANCE - track.distance_to_centerline(state.position);
+        assert!(gap > 0.8, "the bike keeps the rider off the wall: {gap} m");
+    }
+
+    #[test]
+    fn upright_along_a_wall_the_bike_gets_as_close_as_before() {
+        let (track, mut state) = against_left_wall(0.0);
+        state.position = track.offset_point(50, WALL_DISTANCE - 0.3);
+        state.lean = 0.0;
+        hit_walls(&mut state, &track);
+        let gap = WALL_DISTANCE - track.distance_to_centerline(state.position);
+        assert!((gap - BIKE_HALF_WIDTH).abs() < 1e-3, "{gap}");
+    }
+
+    #[test]
+    fn a_bike_pushed_by_another_into_a_wall_stays_out_of_it() {
+        let track = Track::default();
+        let (_, heading) = track.pose_at(50);
+        let left = -forward(heading).perp();
+        let wall_side = track.offset_point(50, WALL_DISTANCE - BIKE_HALF_WIDTH);
+        let mut against = BikeState {
+            position: wall_side,
+            heading,
+            speed: 30.0,
+            lean: 0.0,
+            ..parked()
+        };
+        let mut pusher = BikeState {
+            position: wall_side - left * 0.6,
+            ..against
+        };
+        let (mut ka, mut kb) = (Knock::default(), Knock::default());
+        let mut world = World::new();
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(Track::default());
+        let a = world.spawn((against, ka, CrashState::default())).id();
+        let b = world.spawn((pusher, kb, CrashState::default())).id();
+        world.run_system_once(separate_bikes).unwrap();
+        (against, pusher) = (
+            *world.get::<BikeState>(a).unwrap(),
+            *world.get::<BikeState>(b).unwrap(),
+        );
+        (ka, kb) = (
+            *world.get::<Knock>(a).unwrap(),
+            *world.get::<Knock>(b).unwrap(),
+        );
+        assert!(into_wall(&track, &against) < 1e-3, "{against:?}");
+        assert!(against.position.distance(pusher.position) > 0.6);
+        assert_eq!((ka, kb), (Knock::default(), Knock::default()));
     }
 
     #[test]

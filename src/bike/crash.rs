@@ -28,9 +28,9 @@ use std::f32::consts::{FRAC_PI_2, PI};
 
 use bevy::prelude::*;
 
-use super::{BIKE_HALF_WIDTH, BikeState, GRAVITY, move_toward};
+use super::{BikeState, GRAVITY, WallHit, footprint, move_toward, wall_contact};
 use crate::geometry::{approach, forward};
-use crate::track::{Surface, Track, WALL_DISTANCE};
+use crate::track::{Surface, Track};
 
 /// Collision shape seen from above: a capsule along the bike, from wheel to
 /// wheel, as wide as bike and rider.
@@ -93,10 +93,19 @@ const TUMBLE_PER_JOLT: f32 = 0.6;
 const MAX_TUMBLE: f32 = 10.0;
 const TUMBLE_FRICTION: f32 = 6.0;
 const SETTLE_RATE: f32 = 1.5;
-/// Size of the rider against the walls (m).
+/// Size of the rider against the walls (m): the hips, how far the feet and
+/// the head reach from them lying down, and how wide those are.
 const RIDER_RADIUS: f32 = 0.3;
+const RIDER_FEET: f32 = 0.85;
+const RIDER_HEAD: f32 = 0.7;
+const LIMB_RADIUS: f32 = 0.15;
 /// What bounces back off a wall (fraction of the speed into it).
 const WALL_RESTITUTION: f32 = 0.2;
+/// Speed into a wall that a rider rides out (m/s): about 36 km/h straight
+/// into it, or a 12° hit at 180 km/h. A real rider would go down with much
+/// less; this is an arcade game. The most a wall hit spins a bike (rad/s).
+pub const WALL_FALL: f32 = 10.0;
+const MAX_WALL_SPIN: f32 = 5.0;
 /// Below this speed bike and rider count as still (m/s); they stay down at
 /// least this long, rejoin after being still this long, and in any case
 /// after this long (s).
@@ -159,6 +168,17 @@ impl ThrownRider {
         Quat::from_rotation_y(heading) * Quat::from_rotation_z(roll) * Quat::from_rotation_x(lie)
     }
 
+    /// The body seen from above, as circles: the hips and, as it is laid
+    /// back, the feet ahead and the head behind.
+    fn footprint(&self) -> [(Vec2, f32); 3] {
+        let along = forward(self.heading) * self.lie.sin();
+        [
+            (self.position, RIDER_RADIUS),
+            (self.position + along * RIDER_FEET, LIMB_RADIUS),
+            (self.position - along * RIDER_HEAD, LIMB_RADIUS),
+        ]
+    }
+
     pub fn is_airborne(&self) -> bool {
         self.height > LYING_HEIGHT || self.climb > 0.0
     }
@@ -191,7 +211,8 @@ impl ThrownRider {
             let rest = (self.roll / PI).round() * PI;
             self.roll = approach(self.roll, rest, 6.0, dt);
         }
-        contain(&mut self.position, &mut self.velocity, track, RIDER_RADIUS);
+        let contact = wall_contact(track, self.position, &self.footprint());
+        contain(&mut self.position, &mut self.velocity, contact);
         self.ground = track.road_height(self.position);
     }
 }
@@ -428,12 +449,8 @@ pub fn carry(state: &mut BikeState, knock: &mut Knock, track: &Track, dt: f32) {
             knock.yaw_rate = 0.0;
         }
     }
-    contain(
-        &mut state.position,
-        &mut knock.velocity,
-        track,
-        BIKE_HALF_WIDTH,
-    );
+    let contact = wall_contact(track, state.position, &footprint(state));
+    contain(&mut state.position, &mut knock.velocity, contact);
 }
 
 /// The rider goes down: the bike, with the velocity it has after the hit,
@@ -481,6 +498,31 @@ pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
     }
 }
 
+/// Whether hitting a wall like this brings the rider down: only going into
+/// it faster than [`WALL_FALL`]. Scraping along it, or bumping into it
+/// slowly, is ridden out.
+pub fn wall_knocks_down(hit: &WallHit) -> bool {
+    hit.into > WALL_FALL
+}
+
+/// The rider goes down against a wall: the wall stops the bike's velocity
+/// into it (it bounces back a little) at the point that touched it, which
+/// spins the bike if the hit was at an angle, and the rider is thrown on.
+pub fn fall_against_wall(state: &mut BikeState, knock: &mut Knock, hit: &WallHit) -> CrashState {
+    let dv = -hit.normal * hit.into * (1.0 + WALL_RESTITUTION);
+    let dw = (cross(hit.at, dv) / SLIDING_GYRATION).clamp(-MAX_WALL_SPIN, MAX_WALL_SPIN);
+    state.speed = 0.0;
+    knock.velocity = hit.before + dv;
+    knock.yaw_rate = dw;
+    let hit = Hit {
+        before: hit.before,
+        dv,
+        dw,
+        falls: true,
+    };
+    fall(state, knock, &hit)
+}
+
 /// One step of a fallen bike sliding on its side and of its rider.
 pub fn slide(
     state: &mut BikeState,
@@ -495,12 +537,8 @@ pub fn slide(
     knock.yaw_rate = approach(knock.yaw_rate, 0.0, SLIDE_SPIN_DAMPING, dt);
     state.position += knock.velocity * dt;
     state.heading += knock.yaw_rate * dt;
-    contain(
-        &mut state.position,
-        &mut knock.velocity,
-        track,
-        BIKE_HALF_WIDTH,
-    );
+    let contact = wall_contact(track, state.position, &footprint(state));
+    contain(&mut state.position, &mut knock.velocity, contact);
     state.lean = approach(state.lean, crash.fall_side * DOWN_LEAN, FALL_RATE, dt);
     state.pitch = approach(state.pitch, 0.0, FALL_RATE, dt);
     state.elevation = track.road_height(state.position);
@@ -561,21 +599,17 @@ fn drag_factor(track: &Track, point: Vec2, (asphalt, grass): (f32, f32)) -> f32 
     }
 }
 
-/// Keeps something of `radius` inside the walls; what goes into a wall
-/// bounces back a little. Returns whether it touched one.
-fn contain(position: &mut Vec2, velocity: &mut Vec2, track: &Track, radius: f32) -> bool {
-    let limit = WALL_DISTANCE - radius;
-    let nearest = track.nearest(*position);
-    if nearest.distance <= limit {
-        return false;
-    }
-    let out = (*position - nearest.point) / nearest.distance;
-    *position = nearest.point + out * limit;
+/// Takes something out of the wall it went `contact` into (see
+/// [`wall_contact`]); what goes into the wall bounces back a little.
+fn contain(position: &mut Vec2, velocity: &mut Vec2, contact: Option<(Vec2, f32)>) {
+    let Some((out, depth)) = contact else {
+        return;
+    };
+    *position -= out * depth;
     let into = velocity.dot(out);
     if into > 0.0 {
         *velocity -= out * into * (1.0 + WALL_RESTITUTION);
     }
-    true
 }
 
 /// Shortens a vector by `amount` without turning it around.
@@ -592,6 +626,7 @@ fn shrink(v: Vec2, amount: f32) -> Vec2 {
 mod tests {
     use super::*;
     use crate::geometry::wrap_angle;
+    use crate::track::WALL_DISTANCE;
 
     const DT: f32 = 1.0 / 120.0;
 
@@ -826,6 +861,71 @@ mod tests {
         // Seated, a roll leans the rider like the bike: positive to the left.
         let leaning = ThrownRider::body_rotation(0.0, 0.5, 0.0);
         assert!((leaning * Vec3::Y).x < -0.4);
+    }
+
+    fn wall_hit(speed: f32, angle: f32) -> (Track, BikeState, Option<WallHit>) {
+        // Along the straight after the finish, heading `angle` into the left wall.
+        let track = Track::default();
+        let (_, along) = track.pose_at(50);
+        let mut state = BikeState {
+            position: track.offset_point(50, WALL_DISTANCE - 0.9),
+            heading: along + angle,
+            speed,
+            lean: 0.0,
+            ..BikeState::parked_at((Vec2::ZERO, 0.0))
+        };
+        let mut hit = None;
+        for _ in 0..60 {
+            state.position += forward(state.heading) * state.speed * DT;
+            hit = hit.or(super::super::hit_walls(&mut state, &track));
+        }
+        (track, state, hit)
+    }
+
+    #[test]
+    fn scraping_or_bumping_a_wall_is_ridden_out() {
+        // A shallow scrape at top speed, and straight into it at 30 km/h.
+        for (speed, angle) in [(80.0, 0.1), (45.0, 0.2), (8.3, FRAC_PI_2)] {
+            let (_, _, hit) = wall_hit(speed, angle);
+            let hit = hit.expect("touches the wall");
+            assert!(!wall_knocks_down(&hit), "{speed} m/s at {angle}: {hit:?}");
+        }
+    }
+
+    #[test]
+    fn hitting_a_wall_hard_brings_the_rider_down() {
+        // A 20° hit at 180 km/h, and straight into it at 50 km/h.
+        for (speed, angle) in [(50.0, 0.35), (14.0, FRAC_PI_2)] {
+            let (_, _, hit) = wall_hit(speed, angle);
+            let hit = hit.expect("touches the wall");
+            assert!(wall_knocks_down(&hit), "{speed} m/s at {angle}: {hit:?}");
+        }
+    }
+
+    #[test]
+    fn against_a_wall_the_bike_bounces_off_and_the_rider_is_thrown_on() {
+        let (track, mut state, hit) = wall_hit(40.0, 0.4);
+        let hit = hit.unwrap();
+        let mut knock = Knock::default();
+        let mut crash = fall_against_wall(&mut state, &mut knock, &hit);
+        assert!(
+            knock.velocity.dot(hit.normal) < 0.0,
+            "bounces off: {knock:?}"
+        );
+        assert!(knock.yaw_rate != 0.0, "an angled hit spins the bike");
+        let along = hit.before - hit.normal * hit.before.dot(hit.normal);
+        assert!(crash.rider.velocity.dot(along) > 0.9 * along.length());
+        for _ in 0..(3.0 / DT) as usize {
+            slide(&mut state, &mut knock, &mut crash, &track, DT);
+            for &(point, radius) in &footprint(&state) {
+                let into = track.distance_to_centerline(point) + radius - WALL_DISTANCE;
+                assert!(into < 1e-3, "the bike goes into the wall: {into}");
+            }
+            for &(point, radius) in &crash.rider.footprint() {
+                let into = track.distance_to_centerline(point) + radius - WALL_DISTANCE;
+                assert!(into < 1e-3, "the rider goes into the wall: {into}");
+            }
+        }
     }
 
     #[test]
