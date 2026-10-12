@@ -2,6 +2,7 @@
 //! está usando.
 
 mod bay;
+mod green_hill;
 mod speed_bay;
 
 use bevy::prelude::*;
@@ -47,7 +48,7 @@ impl Circuit {
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista.
-pub static CIRCUITS: [Circuit; 2] = [bay::BAY, speed_bay::SPEED_BAY];
+pub static CIRCUITS: [Circuit; 3] = [bay::BAY, speed_bay::SPEED_BAY, green_hill::GREEN_HILL];
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
 /// vuelve a construir ([`crate::world`]).
@@ -68,5 +69,6 @@ mod tests {
     fn circuits_have_checkpoints() {
         assert_eq!(CIRCUITS[0].checkpoints(), vec![780.0]);
         assert_eq!(CIRCUITS[1].checkpoints(), vec![1100.0, 1935.0]);
+        assert_eq!(CIRCUITS[2].checkpoints(), vec![700.0, 1420.0]);
     }
 }

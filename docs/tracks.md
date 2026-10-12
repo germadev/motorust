@@ -1,11 +1,12 @@
 # Tracks
 
-Motorust has two tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). Both are closed coastal roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners.
+Motorust has three tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All three are closed coastal roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners.
 
 | Track | Length | In the game's words |
 |---|---|---|
 | [Bahía](#bahía) ("the Bay") | 1.6 km | "Una carretera junto al mar, con cuestas, peraltes y un salto en la recta de meta" (a seaside road with slopes, banking and a jump on the start straight) |
 | [Speed Bay](#speed-bay) | 2.6 km | "La de Moto Racer: paseo marítimo con palmeras, túnel, gran hotel, bosque y puente rojo" (the one from *Moto Racer*: seafront with palms, tunnel, grand hotel, forest and red bridge) |
+| [Green Hill](#green-hill) | 2.1 km | "Inspirada en Sonic: colinas de tierra a cuadros, rizos, girasoles, tótems, cascadas y anillos" (inspired by Sonic: checkerboard hills, loops, sunflowers, totems, waterfalls and rings) |
 
 Distances below are in metres from the finish line, as in the track data.
 
@@ -49,11 +50,34 @@ A lap, in order:
 7. **The bridge** (about 2170–2290 m). A bridge with red arches crosses an inlet; the sea runs in under the road.
 8. **The town** (about 2350 m to the finish). The road passes a cliff on the right and then the town and its arcades, and returns to the seafront.
 
+## Green Hill
+
+![A giant loop on a checkerboard hill beside the first long corner of Green Hill](images/green-hill.jpg)
+
+Green Hill is inspired by the first zone of *Sonic the Hedgehog*: a roller coaster of a road under a blue sky, running clockwise round an island of green hills with the sea all round. Its data is in `src/circuits/green_hill.rs`, and its landmarks are drawn by `src/world/landmarks.rs`.
+
+- **Scenery.**
+  - Every cliff, rock wall and mesa is checkerboard earth: chocolate and caramel squares under a grass top. The walls along the road are low blocks of the same earth, with hedges on the start straight.
+  - Palm trees, round broadleaf trees and rows of tall sunflowers turned towards the road.
+  - Two giant loops, each on a block of checkerboard earth beside the road. They stand in the plane of the road, so you see them side on as you ride past, as in the original game.
+  - Carved totem poles with eyes, beaks and wings.
+  - Lines of golden rings spinning over the road, on the crests and in some corners. They are decoration: you ride through them.
+  - Distant mountains across the sea to the north and west; to the south and east, open sea.
+- **Start.** A blue "GREEN HILL" arch with a grandstand on the right. The curbs are yellow and blue.
+- **A lap, in order:**
+  1. **The start straight** (0–290 m), north between palms and sunflowers. A crest at about 195 m makes the bike take off, under a line of rings.
+  2. **The first loop** (about 300–520 m). A long right-hander climbs past the first loop, on the outside, then S-bends roll on east over the hills to a red "CHECKPOINT" arch (700 m).
+  3. **The tunnel** (770–870 m). The road climbs through a ridge of checkerboard earth in a tunnel lined with it, its highest point, 18 m above the start.
+  4. **The waterfalls** (about 880–1230 m). Out of the tunnel, a waterfall pours down the rock wall on the left into a long right-hander banked like a velodrome. The road drops past a second waterfall, on the right.
+  5. **The wooden bridge** (1230–1310 m). A deck of planks on log piers, with a wooden fence on each side, crosses an inlet where the sea runs in under the road.
+  6. **The S-bends** (about 1340–1650 m). A crest with rings and the second "CHECKPOINT" arch (1420 m), totem poles and the second loop, inland on the right.
+  7. **The south shore** (1660–1960 m). A beach road with palms on the sea side and sunflowers on the other, a last jump at about 1775 m under more rings, and a banked right-hander back to the start.
+
 ## Editing or adding a track
 
 ### Where tracks live
 
-Each track is a `Circuit` in `src/circuits/` (`bay.rs` and `speed_bay.rs`). A `Circuit` has four fields:
+Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `speed_bay.rs` and `green_hill.rs`). A `Circuit` has four fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -73,7 +97,7 @@ When a different track is picked, the world is rebuilt from its `Circuit` (see [
 `Layout` (`src/track.rs`) describes the road:
 
 - **`control_points`**: points in metres on the ground plane (`Vec2(x, z)`), in race order. The centre line is a closed centripetal Catmull-Rom curve through all of them, resampled every 2 m. The start is at the first point, and the start straight runs towards −Z.
-- **`elevation`**: the height profile, as pairs of (metres from the finish line, road height in metres). The profile is closed and interpolated smoothly between pairs. Heights are added to a base level 2 m above the sea; both tracks start the profile at 0 on the finish line.
+- **`elevation`**: the height profile, as pairs of (metres from the finish line, road height in metres). The profile is closed and interpolated smoothly between pairs. Heights are added to a base level 2 m above the sea; every track starts the profile at 0 on the finish line.
 - **`banking`**: banking comes automatically from curvature. The tighter the corner, the more the road tilts inwards, up to a fixed maximum. A `Banking { from, to, factor }` span multiplies it between two distances, still capped at the maximum. A factor above 1 banks more and below 1 banks less.
 
 The road is 14 m wide plus curbs, and the walls stand 11.5 m from the centre line (`WALL_DISTANCE`).
@@ -140,9 +164,10 @@ In a real track, the layout goes straight into the `Circuit`, as in `speed_bay.r
 | `terraces` | Flat circular platforms at a given height, to stand a large building on. |
 | `mountains` | A function for the distant mountains that close the horizon. |
 | `curbs` | The two curb stripe colours. |
-| `walls` | Wall style per span and side: `WallRun { span, side, style }`. `WallStyle` is `Stone` (the default everywhere else), `Concrete` (white barrier), `Railing` (green seafront railing) or `Hedge` (hedge on a low wall). |
+| `walls` | Wall style per span and side: `WallRun { span, side, style }`. `WallStyle` is `Stone` (the default everywhere else), `Concrete` (white barrier), `Railing` (green seafront railing), `Hedge` (hedge on a low wall) or `Checkered` (blocks of checkerboard earth). The first run that covers a point wins, so a run over `LAP` after the others sets the default. |
 | `tunnels` | Spans that run through a tunnel. |
-| `bridges` | Spans carried by a red arch bridge. |
+| `bridges` | Spans carried by a bridge, built as `bridge_style` says: `RedArches` (a concrete deck under two red arches, with concrete walls) or `Wooden` (planks on log piers, with a wooden fence instead of walls). |
+| `soil` | What cliffs, rock walls and the rock around tunnels are made of: `Soil::Rock` (natural rock with strata) or `Soil::Checkered` (Green Hill's checkerboard earth, which also lines the tunnels). |
 | `gantries` | Arches over the road: `Gantry { along, color, text }`. Without text they carry a chequered board. |
 | `billboards` | Roadside signs: `Billboard { along, side, text, color, accent }`, where `accent` recolours the text from a given letter. |
 | `lamps`, `palms`, `hotels` | Rows along the road: `Row { span, side, lateral, every }`, at `lateral` metres from the centre line, one every `every` metres. Hotels are tall and colourful. |
@@ -156,6 +181,11 @@ In a real track, the layout goes straight into the `Circuit`, as in `speed_bay.r
 | `grandstands` | Covered spectator grandstands with crowds along the straights: `Grandstand { along, side, lateral, length }`. |
 | `beach_parasols` | Striped beach umbrellas and loungers on the sand: `ParasolCluster { position, count }`. |
 | `brake_markers` | Roadside braking countdown signs (100 m, 50 m) before corners: `BrakeMarker { along, side, distance }`. |
+| `sunflowers` | Rows of tall sunflowers turned towards the road: `Row { span, side, lateral, every }`. They only grow on grass. |
+| `totems` | Carved totem poles beside the road, facing it: `Totem { along, side }`. |
+| `loops` | Giant loops on a block of checkerboard earth: `Loop { along, side, lateral, radius }`, with `lateral` the distance from the centre line to the middle of the loop. |
+| `rings` | Lines of golden rings spinning over the road: `Rings { along, count, lateral, height }`, one every 6 m from `along`, `lateral` metres to the left of the centre line and `height` metres above the road. |
+| `waterfalls` | Waterfalls with flowing water down the rock wall of a cutting: `Waterfall { along, side, width }`. Put a `Cutting` on that side first. |
 
 ### What `cargo test` checks
 
@@ -163,12 +193,13 @@ Run `cargo test` (or `make test`, see [building.md](building.md)) after any chan
 
 - **No impossible corners.** Every corner radius is more than two and a half times the wall distance.
 - **No self-crossing.** Distant stretches of the track never come close enough for their walls to meet; there must be room for scenery between them.
-- **Start.** The grid sits just behind the finish line, on the Z axis, facing down the start straight towards −Z. Both tracks start at the origin.
+- **Start.** The grid sits just behind the finish line, on the Z axis, facing down the start straight towards −Z. Every track starts at the origin.
 - **Rideable slopes and banking.** Slopes stay under 13 %, banking stays within its maximum, and the tight corners do have banking.
 - **Terrain.** The terrain neither covers the road nor leaves a gap under it, except on bridges, and the road never touches the sea.
 - **Houses.** At least half of `houses.max` find a place to stand.
 - **A rival can do a lap.** An AI rival completes a lap within 90 seconds without leaving the road.
 - **A flat-out lap.** Full throttle, never braking and only steering towards the road ahead, completes a lap within 60 seconds without touching the walls and stays almost entirely on the asphalt.
+- **Landmarks.** No loop's block comes within 2 m of the walls, rings float over the asphalt within reach of a bike, and every waterfall pours down a rock wall more than 6 m high.
 - **Short jumps.** Each jump lasts under 0.75 s and rises less than 1.3 m, and flat out a rival does take off over the crests (at least twice in 70 seconds).
 
-Some tests cover a single track: for example, that Bahía has sea to the west and mountains to the north-east, that Speed Bay is a peninsula with an inlet under the bridge, and that Speed Bay's banked span banks more than its curvature alone would.
+Some tests cover a single track: for example, that Bahía has sea to the west and mountains to the north-east, that Speed Bay is a peninsula with an inlet under the bridge, that Speed Bay's banked span banks more than its curvature alone would, and that Green Hill is an island of checkerboard cliffs with the sea under its wooden bridge.

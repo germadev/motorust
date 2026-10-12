@@ -7,9 +7,11 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Two tracks.** Bahía is a Mediterranean coast road. Speed Bay is modelled on
-  Moto Racer's own track and has a seafront, a tunnel, a bridge and a forest.
-  Both have steep slopes, crests and banked curves.
+- **Three tracks.** Bahía is a Mediterranean coast road. Speed Bay is modelled
+  on Moto Racer's own track and has a seafront, a tunnel, a bridge and a forest.
+  Green Hill, inspired by Sonic the Hedgehog, rolls round an island of
+  checkerboard hills with loops, sunflowers, totems, waterfalls and rings. All
+  have steep slopes, crests and banked curves.
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
 - **Arcade handling.** Lean into corners at full throttle, pop wheelies, take
@@ -54,7 +56,7 @@ Spanish.
 ## Documentation
 
 - [Playing](docs/gameplay.md): handling, bikes, menus, options and sound.
-- [Tracks](docs/tracks.md): both tracks, and how to edit one or add a new one.
+- [Tracks](docs/tracks.md): the three tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions.
@@ -70,5 +72,5 @@ Textures are CC0 from [Poly Haven](https://polyhaven.com). The font is
 bikes and riders were made by the author with [Meshy](https://www.meshy.ai).
 See [assets/CREDITS.md](assets/CREDITS.md).
 
-Motorust is a fan project. It is not affiliated with the makers of Moto Racer,
-and its bikes are fictional.
+Motorust is a fan project. It is not affiliated with the makers of Moto Racer
+or Sonic the Hedgehog, and its bikes are fictional.

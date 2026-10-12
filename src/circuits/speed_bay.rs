@@ -274,6 +274,13 @@ pub const SPEED_BAY: Circuit = Circuit {
                 distance: 50,
             },
         ],
+        soil: Soil::Rock,
+        bridge_style: BridgeStyle::RedArches,
+        sunflowers: &[],
+        totems: &[],
+        loops: &[],
+        rings: &[],
+        waterfalls: &[],
     },
 };
 

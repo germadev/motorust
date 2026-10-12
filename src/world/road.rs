@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
-use super::scenery::{Gantry, Scenery, Side, WallStyle};
+use super::scenery::{BridgeStyle, Gantry, Scenery, Side, WallStyle};
 use super::terrain::Terrain;
 use crate::track::{CURB_WIDTH, SURFACE_Y, Track, WALL_DISTANCE};
 
@@ -140,6 +140,15 @@ pub fn spawn_road(
                 ..default()
             },
         ),
+        (
+            WallStyle::Checkered,
+            WALL_HEIGHT,
+            StandardMaterial {
+                base_color_texture: Some(textures.soil.clone()),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
+        ),
     ] {
         let mesh = walls(track, terrain, height, |index, side| {
             style(index, side) == Some(wanted)
@@ -202,7 +211,11 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
         return None;
     }
     if scenery.bridges.iter().any(|span| span.contains(along, lap)) {
-        return Some(WallStyle::Concrete);
+        // Wooden bridges have their own fence (see `structures`).
+        return match scenery.bridge_style {
+            BridgeStyle::RedArches => Some(WallStyle::Concrete),
+            BridgeStyle::Wooden => None,
+        };
     }
     let run = scenery
         .walls
@@ -657,5 +670,24 @@ mod tests {
             .filter(|&i| track.smoothed_curvature(i, 4) > 1.0 / CURB_RADIUS)
             .count();
         assert!(curved > 0 && curved < track.sample_count() / 2);
+    }
+
+    #[test]
+    fn wooden_bridges_have_their_fence_instead_of_walls() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let scenery = &circuit.scenery;
+            let lap = Track::new(&circuit.layout).lap_length();
+            for bridge in scenery.bridges {
+                let middle = bridge.from + bridge.length(lap) / 2.0;
+                let wall = wall_style(scenery, lap, middle, Side::Left);
+                match scenery.bridge_style {
+                    BridgeStyle::RedArches => assert_eq!(wall, Some(WallStyle::Concrete)),
+                    BridgeStyle::Wooden => assert_eq!(wall, None, "{}", circuit.name),
+                }
+                // Off the bridge, the walls are back.
+                let off = wall_style(scenery, lap, bridge.to + 20.0, Side::Left);
+                assert!(off.is_some(), "{}", circuit.name);
+            }
+        }
     }
 }
