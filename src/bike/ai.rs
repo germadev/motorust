@@ -4,12 +4,13 @@
 //! levantan el gas en vez de embestirla; luego vuelven a su carril. Conducen
 //! con los mismos mandos ([`BikeInput`]) y la misma física que el jugador.
 //! Some take the branches off the lap (see [`crate::track::Branch`]) and go
-//! round their loops, flat out; a rival pushed onto a branch it does not
-//! take follows it too, back to the lap.
+//! round their loops, flat out, keeping to their line across the running
+//! surface; a rival pushed onto a branch it does not take follows it too,
+//! back to the lap.
 
 use bevy::prelude::*;
 
-use super::{BikeInput, BikeState, BikeTuning, Race, move_toward};
+use super::{BikeInput, BikeState, BikeTuning, Race, Ride, move_toward};
 use crate::geometry::{heading_of, wrap_angle};
 use crate::track::{SAMPLE_SPACING, Track, WALL_DISTANCE};
 
@@ -36,6 +37,12 @@ const LINE_RATE: f32 = 2.0;
 const LINE_RATE_PER_SPEED: f32 = 0.03;
 /// Si no puede pasar, se queda a esta distancia de la de delante (m).
 const FOLLOW_GAP: f32 = 4.0;
+/// Round a loop, how long a rival takes to get back to its line across the
+/// running surface (s), how far it turns for that at most (rad), and how
+/// long it takes to point the way it wants to (s).
+const LOOP_LINE_TIME: f32 = 1.0;
+const LOOP_MAX_YAW: f32 = 0.15;
+const LOOP_TURN_TIME: f32 = 0.3;
 
 /// Un rival controlado por la máquina.
 #[derive(Component, Clone, Copy, Debug)]
@@ -55,7 +62,7 @@ enum Waypoint {
     /// [`crate::track::Nearest::road`]).
     Road(usize, usize),
     /// Straight on into loop `loop` (see [`Track::loops`]), this many metres
-    /// past its mouth: round it, the running surface does the steering.
+    /// past its mouth: round it, it keeps to its line (see [`loop_steer`]).
     Into(usize, f32),
 }
 
@@ -278,10 +285,11 @@ pub fn decide(
     track: &Track,
     tuning: &BikeTuning,
 ) -> BikeInput {
-    // Round a loop, flat out: the running surface does the steering.
-    if state.ride.is_some() {
+    // Round a loop, flat out, keeping to its line.
+    if let Some(ride) = state.ride {
         return BikeInput {
             throttle: 1.0,
+            steer: loop_steer(&ride, line, state.speed, track, tuning),
             ..default()
         };
     }
@@ -329,6 +337,18 @@ pub fn decide(
         // Los rivales no hacen caballitos: van a por el tiempo.
         wheelie: 0.0,
     }
+}
+
+/// How a rival riding round a loop as `ride` says at `speed` steers to get
+/// to its `line` (m to the left of the middle of the running surface, as on
+/// the road in): it points towards it, gently, and straight on again as it
+/// gets there.
+fn loop_steer(ride: &Ride, line: f32, speed: f32, track: &Track, tuning: &BikeTuning) -> f32 {
+    let half = Waypoint::Into(ride.index, 0.0).half_width(track) - EDGE_MARGIN;
+    let speed = speed.max(1.0);
+    let wanted = ((line.clamp(-half, half) - ride.lateral) / (speed * LOOP_LINE_TIME))
+        .clamp(-LOOP_MAX_YAW, LOOP_MAX_YAW);
+    ((wanted - ride.yaw) / (LOOP_TURN_TIME * tuning.max_yaw_rate(speed))).clamp(-1.0, 1.0)
 }
 
 #[cfg(test)]
@@ -453,6 +473,7 @@ mod tests {
                         index: 0,
                         angle: std::f32::consts::TAU - 0.05,
                         lateral: 0.0,
+                        yaw: 0.0,
                     }),
                     ..BikeState::parked_at((looped.way_out(), looped.heading))
                 };
@@ -485,6 +506,56 @@ mod tests {
                 let nearest = track.nearest_at(state.position, state.elevation);
                 assert_eq!(nearest.road, 0, "{name}: not back on the lap");
             }
+        }
+    }
+
+    #[test]
+    fn round_a_loop_a_rival_gets_to_its_line_clear_of_the_walls() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let Some(&looped) = track.loops().first() else {
+                continue;
+            };
+            let tuning = BikeTuning::default();
+            let rival = Rival {
+                skill: 1.0,
+                lane: -2.0,
+                loops: true,
+            };
+            let dt = 1.0 / 120.0;
+            // Just in at the mouth, on the other side of the running surface
+            // and turned away from its line.
+            let mut state = BikeState {
+                speed: 35.0,
+                ride: Some(crate::bike::Ride {
+                    index: 0,
+                    angle: 0.0,
+                    lateral: 3.0,
+                    yaw: 0.1,
+                }),
+                ..BikeState::parked_at((looped.mouth, looped.heading))
+            };
+            let name = circuit.name;
+            let mut out = false;
+            for _ in 0..(10.0 / dt) as usize {
+                let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
+                let before = state;
+                state = advance(&state, &input, &track, &tuning, dt);
+                let Some(ride) = state.ride else {
+                    // Out of the way out, on its line and straight on.
+                    let lateral = (state.position - looped.way_out()).dot(looped.left());
+                    assert!((lateral - rival.lane).abs() < 0.3, "{name}: {lateral} m");
+                    let yaw = before.ride.unwrap().yaw;
+                    assert!(yaw.abs() < 0.02, "{name}: turned {yaw} rad");
+                    out = true;
+                    break;
+                };
+                assert!(
+                    ride.lateral.abs() < 4.5,
+                    "{name}: near the wall at {ride:?}"
+                );
+            }
+            assert!(out, "{name}: never came out of the loop");
         }
     }
 
@@ -638,7 +709,7 @@ mod tests {
                     track,
                     &tuning,
                 );
-                // Round a loop, on rails.
+                // Round a loop, along its running surface.
                 if racer.state.ride.is_some() {
                     racer.state = advance(&racer.state, &input, track, &tuning, dt);
                     continue;
