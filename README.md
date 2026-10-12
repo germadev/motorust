@@ -23,6 +23,8 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
   (including the macOS GameController framework). It runs on Linux, Windows,
   macOS and the web.
 
+![Eight bikes racing past the giant checkerboard loop on Green Hill](docs/images/green-hill-loop.jpg)
+
 ## Quick start
 
 You need Rust 1.95 or newer ([rustup](https://rustup.rs)) and `make`.
