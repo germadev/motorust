@@ -82,6 +82,7 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
   - In the air the suspension unloads and the wheels hang. On landing it compresses and rebounds while the wheels stay on the ground.
   - Inertia also moves the rider, back under acceleration and onto the tank under braking. It moves the camera too, which drops back as you accelerate and closes in as you brake.
 - **Brakes.** The brake slows you down and, once stopped, reverses.
+- **Engine braking.** Letting go of the throttle slows the bike down, and harder the faster you go, as the engine revs higher and the air pushes back: about 4 m/s² at 50 km/h and 7–8 m/s² at 250 km/h, still far from the brake.
 
 ### Rivals
 

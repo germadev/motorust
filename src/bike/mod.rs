@@ -352,6 +352,10 @@ pub struct BikeTuning {
     pub rolling_resistance: f32,
     /// Deceleración extra al soltar acelerador y freno.
     pub engine_braking: f32,
+    /// And this much more per m/s of speed (1/s): the engine brakes harder
+    /// the higher it revs, and the air with it, so letting go of the
+    /// throttle at speed slows the bike down much more than when slow.
+    pub engine_braking_per_speed: f32,
     /// Punta sobre hierba (m/s).
     pub grass_max_speed: f32,
     /// Deceleración extra cuando se va más rápido que la punta del suelo que se pisa.
@@ -382,6 +386,7 @@ impl Default for BikeTuning {
             reverse_max_speed: 5.0,
             rolling_resistance: 0.5,
             engine_braking: 2.5,
+            engine_braking_per_speed: 0.065,
             grass_max_speed: 36.0,
             overspeed_drag: 10.0,
             min_turn_radius: 3.5,
@@ -463,7 +468,7 @@ pub fn step(
     // Con un caballito solo una rueda pisa el asfalto, reduciendo la resistencia.
     let mut resistance = tuning.rolling_resistance * (1.0 - 0.35 * state.chassis.wheelie_lift());
     if state.grounded && throttle == 0.0 && brake == 0.0 {
-        resistance += tuning.engine_braking;
+        resistance += tuning.engine_braking + tuning.engine_braking_per_speed * speed.abs();
     }
     if speed.abs() > top_speed {
         resistance += tuning.overspeed_drag;
@@ -1773,6 +1778,21 @@ mod tests {
     }
 
     #[test]
+    fn letting_go_of_the_throttle_slows_down_harder_the_faster() {
+        let tuning = BikeTuning::default();
+        // Speed lost in the first second with nothing pressed (m/s).
+        let coast = |speed: f32| {
+            let from = BikeState { speed, ..parked() };
+            speed - drive(BikeInput::default(), Surface::Asphalt, 1.0, from).speed
+        };
+        let (slow, fast) = (coast(15.0), coast(70.0));
+        assert!(slow > 3.5 && slow < 4.5, "at 54 km/h: {slow} m/s²");
+        assert!(fast > 7.0 && fast < 8.5, "at 250 km/h: {fast} m/s²");
+        // Still far from what the brake does.
+        assert!(fast < tuning.brake_decel / 3.0);
+    }
+
+    #[test]
     fn coasting_comes_to_a_stop() {
         let moving = drive(full_throttle(), Surface::Asphalt, 5.0, parked());
         let stopped = drive(BikeInput::default(), Surface::Asphalt, 60.0, moving);
@@ -2454,9 +2474,9 @@ mod tests {
     fn rolling_downhill_is_not_felt_as_acceleration() {
         let tuning = BikeTuning::default();
         let moving = drive(full_throttle(), Surface::Asphalt, 3.0, parked());
-        // Bajando un 40 %: la gravedad empuja más de lo que frena el motor.
+        // Bajando un 80 %: la gravedad empuja más de lo que frena el motor.
         let downhill = Ground {
-            grade: -0.4,
+            grade: -0.8,
             ..Ground::flat(Surface::Asphalt)
         };
         let next = step(&moving, &BikeInput::default(), &downhill, &tuning, DT);
