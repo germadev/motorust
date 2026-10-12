@@ -188,6 +188,10 @@ pub struct Loop {
     /// The roads (see [`Nearest::road`]) that lead in and out.
     pub approach: usize,
     pub exit: usize,
+    /// The points of the lap's centre line where the road in leaves it and
+    /// where the road out joins it.
+    pub fork: usize,
+    pub join: usize,
 }
 
 impl Loop {
@@ -323,6 +327,8 @@ impl Track {
             shift: spec.shift,
             approach: self.side_roads.len() + 1,
             exit: self.side_roads.len() + 2,
+            fork: self.index_at(branch.from),
+            join: self.index_at(branch.to),
         };
         let lap_point = |along: f32| self.centerline[self.index_at(along)];
         // The last stretch into the loop and the first out of it are
@@ -481,6 +487,34 @@ impl Track {
     /// lap.
     pub fn length(&self) -> f32 {
         self.segment_count() as f32 * self.step
+    }
+
+    /// How far along the lap point `index` of the centre line counts as (m
+    /// from the finish line): on a road off the lap, the stretch of the lap
+    /// it stands in for.
+    pub fn lap_along_at(&self, index: usize) -> f32 {
+        self.lap_along
+            .get(self.wrap(index as isize))
+            .copied()
+            .unwrap_or(index as f32 * self.step)
+    }
+
+    /// Whether `point` is on some other road than number `road` (see
+    /// [`Nearest::road`]): nearer the centre line of one than `within` says
+    /// for the point of it nearest to `point`.
+    pub fn on_other_road(
+        &self,
+        road: usize,
+        point: Vec2,
+        within: impl Fn(&Track, &Nearest) -> f32,
+    ) -> bool {
+        (0..=self.side_roads.len())
+            .filter(|&other| other != road)
+            .any(|other| {
+                let line = self.road(other);
+                let (nearest, _) = line.search(point, None, other);
+                nearest.is_some_and(|nearest| nearest.distance < within(line, &nearest))
+            })
     }
 
     /// How far the walls are from the centre line at point `index` (m).

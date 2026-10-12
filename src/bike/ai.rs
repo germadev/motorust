@@ -3,12 +3,15 @@
 //! trazada, se abren hacia el lado con sitio para adelantarla, y si no caben,
 //! levantan el gas en vez de embestirla; luego vuelven a su carril. Conducen
 //! con los mismos mandos ([`BikeInput`]) y la misma física que el jugador.
+//! Some take the branches off the lap (see [`crate::track::Branch`]) and go
+//! round their loops, flat out; a rival pushed onto a branch it does not
+//! take follows it too, back to the lap.
 
 use bevy::prelude::*;
 
 use super::{BikeInput, BikeState, BikeTuning, Race, move_toward};
 use crate::geometry::{heading_of, wrap_angle};
-use crate::track::{SAMPLE_SPACING, Track};
+use crate::track::{SAMPLE_SPACING, Track, WALL_DISTANCE};
 
 /// Distancia a la que mira por delante para apuntar: fija más la que recorre
 /// en este tiempo. Mirar más lejos a más velocidad evita los eses.
@@ -41,6 +44,103 @@ pub struct Rival {
     pub skill: f32,
     /// Distancia a la izquierda de la línea central por la que va (m).
     pub lane: f32,
+    /// Whether it takes the branches off the lap and rides their loops.
+    pub loops: bool,
+}
+
+/// A point of a rival's way ahead.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Waypoint {
+    /// Point `index` of the centre line of road `road` (see
+    /// [`crate::track::Nearest::road`]).
+    Road(usize, usize),
+    /// Straight on into loop `loop` (see [`Track::loops`]), this many metres
+    /// past its mouth: round it, the running surface does the steering.
+    Into(usize, f32),
+}
+
+impl Waypoint {
+    /// Where a rival riding `state` is on its way: the point of the road it
+    /// rides nearest to it. A rival that does not take the branches keeps
+    /// to the lap where they share its road.
+    fn start(track: &Track, state: &BikeState, rival: &Rival) -> Self {
+        let lap = track.nearest_index_at(state.position, state.elevation);
+        let nearest = track.nearest_at(state.position, state.elevation);
+        let off_lap = state.position.distance(track.centerline()[lap]) > WALL_DISTANCE;
+        if nearest.road != 0 && (rival.loops || off_lap) {
+            Waypoint::Road(nearest.road, nearest.index)
+        } else {
+            Waypoint::Road(0, lap)
+        }
+    }
+
+    /// The next point on the way, about [`SAMPLE_SPACING`] further on.
+    fn next(self, track: &Track, rival: &Rival) -> Self {
+        match self {
+            Waypoint::Road(0, index) => {
+                let index = (index + 1) % track.sample_count();
+                let fork = track.loops().iter().find(|looped| looped.fork == index);
+                match fork {
+                    Some(looped) if rival.loops => Waypoint::Road(looped.approach, 0),
+                    _ => Waypoint::Road(0, index),
+                }
+            }
+            Waypoint::Road(road, index) if index + 1 < track.road(road).sample_count() => {
+                Waypoint::Road(road, index + 1)
+            }
+            Waypoint::Road(road, _) => {
+                let loops = track.loops();
+                match loops.iter().position(|looped| looped.approach == road) {
+                    Some(looped) => Waypoint::Into(looped, SAMPLE_SPACING),
+                    None => {
+                        let join = loops.iter().find(|looped| looped.exit == road);
+                        Waypoint::Road(0, join.map_or(0, |looped| looped.join))
+                    }
+                }
+            }
+            Waypoint::Into(looped, past) => Waypoint::Into(looped, past + SAMPLE_SPACING),
+        }
+    }
+
+    /// The point `lateral` metres to the left of the middle of the road here.
+    fn point(self, track: &Track, lateral: f32) -> Vec2 {
+        match self {
+            Waypoint::Road(road, index) => track.road(road).offset_point(index, lateral),
+            Waypoint::Into(looped, past) => {
+                let looped = &track.loops()[looped];
+                looped.mouth + looped.ahead * past + looped.left() * lateral
+            }
+        }
+    }
+
+    /// How sharp the road is here (1/m, see [`Track::smoothed_curvature`]).
+    fn curvature(self, track: &Track) -> f32 {
+        match self {
+            Waypoint::Road(road, index) => {
+                track.road(road).smoothed_curvature(index, CURVATURE_WINDOW)
+            }
+            Waypoint::Into(..) => 0.0,
+        }
+    }
+
+    /// Half the width of the asphalt here (m).
+    fn half_width(self, track: &Track) -> f32 {
+        match self {
+            Waypoint::Road(road, _) => track.road(road).half_width(),
+            Waypoint::Into(looped, _) => track.road(track.loops()[looped].approach).half_width(),
+        }
+    }
+
+    /// The way ahead of a rival riding `state`, `count` points of it.
+    fn ahead(track: &Track, state: &BikeState, rival: &Rival, count: usize) -> Vec<Self> {
+        let mut way = Vec::with_capacity(count);
+        let mut here = Self::start(track, state, rival);
+        for _ in 0..count {
+            way.push(here);
+            here = here.next(track, rival);
+        }
+        way
+    }
 }
 
 /// Por dónde va un rival ahora mismo (m a la izquierda de la línea central):
@@ -133,7 +233,7 @@ pub fn plan_line(
                 })
         })
         .collect();
-    let limit = track.half_width() - EDGE_MARGIN;
+    let limit = Waypoint::start(track, state, rival).half_width(track) - EDGE_MARGIN;
     let free = |lateral: f32| {
         lateral.abs() <= limit
             && ahead
@@ -178,14 +278,30 @@ pub fn decide(
     track: &Track,
     tuning: &BikeTuning,
 ) -> BikeInput {
-    let here = track.nearest_index_at(state.position, state.elevation);
+    // Round a loop, flat out: the running surface does the steering.
+    if state.ride.is_some() {
+        return BikeInput {
+            throttle: 1.0,
+            ..default()
+        };
+    }
     let speed = state.speed.max(0.0);
+    let grip = tuning.max_lateral_accel * rival.skill;
+    let braking = tuning.brake_decel * PLANNED_BRAKING;
+    let horizon = speed * speed / (2.0 * braking) + EXTRA_HORIZON;
+    let ahead = ((LOOK_AHEAD_DISTANCE + speed * LOOK_AHEAD_TIME) / SAMPLE_SPACING).round() as usize;
+    let steps = (horizon / SAMPLE_SPACING) as usize;
+    let way = Waypoint::ahead(track, state, rival, ahead.max(steps) + 1);
 
     // Dirección: persecución pura de un punto de su carril por delante. La
     // curvatura que lleva hasta él, dividida entre la máxima que permite la
     // física a esta velocidad, es la dirección a aplicar.
-    let ahead = ((LOOK_AHEAD_DISTANCE + speed * LOOK_AHEAD_TIME) / SAMPLE_SPACING).round() as usize;
-    let to_target = track.offset_point(here + ahead, line) - state.position;
+    let target = way[ahead];
+    let line = line.clamp(
+        EDGE_MARGIN - target.half_width(track),
+        target.half_width(track) - EDGE_MARGIN,
+    );
+    let to_target = target.point(track, line) - state.position;
     let angle = wrap_angle(heading_of(to_target) - state.heading);
     let wanted_curvature = 2.0 * angle.sin() / to_target.length().max(1.0);
     let max_curvature =
@@ -194,12 +310,9 @@ pub fn decide(
 
     // Velocidad: la más baja que exijan las curvas de delante, contando con
     // que le dé tiempo a frenar hasta ellas.
-    let grip = tuning.max_lateral_accel * rival.skill;
-    let braking = tuning.brake_decel * PLANNED_BRAKING;
-    let horizon = speed * speed / (2.0 * braking) + EXTRA_HORIZON;
     let mut target_speed = (tuning.max_speed * rival.skill).min(limit);
-    for step in 0..(horizon / SAMPLE_SPACING) as usize {
-        let curvature = track.smoothed_curvature(here + step, CURVATURE_WINDOW);
+    for (step, waypoint) in way.iter().enumerate().take(steps) {
+        let curvature = waypoint.curvature(track);
         if curvature < 1e-4 {
             continue;
         }
@@ -234,6 +347,7 @@ mod tests {
             let rival = Rival {
                 skill: 0.95,
                 lane: 2.0,
+                loops: false,
             };
             let mut state = BikeState::parked_on(&track, track.grid_pose(0, rival.lane));
             let dt = 1.0 / 120.0;
@@ -263,12 +377,67 @@ mod tests {
     }
 
     #[test]
+    fn rivals_that_take_the_branches_ride_round_the_loops_and_back() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            if track.loops().is_empty() {
+                continue;
+            }
+            let tuning = BikeTuning::default();
+            let rival = Rival {
+                skill: 0.9,
+                lane: -1.0,
+                loops: true,
+            };
+            let mut state = BikeState::parked_on(&track, track.grid_pose(0, rival.lane));
+            let dt = 1.0 / 120.0;
+            let n = track.sample_count() as i64;
+            let (mut progress, mut last) = (
+                0,
+                track.nearest_index_at(state.position, state.elevation) as i64,
+            );
+            let (mut rounds, mut riding) = (0, false);
+            for _ in 0..(90.0 / dt) as usize {
+                let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
+                state = advance(&state, &input, &track, &tuning, dt);
+                if riding && state.ride.is_none() {
+                    // Out of the way out, on the road back.
+                    let looped = &track.loops()[0];
+                    assert!(
+                        state.position.distance(looped.way_out()) < 2.0,
+                        "{}: came off the loop at {:?}",
+                        circuit.name,
+                        state.position
+                    );
+                    rounds += 1;
+                }
+                riding = state.ride.is_some();
+                if !riding {
+                    let nearest = track.nearest_at(state.position, state.elevation);
+                    assert!(
+                        nearest.distance < track.edge_beside(&nearest) - 0.5,
+                        "{}: off the road at {:?}",
+                        circuit.name,
+                        state.position
+                    );
+                }
+                let index = track.nearest_index_at(state.position, state.elevation) as i64;
+                progress += (index - last + n + n / 2) % n - n / 2;
+                last = index;
+            }
+            assert!(rounds >= 1, "{}: never went round the loop", circuit.name);
+            assert!(progress > n, "{}: {progress} of {n}", circuit.name);
+        }
+    }
+
+    #[test]
     fn rival_goes_round_a_stopped_bike_in_its_lane() {
         let track = Track::default();
         let tuning = BikeTuning::default();
         let rival = Rival {
             skill: 0.95,
             lane: 0.0,
+            loops: false,
         };
         let dt = 1.0 / 120.0;
         let mut state = BikeState::parked_on(&track, track.grid_pose(5, rival.lane));
@@ -467,6 +636,7 @@ mod tests {
             let rival = Rival {
                 skill: 1.0,
                 lane: 0.0,
+                loops: false,
             };
             let mut state = BikeState::parked_on(&track, track.grid_pose(0, rival.lane));
             let dt = 1.0 / 120.0;

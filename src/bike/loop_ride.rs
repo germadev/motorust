@@ -168,6 +168,8 @@ mod tests {
             shift: -16.0,
             approach: 1,
             exit: 2,
+            fork: 0,
+            join: 0,
         }
     }
 

@@ -17,7 +17,7 @@ use super::quads::MeshBuilder;
 use super::scenery::{Loop, Rings, Row, Totem, Waterfall};
 use super::terrain::{Ground, SEA_LEVEL, Terrain};
 use crate::geometry::{forward, random01};
-use crate::track::{SURFACE_Y, Track, WALL_DISTANCE};
+use crate::track::{CURB_WIDTH, LOOP_HALF_WIDTH, LOOP_WALL, SURFACE_Y, Track, WALL_DISTANCE};
 
 /// Width of the ribbon of a loop (m), how thick its earth is, and how far
 /// apart its two ends are side by side, so that it does not run into itself.
@@ -160,6 +160,216 @@ pub fn spawn_loops(
             (center, half.length())
         })
         .collect()
+}
+
+/// The loops the bikes ride (see [`crate::track::Loop`]): a running
+/// surface of asphalt with curbs and white lines, low walls of checkerboard
+/// earth along its edges, carrying on those of the roads in and out, all on
+/// a ring of checkerboard earth. Returns the ground they take.
+pub fn spawn_ridden_loops(
+    world: &mut ChildSpawnerCommands,
+    track: &Track,
+    curbs: [Color; 2],
+    assets: &mut Assets3d,
+) -> Vec<Footprint> {
+    if track.loops().is_empty() {
+        return Vec::new();
+    }
+    let asphalt = assets.materials.add(StandardMaterial {
+        base_color_texture: Some(assets.textures.asphalt.clone()),
+        perceptual_roughness: 0.88,
+        reflectance: 0.5,
+        ..default()
+    });
+    let painted = assets.materials.add(StandardMaterial {
+        perceptual_roughness: 0.7,
+        ..default()
+    });
+    let soil = assets.materials.add(StandardMaterial {
+        base_color_texture: Some(assets.textures.soil.clone()),
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+    track
+        .loops()
+        .iter()
+        .map(|looped| {
+            let [road, paint, earth] = ridden_loop_meshes(looped, curbs);
+            for (mesh, material) in [(road, &asphalt), (paint, &painted), (earth, &soil)] {
+                world.spawn((
+                    Mesh3d(assets.meshes.add(mesh)),
+                    MeshMaterial3d(material.clone()),
+                ));
+            }
+            let middle = looped.mouth + looped.left() * looped.shift / 2.0;
+            let reach =
+                (looped.radius + RIDDEN_THICKNESS).hypot(looped.shift.abs() / 2.0 + RIDDEN_LIP_OUT);
+            (middle, reach)
+        })
+        .collect()
+}
+
+/// How thick the ring of earth under the running surface of a loop the
+/// bikes ride is (m), and its walls: from the middle of the running surface
+/// to their inner and outer faces, and their height (m), as the walls of the
+/// road into the loop.
+const RIDDEN_THICKNESS: f32 = 2.4;
+const RIDDEN_LIP_IN: f32 = LOOP_WALL;
+const RIDDEN_LIP_OUT: f32 = LOOP_WALL + 0.6;
+const RIDDEN_LIP_HEIGHT: f32 = 1.1;
+/// Pieces of a loop the bikes ride, all the way round.
+const RIDDEN_STEPS: usize = 120;
+/// The road's paint: how far in from the edge of the asphalt the white line
+/// is, how wide it is and how far above the asphalt (m).
+const RIDDEN_LINE_INSET: f32 = 0.45;
+const RIDDEN_LINE: f32 = 0.25;
+const RIDDEN_PAINT_LIFT: f32 = 0.012;
+const RIDDEN_ASPHALT_TILE: f32 = 7.0;
+
+/// The meshes of a loop the bikes ride, in the world: the asphalt of the
+/// running surface, its paint (curbs in `curbs` and white lines), and the
+/// earth (the ring and the walls along its edges).
+fn ridden_loop_meshes(looped: &crate::track::Loop, curbs: [Color; 2]) -> [Mesh; 3] {
+    let (mut road, mut paint, mut earth) = (
+        MeshBuilder::default(),
+        MeshBuilder::default(),
+        MeshBuilder::default(),
+    );
+    let half = LOOP_HALF_WIDTH - CURB_WIDTH;
+    let step = TAU / RIDDEN_STEPS as f32;
+    // A point `lateral` metres left of the middle of the running surface,
+    // `height` metres off it (inwards), `angle` radians round.
+    let at = |angle: f32, lateral: f32, height: f32| {
+        looped.surface_point(angle, lateral) + looped.up(angle) * (height + SURFACE_Y)
+    };
+    for k in 0..RIDDEN_STEPS {
+        let (a, b) = (k as f32 * step, (k + 1) as f32 * step);
+        let (va, vb) = (a * looped.arc(), b * looped.arc());
+        let up = looped.up((a + b) / 2.0);
+        let across = Vec3::new(looped.left().x, 0.0, looped.left().y);
+        // A strip from `from` to `to` (left of the middle) at `height`,
+        // facing `facing`.
+        let strip = |mesh: &mut MeshBuilder,
+                     from: f32,
+                     to: f32,
+                     height: f32,
+                     tile: f32,
+                     facing: Vec3,
+                     color: Color| {
+            mesh.quad(
+                [
+                    (at(a, from, height), Vec2::new(0.0, va / tile)),
+                    (at(b, from, height), Vec2::new(0.0, vb / tile)),
+                    (at(b, to, height), Vec2::new((to - from) / tile, vb / tile)),
+                    (at(a, to, height), Vec2::new((to - from) / tile, va / tile)),
+                ],
+                facing,
+                color,
+            );
+        };
+        // A wall at `lateral` from `low` to `high` off the running surface,
+        // facing `facing`.
+        let wall = |mesh: &mut MeshBuilder, lateral: f32, low: f32, high: f32, facing: Vec3| {
+            mesh.quad(
+                [
+                    (
+                        at(a, lateral, low),
+                        Vec2::new(va / LOOP_TILE, low / LOOP_TILE),
+                    ),
+                    (
+                        at(b, lateral, low),
+                        Vec2::new(vb / LOOP_TILE, low / LOOP_TILE),
+                    ),
+                    (
+                        at(b, lateral, high),
+                        Vec2::new(vb / LOOP_TILE, high / LOOP_TILE),
+                    ),
+                    (
+                        at(a, lateral, high),
+                        Vec2::new(va / LOOP_TILE, high / LOOP_TILE),
+                    ),
+                ],
+                facing,
+                Color::WHITE,
+            );
+        };
+        strip(
+            &mut road,
+            -half,
+            half,
+            0.0,
+            RIDDEN_ASPHALT_TILE,
+            up,
+            Color::WHITE,
+        );
+        let curb = curbs[k % 2];
+        for side in [1.0, -1.0] {
+            let (inner, outer) = (side * half, side * LOOP_HALF_WIDTH);
+            strip(
+                &mut paint,
+                inner.min(outer),
+                inner.max(outer),
+                0.0,
+                1.0,
+                up,
+                curb,
+            );
+            let line = side * (half - RIDDEN_LINE_INSET);
+            let (from, to) = (line, line - side * RIDDEN_LINE);
+            strip(
+                &mut paint,
+                from.min(to),
+                from.max(to),
+                RIDDEN_PAINT_LIFT,
+                1.0,
+                up,
+                Color::WHITE,
+            );
+            // The edge of earth beyond the curbs, the wall and its top, and
+            // the side of the ring down to its outer face.
+            let (edge, lip, out) = (
+                side * LOOP_HALF_WIDTH,
+                side * RIDDEN_LIP_IN,
+                side * RIDDEN_LIP_OUT,
+            );
+            strip(
+                &mut earth,
+                edge.min(lip),
+                edge.max(lip),
+                0.0,
+                LOOP_TILE,
+                up,
+                Color::WHITE,
+            );
+            wall(&mut earth, lip, 0.0, RIDDEN_LIP_HEIGHT, -across * side);
+            strip(
+                &mut earth,
+                lip.min(out),
+                lip.max(out),
+                RIDDEN_LIP_HEIGHT,
+                LOOP_TILE,
+                up,
+                Color::WHITE,
+            );
+            wall(
+                &mut earth,
+                out,
+                -RIDDEN_THICKNESS,
+                RIDDEN_LIP_HEIGHT,
+                across * side,
+            );
+        }
+        strip(
+            &mut earth,
+            -RIDDEN_LIP_OUT,
+            RIDDEN_LIP_OUT,
+            -RIDDEN_THICKNESS,
+            LOOP_TILE,
+            -up,
+            Color::WHITE,
+        );
+    }
+    [road.build(), paint.build(), earth.build()]
 }
 
 /// Half the size of the block of earth under a loop: along the road and

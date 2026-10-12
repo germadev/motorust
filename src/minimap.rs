@@ -22,6 +22,8 @@ const MAP_MARGIN: f32 = 18.0;
 /// Grosor del trazado y de su borde (px).
 const MAP_ROAD: f32 = 3.0;
 const MAP_OUTLINE: f32 = 5.5;
+/// How much thinner the roads off the lap are drawn (px).
+const MAP_SIDE_ROAD: f32 = 1.0;
 
 struct MarkerStyle {
     half_len: f32,
@@ -134,15 +136,21 @@ pub fn draw(track: &Track, checkpoints: &[f32]) -> Image {
     let outline = [0.02, 0.04, 0.1, 0.95];
     let road = [1.0, 1.0, 1.0, 1.0];
 
+    // The lap, and thinner, the roads off it: all the outlines first, so
+    // that where they meet the roads are one.
     for (radius, color) in [(MAP_OUTLINE, outline), (MAP_ROAD, road)] {
-        for (index, &point) in centerline.iter().enumerate() {
-            let next = centerline[(index + 1) % centerline.len()];
-            let (a, b) = (projection.to_map(point), projection.to_map(next));
-            // Un círculo cada medio píxel a lo largo del tramo.
-            let steps = (a.distance(b) * 2.0).ceil().max(1.0) as usize;
-            for step in 0..steps {
-                let at = a.lerp(b, step as f32 / steps as f32);
-                stamp(&mut pixels, size, at, radius, color);
+        for line in std::iter::once(track).chain(track.side_roads()) {
+            let points = line.centerline();
+            let thinner = if line.is_closed() { 0.0 } else { MAP_SIDE_ROAD };
+            for index in 0..line.segment_count() {
+                let next = points[(index + 1) % points.len()];
+                let (a, b) = (projection.to_map(points[index]), projection.to_map(next));
+                // Un círculo cada medio píxel a lo largo del tramo.
+                let steps = (a.distance(b) * 2.0).ceil().max(1.0) as usize;
+                for step in 0..steps {
+                    let at = a.lerp(b, step as f32 / steps as f32);
+                    stamp(&mut pixels, size, at, radius - thinner, color);
+                }
             }
         }
     }

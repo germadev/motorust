@@ -873,36 +873,43 @@ pub const ROSTER: [Entry; 8] = [
 
 /// Quién sale de cada puesto de la parrilla ([`Track::grid_slot`]), de la
 /// pole hacia atrás: los rivales, del más hábil al menos, y el jugador el
-/// último, para tener a quién adelantar. De cada rival, su habilidad y su
-/// carril en carrera.
+/// último, para tener a quién adelantar. For each rival, its skill, its lane
+/// in the race and whether it takes the branches with a loop.
 const GRID: [Option<Rival>; 8] = [
     Some(Rival {
         skill: 0.95,
         lane: 2.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.94,
         lane: -2.0,
+        loops: true,
     }),
     Some(Rival {
         skill: 0.92,
         lane: 4.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.91,
         lane: -4.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.9,
         lane: 0.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.89,
         lane: 1.0,
+        loops: false,
     }),
     Some(Rival {
         skill: 0.88,
         lane: -1.0,
+        loops: true,
     }),
     None,
 ];
