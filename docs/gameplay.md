@@ -67,7 +67,11 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 
 - **Grass.** Brushing it after running wide barely slows you. Staying on it slows you gradually to about 130 km/h, but it never stops you. Back on the asphalt, you recover twice as fast.
 - **Walls.** Walls close off the road on both sides. Scraping one turns the bike parallel to it so you keep going. Hitting one head-on costs most of your speed.
-- **Other bikes.** Bikes bump each other. Run into a bike from behind and you take on its speed.
+- **Other bikes.** Contacts between bikes follow real momentum: both bikes weigh the same with their riders, the hit is mostly plastic (fairings and bodies do not bounce) and the fairings rub with some friction.
+  - Rubbing fairings side by side pushes both bikes apart; the tyres scrub the sideways shove off in a fraction of a second and you keep riding. A nudge from behind slows the one behind and pushes the one in front on.
+  - A rider only goes down when the tyres cannot take the hit: a big sideways jolt (a T-bone, a hard swipe at speed), a hit that spins the bike, or hitting another bike with the front wheel much faster than it goes. Contacts at walking pace never bring anyone down.
+  - When a rider goes down, bike and rider separate. The bike drops onto its side and slides with the velocity it had after the hit. The rider keeps the momentum they had before it, so they are thrown on past the bike, land, tumble and slide on their back until friction stops them (riders slide on asphalt with a drag factor of about 0.6, a bike on its side about 0.45, more on grass). Walls stop both.
+  - Once bike and rider are still (4 s at most), the bike is put back on the track at once, upright and stopped, next to where it ended up, facing along the track and clear of other bikes.
 
 ### Jumps, wheelies and suspension
 

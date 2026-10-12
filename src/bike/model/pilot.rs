@@ -24,7 +24,13 @@ use bevy::{
 use super::imported::{self, Joint, Model};
 use super::{ChassisRig, Design, Geometry};
 use crate::bike::{BikeInput, BikeState, BikeTuning};
-use crate::geometry::{approach, smoothstep};
+use crate::geometry::approach;
+
+/// Right hand and ankle of a rider down on the track, from the hips, with the
+/// back straightened (the left ones are their mirror image): arms spread out
+/// and legs stretched in line with the body.
+const SLIDE_HAND: Vec3 = Vec3::new(0.5, 0.35, -0.05);
+const SLIDE_FOOT: Vec3 = Vec3::new(0.16, -0.8, 0.0);
 
 /// Cuánto se inclina la pelvis hacia delante sobre el asiento (rad).
 const PELVIS_PITCH: f32 = 0.9;
@@ -284,6 +290,9 @@ pub(super) struct Stance {
     pub lean: f32,
     /// Bajar el pie al suelo en parado, de 0 a 1.
     pub foot_down: f32,
+    /// Off the bike, from 0 to 1: the back straightens up over the hips, so
+    /// the body lies flat once laid on its back.
+    pub down: f32,
 }
 
 /// Postura de cada hueso (posición y giro en el espacio de la moto).
@@ -297,9 +306,10 @@ pub(super) fn pose(skeleton: &Skeleton, stance: &Stance) -> Vec<Transform> {
 
     // La espalda se dobla lo que pide la postura y, si así los brazos no
     // llegan a los puños (al incorporarse o al descolgarse), lo justo más.
-    let wanted = (1.0 - SIT_UP * stance.sit_up)
+    let wanted = ((1.0 - SIT_UP * stance.sit_up)
         + TUCK * stance.tuck * (1.0 - stance.sit_up)
-        + 0.6 * stance.wheelie.max(0.0);
+        + 0.6 * stance.wheelie.max(0.0))
+        * (1.0 - stance.down);
     let reaches = |bend: f32| {
         let (position, _) = torso(skeleton, stance, bend);
         bones
@@ -311,7 +321,8 @@ pub(super) fn pose(skeleton: &Skeleton, stance: &Stance) -> Vec<Transform> {
                 position[arm].distance(wrist) <= length - REACH_MARGIN
             })
     };
-    let bend = if reaches(wanted) {
+    // Off the bike the hands do not need to reach the grips.
+    let bend = if stance.down > 0.0 || reaches(wanted) {
         wanted
     } else {
         let (mut short, mut enough) = (wanted, MAX_BEND);
@@ -544,7 +555,7 @@ pub(super) fn pose_pilots(
         let Some(pilot_blueprint) = &blueprint.bodies[pilot.design.index()].pilot else {
             continue;
         };
-        let is_crashing = crash.is_some_and(|c| c.timer > 0.0 && c.duration > 0.0);
+        let is_crashing = crash.is_some_and(|c| c.is_down());
         let hang = if is_crashing {
             0.0
         } else {
@@ -552,8 +563,9 @@ pub(super) fn pose_pilots(
         };
         pilot.hang = approach(pilot.hang, hang, POSE_RESPONSE, dt);
         let slow = 1.0 - (state.speed.abs() / CRUISING_SPEED).min(1.0);
+        // Down, the torso straightens: laid on the back it lies flat.
         let sit_up_target = if is_crashing {
-            0.0
+            1.0
         } else {
             input.brake.max(slow)
         };
@@ -594,27 +606,19 @@ pub(super) fn pose_pilots(
         let foot_ground = Vec3::new(0.38, 0.19, geometry.seat.z);
         let right_peg = peg(1.0).lerp(foot_ground, pilot.foot_down);
 
-        let (grips, pegs) = if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
-            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
-            let slide_t = smoothstep(0.0, 0.25, progress) * (1.0 - smoothstep(0.85, 1.0, progress));
-            // Manos sueltas cerca del pecho/cabeza protegiéndose en el arrastrón:
-            let slide_grips = [
-                geometry.seat + Vec3::new(0.18, 0.15, -0.32),
-                geometry.seat + Vec3::new(-0.18, 0.15, -0.32),
-            ];
-            // Piernas extendidas deslizándose sobre el asfalto detrás de la cadera:
-            let slide_pegs = [
-                geometry.seat + Vec3::new(0.16, -0.12, 0.52),
-                geometry.seat + Vec3::new(-0.16, -0.12, 0.52),
-            ];
+        let (grips, pegs) = if let Some(c) = crash.filter(|c| c.is_down()) {
+            let let_go = c.let_go();
+            // Off the bike: hands in front of the chest and legs stretched
+            // out of the hips, which on the back go feet first.
+            let off = |side: f32, offset: Vec3| geometry.seat + offset * Vec3::new(side, 1.0, 1.0);
             (
                 [
-                    grip(1.0).lerp(slide_grips[0], slide_t),
-                    grip(-1.0).lerp(slide_grips[1], slide_t),
+                    grip(1.0).lerp(off(1.0, SLIDE_HAND), let_go),
+                    grip(-1.0).lerp(off(-1.0, SLIDE_HAND), let_go),
                 ],
                 [
-                    right_peg.lerp(slide_pegs[0], slide_t),
-                    peg(-1.0).lerp(slide_pegs[1], slide_t),
+                    right_peg.lerp(off(1.0, SLIDE_FOOT), let_go),
+                    peg(-1.0).lerp(off(-1.0, SLIDE_FOOT), let_go),
                 ],
             )
         } else {
@@ -637,6 +641,7 @@ pub(super) fn pose_pilots(
             look: pilot.look,
             lean: if is_crashing { 0.0 } else { state.lean },
             foot_down: pilot.foot_down,
+            down: crash.map_or(0.0, |c| c.let_go()),
         };
         for (entity, transform) in pilot
             .joints
@@ -693,6 +698,7 @@ mod tests {
             look: 0.0,
             lean: 0.0,
             foot_down: 0.0,
+            down: 0.0,
         }
     }
 

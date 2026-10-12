@@ -26,9 +26,11 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 
 use bevy::{mesh::skinning::SkinnedMeshInverseBindposes, prelude::*};
 
-use super::{BikeInput, BikeState, BikeTuning, LeanPivot, PreviousBikeState};
-use crate::geometry::smoothstep;
+use super::crash::ThrownRider;
+use super::{BikeInput, BikeState, BikeTuning, CrashState, LeanPivot, PreviousBikeState};
+use crate::geometry::{smoothstep, to_world};
 use crate::shapes::{Section, between, faceted, faceted_tube, flat_shaded, loft, tube};
+use crate::track::SURFACE_Y;
 pub use designs::Design;
 pub use livery::{COVER, DIAGONAL, FLECHA, Livery, ROSSO, TRICOLOR, VERDE};
 use rider::HIPS;
@@ -104,7 +106,6 @@ impl Plugin for BikeModelPlugin {
             (
                 spin_wheels,
                 brake_light,
-                update_rider_mount,
                 (
                     (steer_front, rider::hang_off, rider::sit_up),
                     (
@@ -114,6 +115,8 @@ impl Plugin for BikeModelPlugin {
                         rider::look_ahead,
                         pilot::pose_pilots,
                     ),
+                    // After the chassis: it undoes the chassis transforms.
+                    update_rider_mount,
                 )
                     .chain(),
             ),
@@ -683,10 +686,9 @@ struct Steering {
     bike: Entity,
 }
 
-/// Punto de montaje para el piloto, situado bajo `body`.
-/// Durante carrera normal va solidario al chasis, pero en una caída (`CrashState`)
-/// se desliga de la inclinación del chasis para que el piloto salga despedido y deslice
-/// de forma independiente sobre el asfalto.
+/// Mount point of the rider, under `body`. Riding, it goes with the chassis;
+/// when the rider goes down ([`CrashState`]) it carries them wherever the
+/// crash simulation throws them, independently of the bike.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct RiderMount {
     pub bike: Entity,
@@ -695,6 +697,8 @@ pub struct RiderMount {
 /// En la moto: los pivotes que mueven el caballito y la suspensión.
 #[derive(Component)]
 struct ChassisRig {
+    /// Leans the whole bike (see [`LeanPivot`]).
+    lean: Entity,
     /// Gira toda la moto sobre una rueda en los caballitos.
     tilt: Entity,
     /// Lo que va sobre la suspensión: todo menos las ruedas.
@@ -754,6 +758,7 @@ pub fn spawn(
     commands.entity(bike).insert((
         geometry,
         ChassisRig {
+            lean,
             tilt,
             body,
             steering,
@@ -933,46 +938,51 @@ fn move_chassis(
     }
 }
 
-/// Actualiza el punto de montaje del piloto.
-/// En marcha normal, el piloto va sujeto al chasis (posición cero respecto a `body`).
-/// Durante una caída, se suelta de la moto: se cancela la inclinación de la moto y el
-/// piloto sale despedido hacia delante y hacia fuera, deslizándose sobre el asfalto.
+/// Places the rider's mount. Riding, it sits on the chassis; once the rider
+/// is down it puts their hips where the crash simulation has thrown them
+/// (interpolated between steps), undoing the transforms of the bike it hangs
+/// from, so the rider moves on their own.
 fn update_rider_mount(
-    bikes: Query<(&BikeState, Option<&super::CrashState>)>,
-    mut mounts: Query<(&RiderMount, &mut Transform)>,
+    fixed: Res<Time<Fixed>>,
+    bikes: Query<(&CrashState, &ChassisRig, &Geometry)>,
+    mounts: Query<(Entity, &RiderMount)>,
+    mut transforms: Query<&mut Transform>,
 ) {
-    for (mount, mut transform) in &mut mounts {
-        let Ok((state, crash)) = bikes.get(mount.bike) else {
+    let alpha = fixed.overstep_fraction();
+    for (entity, mount) in &mounts {
+        let Ok((crash, rig, geometry)) = bikes.get(mount.bike) else {
             continue;
         };
-        if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
-            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
-            // Cancelar la inclinación de la moto (lean) para proyectar el arrastrón sobre el asfalto.
-            let unroll = Quat::from_rotation_z(-state.lean);
-
-            let slide_t = smoothstep(0.0, 0.45, progress);
-            let recovery = smoothstep(0.80, 1.0, progress);
-
-            // Eyección hacia delante (inercia) y hacia fuera (lateral):
-            let max_forward = (c.impact_speed * 0.28).clamp(2.5, 6.0);
-            let forward_slide = -max_forward * slide_t * (1.0 - recovery);
-            let lateral_slide = -c.fall_side * 1.7 * slide_t * (1.0 - recovery);
-            let ground_drop = -0.52 * smoothstep(0.0, 0.25, progress) * (1.0 - recovery);
-
-            let ground_pos = Vec3::new(lateral_slide, ground_drop, forward_slide);
-
-            // Giro del piloto sobre el asfalto (tumbado deslizándose):
-            let tumble_roll =
-                c.fall_side * 1.35 * smoothstep(0.0, 0.3, progress) * (1.0 - recovery);
-            let tumble_pitch = -0.35 * smoothstep(0.0, 0.3, progress) * (1.0 - recovery);
-            let ground_rot =
-                Quat::from_rotation_z(tumble_roll) * Quat::from_rotation_x(tumble_pitch);
-
-            transform.translation = unroll * ground_pos;
-            transform.rotation = unroll * ground_rot;
+        let local = if crash.is_down() {
+            let (from, to) = (&crash.previous, &crash.rider);
+            let position = from.position.lerp(to.position, alpha);
+            let height = (from.ground + from.height).lerp(to.ground + to.height, alpha);
+            // Facing where the bike faced, rolled over by the fall and the
+            // tumble, and laid on the back.
+            let rotation = ThrownRider::body_rotation(
+                to.heading,
+                from.roll.lerp(to.roll, alpha),
+                from.lie.lerp(to.lie, alpha),
+            );
+            let hips = Transform::from_translation(to_world(position, height + SURFACE_Y))
+                .with_rotation(rotation);
+            let world = hips.to_matrix() * Mat4::from_translation(-geometry.seat);
+            let parent = [mount.bike, rig.lean, rig.tilt, rig.body]
+                .iter()
+                .map(|&pivot| {
+                    transforms
+                        .get(pivot)
+                        .map_or(Mat4::IDENTITY, |transform| transform.to_matrix())
+                })
+                .fold(Mat4::IDENTITY, |parent, pivot| parent * pivot);
+            Transform::from_matrix(parent.inverse() * world)
         } else {
-            transform.translation = Vec3::ZERO;
-            transform.rotation = Quat::IDENTITY;
+            Transform::IDENTITY
+        };
+        if let Ok(mut transform) = transforms.get_mut(entity)
+            && *transform != local
+        {
+            *transform = local;
         }
     }
 }

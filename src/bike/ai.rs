@@ -68,7 +68,7 @@ pub fn drive_rivals(
         &BikeState,
         &mut Line,
         &mut BikeInput,
-        Option<&super::CrashState>,
+        &super::CrashState,
     )>,
 ) {
     let traffic: Vec<(Entity, Traffic)> = bikes
@@ -82,7 +82,8 @@ pub fn drive_rivals(
         })
         .collect();
     for (entity, rival, state, mut line, mut input, crash) in &mut rivals {
-        if !race.started || crash.is_some_and(|c| c.timer > 0.0) {
+        // Down on the track, the rider lets go of everything.
+        if !race.started || crash.is_down() {
             *input = BikeInput::default();
             continue;
         }
@@ -213,7 +214,8 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bike::{BikeState, advance};
+    use crate::bike::crash::{CrashState, fall, rejoin_pose, slide};
+    use crate::bike::{BikeState, Body, Knock, advance};
 
     #[test]
     fn rival_laps_the_track_without_leaving_it() {
@@ -264,6 +266,7 @@ mod tests {
         // Una moto parada en su carril, 50 m por delante.
         let mut stopped = BikeState::parked_on(&track, track.grid_pose(0, rival.lane));
         let mut line = Line(rival.lane);
+        let (mut knock, mut stopped_knock) = (Knock::default(), Knock::default());
         let n = track.sample_count() as i64;
         let gap = |a: &BikeState, b: &BikeState| {
             let (a, b) = (
@@ -283,12 +286,156 @@ mod tests {
             line.0 = move_toward(line.0, target, rate * dt);
             let input = decide(&rival, line.0, limit, &state, &track, &tuning);
             state = advance(&state, &input, &track, &tuning, dt);
-            crate::bike::bump(&mut state, &mut stopped);
+            crate::bike::carry(&mut state, &mut knock, &track, dt);
+            let contact = crate::bike::collide(
+                Body {
+                    state: &mut state,
+                    knock: &mut knock,
+                    down: false,
+                },
+                Body {
+                    state: &mut stopped,
+                    knock: &mut stopped_knock,
+                    down: false,
+                },
+            );
+            assert!(contact.is_none(), "no la toca: {contact:?}");
             closest = closest.min(state.position.distance(stopped.position));
         }
         assert!(gap(&state, &stopped) < -10, "la ha adelantado");
         assert!(closest > 1.5, "sin tocarla: {closest} m");
         assert!(state.speed > 30.0, "y sigue lanzado: {}", state.speed);
+    }
+
+    /// One rival of the pack in [`a_pack_of_rivals_races_without_wrecking_each_other`].
+    struct Racer {
+        rival: Rival,
+        line: Line,
+        state: BikeState,
+        knock: Knock,
+        crash: CrashState,
+    }
+
+    #[test]
+    fn a_pack_of_rivals_races_without_wrecking_each_other() {
+        let track = Track::default();
+        let tuning = BikeTuning::default();
+        let dt = 1.0 / 120.0;
+        let mut pack: Vec<Racer> = crate::bike::GRID
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, rival)| {
+                rival.map(|rival| Racer {
+                    rival,
+                    line: Line(rival.lane),
+                    state: BikeState::parked_on(&track, track.grid_slot(slot)),
+                    knock: Knock::default(),
+                    crash: CrashState::default(),
+                })
+            })
+            .collect();
+        let n = track.sample_count() as i64;
+        let mut last: Vec<i64> = pack
+            .iter()
+            .map(|racer| track.nearest_index(racer.state.position) as i64)
+            .collect();
+        let mut progress = vec![0; pack.len()];
+        let mut falls = 0;
+        for _ in 0..(90.0 / dt) as usize {
+            let traffic: Vec<Traffic> = pack
+                .iter()
+                .map(|racer| Traffic {
+                    position: racer.state.position,
+                    speed: racer.state.speed,
+                })
+                .collect();
+            for (i, racer) in pack.iter_mut().enumerate() {
+                if racer.crash.is_down() {
+                    slide(
+                        &mut racer.state,
+                        &mut racer.knock,
+                        &mut racer.crash,
+                        &track,
+                        dt,
+                    );
+                    if racer.crash.is_over() {
+                        let (position, heading, lateral) =
+                            rejoin_pose(&track, racer.state.position, &[]);
+                        racer.state = BikeState::parked_on(&track, (position, heading));
+                        racer.knock = Knock::default();
+                        racer.crash = CrashState::default();
+                        racer.line.0 = lateral;
+                    }
+                    continue;
+                }
+                let others: Vec<Traffic> = traffic
+                    .iter()
+                    .enumerate()
+                    .filter(|&(j, _)| j != i)
+                    .map(|(_, other)| *other)
+                    .collect();
+                let (target, limit) =
+                    plan_line(&racer.rival, racer.line.0, &racer.state, &track, &others);
+                let rate = LINE_RATE + LINE_RATE_PER_SPEED * racer.state.speed.abs();
+                racer.line.0 = move_toward(racer.line.0, target, rate * dt);
+                let input = decide(
+                    &racer.rival,
+                    racer.line.0,
+                    limit,
+                    &racer.state,
+                    &track,
+                    &tuning,
+                );
+                racer.state = advance(&racer.state, &input, &track, &tuning, dt);
+                crate::bike::carry(&mut racer.state, &mut racer.knock, &track, dt);
+            }
+            for j in 1..pack.len() {
+                let (before, after) = pack.split_at_mut(j);
+                let b = &mut after[0];
+                for a in before.iter_mut() {
+                    let contact = crate::bike::collide(
+                        Body {
+                            state: &mut a.state,
+                            knock: &mut a.knock,
+                            down: a.crash.is_down(),
+                        },
+                        Body {
+                            state: &mut b.state,
+                            knock: &mut b.knock,
+                            down: b.crash.is_down(),
+                        },
+                    );
+                    let Some(contact) = contact else {
+                        continue;
+                    };
+                    if contact.a.falls {
+                        a.crash = fall(&mut a.state, &mut a.knock, &contact.a);
+                        falls += 1;
+                    }
+                    if contact.b.falls {
+                        b.crash = fall(&mut b.state, &mut b.knock, &contact.b);
+                        falls += 1;
+                    }
+                }
+            }
+            for (i, racer) in pack.iter().enumerate() {
+                assert!(
+                    track.distance_to_centerline(racer.state.position) < 11.5,
+                    "el rival {i} se ha salido en {:?}",
+                    racer.state.position
+                );
+                let index = track.nearest_index(racer.state.position) as i64;
+                progress[i] += (index - last[i] + n + n / 2) % n - n / 2;
+                last[i] = index;
+            }
+        }
+        assert!(falls <= 2, "se caen {falls} veces");
+        for (i, progress) in progress.iter().enumerate() {
+            assert!(
+                *progress > n,
+                "el rival {i} no da la vuelta: {progress} de {n}"
+            );
+        }
     }
 
     #[test]

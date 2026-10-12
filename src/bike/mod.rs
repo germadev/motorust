@@ -6,9 +6,13 @@
 
 mod ai;
 mod chassis;
+mod crash;
 mod grass_kickup;
 mod model;
 
+#[cfg(test)]
+use crash::{Body, carry, collide};
+pub use crash::{CrashState, Knock};
 pub use grass_kickup::{GrassKickup, GrassKickupPlugin, GrassParticle};
 
 use bevy::input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest};
@@ -65,9 +69,6 @@ const GRASS_GRACE: f32 = 0.25;
 const PITCH_RESPONSE: f32 = 10.0;
 /// Medio ancho de la moto con el piloto: lo que se puede arrimar a un muro.
 const BIKE_HALF_WIDTH: f32 = 0.45;
-/// Distancia mínima de referencia entre dos motos en tests (m).
-#[cfg(test)]
-pub const BIKE_SPACING: f32 = 1.2;
 /// Fracción de la velocidad que se pierde en un choque de frente.
 const IMPACT_SPEED_LOSS: f32 = 0.75;
 /// Qué parte del ángulo contra el muro se corrige en cada paso de contacto:
@@ -147,19 +148,6 @@ pub struct CollisionImpact {
     pub timer: f32,
     /// Intensidad normalizada del choque (de 0 a 1).
     pub intensity: f32,
-}
-
-/// Estado de caída tras un choque donde las trayectorias de las motos se cruzan.
-#[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
-pub struct CrashState {
-    /// Tiempo restante de caída y recuperación (s). Si es 0.0, la moto está en carrera normal.
-    pub timer: f32,
-    /// Duración total inicial de la caída (s).
-    pub duration: f32,
-    /// Lado hacia el que cae la moto (-1.0 a la izquierda, 1.0 a la derecha).
-    pub fall_side: f32,
-    /// Velocidad en el momento del impacto inicial (m/s).
-    pub impact_speed: f32,
 }
 
 /// Lo que pide el piloto en este momento. Al jugador lo rellena el teclado o
@@ -777,6 +765,8 @@ impl BikeAssets<'_> {
                 BikeInput::default(),
                 BikeColor(entry.color.into()),
                 GrassKickup::default(),
+                Knock::default(),
+                CrashState::default(),
                 Transform::from_translation(to_world(state.position, SURFACE_Y))
                     .with_rotation(Quat::from_rotation_y(state.heading)),
                 Visibility::default(),
@@ -824,7 +814,6 @@ fn spawn_grid(
             GridPosition(slot),
             DespawnOnExit(GameState::Race),
             CollisionImpact::default(),
-            CrashState::default(),
         ));
         if *game_mode == GameMode::SplitScreen && slot == PLAYER_SLOT - 1 {
             bike.insert(LocalPlayer(1));
@@ -1258,7 +1247,13 @@ fn restart_race(
     settings: Res<Settings>,
     track: Res<Track>,
     mut race: ResMut<Race>,
-    mut bikes: Query<(&GridPosition, &mut BikeState, &mut PreviousBikeState)>,
+    mut bikes: Query<(
+        &GridPosition,
+        &mut BikeState,
+        &mut PreviousBikeState,
+        &mut Knock,
+        &mut CrashState,
+    )>,
     particles: Query<Entity, With<GrassParticle>>,
     mut commands: Commands,
 ) {
@@ -1269,325 +1264,189 @@ fn restart_race(
         return;
     }
     race.started = false;
-    for (grid, mut state, mut previous) in &mut bikes {
+    for (grid, mut state, mut previous, mut knock, mut crash) in &mut bikes {
         *state = BikeState::parked_on(&track, track.grid_slot(grid.0));
         // Sin estado anterior distinto, la interpolación no dibuja un "viaje".
         previous.0 = *state;
+        *knock = Knock::default();
+        *crash = CrashState::default();
     }
     for particle in &particles {
         commands.entity(particle).despawn();
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn simulate_bikes(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
     track: Res<Track>,
     mut bikes: Query<(
+        Entity,
         &BikeInput,
         &mut BikeState,
         &mut PreviousBikeState,
-        Option<&mut CrashState>,
+        &mut Knock,
+        &mut CrashState,
+        Option<&mut ai::Line>,
     )>,
 ) {
     let dt = time.delta_secs();
-    for (input, mut state, mut previous, crash) in &mut bikes {
+    let positions: Vec<(Entity, Vec2)> = bikes
+        .iter()
+        .map(|(entity, _, state, ..)| (entity, state.position))
+        .collect();
+    for (entity, input, mut state, mut previous, mut knock, mut crash, line) in &mut bikes {
         previous.0 = *state;
-        if let Some(mut c) = crash.filter(|c| c.timer > 0.0) {
-            c.timer = (c.timer - dt).max(0.0);
-            // Durante la caída, la moto desliza sobre el asfalto frenando por fricción.
-            state.speed = approach(state.speed, 0.0, 4.5, dt);
-            // La moto se tumba en el asfalto (aprox. 83° = 1.45 rad) durante el arrastrón,
-            // y se endereza en la fase final de recuperación.
-            let target_lean = if c.timer > 0.45 {
-                c.fall_side * 1.45
-            } else {
-                0.0
-            };
-            state.lean = approach(state.lean, target_lean, 7.0, dt);
-            state.steer = 0.0;
-            let forward_vec = forward(state.heading);
-            let move_dist = forward_vec * (state.speed * dt);
-            state.position += move_dist;
-            state.elevation = track.road_height(state.position);
-            hit_walls(&mut state, &track);
-            if c.timer == 0.0 {
-                // Fin de la caída: el piloto endereza la moto y se reincorpora.
-                state.lean = 0.0;
-                state.speed = 0.0;
-            }
+        if !crash.is_down() {
+            *state = advance(&state, input, &track, &tuning, dt);
+            crash::carry(&mut state, &mut knock, &track, dt);
             continue;
         }
-        *state = advance(&state, input, &track, &tuning, dt);
+        crash::slide(&mut state, &mut knock, &mut crash, &track, dt);
+        if crash.is_over() {
+            // Back on the track at once, next to where the bike stopped and
+            // clear of the others, facing along the track.
+            let others: Vec<Vec2> = positions
+                .iter()
+                .filter(|(other, _)| *other != entity)
+                .map(|&(_, position)| position)
+                .collect();
+            let (position, heading, lateral) = crash::rejoin_pose(&track, state.position, &others);
+            *state = BikeState::parked_on(&track, (position, heading));
+            // Without a different previous state, interpolation draws no trip.
+            previous.0 = *state;
+            *knock = Knock::default();
+            *crash = CrashState::default();
+            if let Some(mut line) = line {
+                line.0 = lateral;
+            }
+        }
     }
 }
 
+/// Resolves the contacts between bikes (see [`crash`]): they push each other,
+/// and the riders that cannot ride the hit out go down. The players feel it
+/// in their controllers.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn separate_bikes(
-    fixed_time: Res<Time<Fixed>>,
+    time: Res<Time>,
     mut bikes: Query<(
         Entity,
         &mut BikeState,
+        &mut Knock,
+        &mut CrashState,
         Option<&mut CollisionImpact>,
-        Option<&mut CrashState>,
-        Option<&mut ai::Line>,
-        Option<&mut ai::Rival>,
     )>,
     mut rumble: MessageWriter<GamepadRumbleRequest>,
     game_mode: Option<Res<GameMode>>,
     local_players: Option<Res<LocalPlayersConfig>>,
     active_controller: Option<Res<crate::gamepads::ActiveController>>,
-    p1_bikes: Query<Entity, With<Player>>,
-    p2_bikes: Query<Entity, With<LocalPlayer>>,
+    p1_bikes: Query<(), With<Player>>,
+    locals: Query<&LocalPlayer>,
 ) {
-    let dt = fixed_time.delta_secs();
-    for (_, _, impact, _, _, _) in &mut bikes {
-        if let Some(mut imp) = impact {
-            imp.timer = (imp.timer - dt).max(0.0);
+    let dt = time.delta_secs();
+    for (.., impact) in &mut bikes {
+        if let Some(mut impact) = impact {
+            impact.timer = (impact.timer - dt).max(0.0);
         }
     }
 
-    let mut p1_hit = false;
-    let mut p2_hit = false;
-    let mut max_intensity: f32 = 0.0;
-    let mut crossing_crash = false;
-
+    // For each local player, how hard the hit they feel was (0..1) and
+    // whether they went down.
+    let mut felt: [Option<(f32, bool)>; 2] = [None, None];
     let mut pairs = bikes.iter_combinations_mut();
     while let Some(
         [
-            (entity_a, mut state_a, impact_a, crash_a, line_a, rival_a),
-            (entity_b, mut state_b, impact_b, crash_b, line_b, rival_b),
+            (entity_a, mut state_a, mut knock_a, mut crash_a, impact_a),
+            (entity_b, mut state_b, mut knock_b, mut crash_b, impact_b),
         ],
     ) = pairs.fetch_next()
     {
-        if bump(&mut state_a, &mut state_b) {
-            let dot = forward(state_a.heading).dot(forward(state_b.heading));
-            let crossing = dot < 0.90;
-            let speed_a = state_a.speed.abs();
-            let speed_b = state_b.speed.abs();
-            let max_speed = speed_a.max(speed_b);
-            let rel_vel =
-                forward(state_a.heading) * state_a.speed - forward(state_b.heading) * state_b.speed;
-            let rel_speed = rel_vel.length();
-
-            // Caída realista:
-            // Requiere trayectorias no paralelas y suficiente energía cinética
-            // (al menos una moto a velocidad apreciable >= 7.0 m/s (~25 km/h), o velocidad relativa >= 6.0 m/s).
-            // A bajas velocidades (< 25 km/h), o en choques paralelos, solo hay rebote lateral elástico.
-            let high_energy_crash = crossing && (max_speed >= 7.0 || rel_speed >= 6.0);
-
-            if high_energy_crash {
-                let diff_x = state_a.position.x - state_b.position.x;
-                let fall_a = if diff_x >= 0.0 { 1.0 } else { -1.0 };
-                const CRASH_DURATION: f32 = 2.8;
-                if let Some(mut ca) = crash_a {
-                    ca.timer = CRASH_DURATION;
-                    ca.duration = CRASH_DURATION;
-                    ca.fall_side = fall_a;
-                    ca.impact_speed = speed_a;
-                }
-                if let Some(mut cb) = crash_b {
-                    cb.timer = CRASH_DURATION;
-                    cb.duration = CRASH_DURATION;
-                    cb.fall_side = -fall_a;
-                    cb.impact_speed = speed_b;
-                }
-                if let Some(mut imp) = impact_a {
-                    imp.timer = 0.50;
-                    imp.intensity = 1.0;
-                }
-                if let Some(mut imp) = impact_b {
-                    imp.timer = 0.50;
-                    imp.intensity = 1.0;
-                }
-                crossing_crash = true;
-            } else {
-                // En choque lateral con misma dirección (o a baja velocidad), se desplazan hacia los lados
-                // y se desplaza también la trazada del rival para que mantenga el nuevo carril.
-                let heading_dir = (forward(state_a.heading) + forward(state_b.heading))
-                    .try_normalize()
-                    .unwrap_or_else(|| forward(state_a.heading));
-                let lateral = Vec2::new(-heading_dir.y, heading_dir.x);
-                let center_offset = state_a.position - state_b.position;
-                let side_sign = if center_offset.dot(lateral) >= 0.0 {
-                    1.0
-                } else {
-                    -1.0
-                };
-
-                if let Some(mut l) = line_a {
-                    l.0 += side_sign * 1.2;
-                }
-                if let Some(mut r) = rival_a {
-                    r.lane += side_sign * 1.2;
-                }
-                if let Some(mut l) = line_b {
-                    l.0 -= side_sign * 1.2;
-                }
-                if let Some(mut r) = rival_b {
-                    r.lane -= side_sign * 1.2;
-                }
-
-                let intensity =
-                    ((state_a.speed.max(state_b.speed) / 50.0) * 0.4 + 0.35).clamp(0.35, 0.75);
-                if let Some(mut imp) = impact_a {
-                    imp.timer = 0.35;
-                    imp.intensity = intensity;
-                }
-                if let Some(mut imp) = impact_b {
-                    imp.timer = 0.35;
-                    imp.intensity = intensity;
-                }
-            }
-
-            if p1_bikes.contains(entity_a) || p1_bikes.contains(entity_b) {
-                p1_hit = true;
-                max_intensity = max_intensity.max(if high_energy_crash { 1.0 } else { 0.65 });
-            }
-            if p2_bikes.contains(entity_a) || p2_bikes.contains(entity_b) {
-                p2_hit = true;
-                max_intensity = max_intensity.max(if high_energy_crash { 1.0 } else { 0.65 });
-            }
-        }
-    }
-
-    let (duration_ms, strong, weak) = if crossing_crash {
-        (500, 0.75, 0.95)
-    } else {
-        (300, 0.35 * max_intensity, 0.65 * max_intensity)
-    };
-    let intensity = GamepadRumbleIntensity {
-        strong_motor: strong,
-        weak_motor: weak,
-    };
-    let duration = std::time::Duration::from_millis(duration_ms);
-
-    let is_split = game_mode.is_some_and(|m| *m == GameMode::SplitScreen);
-    if is_split {
-        if let Some(cfg) = local_players {
-            if let (true, Some(ControllerBinding::Gamepad(pad))) = (p1_hit, cfg.p1) {
-                rumble.write(GamepadRumbleRequest::Add {
-                    duration,
-                    intensity,
-                    gamepad: pad,
-                });
-            }
-            if let (true, Some(ControllerBinding::Gamepad(pad))) = (p2_hit, cfg.p2) {
-                rumble.write(GamepadRumbleRequest::Add {
-                    duration,
-                    intensity,
-                    gamepad: pad,
-                });
-            }
-        }
-    } else if p1_hit {
-        // En 1 jugador, solo vibra el mando activo que está usando el jugador.
-        if let Some(pad) = active_controller.and_then(|ac| ac.gamepad) {
-            rumble.write(GamepadRumbleRequest::Add {
-                duration,
-                intensity,
-                gamepad: pad,
-            });
-        }
-    }
-}
-
-/// Radio de los discos de colisión a lo largo de la moto (m).
-const BIKE_COLLISION_RADIUS: f32 = 0.45;
-/// Diámetro de contacto entre dos discos de moto (m).
-const BIKE_CONTACT_DISTANCE: f32 = BIKE_COLLISION_RADIUS * 2.0;
-/// Distancia máxima entre centros a partir de la cual dos motos no pueden tocarse físicamente (m).
-const MAX_BIKE_TOUCH_DISTANCE: f32 = 2.2;
-/// Desplazamiento lateral que separa a las motos hacia los lados en choques normales (m).
-const LATERAL_DISPLACEMENT: f32 = 0.55;
-
-/// Separa dos motos que se solapan y aplica un desplazamiento de choque.
-/// Devuelve `true` si ha habido contacto.
-pub fn bump(a: &mut BikeState, b: &mut BikeState) -> bool {
-    let center_offset = a.position - b.position;
-    if center_offset.length_squared() >= MAX_BIKE_TOUCH_DISTANCE * MAX_BIKE_TOUCH_DISTANCE {
-        return false;
-    }
-
-    let fa = forward(a.heading);
-    let fb = forward(b.heading);
-    let nodes_a = [a.position + fa * 0.60, a.position, a.position - fa * 0.60];
-    let nodes_b = [b.position + fb * 0.60, b.position, b.position - fb * 0.60];
-
-    let mut min_dist_sq = f32::MAX;
-    let mut best_pa = a.position;
-    let mut best_pb = b.position;
-
-    for pa in nodes_a {
-        for pb in nodes_b {
-            let d_sq = (pa - pb).length_squared();
-            if d_sq < min_dist_sq {
-                min_dist_sq = d_sq;
-                best_pa = pa;
-                best_pb = pb;
-            }
-        }
-    }
-
-    if min_dist_sq >= BIKE_CONTACT_DISTANCE * BIKE_CONTACT_DISTANCE {
-        return false;
-    }
-
-    let contact_dist = min_dist_sq.sqrt();
-    let overlap = BIKE_CONTACT_DISTANCE - contact_dist;
-    let mut normal = (best_pa - best_pb)
-        .try_normalize()
-        .unwrap_or_else(|| center_offset.try_normalize().unwrap_or(Vec2::X));
-
-    // `normal` debe apuntar siempre de b hacia a para separar los centros de ambas motos.
-    if normal.dot(center_offset) < 0.0 {
-        normal = -normal;
-    }
-
-    let push = overlap * 0.5;
-    let crossing = fa.dot(fb) < 0.94;
-
-    if crossing {
-        // En caso de que no sean prácticamente paralelas, se resuelve únicamente la penetración física básica,
-        // ya que el impacto desencadenará la caída de ambos pilotos.
-        a.position += normal * push;
-        b.position -= normal * push;
-    } else {
-        // En choques normales (mismo sentido), las motos se desplazan HACIA LOS LADOS
-        // una respecto a la otra de forma clara y visible hacia carriles opuestos.
-        let heading_dir = (fa + fb).try_normalize().unwrap_or(fa);
-        let lateral = Vec2::new(-heading_dir.y, heading_dir.x);
-
-        let lat_dot = center_offset.dot(lateral);
-        let side_sign = if lat_dot.abs() > 1e-3 {
-            lat_dot.signum()
-        } else {
-            1.0
+        let (down_a, down_b) = (crash_a.is_down(), crash_b.is_down());
+        let Some(contact) = crash::collide(
+            crash::Body {
+                state: &mut state_a,
+                knock: &mut knock_a,
+                down: down_a,
+            },
+            crash::Body {
+                state: &mut state_b,
+                knock: &mut knock_b,
+                down: down_b,
+            },
+        ) else {
+            continue;
         };
-
-        // Separación combinada: desatasco de penetración + empuje lateral hacia lados opuestos.
-        let displacement = normal * push + lateral * (side_sign * LATERAL_DISPLACEMENT);
-        a.position += displacement;
-        b.position -= displacement;
-
-        // Desvía los rumbos ligeramente hacia fuera (aprox. 5° / 0.08 rad)
-        // para que las motos se separen dinámicamente en carriles opuestos en vez de vibrar juntas.
-        a.heading = wrap_angle(a.heading + side_sign * 0.08);
-        b.heading = wrap_angle(b.heading - side_sign * 0.08);
-
-        // Inclinación hacia fuera por la inercia del golpe de costado.
-        a.lean = (a.lean + side_sign * 0.25).clamp(-1.2, 1.2);
-        b.lean = (b.lean - side_sign * 0.25).clamp(-1.2, 1.2);
-
-        if forward(a.heading).dot(-normal) > 0.0 && a.speed > b.speed {
-            a.speed = b.speed;
+        if contact.a.falls {
+            *crash_a = crash::fall(&mut state_a, &mut knock_a, &contact.a);
         }
-        if forward(b.heading).dot(normal) > 0.0 && b.speed > a.speed {
-            b.speed = a.speed;
+        if contact.b.falls {
+            *crash_b = crash::fall(&mut state_b, &mut knock_b, &contact.b);
+        }
+        let severity = contact.severity();
+        for (entity, impact, falls) in [
+            (entity_a, impact_a, contact.a.falls),
+            (entity_b, impact_b, contact.b.falls),
+        ] {
+            // Only a new hit is felt: bikes leaning on each other would
+            // otherwise rumble on every step.
+            let fresh = impact.as_ref().is_none_or(|impact| impact.timer == 0.0);
+            if let Some(mut impact) = impact {
+                let (timer, intensity) = if falls {
+                    (0.5, 1.0)
+                } else {
+                    (0.25, 0.35 + 0.65 * severity)
+                };
+                impact.timer = impact.timer.max(timer);
+                impact.intensity = if fresh {
+                    intensity
+                } else {
+                    impact.intensity.max(intensity)
+                };
+            }
+            let player = match locals.get(entity) {
+                Ok(local) => Some(local.0),
+                Err(_) => p1_bikes.contains(entity).then_some(0),
+            };
+            if let Some(slot) = player.and_then(|player| felt.get_mut(player))
+                && (fresh || falls)
+            {
+                let (was, fell) = slot.unwrap_or((0.0, false));
+                *slot = Some((was.max(severity), fell || falls));
+            }
         }
     }
 
-    true
+    let pads = if game_mode.is_some_and(|mode| *mode == GameMode::SplitScreen) {
+        let pad = |binding: Option<ControllerBinding>| match binding {
+            Some(ControllerBinding::Gamepad(pad)) => Some(pad),
+            _ => None,
+        };
+        local_players.map_or([None, None], |config| [pad(config.p1), pad(config.p2)])
+    } else {
+        // With one player, only the controller in use rumbles.
+        [active_controller.and_then(|active| active.gamepad), None]
+    };
+    for (felt, pad) in felt.into_iter().zip(pads) {
+        let (Some((severity, fell)), Some(gamepad)) = (felt, pad) else {
+            continue;
+        };
+        let (milliseconds, strong, weak) = if fell {
+            (500, 0.75, 0.95)
+        } else {
+            let strength = 0.4 + 0.6 * severity;
+            (250, 0.35 * strength, 0.65 * strength)
+        };
+        rumble.write(GamepadRumbleRequest::Add {
+            duration: std::time::Duration::from_millis(milliseconds),
+            intensity: GamepadRumbleIntensity {
+                strong_motor: strong,
+                weak_motor: weak,
+            },
+            gamepad,
+        });
+    }
 }
 
 /// Coloca cada moto entre su estado anterior y el actual según cuánto falta
@@ -2167,126 +2026,6 @@ mod tests {
         let distance = track.distance_to_centerline(state.position);
         assert!(distance <= WALL_DISTANCE - BIKE_HALF_WIDTH + 1e-3);
         assert!(state.speed < 40.0 * (1.0 - IMPACT_SPEED_LOSS) + 0.5);
-    }
-
-    #[test]
-    fn rear_ending_slows_the_follower_down() {
-        let mut leader = BikeState {
-            position: Vec2::new(0.0, -1.0),
-            speed: 30.0,
-            ..parked()
-        };
-        let mut follower = BikeState {
-            speed: 40.0,
-            ..parked()
-        };
-        bump(&mut follower, &mut leader);
-        assert!(follower.position.distance(leader.position) >= BIKE_SPACING - 1e-4);
-        assert_eq!(follower.speed, 30.0);
-        assert_eq!(leader.speed, 30.0);
-    }
-
-    #[test]
-    fn collision_displaces_both_bikes_apart() {
-        let mut a = BikeState {
-            position: Vec2::new(0.0, 0.0),
-            speed: 30.0,
-            ..parked()
-        };
-        let mut b = BikeState {
-            position: Vec2::new(0.5, 0.0),
-            speed: 30.0,
-            ..parked()
-        };
-        let hit = bump(&mut a, &mut b);
-        assert!(hit);
-        assert!(a.position.distance(b.position) > BIKE_SPACING);
-    }
-
-    #[test]
-    fn rear_ending_at_visual_contact_distance_detects_and_shoves() {
-        // Leader is ahead at (0, -1.8) facing forward (-Z). Follower is at (0, 0).
-        // Distance between centers is 1.8m (exceeds single 1.2m radius), but front and rear wheels touch.
-        let mut leader = BikeState {
-            position: Vec2::new(0.0, -1.8),
-            speed: 30.0,
-            ..parked()
-        };
-        let mut follower = BikeState {
-            position: Vec2::new(0.0, 0.0),
-            speed: 40.0,
-            ..parked()
-        };
-        let hit = bump(&mut follower, &mut leader);
-        assert!(hit, "Bikes with touching wheels must collide");
-        assert!(
-            follower.position.distance(leader.position) > 2.0,
-            "Collision must visibly shove bikes apart"
-        );
-        assert_eq!(follower.speed, 30.0);
-    }
-
-    #[test]
-    fn parallel_bikes_displace_laterally_to_opposite_sides() {
-        let mut a = BikeState {
-            position: Vec2::new(-0.2, 0.0),
-            speed: 30.0,
-            ..parked()
-        };
-        let mut b = BikeState {
-            position: Vec2::new(0.2, 0.0),
-            speed: 30.0,
-            ..parked()
-        };
-        let hit = bump(&mut a, &mut b);
-        assert!(hit);
-        // a was to the left (-X), so it should be displaced further left.
-        assert!(a.position.x < -0.2);
-        // b was to the right (+X), so it should be displaced further right.
-        assert!(b.position.x > 0.2);
-        // Total lateral separation increased significantly.
-        assert!((b.position.x - a.position.x) > 0.8);
-    }
-
-    #[test]
-    fn crossing_trajectories_detected_when_directions_cross() {
-        let a_heading = 0.0;
-        let b_heading = 0.50; // ~28 degrees - not parallel
-        let dot = forward(a_heading).dot(forward(b_heading));
-        assert!(
-            dot < 0.90,
-            "Non-parallel trajectories must be detected as crossing"
-        );
-    }
-
-    #[test]
-    fn low_speed_crossing_contacts_do_not_trigger_crash() {
-        let speed_a: f32 = 2.0; // 7 km/h - low speed / walking speed
-        let speed_b: f32 = 3.0; // 10 km/h
-        let max_speed = speed_a.max(speed_b);
-        let crossing = true;
-        let rel_vel = forward(0.0) * speed_a - forward(0.6) * speed_b;
-        let rel_speed = rel_vel.length();
-        let high_energy_crash = crossing && (max_speed >= 7.0 || rel_speed >= 6.0);
-        assert!(
-            !high_energy_crash,
-            "Low speed contacts must not wipe out the rider"
-        );
-    }
-
-    #[test]
-    fn high_speed_crossing_contacts_trigger_realistic_crash() {
-        let speed_a: f32 = 20.0; // 72 km/h - racing speed
-        let speed_b: f32 = 18.0;
-        let max_speed = speed_a.max(speed_b);
-        let crossing = true;
-        let rel_vel = forward(0.0) * speed_a - forward(0.6) * speed_b;
-        let rel_speed = rel_vel.length();
-        let high_energy_crash = crossing && (max_speed >= 7.0 || rel_speed >= 6.0);
-        assert!(
-            high_energy_crash,
-            "High-speed crossing contacts must trigger crash"
-        );
     }
 
     #[test]
