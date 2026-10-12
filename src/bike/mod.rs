@@ -24,7 +24,7 @@ use crate::locale::Language;
 use crate::menu::{Choice, GameState, SplitChoices};
 use crate::pause::{self, DebugOptions, TurnLimit};
 use crate::settings::{Action, Settings};
-use crate::track::{SURFACE_Y, Surface, Track, WALL_DISTANCE};
+use crate::track::{SURFACE_Y, Surface, Track};
 use crate::welcome::GameMode;
 use ai::Rival;
 use chassis::{Chassis, Forces};
@@ -641,44 +641,56 @@ const WALL_FELT: f32 = 2.0;
 /// about a metre ahead and behind its centre, like the model.
 const WALL_REACH: f32 = 0.6;
 /// How far to the side the rider's shoulders and helmet go when the bike
-/// leans (m, times the sine of the lean), and how wide they are (m). Fallen,
-/// the top of the bike lying on its side reaches about as far.
-const LEAN_REACH: f32 = 0.9;
+/// leans (m, times the sine of the lean: the helmet is over a metre up, and
+/// the rider hangs off), and how wide they are (m). Fallen, the top of the
+/// bike lying on its side reaches about as far.
+const LEAN_REACH: f32 = 1.05;
 const LEAN_RADIUS: f32 = 0.25;
+/// The handlebar and fairing at the front and the tail at the back stick out
+/// to the side the bike leans (m ahead, m out times the sine of the lean, and
+/// radius): once fallen they are what touches a wall first.
+const BARS: (f32, f32, f32) = (0.55, 0.75, 0.3);
+const TAIL: (f32, f32, f32) = (-0.55, 0.7, 0.3);
 
 /// The parts of a bike that can touch a wall, seen from above, as circles
-/// (centre and radius): its two ends, and the rider leaning out to one side
-/// (or the top of the bike, once it lies on that side).
-pub fn footprint(state: &BikeState) -> [(Vec2, f32); 3] {
+/// (centre and radius): its two ends, the rider leaning out to one side (or
+/// the top of the bike, once it lies on that side), and the handlebar and
+/// tail, which also lean out with it.
+pub fn footprint(state: &BikeState) -> [(Vec2, f32); 5] {
     let ahead = forward(state.heading);
-    let left = -ahead.perp();
+    let out = -ahead.perp() * state.lean.sin();
+    let leaning = |(along, side, radius): (f32, f32, f32)| {
+        (state.position + ahead * along + out * side, radius)
+    };
     [
         (state.position + ahead * WALL_REACH, BIKE_HALF_WIDTH),
         (state.position - ahead * WALL_REACH, BIKE_HALF_WIDTH),
-        (
-            state.position + left * state.lean.sin() * LEAN_REACH,
-            LEAN_RADIUS,
-        ),
+        leaning((0.0, LEAN_REACH, LEAN_RADIUS)),
+        leaning(BARS),
+        leaning(TAIL),
     ]
 }
 
 /// The part of `parts` (circles of something centred at `center`) that goes
-/// deepest into a wall, if any: the wall's normal (out of the track) and how
-/// deep it is (m).
+/// deepest into the edge of the track (a wall, or the earth where it rises
+/// before it: see [`Track::edge_beside`]), if any: the normal out of the
+/// track and how deep it is (m).
 pub fn wall_contact(track: &Track, center: Vec2, parts: &[(Vec2, f32)]) -> Option<(Vec2, f32)> {
-    // Far from the walls, one look at the centre is enough.
+    // Far from the edges, one look at the centre is enough.
     let reach = parts
         .iter()
         .map(|&(point, radius)| point.distance(center) + radius)
         .fold(0.0, f32::max);
-    if track.nearest(center).distance + reach <= WALL_DISTANCE {
+    let nearest = track.nearest(center);
+    let spread = (reach / track.step_length()).ceil() as usize + 1;
+    if nearest.distance + reach <= track.closest_edge_near(nearest.index, spread) {
         return None;
     }
     parts
         .iter()
         .filter_map(|&(point, radius)| {
             let nearest = track.nearest(point);
-            let depth = nearest.distance + radius - WALL_DISTANCE;
+            let depth = nearest.distance + radius - track.edge_beside(&nearest);
             let out = (point - nearest.point).try_normalize()?;
             (depth > 0.0).then_some((out, depth))
         })
@@ -1666,6 +1678,7 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
 
     use crate::pause::{ReturnRate, SteerRate};
+    use crate::track::WALL_DISTANCE;
 
     use super::*;
 
@@ -2678,6 +2691,29 @@ mod tests {
         assert!(into_wall(&track, &against) < 1e-3, "{against:?}");
         assert!(against.position.distance(pusher.position) > 0.6);
         assert_eq!((ka, kb), (Knock::default(), Knock::default()));
+    }
+
+    #[test]
+    fn earth_rising_before_the_wall_stops_the_bike() {
+        let (mut track, mut state) = against_left_wall(FRAC_PI_2);
+        // Earth 2 m before the left wall around the 50th point.
+        let mut edges = vec![[WALL_DISTANCE; 2]; track.sample_count()];
+        for sides in &mut edges[45..=55] {
+            sides[0] = WALL_DISTANCE - 2.0;
+        }
+        track.set_edges(edges);
+        let hit = hit_walls(&mut state, &track).expect("hits the earth");
+        assert!(hit.into > 30.0, "head on: {hit:?}");
+        for &(point, radius) in &footprint(&state) {
+            let reach = track.distance_to_centerline(point) + radius;
+            assert!(reach < WALL_DISTANCE - 2.0 + 1e-3, "{reach}");
+        }
+        // Elsewhere the wall is where it was.
+        let (_, mut far) = against_left_wall(FRAC_PI_2);
+        far.position = track.offset_point(150, WALL_DISTANCE + 1.0);
+        hit_walls(&mut far, &track);
+        let gap = WALL_DISTANCE - track.distance_to_centerline(far.position);
+        assert!(gap < 1.1, "{gap}");
     }
 
     #[test]

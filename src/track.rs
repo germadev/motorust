@@ -79,6 +79,10 @@ pub struct Track {
     half_width: f32,
     /// Distancia entre puntos de la línea central (ver [`Self::step_length`]).
     step: f32,
+    /// Where the solid edge is at each point of the centre line, to the left
+    /// and to the right (m from it): the walls, or the earth where it rises
+    /// before them (see [`Self::set_edges`]). Empty: the walls everywhere.
+    edges: Vec<[f32; 2]>,
 }
 
 /// El punto de la línea central más cercano a otro.
@@ -109,6 +113,7 @@ impl Track {
             bank: Vec::new(),
             half_width: TRACK_WIDTH / 2.0,
             step: 0.0,
+            edges: Vec::new(),
         };
         track.step = track.segments().map(|(a, b)| a.distance(b)).sum::<f32>()
             / track.centerline.len() as f32;
@@ -138,6 +143,44 @@ impl Track {
 
     pub fn half_width(&self) -> f32 {
         self.half_width
+    }
+
+    /// Where the solid edge is at each point of the centre line, to the left
+    /// and to the right: the walls, or the earth where the terrain rises
+    /// before them. Each is capped at [`WALL_DISTANCE`].
+    pub fn set_edges(&mut self, edges: Vec<[f32; 2]>) {
+        debug_assert!(edges.is_empty() || edges.len() == self.centerline.len());
+        self.edges = edges
+            .into_iter()
+            .map(|sides| sides.map(|edge| edge.min(WALL_DISTANCE)))
+            .collect();
+    }
+
+    /// How far from the centre line the solid edge is beside a point
+    /// (m): the wall, or the earth where it rises before the wall.
+    pub fn edge_beside(&self, nearest: &Nearest) -> f32 {
+        if self.edges.is_empty() {
+            return WALL_DISTANCE;
+        }
+        let side = usize::from(nearest.lateral < 0.0);
+        let n = self.centerline.len();
+        let (a, b) = (
+            self.edges[nearest.index % n][side],
+            self.edges[(nearest.index + 1) % n][side],
+        );
+        a.lerp(b, nearest.t)
+    }
+
+    /// The closest the solid edge comes on either side anywhere near the
+    /// point `index` of the centre line (within `reach` samples).
+    pub fn closest_edge_near(&self, index: usize, reach: usize) -> f32 {
+        if self.edges.is_empty() {
+            return WALL_DISTANCE;
+        }
+        let n = self.centerline.len();
+        (index + n - reach..=index + n + reach)
+            .flat_map(|i| self.edges[i % n])
+            .fold(WALL_DISTANCE, f32::min)
     }
 
     pub fn sample_count(&self) -> usize {

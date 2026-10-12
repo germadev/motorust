@@ -604,7 +604,7 @@ pub(super) fn pose_pilots(
             // Off the bike, hands and feet move as the fall goes (see
             // `ThrownRider::limbs`).
             let let_go = c.let_go();
-            let limbs = c.rider.limbs(c.elapsed);
+            let limbs = c.rider.limbs;
             let off = |offset: Vec3| geometry.seat + offset;
             (
                 [

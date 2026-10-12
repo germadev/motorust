@@ -93,12 +93,13 @@ const TUMBLE_PER_JOLT: f32 = 0.6;
 const MAX_TUMBLE: f32 = 10.0;
 const TUMBLE_FRICTION: f32 = 6.0;
 const SETTLE_RATE: f32 = 1.5;
-/// Size of the rider against the walls (m): the hips, how far the feet and
-/// the head reach from them lying down, and how wide those are.
+/// Size of the rider against the walls (m): the hips; the helmet, from the
+/// hips along the back, and its radius; and the radius of hands and feet.
 const RIDER_RADIUS: f32 = 0.3;
-const RIDER_FEET: f32 = 0.85;
-const RIDER_HEAD: f32 = 0.7;
-const LIMB_RADIUS: f32 = 0.15;
+const HELMET: Vec3 = Vec3::new(0.0, 0.62, -0.08);
+const HELMET_RADIUS: f32 = 0.17;
+const HAND_RADIUS: f32 = 0.1;
+const FOOT_RADIUS: f32 = 0.12;
 /// What bounces back off a wall (fraction of the speed into it).
 const WALL_RESTITUTION: f32 = 0.2;
 /// Speed into a wall that a rider rides out (m/s): about 36 km/h straight
@@ -157,12 +158,17 @@ pub struct ThrownRider {
     /// How far back the body has been laid (rad), from seated (0) to lying
     /// on the back ([`LIE_ANGLE`]).
     pub lie: f32,
+    /// Where the hands and feet are, and how fast they move, in the frame of
+    /// the body: they swing freely after the pose they reach for (see
+    /// [`Self::pose`]).
+    pub limbs: Limbs,
+    pub limb_velocity: Limbs,
 }
 
 /// Where a rider down on the track has their hands and feet: offsets from
 /// the hips in the frame of the body with its back straight (x to the right,
 /// y along the back, -z out of the chest). The right one first.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Limbs {
     pub hands: [Vec3; 2],
     pub feet: [Vec3; 2],
@@ -208,98 +214,125 @@ impl Limbs {
 
 /// A rider's right shoulder from the hips, with the back straight.
 const SHOULDER: Vec3 = Vec3::new(0.18, 0.45, 0.0);
-/// Flailing in the air: how fast the arms windmill and the legs pedal (Hz)
-/// and how far the hands go round the shoulders (m).
-const FLAIL_RATE: f32 = 2.2;
-const FLAIL_REACH: f32 = 0.5;
-/// How much the limbs flop as the body rolls over while tumbling (m), and
-/// how far they trail behind while sliding (m).
-const TUMBLE_FLOP: f32 = 0.12;
+/// Thrown, the arms go up and out and the legs apart, drifting slowly (Hz,
+/// m) while the body flies.
+const DRIFT_RATE: f32 = 0.8;
+const DRIFT: f32 = 0.12;
+/// How far the limbs trail behind while sliding (m).
 const TRAIL: f32 = 0.15;
-/// How much the asphalt jolts the limbs of a rider sliding fast (m), and how
-/// often (Hz) and how far (m) a rider lying still stirs an arm or a leg.
-const JOLT: f32 = 0.05;
+/// How often (Hz) and how far (m) a rider lying still stirs an arm or a leg.
 const STIR_RATE: f32 = 0.35;
 const STIR: f32 = 0.15;
+/// Hands and feet hang on springs from the pose they reach for: how stiff
+/// (natural frequency, Hz) and how damped (fraction of critical damping:
+/// below one they swing a little past it and back, loosely, without
+/// shaking).
+const LIMB_FREQUENCY: f32 = 2.5;
+const LIMB_DAMPING: f32 = 0.45;
+/// The most of a jolt the limbs feel (m/s²) and the fastest they move (m/s):
+/// a landing stops the body in an instant, but arms and legs are not thrown
+/// about by it, they flop.
+const MAX_FELT: f32 = 120.0;
+const MAX_LIMB_SPEED: f32 = 3.5;
 
 impl ThrownRider {
-    /// Where the hands and feet are `elapsed` seconds into the fall, from what
-    /// racers do when they crash: thrown, arms and legs flail; tumbling, they
-    /// are tucked in against the body (hands out break wrists and
-    /// collarbones); sliding, they are spread out like a starfish to slow down,
-    /// spread the load and stop rolling, trailing behind on the asphalt; once
-    /// still, they rest. Each moment blends these by how much the rider is
-    /// flying, rolling and sliding, so the pose changes smoothly.
-    pub fn limbs(&self, elapsed: f32) -> Limbs {
-        let flying = if self.climb > 0.0 {
-            1.0
-        } else {
-            crate::geometry::smoothstep(LYING_HEIGHT, LYING_HEIGHT + 0.25, self.height)
-        };
+    /// Where the hands and feet reach for `elapsed` seconds into the fall,
+    /// from what racers do when they crash: thrown, arms go up and out and
+    /// legs apart; tumbling, they are tucked in against the body (hands out
+    /// break wrists and collarbones); sliding, they are spread out like a
+    /// starfish to slow down, spread the load and stop rolling, trailing
+    /// behind on the asphalt; once still, they rest. Each moment blends these
+    /// by how much the rider is flying, rolling and sliding, so the pose
+    /// changes smoothly; the limbs swing after it (see [`Self::step`]).
+    pub fn pose(&self, elapsed: f32) -> Limbs {
+        let flying = crate::geometry::smoothstep(LYING_HEIGHT, LYING_HEIGHT + 0.25, self.height);
         let tumbling =
             crate::geometry::smoothstep(SETTLE_RATE, 2.0 * SETTLE_RATE + 1.0, self.roll_rate.abs());
-        let speed = self.velocity.length();
-        let sliding = crate::geometry::smoothstep(STILL_SPEED, 3.0, speed);
+        let sliding = crate::geometry::smoothstep(STILL_SPEED, 3.0, self.velocity.length());
 
-        // Thrown: the arms windmill round the shoulders in turn and the legs
-        // pedal, like anyone falling.
-        let phase = elapsed * FLAIL_RATE * std::f32::consts::TAU;
-        let windmill = |side_phase: f32| {
-            let (sin, cos) = (phase + side_phase).sin_cos();
-            SHOULDER + Vec3::new(0.2, cos, -sin) * FLAIL_REACH
+        // Thrown: arms up and out, legs apart, drifting slowly.
+        let drift = |side_phase: f32| {
+            let phase = elapsed * DRIFT_RATE * std::f32::consts::TAU + side_phase;
+            (
+                SHOULDER + Vec3::new(0.3, 0.25 + DRIFT * phase.sin(), -0.15 + DRIFT * phase.cos()),
+                Vec3::new(
+                    0.25,
+                    -0.62 + 0.5 * DRIFT * (phase + 1.0).sin(),
+                    -0.15 + DRIFT * (phase + 1.0).cos(),
+                ),
+            )
         };
-        let pedal = |side_phase: f32| {
-            let (sin, cos) = (1.3 * phase + side_phase).sin_cos();
-            Vec3::new(0.2, -0.62 + 0.15 * sin, -0.25 * cos - 0.1)
-        };
-        let mut flail = Limbs::mirrored(windmill(0.0), pedal(0.0));
+        let ((right_hand, right_foot), (left_hand, left_foot)) = (drift(0.0), drift(PI));
+        let mut flail = Limbs::mirrored(right_hand, right_foot);
         let left = Vec3::new(-1.0, 1.0, 1.0);
-        flail.hands[1] = windmill(PI) * left;
-        flail.feet[1] = pedal(PI) * left;
+        flail.hands[1] = left_hand * left;
+        flail.feet[1] = left_foot * left;
 
-        // Rolling over: tucked in, hands by the face and knees to the chest,
-        // flopping a little with each turn.
-        let flop = Vec3::new(0.0, (2.0 * self.roll).sin(), (2.0 * self.roll).cos()) * TUMBLE_FLOP;
-        let mut tuck = Limbs::mirrored(Vec3::new(0.12, 0.32, -0.25), Vec3::new(0.15, -0.32, -0.35));
-        tuck.hands[0] += flop;
-        tuck.feet[1] -= flop;
-
-        // Sliding: spread out, trailing behind on the asphalt.
+        // Rolling over: tucked in, hands by the face and knees to the chest.
+        let tuck = Limbs::mirrored(Vec3::new(0.12, 0.32, -0.25), Vec3::new(0.15, -0.32, -0.35));
+        // Sliding: spread out. Still: resting.
         let spread = Limbs::mirrored(Vec3::new(0.65, 0.4, 0.05), Vec3::new(0.38, -0.78, 0.05));
         let rest = Limbs::mirrored(Vec3::new(0.32, 0.02, -0.1), Vec3::new(0.18, -0.8, 0.0));
 
         let on_ground = 1.0 - flying;
-        let (spreading, resting) = (
-            on_ground * (1.0 - tumbling) * sliding,
-            on_ground * (1.0 - tumbling) * (1.0 - sliding),
-        );
+        let resting = on_ground * (1.0 - tumbling) * (1.0 - sliding);
         let mut pose = Limbs::weighted(&[
             (flying, flail),
             (on_ground * tumbling, tuck),
-            (spreading, spread),
+            (on_ground * (1.0 - tumbling) * sliding, spread),
             (resting, rest),
         ]);
-        // Sliding, the asphalt jolts every limb on its own; lying still, the
-        // rider stirs, slowly bending an arm or a knee.
-        let jolts = speed.min(10.0) / 10.0 * spreading * JOLT;
+        // Lying still, the rider stirs, slowly bending an arm or a knee.
         let limbs = pose.hands.iter_mut().chain(&mut pose.feet);
         for (i, limb) in limbs.enumerate() {
-            let i = i as f32;
-            let jolt = Vec3::new(
-                (elapsed * (17.0 + 3.0 * i)).sin(),
-                (elapsed * (23.0 + 5.0 * i)).sin(),
-                (elapsed * (19.0 + 2.0 * i)).cos(),
-            );
-            let stir = (elapsed * STIR_RATE * std::f32::consts::TAU + 1.9 * i)
-                .sin()
-                .max(0.0);
-            *limb += jolt * jolts + Vec3::new(0.0, 0.6, -1.0) * stir * STIR * resting;
+            let phase = elapsed * STIR_RATE * std::f32::consts::TAU + 1.9 * i as f32;
+            *limb += Vec3::new(0.0, 0.6, -1.0) * phase.sin().max(0.0) * STIR * resting;
         }
         // The asphalt drags the limbs back against the way the body slides.
         let body = Self::body_rotation(self.heading, self.roll, self.lie);
         let slide = body.inverse() * Vec3::new(self.velocity.x, 0.0, self.velocity.y);
         let trail = -slide.normalize_or_zero() * TRAIL * on_ground * sliding;
         pose.shifted(trail)
+    }
+
+    /// Swings the hands and feet after [`Self::pose`]: each hangs on a
+    /// damped spring from where it reaches for, and feels the body's jolts
+    /// (`accel`, m/s² in the world, without gravity) the other way, and the
+    /// tumble flinging it out. So they lag behind when the body is stopped,
+    /// flop when it lands and fling out when it spins, loosely.
+    fn swing(&mut self, accel: Vec3, elapsed: f32, dt: f32) {
+        let target = self.pose(elapsed);
+        let felt = (Self::body_rotation(self.heading, self.roll, self.lie).inverse() * accel)
+            .clamp_length_max(MAX_FELT);
+        let omega = std::f32::consts::TAU * LIMB_FREQUENCY;
+        let spin = self.roll_rate * self.roll_rate;
+        let limbs = self.limbs.hands.iter_mut().chain(&mut self.limbs.feet);
+        let velocities = self
+            .limb_velocity
+            .hands
+            .iter_mut()
+            .chain(&mut self.limb_velocity.feet);
+        let goals = target.hands.iter().chain(&target.feet);
+        for ((limb, velocity), &goal) in limbs.zip(velocities).zip(goals) {
+            // Spinning about the body's long axis (its y) flings it out.
+            let fling = Vec3::new(limb.x, 0.0, limb.z) * spin;
+            let pull = (goal - *limb) * omega * omega - *velocity * 2.0 * LIMB_DAMPING * omega;
+            *velocity = (*velocity + (pull - felt + fling) * dt).clamp_length_max(MAX_LIMB_SPEED);
+            *limb += *velocity * dt;
+        }
+    }
+
+    /// Takes the body out of any wall a part of it went into. Bouncing off
+    /// changes how the limbs trail, which can put one back into the wall:
+    /// looks again until none is.
+    fn keep_off_walls(&mut self, track: &Track) {
+        for _ in 0..4 {
+            let contact = wall_contact(track, self.position, &self.footprint());
+            if contact.is_none() {
+                break;
+            }
+            contain(&mut self.position, &mut self.velocity, contact);
+        }
     }
 
     /// How the body is turned: facing `heading`, rolled about its long axis
@@ -310,14 +343,22 @@ impl ThrownRider {
         Quat::from_rotation_y(heading) * Quat::from_rotation_z(roll) * Quat::from_rotation_x(lie)
     }
 
-    /// The body seen from above, as circles: the hips and, as it is laid
-    /// back, the feet ahead and the head behind.
-    fn footprint(&self) -> [(Vec2, f32); 3] {
-        let along = forward(self.heading) * self.lie.sin();
+    /// The body seen from above, as circles: the hips, the helmet, and the
+    /// hands and feet where they are, so none of them goes through a wall.
+    fn footprint(&self) -> [(Vec2, f32); 6] {
+        let body = Self::body_rotation(self.heading, self.roll, self.lie);
+        let at = |offset: Vec3| {
+            let world = body * offset;
+            self.position + Vec2::new(world.x, world.z)
+        };
+        let limbs = self.limbs;
         [
             (self.position, RIDER_RADIUS),
-            (self.position + along * RIDER_FEET, LIMB_RADIUS),
-            (self.position - along * RIDER_HEAD, LIMB_RADIUS),
+            (at(HELMET), HELMET_RADIUS),
+            (at(limbs.hands[0]), HAND_RADIUS),
+            (at(limbs.hands[1]), HAND_RADIUS),
+            (at(limbs.feet[0]), FOOT_RADIUS),
+            (at(limbs.feet[1]), FOOT_RADIUS),
         ]
     }
 
@@ -325,8 +366,10 @@ impl ThrownRider {
         self.height > LYING_HEIGHT || self.climb > 0.0
     }
 
-    /// One step of a rider in the air, tumbling or sliding.
-    pub fn step(&mut self, track: &Track, dt: f32) {
+    /// One step of a rider in the air, tumbling or sliding, `elapsed`
+    /// seconds into the fall.
+    pub fn step(&mut self, track: &Track, elapsed: f32, dt: f32) {
+        let before = Vec3::new(self.velocity.x, self.climb, self.velocity.y);
         self.lie = approach(self.lie, LIE_ANGLE, LIE_RATE, dt);
         let airborne = self.is_airborne();
         if airborne {
@@ -353,8 +396,16 @@ impl ThrownRider {
             let rest = (self.roll / PI).round() * PI;
             self.roll = approach(self.roll, rest, 6.0, dt);
         }
-        let contact = wall_contact(track, self.position, &self.footprint());
-        contain(&mut self.position, &mut self.velocity, contact);
+        self.keep_off_walls(track);
+        // What the body went through in this step, without the gravity that
+        // pulls on the limbs as much as on it.
+        let after = Vec3::new(self.velocity.x, self.climb, self.velocity.y);
+        let mut accel = (after - before) / dt;
+        if airborne {
+            accel.y += GRAVITY;
+        }
+        self.swing(accel, elapsed, dt);
+        self.keep_off_walls(track);
         self.ground = track.road_height(self.position);
     }
 }
@@ -619,7 +670,7 @@ pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
         1.0
     };
     let jolt = hit.dv.length();
-    let rider = ThrownRider {
+    let mut rider = ThrownRider {
         position: state.position + left * state.lean.sin() * SEAT_HEIGHT - ahead * SEAT_BACK,
         height: state.lean.cos() * SEAT_HEIGHT,
         ground: state.elevation,
@@ -629,7 +680,9 @@ pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
         roll: state.lean,
         roll_rate: fall_side * (TUMBLE + TUMBLE_PER_JOLT * jolt).min(MAX_TUMBLE),
         lie: 0.0,
+        ..default()
     };
+    rider.limbs = rider.pose(0.0);
     CrashState {
         down: true,
         elapsed: 0.0,
@@ -688,7 +741,7 @@ pub fn slide(
     state.grounded = true;
 
     crash.previous = crash.rider;
-    crash.rider.step(track, dt);
+    crash.rider.step(track, crash.elapsed, dt);
     let rider = &crash.rider;
     let still = knock.velocity.length() < STILL_SPEED
         && rider.velocity.length() < STILL_SPEED
@@ -1080,50 +1133,63 @@ mod tests {
         }
     }
 
-    /// How far the hands and the feet move in a tenth of a second.
-    fn motion(rider: &ThrownRider, elapsed: f32) -> f32 {
-        let (a, b) = (rider.limbs(elapsed), rider.limbs(elapsed + 0.1));
-        (0..2)
-            .map(|i| a.hands[i].distance(b.hands[i]) + a.feet[i].distance(b.feet[i]))
-            .sum()
-    }
-
     fn spread(limbs: &Limbs) -> f32 {
         limbs.hands[0].x - limbs.hands[1].x + limbs.feet[0].x - limbs.feet[1].x
     }
 
-    #[test]
-    fn a_thrown_rider_flails_arms_and_legs() {
-        let flying = ThrownRider {
-            height: 0.9,
-            climb: 1.0,
-            ..default()
-        };
-        assert!(motion(&flying, 0.3) > 0.4, "{}", motion(&flying, 0.3));
-        // The arms go round in turn, not together.
-        let limbs = flying.limbs(0.3);
-        assert!((limbs.hands[0].y - limbs.hands[1].y).abs() > 0.2);
-        // Lying still, they stir, but slowly.
-        let still = lying(Vec2::ZERO, 0.0);
-        let stirring = (0..30)
-            .map(|i| motion(&still, i as f32 * 0.1))
-            .fold(0.0, f32::max);
-        assert!(stirring > 0.01 && stirring < 0.15, "{stirring}");
+    /// Every hand and foot, step by step, through a whole fall at `speed`.
+    fn limb_paths(speed: f32) -> Vec<[Vec3; 4]> {
+        let (track, mut state, mut knock, mut crash) = crash_on_the_straight(speed);
+        let mut paths = Vec::new();
+        while !crash.is_over() {
+            slide(&mut state, &mut knock, &mut crash, &track, DT);
+            let limbs = crash.rider.limbs;
+            paths.push([limbs.hands[0], limbs.hands[1], limbs.feet[0], limbs.feet[1]]);
+        }
+        paths
     }
 
     #[test]
-    fn the_asphalt_jolts_the_limbs_of_a_sliding_rider() {
-        let sliding = lying(Vec2::new(0.0, -8.0), 0.0);
-        let jolted = (0..10)
-            .map(|i| motion(&sliding, i as f32 * 0.1))
-            .fold(0.0, f32::max);
-        assert!(jolted > 0.05, "{jolted}");
+    fn a_falling_rider_moves_arms_and_legs_loosely_without_shaking() {
+        let paths = limb_paths(18.0);
+        for limb in 0..4 {
+            let path: Vec<Vec3> = paths.iter().map(|limbs| limbs[limb]).collect();
+            let moved: f32 = path.windows(2).map(|w| w[0].distance(w[1])).sum();
+            assert!(moved > 0.5, "limb {limb} hardly moves: {moved} m");
+            // Shaking is going back and forth many times a second: count how
+            // often each limb turns round, along each axis.
+            let steps: Vec<Vec3> = path.windows(2).map(|w| w[1] - w[0]).collect();
+            let seconds = path.len() as f32 * DT;
+            for axis in 0..3 {
+                let turns = steps
+                    .windows(2)
+                    .filter(|w| w[0][axis] * w[1][axis] < -1e-10)
+                    .count();
+                assert!(
+                    turns as f32 / seconds < 6.0,
+                    "limb {limb} shakes: {turns} turns in {seconds} s"
+                );
+            }
+            let fastest = steps.iter().map(|step| step.length()).fold(0.0, f32::max);
+            assert!(fastest < 0.06, "limb {limb} jumps {fastest} m in a step");
+        }
+    }
+
+    #[test]
+    fn once_still_the_limbs_settle() {
+        let paths = limb_paths(12.0);
+        let [.., before, last] = paths.as_slice() else {
+            panic!("the fall takes some steps");
+        };
+        for (a, b) in before.iter().zip(last) {
+            assert!(a.distance(*b) < 0.005);
+        }
     }
 
     #[test]
     fn tumbling_tucks_in_and_sliding_spreads_out() {
-        let tumbling = lying(Vec2::new(0.0, -8.0), 8.0).limbs(1.0);
-        let sliding = lying(Vec2::new(0.0, -8.0), 0.0).limbs(1.0);
+        let tumbling = lying(Vec2::new(0.0, -8.0), 8.0).pose(1.0);
+        let sliding = lying(Vec2::new(0.0, -8.0), 0.0).pose(1.0);
         assert!(spread(&sliding) > spread(&tumbling) + 0.6);
         // Tucked: knees to the chest, hands by the face.
         for i in 0..2 {
@@ -1136,8 +1202,8 @@ mod tests {
     fn sliding_limbs_trail_behind() {
         // On the back, feet first (heading 0 slides towards -Z): in the body,
         // the feet are ahead (-y), so trailing pulls everything towards +y.
-        let sliding = lying(Vec2::new(0.0, -8.0), 0.0).limbs(1.0);
-        let still = lying(Vec2::new(0.0, -0.01), 0.0).limbs(1.0);
+        let sliding = lying(Vec2::new(0.0, -8.0), 0.0).pose(1.0);
+        let still = lying(Vec2::new(0.0, -0.01), 0.0).pose(1.0);
         assert!(sliding.feet[0].y > still.feet[0].y + 0.1);
         assert!(sliding.hands[0].y > still.hands[0].y + 0.1);
     }
@@ -1153,9 +1219,14 @@ mod tests {
             heading,
             ..default()
         };
-        for _ in 0..(3.0 / DT) as usize {
-            rider.step(&track, DT);
-            assert!(track.nearest(rider.position).distance <= WALL_DISTANCE);
+        for i in 0..(3.0 / DT) as usize {
+            let elapsed = i as f32 * DT;
+            rider.step(&track, elapsed, DT);
+            // Not the hips, the head, the hands or the feet.
+            for &(point, radius) in &rider.footprint() {
+                let into = track.distance_to_centerline(point) + radius - WALL_DISTANCE;
+                assert!(into < 1e-3, "{into}");
+            }
         }
     }
 }
