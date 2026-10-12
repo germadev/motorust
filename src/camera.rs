@@ -349,6 +349,7 @@ fn stick_direction(stick: Vec2) -> Option<f32> {
 /// Dónde va la cámara y a qué punto mira, a `distance` de la moto en `target`
 /// orientada hacia `heading`: detrás de la moto según esa dirección, mirando
 /// por delante de ella.
+#[cfg(test)]
 fn chase_view(target: Vec3, heading: f32, distance: f32) -> (Vec3, Vec3) {
     let (position, look_at, _) = tilted_chase_view(target, heading, distance, Quat::IDENTITY);
     (position, look_at)

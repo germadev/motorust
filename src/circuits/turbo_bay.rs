@@ -13,10 +13,14 @@
 //! 3. Out of the tunnel, past an old-style grand hotel on a headland above
 //!    the south-east bay, to a pass between rocks.
 //! 4. The east coast road rises and falls behind a white barrier, with the
-//!    sea on the right, up to a forest on the highest ground.
-//! 5. From the forest the road runs down the ridge and crosses over the
-//!    tunnel, then down the shore of the bay to a bridge with red arches
-//!    over the river mouth, through the town and back to the seafront.
+//!    sea on the right.
+//! 5. A mountain road climbs on north in S-bends between rock walls, dips,
+//!    and climbs again to the summit at the island's northern tip, 54 m up,
+//!    round a long left-hander with the sea and a lighthouse below.
+//! 6. Down through a forest it rolls over a hump, dips and rises again, then
+//!    runs down the ridge and crosses over the tunnel, down the shore of the
+//!    bay to a bridge with red arches over the river mouth, through the town
+//!    and back to the seafront.
 
 use bevy::prelude::*;
 
@@ -26,14 +30,15 @@ use crate::track::{Banking, Layout, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 /// Where things are, in metres from the finish line.
-const SEAFRONT: Span = span(2470.0, 250.0);
+const SEAFRONT: Span = span(3020.0, 250.0);
 const TUNNEL: Span = span(505.0, 625.0);
 const ROCK_PASS: Span = span(870.0, 990.0);
 const EAST_COAST: Span = span(1000.0, 1280.0);
-const FOREST: Span = span(1300.0, 1660.0);
-const BAY_SHORE: Span = span(1910.0, 2160.0);
-const BRIDGE: Span = span(2170.0, 2255.0);
-const TOWN: Span = span(2280.0, 2460.0);
+const MOUNTAIN: Span = span(1280.0, 1660.0);
+const FOREST: Span = span(1660.0, 2160.0);
+const BAY_SHORE: Span = span(2460.0, 2710.0);
+const BRIDGE: Span = span(2720.0, 2805.0);
+const TOWN: Span = span(2830.0, 3010.0);
 
 const RED: Color = Color::srgb(0.8, 0.08, 0.06);
 
@@ -41,9 +46,9 @@ pub const TURBO_BAY: Circuit = Circuit {
     name: "Turbo Bay",
     name_en: "Turbo Bay",
     description: "Inspirada en Moto Racer: paseo marítimo, túnel bajo\n\
-                  la propia pista, gran hotel, bosque y puente rojo",
+                  la propia pista, puerto de montaña y puente rojo",
     description_en: "Inspired by Moto Racer: seafront, a tunnel under\n\
-                     the track itself, grand hotel, forest and red bridge",
+                     the track itself, a mountain pass and red bridge",
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
@@ -91,6 +96,12 @@ pub const TURBO_BAY: Circuit = Circuit {
                 side: Side::Right,
                 style: WallStyle::Concrete,
             },
+            // The mountain road, with the sea on the right.
+            WallRun {
+                span: MOUNTAIN,
+                side: Side::Right,
+                style: WallStyle::Concrete,
+            },
             WallRun {
                 span: BAY_SHORE,
                 side: Side::Left,
@@ -111,7 +122,7 @@ pub const TURBO_BAY: Circuit = Circuit {
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 1600.0,
+                along: 1980.0,
                 color: RED,
                 text: Some("CHECKPOINT"),
             },
@@ -133,7 +144,7 @@ pub const TURBO_BAY: Circuit = Circuit {
                 accent: None,
             },
             Billboard {
-                along: 2330.0,
+                along: 2880.0,
                 side: Side::Right,
                 text: "BEVY",
                 color: Color::srgb(0.1, 0.1, 0.1),
@@ -185,7 +196,7 @@ pub const TURBO_BAY: Circuit = Circuit {
             },
         ],
         hotels: &[Row {
-            span: span(2490.0, 230.0),
+            span: span(3040.0, 230.0),
             side: Side::Right,
             lateral: WALL_DISTANCE + 30.0,
             every: 38.0,
@@ -197,8 +208,9 @@ pub const TURBO_BAY: Circuit = Circuit {
             Vec2::new(-70.0, 60.0),
             Vec2::new(-100.0, -290.0),
         ],
+        // On the northern cape, below the summit.
         lighthouses: &[Lighthouse {
-            position: Vec2::new(245.0, -768.0),
+            position: Vec2::new(480.0, -1046.0),
             height: 24.0,
         }],
         boats: &[
@@ -244,13 +256,24 @@ pub const TURBO_BAY: Circuit = Circuit {
                 side: Side::Right,
                 direction: ChevronDirection::Left,
             },
+            // Up the mountain, and round the summit.
             ChevronSign {
-                along: 1260.0,
+                along: 1270.0,
                 side: Side::Right,
                 direction: ChevronDirection::Left,
             },
             ChevronSign {
-                along: 2260.0,
+                along: 1470.0,
+                side: Side::Right,
+                direction: ChevronDirection::Left,
+            },
+            ChevronSign {
+                along: 1990.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 2810.0,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
@@ -283,12 +306,12 @@ pub const TURBO_BAY: Circuit = Circuit {
                 distance: 50,
             },
             BrakeMarker {
-                along: 2140.0,
+                along: 2690.0,
                 side: Side::Right,
                 distance: 100,
             },
             BrakeMarker {
-                along: 2170.0,
+                along: 2720.0,
                 side: Side::Right,
                 distance: 50,
             },
@@ -303,7 +326,7 @@ pub const TURBO_BAY: Circuit = Circuit {
     },
 };
 
-const CONTROL_POINTS: [Vec2; 34] = [
+const CONTROL_POINTS: [Vec2; 42] = [
     // 1. The seafront, north (-Z).
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -95.0),
@@ -324,15 +347,25 @@ const CONTROL_POINTS: [Vec2; 34] = [
     Vec2::new(485.0, -300.0),
     Vec2::new(530.0, -345.0),
     Vec2::new(548.0, -410.0),
-    // 4. The east coast road and the forest, round to the west.
+    // 4. The east coast road.
     Vec2::new(556.0, -490.0),
-    Vec2::new(560.0, -570.0),
-    Vec2::new(545.0, -640.0),
-    Vec2::new(505.0, -695.0),
-    Vec2::new(440.0, -722.0),
-    Vec2::new(372.0, -712.0),
-    Vec2::new(318.0, -675.0),
-    // 5. Down the ridge and over the tunnel.
+    // 5. On north up the mountain, round the summit and down to the west.
+    Vec2::new(562.0, -575.0),
+    Vec2::new(566.0, -655.0),
+    Vec2::new(552.0, -728.0),
+    Vec2::new(515.0, -782.0),
+    Vec2::new(502.0, -850.0),
+    Vec2::new(520.0, -915.0),
+    Vec2::new(500.0, -975.0),
+    Vec2::new(450.0, -1000.0),
+    Vec2::new(390.0, -990.0),
+    Vec2::new(350.0, -950.0),
+    Vec2::new(312.0, -900.0),
+    Vec2::new(292.0, -830.0),
+    Vec2::new(300.0, -760.0),
+    // 6. Down through the forest.
+    Vec2::new(318.0, -680.0),
+    // Down the ridge and over the tunnel.
     Vec2::new(282.0, -610.0),
     Vec2::new(258.0, -530.0),
     Vec2::new(240.0, -450.0),
@@ -349,9 +382,10 @@ const CONTROL_POINTS: [Vec2; 34] = [
 ];
 
 /// Up and down all the way: from the seafront to the water's edge, up
-/// through the tunnel and along the coast to the forest, 44 m up, and down
-/// the ridge, about 18 m over the tunnel, to the bridge and the town.
-const ELEVATION: [(f32, f32); 37] = [
+/// through the tunnel and along the coast, up the mountain to the summit,
+/// 54 m up, down through the forest, rolling, and down the ridge, about 18 m
+/// over the tunnel, to the bridge and the town.
+const ELEVATION: [(f32, f32); 47] = [
     (0.0, 0.0),
     (160.0, 0.5),
     (230.0, 3.0),
@@ -373,32 +407,45 @@ const ELEVATION: [(f32, f32); 37] = [
     (1120.0, 22.0),
     (1180.0, 18.5),
     (1240.0, 22.0),
-    (1320.0, 30.0),
-    (1400.0, 37.0),
-    (1480.0, 42.0),
-    (1560.0, 44.0),
-    (1640.0, 41.0),
-    (1720.0, 33.0),
-    (1790.0, 28.0),
+    // Up the mountain, with a dip half way.
+    (1310.0, 28.0),
+    (1380.0, 35.0),
+    (1430.0, 36.5),
+    (1470.0, 36.0),
+    (1530.0, 41.5),
+    (1590.0, 47.5),
+    // The summit.
+    (1650.0, 52.0),
+    (1710.0, 50.5),
+    // Down through the forest, over a hump, a dip and up again.
+    (1770.0, 45.0),
+    (1830.0, 46.5),
+    (1890.0, 42.0),
+    (1950.0, 39.5),
+    (2030.0, 42.0),
+    (2110.0, 44.0),
+    (2190.0, 41.0),
+    (2270.0, 33.0),
+    (2340.0, 28.0),
     // Over the tunnel.
-    (1835.0, 25.5),
-    (1900.0, 21.5),
-    (1960.0, 20.5),
-    (2010.0, 21.0),
-    (2070.0, 17.0),
-    (2140.0, 13.5),
-    (2210.0, 12.0),
-    (2280.0, 11.5),
-    (2340.0, 9.0),
-    (2400.0, 6.0),
-    (2460.0, 3.0),
+    (2385.0, 25.5),
+    (2450.0, 21.5),
+    (2510.0, 20.5),
+    (2560.0, 21.0),
+    (2620.0, 17.0),
+    (2690.0, 13.5),
+    (2760.0, 12.0),
+    (2830.0, 11.5),
+    (2890.0, 9.0),
+    (2950.0, 6.0),
+    (3010.0, 3.0),
 ];
 
 /// The island, clockwise from the south-west: the beach off the seafront,
-/// the north-west point, the north bay up to the lighthouse headland, the
-/// north and east coasts, the hotel headland, the south-east bay with the
+/// the north-west point, the north bay up to a rocky headland, the northern
+/// cape round the mountain, the east coast, the hotel headland, the south-east bay with the
 /// river mouth that runs in under the bridge, and the south coast.
-const COAST: [Vec2; 55] = [
+const COAST: [Vec2; 60] = [
     Vec2::new(-40.0, 190.0),
     Vec2::new(-50.0, 110.0),
     Vec2::new(-47.0, 30.0),
@@ -416,12 +463,18 @@ const COAST: [Vec2; 55] = [
     Vec2::new(218.0, -632.0),
     Vec2::new(226.0, -700.0),
     Vec2::new(214.0, -752.0),
-    Vec2::new(238.0, -790.0),
-    Vec2::new(290.0, -792.0),
-    Vec2::new(365.0, -778.0),
-    Vec2::new(445.0, -785.0),
-    Vec2::new(525.0, -768.0),
-    Vec2::new(588.0, -728.0),
+    // The northern cape, round the mountain.
+    Vec2::new(232.0, -800.0),
+    Vec2::new(236.0, -860.0),
+    Vec2::new(252.0, -930.0),
+    Vec2::new(285.0, -1000.0),
+    Vec2::new(340.0, -1050.0),
+    Vec2::new(420.0, -1072.0),
+    Vec2::new(500.0, -1060.0),
+    Vec2::new(562.0, -1015.0),
+    Vec2::new(596.0, -940.0),
+    Vec2::new(606.0, -860.0),
+    Vec2::new(614.0, -780.0),
     Vec2::new(612.0, -660.0),
     Vec2::new(616.0, -575.0),
     Vec2::new(612.0, -490.0),
@@ -457,7 +510,7 @@ const COAST: [Vec2; 55] = [
     Vec2::new(70.0, 178.0),
 ];
 
-const MASSIFS: [Massif; 11] = [
+const MASSIFS: [Massif; 13] = [
     // The ridge at the waist, which the tunnel goes through and the road
     // comes back over.
     massif(262.0, -372.0, 55.0, 13.0),
@@ -468,7 +521,10 @@ const MASSIFS: [Massif; 11] = [
     massif(560.0, -330.0, 40.0, 18.0),
     massif(420.0, -520.0, 100.0, 34.0),
     massif(350.0, -610.0, 60.0, 24.0),
-    // The lighthouse headland, and rocks above the river and the town.
+    // A crag inside the mountain road, the lighthouse cape, a headland on
+    // the north bay, and rocks above the river and the town.
+    massif(420.0, -880.0, 70.0, 22.0),
+    massif(482.0, -1040.0, 30.0, 10.0),
     massif(250.0, -760.0, 35.0, 14.0),
     massif(50.0, 55.0, 32.0, 12.0),
     // Islets.
@@ -477,7 +533,7 @@ const MASSIFS: [Massif; 11] = [
     massif(340.0, -20.0, 28.0, 12.0),
 ];
 
-const CUTTINGS: [Cutting; 7] = [
+const CUTTINGS: [Cutting; 10] = [
     // Rock on both sides before the mouths of the tunnel, below the road
     // that passes over it.
     Cutting {
@@ -501,21 +557,38 @@ const CUTTINGS: [Cutting; 7] = [
         side: Side::Right,
         height: 9.0,
     },
+    // Rock walls on the inside of the mountain road, on the way up and on
+    // the way down.
+    Cutting {
+        span: span(1290.0, 1400.0),
+        side: Side::Left,
+        height: 14.0,
+    },
+    Cutting {
+        span: span(1520.0, 1640.0),
+        side: Side::Left,
+        height: 16.0,
+    },
+    Cutting {
+        span: span(1800.0, 1880.0),
+        side: Side::Left,
+        height: 12.0,
+    },
     // The ridge on the right, coming down from the forest.
     Cutting {
-        span: span(1660.0, 1760.0),
+        span: span(2210.0, 2310.0),
         side: Side::Left,
         height: 12.0,
     },
     // A rock wall on the inside of the bay shore, and on the right after
     // the town.
     Cutting {
-        span: span(2040.0, 2140.0),
+        span: span(2590.0, 2690.0),
         side: Side::Right,
         height: 12.0,
     },
     Cutting {
-        span: span(2420.0, 2500.0),
+        span: span(2970.0, 3050.0),
         side: Side::Right,
         height: 14.0,
     },
