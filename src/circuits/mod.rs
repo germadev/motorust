@@ -2,7 +2,7 @@
 //! está usando.
 
 mod bay;
-mod loops_hill;
+mod loop_island;
 mod turbo_bay;
 
 use bevy::prelude::*;
@@ -48,7 +48,7 @@ impl Circuit {
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista.
-pub static CIRCUITS: [Circuit; 3] = [bay::BAY, turbo_bay::TURBO_BAY, loops_hill::LOOPS_HILL];
+pub static CIRCUITS: [Circuit; 3] = [bay::BAY, turbo_bay::TURBO_BAY, loop_island::LOOP_ISLAND];
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
 /// vuelve a construir ([`crate::world`]).

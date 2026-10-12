@@ -49,11 +49,11 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 
 - **Progressive.** Steering eases in and out with no jerks. On a gamepad, the left stick is progressive: near the centre it turns only a little, for fine corrections, and fully deflected it turns all the way.
 - **Keyboard and D-pad.** These are on/off inputs, so the game shapes them:
-  - The turn starts the moment you press, already quickly, and builds faster the longer you hold. A tap corrects your line. In just over a quarter of a second the bike turns as much as it can at that speed.
+  - The turn starts the moment you press, already quickly, and builds faster the longer you hold. A tap corrects your line. In about 0.4 s the bike turns as much as it can at that speed (0.3 s with the fast turn rate, see [Debug options](#debug-options)).
   - The bike leans almost at once, because keyboard steering goes in directly, without the spring that smooths the stick.
-  - On release, the steering returns to centre more gently: slowly at first, then faster. The bike is straight again in just over half a second.
+  - On release, the steering returns to centre more gently: slowly at first, then faster. The bike is straight again in about 0.7 s (0.6 s with the fast return rate).
   - With nothing pressed, the bike does not turn. Switching from one side to the other passes through the centre.
-- **Speed-dependent turn limit.** The keyboard and D-pad respond equally fast at any speed, but the faster you go, the less they turn when held. At low speed they turn fully. At top speed they stop at 80 % of full lock, just short of the point where the bike starts to scrub speed. By default the stick has no such limit. Both limits can be changed under [Debug options](#debug-options).
+- **Speed-dependent turn limit.** The keyboard and D-pad respond equally fast at any speed, but the faster you go, the less they turn when held. At low speed they turn fully. At top speed they stop at 80 % of full lock, just short of the point where the bike starts to scrub speed. By default both the stick and the keyboard use two thirds of that limit. Both can be changed under [Debug options](#debug-options).
 - **Physical limits.** Turning is limited by a minimum turning radius at low speed and by lateral grip at high speed. A stopped bike cannot turn.
 
 ### Leaning and cornering
@@ -184,8 +184,10 @@ The "DEPURACIÓN" (Debug) page lets you try handling variants:
 
 | Option | Values | Default |
 |---|---|---|
-| "Stick: limitar el giro con la velocidad" (Stick: limit turning with speed) | "no", "bajo", "medio", "alto" (off, low, medium, high) | off |
-| "Teclado y cruceta: limitar el giro con la velocidad" (Keyboard and D-pad: limit turning with speed) | off, low, medium, high | high |
+| "Stick: limitar el giro con la velocidad" (Stick: limit turning with speed) | "no", "bajo", "medio", "alto" (off, low, medium, high) | medium |
+| "Teclado y cruceta: limitar el giro con la velocidad" (Keyboard and D-pad: limit turning with speed) | off, low, medium, high | medium |
+| "Teclado y cruceta: cuánto gira al dejar pulsado" (Keyboard and D-pad: turn rate when held) | "lento", "medio", "alto" (slow, medium, fast) | medium |
+| "Teclado y cruceta: al soltar la tecla de girar" (Keyboard and D-pad: return rate when released) | "lenta", "media", "rápida" (slow, medium, fast) | medium |
 | "Leyenda de los controles" (Controls legend) | "oculta" / "se ve" (hidden / shown) | hidden |
 | "Volver a buscar mandos" (Search for gamepads again) | action | |
 
@@ -195,6 +197,8 @@ The turn-limit levels apply a share of the speed-dependent limit described under
 - **Low:** a third of the limit.
 - **Medium:** two thirds.
 - **High:** the whole limit. At top speed, holding the input gives 80 % of full lock.
+
+The two rates scale how fast keyboard and D-pad steering builds up while a key is held, and how fast it returns to centre once released: slow is half as fast as fast, medium three quarters. Fast is how the game handled before these options existed.
 
 Enter or A cycles to the next level; left and right step down or up. "Volver" (Back) returns to the pause menu.
 

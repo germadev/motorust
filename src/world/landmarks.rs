@@ -1,4 +1,4 @@
-//! Loops Hill landmarks, where the scenery of a track asks for them
+//! Loop Island landmarks, where the scenery of a track asks for them
 //! ([`Scenery`]): giant loops on blocks of checkerboard earth, carved totem
 //! poles, sunflowers turned towards the road, lines of spinning golden rings
 //! floating over it and waterfalls pouring down the rock walls.

@@ -21,6 +21,7 @@ pub const BAY: Circuit = Circuit {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         banking: &[],
+        branches: &[],
     },
     scenery: Scenery {
         coast: Coast::Function(coast),

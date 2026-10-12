@@ -45,7 +45,7 @@ impl Plugin for WorldPlugin {
 /// [`Track::set_edges`]), by its index in [`CIRCUITS`]: it comes from the
 /// terrain, which is only built once.
 #[derive(Resource, Default)]
-struct TrackEdges(std::collections::HashMap<usize, Vec<[f32; 2]>>);
+struct TrackEdges(std::collections::HashMap<usize, Vec<Vec<[f32; 2]>>>);
 
 /// Cada circuito cargado tiene su entidad raíz con su índice en [`CIRCUITS`].
 #[derive(Component, Debug, PartialEq, Eq)]
@@ -163,7 +163,7 @@ fn build(
     track: &Track,
     builder: &mut Builder,
     visibility: Visibility,
-) -> Vec<[f32; 2]> {
+) -> Vec<Vec<[f32; 2]>> {
     let circuit = &CIRCUITS[circuit_index];
     let scenery = &circuit.scenery;
     let terrain = terrain::Terrain::new(track, scenery);

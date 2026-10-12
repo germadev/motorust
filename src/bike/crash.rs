@@ -741,6 +741,52 @@ pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
     }
 }
 
+/// The rider goes down off a loop: bike and rider leave the running surface
+/// with `velocity` (x, up, z) and fall to the road below. Upside down, the
+/// rider falls head first, facing the way they were going.
+pub fn fall_off(
+    state: &mut BikeState,
+    knock: &mut Knock,
+    velocity: Vec3,
+    track: &Track,
+) -> CrashState {
+    let ground = track.road_height_at(state.position, state.elevation);
+    let across = Vec2::new(velocity.x, velocity.z);
+    let upside_down = state.pitch.cos() < 0.0;
+    knock.velocity = across;
+    knock.yaw_rate = 0.0;
+    state.speed = 0.0;
+    state.steer = 0.0;
+    state.steer_rate = 0.0;
+    state.steer_direct = 0.0;
+    state.accel = 0.0;
+    state.chassis = Default::default();
+    state.pitch = crate::geometry::wrap_angle(state.pitch);
+    state.grounded = false;
+    state.climb = velocity.y;
+    let mut rider = ThrownRider {
+        position: state.position,
+        height: state.elevation - ground,
+        ground,
+        velocity: across,
+        climb: velocity.y,
+        heading: state.heading + if upside_down { PI } else { 0.0 },
+        roll: if upside_down { PI } else { 0.0 },
+        roll_rate: TUMBLE,
+        lie: 0.0,
+        ..default()
+    };
+    rider.limbs = rider.pose(0.0);
+    CrashState {
+        down: true,
+        elapsed: 0.0,
+        still: 0.0,
+        fall_side: 1.0,
+        rider,
+        previous: rider,
+    }
+}
+
 /// Whether hitting a wall like this brings the rider down: only going into
 /// it faster than [`WALL_FALL`]. Scraping along it, or bumping into it
 /// slowly, is ridden out.
@@ -784,9 +830,20 @@ pub fn slide(
     contain(&mut state.position, &mut knock.velocity, contact);
     state.lean = approach(state.lean, crash.fall_side * DOWN_LEAN, FALL_RATE, dt);
     state.pitch = approach(state.pitch, 0.0, FALL_RATE, dt);
-    state.elevation = track.road_height_at(state.position, state.elevation);
-    state.climb = 0.0;
-    state.grounded = true;
+    let ground = track.road_height_at(state.position, state.elevation);
+    if state.grounded {
+        state.elevation = ground;
+        state.climb = 0.0;
+    } else {
+        // Fallen from a height (off a loop): it drops onto the road.
+        state.climb -= GRAVITY * dt;
+        state.elevation += state.climb * dt;
+        if state.elevation <= ground {
+            state.elevation = ground;
+            state.climb = 0.0;
+            state.grounded = true;
+        }
+    }
 
     crash.previous = crash.rider;
     crash.rider.step(track, crash.elapsed, dt);
@@ -803,14 +860,10 @@ pub fn slide(
 /// of the centre line.
 pub fn rejoin_pose(track: &Track, at: Vec2, height: f32, others: &[Vec2]) -> (Vec2, f32, f32) {
     let nearest = track.nearest_at(at, height);
-    let (_, heading) = track.pose_at(nearest.index);
-    let limit = track.half_width() - REJOIN_MARGIN;
+    let (_, heading) = track.pose_beside(&nearest, 0.0);
+    let limit = track.half_width_beside(&nearest) - REJOIN_MARGIN;
     let wanted = nearest.lateral.clamp(-limit, limit);
-    let place = |lateral: f32| {
-        track
-            .offset_point(nearest.index, lateral)
-            .lerp(track.offset_point(nearest.index + 1, lateral), nearest.t)
-    };
+    let place = |lateral: f32| track.pose_beside(&nearest, lateral).0;
     let free = |lateral: f32| {
         others
             .iter()

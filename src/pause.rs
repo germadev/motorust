@@ -39,7 +39,7 @@ pub struct DebugOptions {
     /// (de entrada, medio).
     pub keyboard_rate: SteerRate,
     /// Con el teclado o la cruceta, la rapidez con la que recupera al soltar
-    /// la tecla de girar (de entrada, rápido - actual).
+    /// la tecla de girar (de entrada, media).
     pub keyboard_return: ReturnRate,
     /// Si se ve en la carrera la leyenda con los controles (de entrada, no).
     pub show_legend: bool,
@@ -51,7 +51,7 @@ impl Default for DebugOptions {
             stick_limit: TurnLimit::Medium,
             keyboard_limit: TurnLimit::Medium,
             keyboard_rate: SteerRate::Medium,
-            keyboard_return: ReturnRate::Fast,
+            keyboard_return: ReturnRate::Medium,
             show_legend: false,
         }
     }
@@ -100,7 +100,7 @@ impl SteerRate {
 }
 
 /// Rapidez con la que recupera el teclado o la cruceta al soltar la tecla de
-/// girar: lenta, media o rápido (actual).
+/// girar: lenta, media o rápida (lo de antes).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ReturnRate {
     Slow,
@@ -125,12 +125,12 @@ impl ReturnRate {
             Language::Spanish => match self {
                 ReturnRate::Slow => "lenta",
                 ReturnRate::Medium => "media",
-                ReturnRate::Fast => "rápido (actual)",
+                ReturnRate::Fast => "rápida",
             },
             Language::English => match self {
                 ReturnRate::Slow => "slow",
                 ReturnRate::Medium => "medium",
-                ReturnRate::Fast => "fast (current)",
+                ReturnRate::Fast => "fast",
             },
         }
     }
@@ -672,7 +672,8 @@ mod tests {
         assert_eq!(SteerRate::Fast.factor(), 1.0);
         assert!(SteerRate::Slow.factor() < SteerRate::Medium.factor());
         assert!(SteerRate::Medium.factor() < SteerRate::Fast.factor());
-        // La velocidad a la que recupera al soltar: rápido (actual) de entrada, y pasa por lenta y media.
+        // The rate at which it returns on release: medium by default, then
+        // fast and slow.
         assert_eq!(
             items(Page::Debug, &options, Language::Spanish)[3].1,
             Action::NextKeyboardReturn
@@ -680,7 +681,7 @@ mod tests {
         assert!(
             items(Page::Debug, &options, Language::Spanish)[3]
                 .0
-                .ends_with("rápido (actual)")
+                .ends_with("media")
         );
         let mut ret = options.keyboard_return;
         let mut shown_returns = Vec::new();
@@ -693,10 +694,7 @@ mod tests {
             shown_returns.push(label.split(": ").last().unwrap().to_string());
             ret = ret.next(1);
         }
-        assert_eq!(
-            shown_returns,
-            ["rápido (actual)", "lenta", "media", "rápido (actual)"]
-        );
+        assert_eq!(shown_returns, ["media", "rápida", "lenta", "media"]);
         assert_eq!(ReturnRate::Slow.next(-1), ReturnRate::Fast);
         assert_eq!(ReturnRate::Fast.factor(), 1.0);
         assert!(ReturnRate::Slow.factor() < ReturnRate::Medium.factor());
@@ -729,6 +727,6 @@ mod tests {
         assert_eq!(main_en[3], "Exit game");
         let debug_en = items(Page::Debug, &options, Language::English);
         assert!(debug_en[0].0.ends_with("medium"));
-        assert!(debug_en[3].0.ends_with("fast (current)"));
+        assert!(debug_en[3].0.ends_with("medium"));
     }
 }

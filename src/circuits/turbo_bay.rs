@@ -53,6 +53,7 @@ pub const TURBO_BAY: Circuit = Circuit {
             to: 470.0,
             factor: 2.5,
         }],
+        branches: &[],
     },
     scenery: Scenery {
         coast: Coast::Outline(&COAST),
