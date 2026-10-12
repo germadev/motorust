@@ -17,7 +17,7 @@ use bevy::{
 };
 
 use super::{Geometry, Livery, Mount, Paint, Parts, pivot};
-use crate::bike::{BikeInput, BikeState, BikeTuning};
+use crate::bike::{BikeInput, BikeState, BikeTuning, CrashState};
 use crate::geometry::{approach, smoothstep};
 use crate::shapes::{SkinnedBody, SweepPoint, between, bone, bones, section};
 
@@ -37,6 +37,10 @@ const KNEE: Vec3 = Vec3::new(0.28, 0.73, -0.06);
 pub(super) const ANKLE: Vec3 = Vec3::new(0.17, 0.45, 0.29);
 /// Centro del casco.
 pub(super) const HELMET: Vec3 = Vec3::new(0.0, 1.16, -0.30);
+
+/// Turn of the chest that stands the back up straight over the hips: the
+/// shoulders sit 0.40 m ahead of and 0.16 m above them (atan2(0.40, 0.16)).
+const UPRIGHT_ANGLE: f32 = 1.19;
 
 /// Cuánto se desplaza el piloto hacia el interior de la curva (m).
 const HANG_OFF: f32 = 0.22;
@@ -628,7 +632,7 @@ pub(super) fn hang_off(
         let Ok((state, crash)) = bikes.get(rider.bike) else {
             continue;
         };
-        if crash.is_some_and(|c| c.timer > 0.0) {
+        if crash.is_some_and(|c| c.is_down()) {
             rider.hang = approach(rider.hang, 0.0, POSE_RESPONSE, time.delta_secs());
             transform.translation = rider.seat;
             transform.rotation = Quat::IDENTITY;
@@ -645,30 +649,34 @@ pub(super) fn hang_off(
 pub(super) fn sit_up(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
-    bikes: Query<(&BikeState, &BikeInput)>,
+    bikes: Query<(&BikeState, &BikeInput, &CrashState)>,
     mut bodies: Query<(&mut UpperBody, &mut Transform)>,
 ) {
     for (mut body, mut transform) in &mut bodies {
-        let Ok((state, input)) = bikes.get(body.bike) else {
+        let Ok((state, input, crash)) = bikes.get(body.bike) else {
             continue;
         };
         let dt = time.delta_secs();
-        let slow = 1.0 - (state.speed.abs() / CRUISING_SPEED).min(1.0);
-        // Tumbado va descolgado y agachado: incorporarse lo alejaría del puño de fuera.
-        let upright = 1.0 - (state.lean / tuning.max_lean).abs().min(1.0);
-        let target = input.brake.max(slow) * upright;
-        body.sit_up = approach(body.sit_up, target, POSE_RESPONSE, dt);
-        let tuck = super::tuck_amount(state, &tuning) * (1.0 - body.sit_up);
-        body.tuck = approach(body.tuck, tuck, POSE_RESPONSE, dt);
-        let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.0, SURGE.1);
-        body.surge = approach(body.surge, surge, SURGE_RESPONSE, dt);
-        transform.translation = Vec3::Z * body.surge;
+        if !crash.is_down() {
+            let slow = 1.0 - (state.speed.abs() / CRUISING_SPEED).min(1.0);
+            // Tumbado va descolgado y agachado: incorporarse lo alejaría del puño de fuera.
+            let upright = 1.0 - (state.lean / tuning.max_lean).abs().min(1.0);
+            let target = input.brake.max(slow) * upright;
+            body.sit_up = approach(body.sit_up, target, POSE_RESPONSE, dt);
+            let tuck = super::tuck_amount(state, &tuning) * (1.0 - body.sit_up);
+            body.tuck = approach(body.tuck, tuck, POSE_RESPONSE, dt);
+            let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.0, SURGE.1);
+            body.surge = approach(body.surge, surge, SURGE_RESPONSE, dt);
+        }
         // Girar en X positivo levanta los hombros (que están hacia -Z); con la
         // moto encabritada, el piloto carga el peso delante.
         let wheelie = state.chassis.wheelie.max(0.0);
-        transform.rotation = Quat::from_rotation_x(
-            SIT_UP_ANGLE * body.sit_up - TUCK_ANGLE * body.tuck - WHEELIE_COUNTER * wheelie,
-        );
+        let riding =
+            SIT_UP_ANGLE * body.sit_up - TUCK_ANGLE * body.tuck - WHEELIE_COUNTER * wheelie;
+        // Off the bike the back straightens, so the body lies flat on its back.
+        let let_go = crash.let_go();
+        transform.translation = Vec3::Z * body.surge * (1.0 - let_go);
+        transform.rotation = Quat::from_rotation_x(riding.lerp(UPRIGHT_ANGLE, let_go));
     }
 }
 
@@ -677,23 +685,28 @@ pub(super) fn sit_up(
 pub(super) fn look_ahead(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
-    bikes: Query<&BikeState>,
+    bikes: Query<(&BikeState, &CrashState)>,
     pivots: Query<&Transform, Without<Head>>,
     mut heads: Query<(&mut Head, &mut Transform)>,
 ) {
     for (mut head, mut transform) in &mut heads {
-        let (Ok(state), Ok(pelvis), Ok(chest)) = (
+        let (Ok((state, crash)), Ok(pelvis), Ok(chest)) = (
             bikes.get(head.bike),
             pivots.get(head.pelvis),
             pivots.get(head.chest),
         ) else {
             continue;
         };
-        let target = super::look_angle(state, &tuning);
+        // Off the bike the head goes with the body.
+        let (target, lean) = if crash.is_down() {
+            (0.0, 0.0)
+        } else {
+            (super::look_angle(state, &tuning), state.lean)
+        };
         head.look = approach(head.look, target, POSE_RESPONSE, time.delta_secs());
         // En la moto: cabeceo del pecho (al incorporarse), enderezada y girada.
         // Girar en Y positivo lleva la vista (-Z) hacia la izquierda (-X).
-        let wanted = Quat::from_rotation_z(-super::HEAD_LEVEL * state.lean)
+        let wanted = Quat::from_rotation_z(-super::HEAD_LEVEL * lean)
             * chest.rotation
             * Quat::from_rotation_y(head.look);
         transform.rotation = (pelvis.rotation * chest.rotation).inverse() * wanted;
@@ -702,9 +715,14 @@ pub(super) fn look_ahead(
 
 /// Coloca los huesos de los brazos para que, se mueva como se mueva el
 /// tronco, las manos sigan en los puños.
+/// Index of a side (1 right, -1 left) in [`crate::bike::crash::Limbs`].
+fn side_index(side: f32) -> usize {
+    if side > 0.0 { 0 } else { 1 }
+}
+
 pub(super) fn reach_grips(
     rigs: Query<&Rig>,
-    bikes: Query<(&BikeState, Option<&super::super::CrashState>)>,
+    bikes: Query<&CrashState>,
     pivots: Query<&Transform, Without<Arm>>,
     mut arms: Query<(&Arm, &mut Transform)>,
 ) {
@@ -722,17 +740,14 @@ pub(super) fn reach_grips(
         let mirror = mirror(arm.side);
         let shoulder = (*pelvis * *chest).transform_point((SHOULDER - HIPS) * mirror);
         let geometry = &rig.geometry;
-        let crash = bikes.get(arm.bike).ok().and_then(|(_, c)| c);
-        let grip = if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
-            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
-            let slide_t = smoothstep(0.0, 0.25, progress) * (1.0 - smoothstep(0.85, 1.0, progress));
-            let normal_grip =
-                steering.transform_point((geometry.grip - geometry.steering_head) * mirror);
-            let slide_grip =
-                (*pelvis * *chest).transform_point(Vec3::new(arm.side * 0.18, 0.15, -0.32));
-            normal_grip.lerp(slide_grip, slide_t)
-        } else {
-            steering.transform_point((geometry.grip - geometry.steering_head) * mirror)
+        let grip = steering.transform_point((geometry.grip - geometry.steering_head) * mirror);
+        // Off the bike, the hands move as the fall goes (see `ThrownRider::swing`).
+        let grip = match bikes.get(arm.bike).ok().filter(|crash| crash.is_down()) {
+            Some(crash) => {
+                let hand = crash.rider.limbs.hands[side_index(arm.side)];
+                grip.lerp(pelvis.transform_point(hand), crash.let_go())
+            }
+            None => grip,
         };
         let elbow = elbow(shoulder, grip, UPPER_ARM, FOREARM, ELBOW_POLE * mirror);
         *transform = if arm.forearm {
@@ -748,7 +763,7 @@ pub(super) fn reach_grips(
 /// parado), y saca la rodilla de dentro de la curva hacia el suelo.
 pub(super) fn reach_pegs(
     rigs: Query<&Rig>,
-    bikes: Query<(&BikeState, Option<&super::super::CrashState>)>,
+    bikes: Query<(&BikeState, &CrashState)>,
     riders: Query<(&Rider, &Transform), Without<Leg>>,
     mut legs: Query<(&Leg, &mut Transform), Without<Rider>>,
 ) {
@@ -762,15 +777,9 @@ pub(super) fn reach_pegs(
         };
         let hip = pelvis.transform_point((HIP_JOINT - HIPS) * mirror(leg.side));
         let mut ankle = rig.geometry.peg * mirror(leg.side);
-        let crash = bikes.get(leg.bike).ok().and_then(|(_, c)| c);
-        if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
-            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
-            let slide_t = smoothstep(0.0, 0.25, progress) * (1.0 - smoothstep(0.85, 1.0, progress));
-            let slide_ankle = pelvis.transform_point(Vec3::new(leg.side * 0.16, -0.12, 0.52));
-            ankle = ankle.lerp(slide_ankle, slide_t);
-        } else if leg.side > 0.0 {
-            let stopped = bikes.get(leg.bike).map_or(0.0, |(state, _)| {
-                if state.grounded {
+        if leg.side > 0.0 {
+            let stopped = bikes.get(leg.bike).map_or(0.0, |(state, crash)| {
+                if state.grounded && !crash.is_down() {
                     (1.0 - state.speed.abs() / crate::bike::STOPPED_SPEED).clamp(0.0, 1.0)
                 } else {
                     0.0
@@ -778,6 +787,15 @@ pub(super) fn reach_pegs(
             });
             let foot_ground = Vec3::new(0.38, 0.19, rig.geometry.peg.z - 0.04);
             ankle = ankle.lerp(foot_ground, stopped);
+        }
+        // Off the bike, the feet move as the fall goes (see `ThrownRider::swing`).
+        if let Some((_, crash)) = bikes
+            .get(leg.bike)
+            .ok()
+            .filter(|(_, crash)| crash.is_down())
+        {
+            let foot = crash.rider.limbs.feet[side_index(leg.side)];
+            ankle = ankle.lerp(pelvis.transform_point(foot), crash.let_go());
         }
         // Inclinación positiva = hacia la izquierda: la pierna de dentro es la izquierda.
         let inside = (-rider.hang * leg.side).max(0.0);

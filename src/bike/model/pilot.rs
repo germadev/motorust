@@ -24,7 +24,7 @@ use bevy::{
 use super::imported::{self, Joint, Model};
 use super::{ChassisRig, Design, Geometry};
 use crate::bike::{BikeInput, BikeState, BikeTuning};
-use crate::geometry::{approach, smoothstep};
+use crate::geometry::approach;
 
 /// Cuánto se inclina la pelvis hacia delante sobre el asiento (rad).
 const PELVIS_PITCH: f32 = 0.9;
@@ -61,6 +61,9 @@ const FINGERS: Vec3 = Vec3::new(-0.2, -0.5, -1.0);
 /// De la muñeca al centro de la palma (m) y altura de la palma sobre el eje
 /// del puño.
 const PALM_FROM_WRIST: f32 = 0.07;
+/// Off the bike, how far a relaxed hand bends in at the wrist (the tangent of
+/// the angle).
+const RELAXED_WRIST: f32 = 0.9;
 const PALM_ABOVE_GRIP: f32 = 0.03;
 /// La inercia desplaza la cadera (m por cada m/s²) entre estos topes.
 const SURGE_PER_ACCEL: f32 = 0.003;
@@ -284,6 +287,9 @@ pub(super) struct Stance {
     pub lean: f32,
     /// Bajar el pie al suelo en parado, de 0 a 1.
     pub foot_down: f32,
+    /// Off the bike, from 0 to 1: the back straightens up over the hips, so
+    /// the body lies flat once laid on its back.
+    pub down: f32,
 }
 
 /// Postura de cada hueso (posición y giro en el espacio de la moto).
@@ -291,15 +297,19 @@ pub(super) fn pose(skeleton: &Skeleton, stance: &Stance) -> Vec<Transform> {
     let joints = &skeleton.joints;
     let bones = &skeleton.bones;
     let fingers = [1.0, -1.0].map(|side| (FINGERS * Vec3::new(side, 1.0, 1.0)).normalize());
-    // La palma va sobre el puño y la muñeca, detrás de ella.
-    let wrists =
-        [0, 1].map(|side| palm_target(stance.grips[side]) - fingers[side] * PALM_FROM_WRIST);
+    // La palma va sobre el puño y la muñeca, detrás de ella. Off the bike
+    // there is no grip: the wrist goes where the hand reaches for.
+    let wrists = [0, 1].map(|side| {
+        let gripping = palm_target(stance.grips[side]) - fingers[side] * PALM_FROM_WRIST;
+        gripping.lerp(stance.grips[side], stance.down)
+    });
 
     // La espalda se dobla lo que pide la postura y, si así los brazos no
     // llegan a los puños (al incorporarse o al descolgarse), lo justo más.
-    let wanted = (1.0 - SIT_UP * stance.sit_up)
+    let wanted = ((1.0 - SIT_UP * stance.sit_up)
         + TUCK * stance.tuck * (1.0 - stance.sit_up)
-        + 0.6 * stance.wheelie.max(0.0);
+        + 0.6 * stance.wheelie.max(0.0))
+        * (1.0 - stance.down);
     let reaches = |bend: f32| {
         let (position, _) = torso(skeleton, stance, bend);
         bones
@@ -311,7 +321,8 @@ pub(super) fn pose(skeleton: &Skeleton, stance: &Stance) -> Vec<Transform> {
                 position[arm].distance(wrist) <= length - REACH_MARGIN
             })
     };
-    let bend = if reaches(wanted) {
+    // Off the bike the hands do not need to reach the grips.
+    let bend = if stance.down > 0.0 || reaches(wanted) {
         wanted
     } else {
         let (mut short, mut enough) = (wanted, MAX_BEND);
@@ -340,7 +351,19 @@ pub(super) fn pose(skeleton: &Skeleton, stance: &Stance) -> Vec<Transform> {
             wrists[side_index],
             pole,
         );
-        rotation[hand] = grip_rotation(&joints[hand], fingers[side_index]);
+        let gripping = grip_rotation(&joints[hand], fingers[side_index]);
+        rotation[hand] = if stance.down > 0.0 {
+            // Off the bike the hand hangs from the forearm, relaxed: bent a
+            // little at the wrist towards the body, the palm facing it.
+            let inward = Vec3::X * -side;
+            let forearm_along =
+                (position[hand] - position[forearm]).normalize_or(fingers[side_index]);
+            let along = (forearm_along + inward * RELAXED_WRIST).normalize_or(forearm_along);
+            let relaxed = hand_rotation(&joints[hand], along, inward);
+            gripping.slerp(relaxed, stance.down)
+        } else {
+            gripping
+        };
 
         let [thigh, shin, foot, toe] = bones.legs[side_index];
         let hip = position[thigh];
@@ -469,13 +492,22 @@ fn palm_target(grip: Vec3) -> Vec3 {
 /// hacia abajo, sobre el puño. En reposo (los brazos en cruz) la mano apunta
 /// por su eje Y, como todos los huesos de Mixamo, con la palma hacia el suelo.
 fn grip_rotation(rest: &Joint, fingers: Vec3) -> Quat {
+    hand_rotation(rest, fingers, Vec3::NEG_Y)
+}
+
+/// Giro de una mano con los dedos hacia `fingers` y la palma, en lo posible,
+/// hacia `palm`.
+fn hand_rotation(rest: &Joint, fingers: Vec3, palm: Vec3) -> Quat {
     let local_palm = rest.rotation.inverse() * Vec3::NEG_Y;
     let frame = |along: Vec3, palm: Vec3| {
-        let palm = palm.reject_from_normalized(along).normalize();
+        let palm = palm
+            .reject_from_normalized(along)
+            .try_normalize()
+            .unwrap_or_else(|| along.any_orthonormal_vector());
         Mat3::from_cols(along, palm, along.cross(palm))
     };
     let local = frame(Vec3::Y, local_palm);
-    let world = frame(fingers, Vec3::NEG_Y);
+    let world = frame(fingers, palm);
     Quat::from_mat3(&(world * local.transpose())).normalize()
 }
 
@@ -544,7 +576,7 @@ pub(super) fn pose_pilots(
         let Some(pilot_blueprint) = &blueprint.bodies[pilot.design.index()].pilot else {
             continue;
         };
-        let is_crashing = crash.is_some_and(|c| c.timer > 0.0 && c.duration > 0.0);
+        let is_crashing = crash.is_some_and(|c| c.is_down());
         let hang = if is_crashing {
             0.0
         } else {
@@ -552,8 +584,9 @@ pub(super) fn pose_pilots(
         };
         pilot.hang = approach(pilot.hang, hang, POSE_RESPONSE, dt);
         let slow = 1.0 - (state.speed.abs() / CRUISING_SPEED).min(1.0);
+        // Down, the torso straightens: laid on the back it lies flat.
         let sit_up_target = if is_crashing {
-            0.0
+            1.0
         } else {
             input.brake.max(slow)
         };
@@ -594,27 +627,20 @@ pub(super) fn pose_pilots(
         let foot_ground = Vec3::new(0.38, 0.19, geometry.seat.z);
         let right_peg = peg(1.0).lerp(foot_ground, pilot.foot_down);
 
-        let (grips, pegs) = if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
-            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
-            let slide_t = smoothstep(0.0, 0.25, progress) * (1.0 - smoothstep(0.85, 1.0, progress));
-            // Manos sueltas cerca del pecho/cabeza protegiéndose en el arrastrón:
-            let slide_grips = [
-                geometry.seat + Vec3::new(0.18, 0.15, -0.32),
-                geometry.seat + Vec3::new(-0.18, 0.15, -0.32),
-            ];
-            // Piernas extendidas deslizándose sobre el asfalto detrás de la cadera:
-            let slide_pegs = [
-                geometry.seat + Vec3::new(0.16, -0.12, 0.52),
-                geometry.seat + Vec3::new(-0.16, -0.12, 0.52),
-            ];
+        let (grips, pegs) = if let Some(c) = crash.filter(|c| c.is_down()) {
+            // Off the bike, hands and feet move as the fall goes (see
+            // `ThrownRider::limbs`).
+            let let_go = c.let_go();
+            let limbs = c.rider.limbs;
+            let off = |offset: Vec3| geometry.seat + offset;
             (
                 [
-                    grip(1.0).lerp(slide_grips[0], slide_t),
-                    grip(-1.0).lerp(slide_grips[1], slide_t),
+                    grip(1.0).lerp(off(limbs.hands[0]), let_go),
+                    grip(-1.0).lerp(off(limbs.hands[1]), let_go),
                 ],
                 [
-                    right_peg.lerp(slide_pegs[0], slide_t),
-                    peg(-1.0).lerp(slide_pegs[1], slide_t),
+                    right_peg.lerp(off(limbs.feet[0]), let_go),
+                    peg(-1.0).lerp(off(limbs.feet[1]), let_go),
                 ],
             )
         } else {
@@ -637,6 +663,7 @@ pub(super) fn pose_pilots(
             look: pilot.look,
             lean: if is_crashing { 0.0 } else { state.lean },
             foot_down: pilot.foot_down,
+            down: crash.map_or(0.0, |c| c.let_go()),
         };
         for (entity, transform) in pilot
             .joints
@@ -693,6 +720,7 @@ mod tests {
             look: 0.0,
             lean: 0.0,
             foot_down: 0.0,
+            down: 0.0,
         }
     }
 

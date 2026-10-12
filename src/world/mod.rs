@@ -26,6 +26,7 @@ impl Plugin for WorldPlugin {
         let current = CurrentCircuit::default();
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
+            .init_resource::<TrackEdges>()
             .init_resource::<textures::WorldTextures>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
@@ -38,6 +39,12 @@ impl Plugin for WorldPlugin {
     }
 }
 
+/// Where the solid edge of each circuit built so far is (see
+/// [`Track::set_edges`]), by its index in [`CIRCUITS`]: it comes from the
+/// terrain, which is only built once.
+#[derive(Resource, Default)]
+struct TrackEdges(std::collections::HashMap<usize, Vec<[f32; 2]>>);
+
 /// Cada circuito cargado tiene su entidad raíz con su índice en [`CIRCUITS`].
 #[derive(Component, Debug, PartialEq, Eq)]
 pub struct WorldRoot(pub usize);
@@ -49,6 +56,7 @@ fn cache_all_circuits(
     roots: Query<&WorldRoot>,
     current: Res<CurrentCircuit>,
     mut builder: Builder,
+    mut edges: ResMut<TrackEdges>,
 ) {
     let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
     for (index, circuit) in CIRCUITS.iter().enumerate() {
@@ -59,7 +67,8 @@ fn cache_all_circuits(
             } else {
                 Visibility::Hidden
             };
-            build(&mut commands, index, &track, &mut builder, visibility);
+            let built = build(&mut commands, index, &track, &mut builder, visibility);
+            edges.0.insert(index, built);
         }
     }
 }
@@ -86,11 +95,15 @@ fn rebuild_world(
     mut roots: Query<(Entity, &WorldRoot, &mut Visibility)>,
     mut track: ResMut<Track>,
     mut builder: Builder,
+    mut edges: ResMut<TrackEdges>,
 ) {
     if !current.is_changed() || current.is_added() {
         return;
     }
     *track = Track::new(&current.get().layout);
+    if let Some(built) = edges.0.get(&current.0) {
+        track.set_edges(built.clone());
+    }
     let mut found = false;
     for (_entity, root, mut visibility) in &mut roots {
         if root.0 == current.0 {
@@ -101,29 +114,34 @@ fn rebuild_world(
         }
     }
     if !found {
-        build(
+        let built = build(
             &mut commands,
             current.0,
             &track,
             &mut builder,
             Visibility::Inherited,
         );
+        track.set_edges(built.clone());
+        edges.0.insert(current.0, built);
     }
 }
 
 fn build_world(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
-    track: Res<Track>,
+    mut track: ResMut<Track>,
     mut builder: Builder,
+    mut edges: ResMut<TrackEdges>,
 ) {
-    build(
+    let built = build(
         &mut commands,
         current.0,
         &track,
         &mut builder,
         Visibility::Inherited,
     );
+    track.set_edges(built.clone());
+    edges.0.insert(current.0, built);
 }
 
 /// Lo que hace falta para construir el mundo.
@@ -135,13 +153,15 @@ struct Builder<'w> {
     images: ResMut<'w, Assets<Image>>,
 }
 
+/// Builds a circuit's world, and returns where its solid edge is (see
+/// [`Track::set_edges`]).
 fn build(
     commands: &mut Commands,
     circuit_index: usize,
     track: &Track,
     builder: &mut Builder,
     visibility: Visibility,
-) {
+) -> Vec<[f32; 2]> {
     let circuit = &CIRCUITS[circuit_index];
     let scenery = &circuit.scenery;
     let terrain = terrain::Terrain::new(track, scenery);
@@ -165,6 +185,7 @@ fn build(
             structures::spawn_structures(world, track, &terrain, scenery, &mut assets);
             props::spawn_props(world, track, &terrain, scenery, &mut assets);
         });
+    terrain.track_edges(track)
 }
 
 /// Dónde guardar las mallas, los materiales y las imágenes del mundo.

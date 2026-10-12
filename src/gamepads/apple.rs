@@ -677,6 +677,7 @@ mod tests {
         let impact = CollisionImpact {
             timer: 0.15,
             intensity: 0.6,
+            ..Default::default()
         };
 
         let (left, right) = compute_bike_trigger_effects(&state, &input, Some(&impact));

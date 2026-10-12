@@ -10,7 +10,7 @@ use bevy::camera::Viewport;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use crate::bike::{BikeState, BikeTuning, LocalPlayer, Player};
+use crate::bike::{BikeState, BikeTuning, CrashState, Knock, LocalPlayer, Player};
 use crate::geometry::{approach, smoothstep, wrap_angle};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::menu::GameState;
@@ -358,8 +358,19 @@ fn follow_player(
     gamepads: Query<&Gamepad>,
     game_mode: Res<GameMode>,
     local_players: Res<LocalPlayersConfig>,
-    player_bikes: Query<(&Transform, &BikeState), (With<Player>, Without<ChaseCamera>)>,
-    other_bikes: Query<(&Transform, &BikeState, &LocalPlayer), Without<ChaseCamera>>,
+    player_bikes: Query<
+        (&Transform, &BikeState, Option<(&Knock, &CrashState)>),
+        (With<Player>, Without<ChaseCamera>),
+    >,
+    other_bikes: Query<
+        (
+            &Transform,
+            &BikeState,
+            Option<(&Knock, &CrashState)>,
+            &LocalPlayer,
+        ),
+        Without<ChaseCamera>,
+    >,
     mut cameras: Query<(
         &mut Transform,
         &mut Projection,
@@ -373,18 +384,26 @@ fn follow_player(
         } else {
             other_bikes
                 .iter()
-                .find(|(_, _, lp)| lp.0 == cam_player.0)
-                .map(|(t, s, _)| (t, s))
+                .find(|(.., lp)| lp.0 == cam_player.0)
+                .map(|(t, s, c, _)| (t, s, c))
         };
 
-        let Some((bike_transform, state)) = bike_data else {
+        let Some((bike_transform, state, crash)) = bike_data else {
             continue;
+        };
+        // While the rider is down the bike tumbles and spins: the camera
+        // keeps looking the way it was, and pulls in as the bike slows down.
+        let down = crash.is_some_and(|(_, crash)| crash.is_down());
+        let speed = match crash {
+            Some((knock, crash)) if crash.is_down() => knock.velocity.length(),
+            _ => state.speed.abs(),
         };
 
         // El Transform de la moto ya viene interpolado y solo lleva guiñada (la
         // inclinación va en un hijo).
         let (bike_yaw, _, _) = bike_transform.rotation.to_euler(EulerRot::YXZ);
         let yaw = match chase.yaw {
+            Some(yaw) if down => yaw,
             Some(yaw) => {
                 let blend = 1.0 - (-YAW_RESPONSE * time.delta_secs()).exp();
                 yaw + wrap_angle(bike_yaw - yaw) * blend
@@ -414,7 +433,7 @@ fn follow_player(
         let blend = 1.0 - (-LOOK_RESPONSE * dt).exp();
         chase.look = wrap_angle(chase.look + wrap_angle(wanted - chase.look) * blend);
 
-        let speed_factor = (state.speed.abs() / tuning.max_speed).clamp(0.0, 1.0);
+        let speed_factor = (speed / tuning.max_speed).clamp(0.0, 1.0);
         let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.start, SURGE.end);
         chase.surge = approach(chase.surge, surge, SURGE_RESPONSE, dt);
         let distance = DISTANCE.start.lerp(DISTANCE.end, speed_factor) + chase.surge;

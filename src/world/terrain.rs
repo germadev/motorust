@@ -36,6 +36,10 @@ const ROCK_TILE: f32 = 20.0;
 const CLIFF_NORMAL_Y: f32 = 0.8;
 /// Por debajo de esta altura, cerca del mar, hay arena.
 const BEACH_HEIGHT: f32 = SEA_LEVEL + 1.6;
+/// How far above the road the earth must stand to stop a bike (m), and the
+/// steps in which [`Terrain::track_edges`] looks for it (m).
+const EARTH_RISE: f32 = 0.3;
+const EDGE_STEP: f32 = 0.1;
 
 /// Tipo de suelo.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,6 +110,38 @@ impl Terrain {
         let bottom = at(i, j).lerp(at(i + 1, j), tx);
         let top = at(i, j + 1).lerp(at(i + 1, j + 1), tx);
         bottom.lerp(top, tz)
+    }
+
+    /// Where the earth rises beside the road, at each point of the centre
+    /// line, to the left and to the right (m from it): the first spot, going
+    /// out from the edge of the asphalt, where the terrain as drawn (the
+    /// triangles of its grid, which can poke inside the walls next to a rock
+    /// face) stands [`EARTH_RISE`] above the road, or [`WALL_DISTANCE`] if it
+    /// does not before the walls. Looks half way to the next points too, so
+    /// a bump between two of them is not missed. See [`Track::set_edges`].
+    pub fn track_edges(&self, track: &Track) -> Vec<[f32; 2]> {
+        let n = track.sample_count();
+        let steps = ((WALL_DISTANCE - track.half_width()) / EDGE_STEP).ceil() as usize;
+        (0..n)
+            .map(|index| {
+                [1.0, -1.0].map(|side| {
+                    (0..=steps)
+                        .map(|k| (track.half_width() + k as f32 * EDGE_STEP).min(WALL_DISTANCE))
+                        .find(|&lateral| {
+                            [n - 1, 0, 1].iter().any(|&offset| {
+                                let other = (index + offset) % n;
+                                let here = track.surface_point(index, side * lateral);
+                                let there = track.surface_point(other, side * lateral);
+                                // Here and half way to the neighbour.
+                                [here, (here + there) / 2.0].iter().any(|road| {
+                                    self.height(Vec2::new(road.x, road.z)) - road.y > EARTH_RISE
+                                })
+                            })
+                        })
+                        .unwrap_or(WALL_DISTANCE)
+                })
+            })
+            .collect()
     }
 
     /// Normal del terreno en un punto.
@@ -744,6 +780,29 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn the_track_edge_is_where_the_earth_rises_inside_the_walls() {
+        for circuit in &CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let terrain = Terrain::new(&track, &circuit.scenery);
+            let edges = terrain.track_edges(&track);
+            assert_eq!(edges.len(), track.sample_count());
+            let mut inside = 0;
+            for (index, sides) in edges.iter().enumerate() {
+                for (edge, side) in sides.iter().zip([1.0, -1.0]) {
+                    assert!((track.half_width()..=WALL_DISTANCE).contains(edge));
+                    inside += usize::from(*edge < WALL_DISTANCE);
+                    // Short of the edge, the earth is not above the road.
+                    let road = track.surface_point(index, side * (edge - 0.15));
+                    let earth = terrain.height(Vec2::new(road.x, road.z));
+                    assert!(earth - road.y <= EARTH_RISE, "{} {index}", circuit.name);
+                }
+            }
+            // Next to the rock faces, the earth comes in before the walls.
+            assert!(inside > 0, "{}", circuit.name);
         }
     }
 
