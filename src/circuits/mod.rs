@@ -17,8 +17,19 @@ pub struct Circuit {
     pub name_en: &'static str,
     pub description: &'static str,
     pub description_en: &'static str,
+    /// The music that plays during the race.
+    pub song: Song,
     pub layout: Layout,
     pub scenery: Scenery,
+}
+
+/// A track's music: an MP3 built into the game ([`crate::sound`] loops it).
+pub struct Song {
+    pub mp3: &'static [u8],
+    /// How loud it was mastered: its integrated loudness in LUFS, as
+    /// `ffmpeg -i song.mp3 -af ebur128 -f null -` measures it. The game turns
+    /// each song up or down by the difference, so they all play equally loud.
+    pub loudness: f32,
 }
 
 impl Circuit {

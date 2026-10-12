@@ -10,7 +10,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 - **Fixed-step physics, interpolated rendering.** Physics runs in `FixedUpdate` at **120 Hz**: `ai::drive_rivals` → `simulate_bikes` → `separate_bikes`, chained. Before the fixed loop the player's input is read; after it, `interpolate_bikes` places each bike between its previous and current state for the frame being drawn.
 - **Pure, tested logic.** The parts that decide how the game behaves are plain functions with no window, renderer or ECS dependency, so `cargo test` exercises them headless: `bike::step` (one physics step), `bike::hit_walls` (walls), `bike::crash` (contacts between bikes, falls and rejoining the track), `bike::chassis` (wheelie and suspension springs), `bike::loop_ride` (riding round a loop), `Track` (the circuit and its queries), `ai::decide` (a rival's controls) and `pilot::pose` (the rider's race pose from its skeleton).
 - **Units and axes.** Everything is in metres. The ground plane is Bevy's XZ plane with Y up; ground positions are `Vec2(x, z)` and a heading of 0 faces -Z, with positive values turning left (`src/geometry.rs`). Bike-local space is X right, Y up, -Z forward, with the origin on the ground between the wheels.
-- **No external files at runtime.** Models, textures and the font are embedded in the executable, and all sound is synthesised in real time.
+- **No external files at runtime.** Models, textures, the font and the music are embedded in the executable, and every sound effect is synthesised in real time.
 
 ## Code map
 
@@ -56,11 +56,12 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/gamepads/apple.rs` | On macOS, the gamepads the system knows (DualSense, DualShock 4, Xbox, Switch Pro, MFi) are read with Apple's GameController framework instead of gilrs. |
 | `src/sound/mod.rs` | Decides what sounds, how loud and where (engines with their gearboxes, wind, tyres, grass, impacts, landings, menu), panned from the camera and with Doppler for rivals. |
 | `src/sound/synth.rs` | The synthesiser that generates and mixes everything on the audio thread, including the big-bang V4 engine. |
+| `src/sound/music.rs` | Each track's song: loops it straight from the embedded MP3 during the race, brought to the same loudness well below the engine, with fades, a lower level in the pause menu and mute. |
 | `src/web.rs` | Web only: tells the page the game is visible so it can remove the loading screen. |
 | `web/index.html` | The web page: canvas, loading screen with download progress, audio unlock on first input, error display. |
 | `web/build.sh` | Builds the web version into `dist/web` (see [building.md](building.md#web-version)). |
 | `tools/import_models.py` | Prepares the Meshy GLB files for the game (see [models.md](models.md#the-importer)). |
-| `assets/` | Embedded resources: `models/` (one folder per bike), `textures/`, `fonts/` and `CREDITS.md`. |
+| `assets/` | Embedded resources: `models/` (one folder per bike), `textures/`, `fonts/`, `music/` (one song per track) and `CREDITS.md`. |
 | `.github/workflows/` | CI, web publishing and releases (see [building.md](building.md#continuous-integration)). |
 
 ## Design decisions
@@ -75,7 +76,8 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
   - The imported Meshy bikes plug into the same mounts: the importer splits each one into chassis, steering and wheels (see [models.md](models.md)).
 - **Skinned riders with inverse kinematics.** The code-built rider's body is a single mesh deformed by a ten-bone skeleton (pelvis, chest, upper arms, forearms, thighs and shins), so shoulders, elbows, waist and knees bend without seams. The Meshy riders use their own 23-bone auto-rigged skeleton. In both, arms and legs use two-bone inverse kinematics: the hands never let go of the grips while the torso moves, and the feet stay on the pegs while the rider hangs off and puts the knee down.
 - **Decoupled input.** The bike reads a `BikeInput` and does not care where it comes from: the keyboard or a gamepad fill it for the player, and `ai::decide` fills it for each rival.
-- **Self-contained executable.** Models, textures and the font are embedded with `include_bytes!`, liveries are painted into textures at startup and sound is synthesised, so a single file runs the game, on the desktop and on the web alike.
+- **Self-contained executable.** Models, textures, the font and the music are embedded with `include_bytes!`, liveries are painted into textures at startup and sound effects are synthesised, so a single file runs the game, on the desktop and on the web alike.
+- **Music streamed from memory.** Each song is decoded as it plays, straight from the embedded MP3, and loops by decoding it again from the start (`rodio`'s `LoopedDecoder`). Bevy's own looping keeps every decoded sample to replay it, about 60 MB for a 3-minute song.
 
 ## Tests
 
@@ -98,7 +100,7 @@ CI runs them on every push and PR, together with `cargo fmt --check` and `cargo 
 | Track (`src/track.rs`) | 16 | Drivable curves, rideable slopes and banking, walls of distant stretches that do not meet, the grid, branches that leave and join the lap along it and on its surface, climb and drop smoothly once apart from it, and bikes on a branch finding its road. |
 | World and tracks (`src/world/`, `src/circuits/`) | 29 | Terrain hugs the road and keeps it dry, sea and mountains where expected, kerbs only in corners, textures decode, houses fit, loops clear of the road, waterfalls down rock walls, wooden bridges fenced, checkpoints, Turbo Bay passing over its own tunnel, Loop Island's branch forking before the crest in a long curve. |
 | Meshes (`src/shapes.rs`) | 9 | Faces point outwards, sections and bone weights are consistent. |
-| Sound (`src/sound/`) | 9 | Gear changes, throttle loudness, panning, one-shot sounds. |
+| Sound (`src/sound/`) | 14 | Gear changes, throttle loudness, panning, one-shot sounds; the music: every song decodes and loops back to its start, plays at the same loudness and well under the player's engine, fades, and plays only during the race. |
 | Other (geometry, settings, camera, minimap, menus, HUD) | 32 | Heading conventions, settings survive a save and load, one action per key, map projection, menu items. |
 
 The track tests run on every circuit: when you change a track, they tell you if it has impossible corners, excessive slopes, overlaps itself, or if the terrain covers the road or leaves it in the air (see [tracks.md](tracks.md)).
