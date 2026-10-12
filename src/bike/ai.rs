@@ -431,6 +431,64 @@ mod tests {
     }
 
     #[test]
+    fn out_of_a_loop_the_road_back_keeps_the_wheels_on_the_ground() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let Some(&looped) = track.loops().first() else {
+                continue;
+            };
+            let tuning = BikeTuning::default();
+            let rival = Rival {
+                skill: 1.0,
+                lane: 0.0,
+                loops: true,
+            };
+            let dt = 1.0 / 120.0;
+            for speed in [30.0, 50.0, 70.0] {
+                // About to come out of the way out, flat out, with the
+                // suspension pressed down by the loop.
+                let mut state = BikeState {
+                    speed,
+                    ride: Some(crate::bike::Ride {
+                        index: 0,
+                        angle: std::f32::consts::TAU - 0.05,
+                        lateral: 0.0,
+                    }),
+                    ..BikeState::parked_at((looped.way_out(), looped.heading))
+                };
+                state.chassis.heave = -0.12;
+                let name = circuit.name;
+                // Until a little way along the lap past the join.
+                let beyond = looped.join as f32 * track.step_length() + 30.0;
+                let mut out = 0.0;
+                for _ in 0..(10.0 / dt) as usize {
+                    let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
+                    state = advance(&state, &input, &track, &tuning, dt);
+                    if state.ride.is_some() {
+                        continue;
+                    }
+                    out += dt;
+                    let nearest = track.nearest_at(state.position, state.elevation);
+                    if nearest.road == 0 && track.along(&nearest) > beyond {
+                        break;
+                    }
+                    // No jumps and no dips that bottom out the suspension,
+                    // once it has come back up from the loop.
+                    assert!(state.grounded, "{name}: flies at {speed} m/s, {out} s out");
+                    if out > 0.5 {
+                        assert!(
+                            state.chassis.heave > -0.08,
+                            "{name}: bottoms out at {speed} m/s, {out} s out"
+                        );
+                    }
+                }
+                let nearest = track.nearest_at(state.position, state.elevation);
+                assert_eq!(nearest.road, 0, "{name}: not back on the lap");
+            }
+        }
+    }
+
+    #[test]
     fn rival_goes_round_a_stopped_bike_in_its_lane() {
         let track = Track::default();
         let tuning = BikeTuning::default();

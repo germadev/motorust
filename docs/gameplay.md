@@ -86,7 +86,7 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 
 ### Branches and loops
 
-On Loop Island a branch forks off the lap to the right just after the start straight's crest (see [tracks.md](tracks.md#loop-island)). Keep right to take it, or stay on the lap. Its walls close in before a loop of checkerboard earth:
+On Loop Island a branch forks off the lap to the right on the climb to the start straight's crest (see [tracks.md](tracks.md#loop-island)). Keep right to take it, or stay on the lap. Its walls close in before a loop of checkerboard earth:
 
 - **Round the loop** the bike follows the running surface by itself: steering does nothing, and nobody can hit you. The throttle and the brake still work, and gravity slows you on the way up and speeds you up on the way down. The camera turns over with you.
 - **Fast enough,** you go round, upside down at the top, and come out beside the mouth, on the road back to the lap. Off the throttle that takes about 130 km/h at the mouth; with the throttle open, the engine carries you round from much slower.

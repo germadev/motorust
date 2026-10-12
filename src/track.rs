@@ -30,7 +30,9 @@ pub struct Layout {
 /// the finish line, runs through the control points of `approach` to the
 /// mouth of a vertical loop, goes round the loop, and from its way out runs
 /// through the control points of `exit` back onto the lap, `to` metres
-/// after the finish line. Both roads are narrower than the lap.
+/// after the finish line. Both roads are narrower than the lap. Once they
+/// part from the lap, they climb or drop smoothly along all their length
+/// between it and the loop, to the height of the loop.
 pub struct Branch {
     pub from: f32,
     pub to: f32,
@@ -394,34 +396,57 @@ impl Track {
             let s = i as f32 * step;
             if into_loop { length - s } else { s }
         };
-        let mut elevation = Vec::with_capacity(n);
-        let mut bank = Vec::with_capacity(n);
-        let mut apart = Vec::with_capacity(n);
-        for i in 0..n {
-            let from_loop = from_loop(i);
-            // Near the lap the road lies on its surface; then it goes to the
-            // height of the loop, and banks for its own curves, but not in
-            // the straight into or out of the loop.
-            let on_lap = self.project_on_lap(road.centerline[i]);
-            let own = smoothstep(
-                JUNCTION_APART,
-                JUNCTION_APART + JUNCTION_BLEND,
-                on_lap.distance,
-            );
-            let lap_bank = self.bank[on_lap.index].lerp(
-                self.bank[(on_lap.index + 1) % self.sample_count()],
-                on_lap.t,
-            );
-            let window =
-                (i as isize - BANK_SMOOTHING as isize)..=(i as isize + BANK_SMOOTHING as isize);
-            let count = window.clone().count() as f32;
-            let curvature = window.map(|j| road.curvature(road.wrap(j))).sum::<f32>() / count;
-            let own_bank = (curvature * BANK_PER_CURVATURE).clamp(-MAX_BANK, MAX_BANK)
-                * smoothstep(LOOP_LEAD, LOOP_LEAD + 30.0, from_loop);
-            elevation.push(self.height_on_road(&on_lap).lerp(looped.height, own));
-            bank.push(lap_bank.lerp(own_bank, own));
-            apart.push(own);
+        // Near the lap the road lies on its surface; once their walls part,
+        // it has a surface of its own.
+        let on_lap: Vec<Nearest> = road
+            .centerline
+            .iter()
+            .map(|&point| self.project_on_lap(point))
+            .collect();
+        let lap_height: Vec<f32> = on_lap.iter().map(|on| self.height_on_road(on)).collect();
+        let apart: Vec<f32> = on_lap
+            .iter()
+            .map(|on| smoothstep(JUNCTION_APART, JUNCTION_APART + JUNCTION_BLEND, on.distance))
+            .collect();
+        // Its own height runs smoothly along it, from the lap's height and
+        // grade where it parts from the lap to the height of the loop,
+        // reached level at the straight into or out of it: spread over all
+        // the road in between, with no ramp or dip for a bike to take off
+        // from or slam into. Counted from the loop out to the lap.
+        let outwards = |k: usize| if into_loop { n - 1 - k } else { k };
+        let parts = (0..n)
+            .rposition(|k| apart[outwards(k)] > 0.0)
+            .unwrap_or(n - 1);
+        let lead = ((LOOP_LEAD / step).round() as usize).min(parts);
+        let span = (parts - lead).max(1) as f32 * step;
+        let grade = (lap_height[outwards((parts + 1).min(n - 1))]
+            - lap_height[outwards(parts.saturating_sub(1))])
+            / (2.0 * step);
+        let mut elevation = vec![looped.height; n];
+        for k in 0..n {
+            let u = k.saturating_sub(lead) as f32 * step / span;
+            elevation[outwards(k)] = if k >= parts {
+                lap_height[outwards(k)]
+            } else {
+                ease(looped.height, lap_height[outwards(parts)], grade * span, u)
+            };
         }
+        // It banks for its own curves, but not in the straight into or out
+        // of the loop.
+        let bank = (0..n)
+            .map(|i| {
+                let on = &on_lap[i];
+                let lap_bank =
+                    self.bank[on.index].lerp(self.bank[(on.index + 1) % self.sample_count()], on.t);
+                let window =
+                    (i as isize - BANK_SMOOTHING as isize)..=(i as isize + BANK_SMOOTHING as isize);
+                let count = window.clone().count() as f32;
+                let curvature = window.map(|j| road.curvature(road.wrap(j))).sum::<f32>() / count;
+                let own_bank = (curvature * BANK_PER_CURVATURE).clamp(-MAX_BANK, MAX_BANK)
+                    * smoothstep(LOOP_LEAD, LOOP_LEAD + 30.0, from_loop(i));
+                lap_bank.lerp(own_bank, apart[i])
+            })
+            .collect();
         road.elevation = elevation;
         road.bank = bank;
         road.apart = apart;
@@ -900,7 +925,19 @@ impl Track {
     /// los cambios de rasante (lomas), negativa en los valles.
     pub fn crest(&self, nearest: &Nearest) -> f32 {
         let road = self.road(nearest.road);
-        let at = |offset: isize| road.elevation[road.wrap(nearest.index as isize + offset)];
+        let at = |offset: isize| {
+            let index = nearest.index as isize + offset;
+            let i = road.wrap(index);
+            if road.closed || i as isize == index {
+                return road.elevation[i];
+            }
+            // Past either end of a road off the lap, it carries on the way
+            // it went: held flat, a climb onto the lap would look like a
+            // crest to take off from.
+            let inwards = if index < 0 { i + 1 } else { i - 1 };
+            let past = (index - i as isize).abs() as f32;
+            road.elevation[i] + (road.elevation[i] - road.elevation[inwards]) * past
+        };
         let span = 2.0 * road.step_length();
         -(at(2) - 2.0 * at(0) + at(-2)) / (span * span)
     }
@@ -991,6 +1028,13 @@ const LEVEL_SPREAD: f32 = 2.0 * WALL_DISTANCE;
 /// [`Track::nearest_at`]).
 fn on_level_with(road: f32, height: f32) -> bool {
     (road - height).abs() <= LEVEL_REACH
+}
+
+/// Height `u` (0..1) of the way along a smooth curve (a cubic) that leaves
+/// `from` level and reaches `to` going up `rise` metres per length of curve.
+fn ease(from: f32, to: f32, rise: f32, u: f32) -> f32 {
+    let (u2, u3) = (u * u, u * u * u);
+    (2.0 * u3 - 3.0 * u2 + 1.0) * from + (3.0 * u2 - 2.0 * u3) * to + (u3 - u2) * rise
 }
 
 /// Altura de un perfil cerrado de `lap` metros en el punto `s`, con una curva
@@ -1351,6 +1395,28 @@ mod tests {
                     }
                 }
                 assert!(parted, "{name}, road {number}");
+            }
+        }
+    }
+
+    #[test]
+    fn branches_climb_and_drop_smoothly_on_their_own() {
+        // Where a road off the lap has a surface of its own, it has no ramp
+        // or dip sharper than the crests of the lap.
+        for (name, track) in tracks_with_branches() {
+            for number in 1..=track.side_roads.len() {
+                let road = track.road(number);
+                let height = |i: usize| track.surface_point_on(number, i, 0.0).y;
+                let span = 2.0 * road.step;
+                for i in 2..road.sample_count() - 2 {
+                    if road.apart[i] == 0.0 {
+                        continue;
+                    }
+                    let grade = (height(i + 1) - height(i)) / road.step;
+                    assert!(grade.abs() < 0.06, "{name}, road {number}: {grade} at {i}");
+                    let bend = (height(i + 2) - 2.0 * height(i) + height(i - 2)) / (span * span);
+                    assert!(bend.abs() < 0.006, "{name}, road {number}: {bend} at {i}");
+                }
             }
         }
     }
