@@ -307,6 +307,15 @@ impl BikeState {
             ..Self::parked_at(pose)
         }
     }
+
+    /// Like [`Self::parked_on`], on the stretch at about `height` where the
+    /// track passes over itself (see [`Track::nearest_at`]).
+    pub fn parked_at_level(track: &Track, pose: (Vec2, f32), height: f32) -> Self {
+        Self {
+            elevation: track.road_height_at(pose.0, height),
+            ..Self::parked_at(pose)
+        }
+    }
 }
 
 /// Lo que hay bajo las ruedas al empezar un paso.
@@ -624,15 +633,15 @@ pub fn advance_hitting_walls(
     tuning: &BikeTuning,
     dt: f32,
 ) -> (BikeState, Option<WallHit>) {
-    let nearest = track.nearest(state.position);
+    let nearest = track.nearest_at(state.position, state.elevation);
     let ground = Ground {
         surface: track.surface_beside(&nearest),
-        grade: track.grade(state.position, forward(state.heading)),
+        grade: track.grade(state.position, forward(state.heading), state.elevation),
         crest: track.crest(&nearest),
     };
     let mut next = step(state, input, &ground, tuning, dt);
     let wall = hit_walls(&mut next, track);
-    let ground_height = track.road_height(next.position);
+    let ground_height = track.road_height_at(next.position, next.elevation);
     settle(&mut next, &ground, ground_height, dt);
     (next, wall)
 }
@@ -676,17 +685,22 @@ pub fn footprint(state: &BikeState) -> [(Vec2, f32); 5] {
     ]
 }
 
-/// The part of `parts` (circles of something centred at `center`) that goes
-/// deepest into the edge of the track (a wall, or the earth where it rises
-/// before it: see [`Track::edge_beside`]), if any: the normal out of the
-/// track and how deep it is (m).
-pub fn wall_contact(track: &Track, center: Vec2, parts: &[(Vec2, f32)]) -> Option<(Vec2, f32)> {
+/// The part of `parts` (circles of something centred at `center`, at
+/// `height`) that goes deepest into the edge of the track (a wall, or the
+/// earth where it rises before it: see [`Track::edge_beside`]), if any: the
+/// normal out of the track and how deep it is (m).
+pub fn wall_contact(
+    track: &Track,
+    center: Vec2,
+    height: f32,
+    parts: &[(Vec2, f32)],
+) -> Option<(Vec2, f32)> {
     // Far from the edges, one look at the centre is enough.
     let reach = parts
         .iter()
         .map(|&(point, radius)| point.distance(center) + radius)
         .fold(0.0, f32::max);
-    let nearest = track.nearest(center);
+    let nearest = track.nearest_at(center, height);
     let spread = (reach / track.step_length()).ceil() as usize + 1;
     if nearest.distance + reach <= track.closest_edge_near(nearest.index, spread) {
         return None;
@@ -694,7 +708,7 @@ pub fn wall_contact(track: &Track, center: Vec2, parts: &[(Vec2, f32)]) -> Optio
     parts
         .iter()
         .filter_map(|&(point, radius)| {
-            let nearest = track.nearest(point);
+            let nearest = track.nearest_at(point, height);
             let depth = nearest.distance + radius - track.edge_beside(&nearest);
             let out = (point - nearest.point).try_normalize()?;
             (depth > 0.0).then_some((out, depth))
@@ -723,7 +737,7 @@ pub struct WallHit {
 /// angle, nor the rider leaning towards it. Returns the hit, if there was one.
 pub fn hit_walls(state: &mut BikeState, track: &Track) -> Option<WallHit> {
     let parts = footprint(state);
-    let (normal, depth) = wall_contact(track, state.position, &parts)?;
+    let (normal, depth) = wall_contact(track, state.position, state.elevation, &parts)?;
     let at = parts
         .iter()
         .map(|&(point, radius)| point - state.position + normal * radius)
@@ -1121,8 +1135,8 @@ fn read_controller_binding(
                 } else {
                     0.0
                 };
-                let throttle = arming.filter(entity, THROTTLE, trigger_r.max(south));
-                let brake = arming.filter(entity, BRAKE, trigger_l.max(west));
+                let throttle = arming.filter(entity, THROTTLE, squeezed(trigger_r.max(south)));
+                let brake = arming.filter(entity, BRAKE, squeezed(trigger_l.max(west)));
 
                 let raw_steer = -stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0))
                     * reach_with(options.stick_limit, speed);
@@ -1146,14 +1160,14 @@ fn read_controller_binding(
                     dt,
                 );
 
-                let pulled_back =
-                    (-gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0) - 0.3) / 0.7;
-                let wheelie_btn = if trigger_r > 0.2 && south > 0.5 {
-                    1.0
-                } else {
-                    0.0
-                };
-                let wheelie = pulled_back.clamp(0.0, 1.0).max(wheelie_btn);
+                // B, or the trigger and A at once. Not the stick pulled back:
+                // steering, it is easy to pull it a little without meaning to.
+                let wheelie =
+                    if gamepad.pressed(GamepadButton::East) || (trigger_r > 0.2 && south > 0.5) {
+                        1.0
+                    } else {
+                        0.0
+                    };
 
                 BikeInput {
                     throttle,
@@ -1238,12 +1252,11 @@ fn read_player_input(
 
         for (entity, gamepad) in &gamepads {
             let button = |action| controls.button_value(action, gamepad);
-            let p_throttle = arming.filter(entity, THROTTLE, button(Action::Throttle));
-            let p_brake = arming.filter(entity, BRAKE, button(Action::Brake));
+            let p_throttle = arming.filter(entity, THROTTLE, squeezed(button(Action::Throttle)));
+            let p_brake = arming.filter(entity, BRAKE, squeezed(button(Action::Brake)));
             let p_steer = stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0));
             let digital = |action| if button(action) > 0.5 { 1.0f32 } else { 0.0f32 };
             let p_pressed: f32 = digital(Action::Left) - digital(Action::Right);
-            let pulled_back = (-gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0) - 0.3) / 0.7;
             let trigger_r = gamepad
                 .get(GamepadButton::RightTrigger2)
                 .unwrap_or(0.0)
@@ -1253,15 +1266,14 @@ fn read_player_input(
             } else {
                 0.0
             };
-            let both_throttles = if trigger_r > 0.2 && south > 0.5 {
+            let both_throttles: f32 = if trigger_r > 0.2 && south > 0.5 {
                 1.0
             } else {
                 0.0
             };
-            let p_wheelie = pulled_back
-                .clamp(0.0, 1.0)
-                .max(both_throttles)
-                .max(button(Action::Wheelie));
+            // Not the stick pulled back: steering, it is easy to pull it a
+            // little without meaning to.
+            let p_wheelie = both_throttles.max(button(Action::Wheelie));
 
             let has_activity = p_throttle > 0.05
                 || p_brake > 0.05
@@ -1424,6 +1436,19 @@ impl AnalogSteer {
     }
 }
 
+/// How far a trigger at rest may read pressed: some (the DualSense, with
+/// its adaptive resistance engaged) never quite read zero, and the least
+/// throttle takes away the engine braking, so the bike would run on by
+/// itself.
+const TRIGGER_REST: f32 = 0.15;
+
+/// How much a gamepad's throttle or brake counts, from how far it reads
+/// pressed: nothing up to [`TRIGGER_REST`], and from there all the way to
+/// fully pressed. Buttons, pressed or not, count fully or not at all.
+fn squeezed(value: f32) -> f32 {
+    ((value - TRIGGER_REST) / (1.0 - TRIGGER_REST)).clamp(0.0, 1.0)
+}
+
 /// Curva de respuesta del stick: cerca del centro gira poco, para corregir
 /// la trazada con precisión, y a fondo gira todo.
 fn stick_steer(x: f32) -> f32 {
@@ -1520,8 +1545,9 @@ fn simulate_bikes(
                 .filter(|(other, _)| *other != entity)
                 .map(|&(_, position)| position)
                 .collect();
-            let (position, heading, lateral) = crash::rejoin_pose(&track, state.position, &others);
-            *state = BikeState::parked_on(&track, (position, heading));
+            let (position, heading, lateral) =
+                crash::rejoin_pose(&track, state.position, state.elevation, &others);
+            *state = BikeState::parked_at_level(&track, (position, heading), state.elevation);
             // Without a different previous state, interpolation draws no trip.
             previous.0 = *state;
             *knock = Knock::default();
@@ -1578,7 +1604,8 @@ fn separate_bikes(
         );
         for (state, from) in [(&mut state_a, from_a), (&mut state_b, from_b)] {
             if state.position != from
-                && let Some((out, depth)) = wall_contact(&track, state.position, &footprint(state))
+                && let Some((out, depth)) =
+                    wall_contact(&track, state.position, state.elevation, &footprint(state))
             {
                 state.position -= out * depth;
             }
@@ -2274,6 +2301,36 @@ mod tests {
     }
 
     #[test]
+    fn a_trigger_resting_a_little_pressed_lets_go_of_the_throttle() {
+        assert_eq!(squeezed(0.0), 0.0);
+        assert_eq!(squeezed(TRIGGER_REST), 0.0);
+        assert_eq!(squeezed(0.1), 0.0);
+        assert!((squeezed(1.0) - 1.0).abs() < 1e-6);
+        // Half way along what counts, half throttle.
+        assert!((squeezed(TRIGGER_REST + (1.0 - TRIGGER_REST) / 2.0) - 0.5).abs() < 1e-6);
+        // A button counts fully.
+        assert_eq!(squeezed(1.0), 1.0);
+        // Released like that, the engine brakes the bike.
+        let tuning = BikeTuning::default();
+        let rolling = BikeState {
+            speed: 30.0,
+            ..parked()
+        };
+        let input = BikeInput {
+            throttle: squeezed(0.1),
+            ..default()
+        };
+        let next = step(
+            &rolling,
+            &input,
+            &Ground::flat(Surface::Asphalt),
+            &tuning,
+            DT,
+        );
+        assert!(next.speed < 30.0 - tuning.engine_braking * DT);
+    }
+
+    #[test]
     fn controls_must_be_released_again_for_a_new_race() {
         let pad = Entity::from_raw_u32(1).unwrap();
         let mut arming = PadArming::default();
@@ -2589,12 +2646,13 @@ mod tests {
         let tuning = BikeTuning::default();
         let mut state = BikeState::parked_on(track, track.grid_pose(0, 0.0));
         let n = track.sample_count();
-        let (mut progress, mut last) = (0i64, track.nearest_index(state.position) as i64);
+        let here = |state: &BikeState| track.nearest_index_at(state.position, state.elevation);
+        let (mut progress, mut last) = (0i64, here(&state) as i64);
         let mut on_grass = 0;
         let steps = (60.0 / DT) as usize;
         for _ in 0..steps {
             // Mira 18 m por delante de la línea central y gira hacia allí.
-            let ahead = track.offset_point(track.nearest_index(state.position) + 9, 0.0);
+            let ahead = track.offset_point(here(&state) + 9, 0.0);
             let angle = wrap_angle(heading_of(ahead - state.position) - state.heading);
             let input = BikeInput {
                 throttle: 1.0,
@@ -2602,18 +2660,18 @@ mod tests {
                 ..default()
             };
             state = advance(&state, &input, track, &tuning, DT);
-            let distance = track.distance_to_centerline(state.position);
+            let distance = track.nearest_at(state.position, state.elevation).distance;
             assert!(
                 distance < WALL_DISTANCE - BIKE_HALF_WIDTH - 0.01,
                 "toca el muro de {name} en {:?} (muestra {}) a {:.0} km/h",
                 state.position,
-                track.nearest_index(state.position),
+                here(&state),
                 state.speed * 3.6
             );
             if distance > track.half_width() {
                 on_grass += 1;
             }
-            let index = track.nearest_index(state.position) as i64;
+            let index = here(&state) as i64;
             progress += (index - last + n as i64 * 3 / 2) % n as i64 - n as i64 / 2;
             last = index;
         }

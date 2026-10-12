@@ -9,16 +9,26 @@ use super::quads::MeshBuilder;
 use super::scenery::{
     Billboard, BrakeMarker, BridgeStyle, ChevronDirection, ChevronSign, Scenery, Soil, Span,
 };
-use super::terrain::Terrain;
-use crate::geometry::fbm;
-use crate::track::{SURFACE_Y, Track, WALL_DISTANCE};
+use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, Terrain, ground_vertex_color};
+use crate::geometry::{fbm, smoothstep};
+use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
 
 /// Alto de las paredes del túnel hasta el techo (m), y lo que se abomba la
 /// roca de encima.
 const TUNNEL_HEIGHT: f32 = 6.5;
 const TUNNEL_ROCK: f32 = 15.0;
 /// Hasta dónde llega la roca del túnel a cada lado de la línea central (m).
-const TUNNEL_SHELL: f32 = WALL_DISTANCE + 12.0;
+pub const TUNNEL_SHELL: f32 = WALL_DISTANCE + 12.0;
+/// Points of the centre line at least this many apart along the lap are on
+/// different stretches of the track: one can pass over a tunnel of the
+/// other.
+const OTHER_STRETCH: usize = 60;
+/// Where another stretch passes over a tunnel, the rock carries it: just
+/// below its asphalt as far as this from its centre line (m), and down to
+/// the rest of the rock over this much further.
+const DECK_FLAT: f32 = WALL_DISTANCE + 1.5;
+const DECK_SLOPE: f32 = 12.0;
+const DECK_DROP: f32 = 0.3;
 /// Franja de tablero de ajedrez al pie de las paredes del túnel (m).
 const TUNNEL_CHECKER: f32 = 0.7;
 /// Una luz del techo y una costilla cada tantos puntos del trazado.
@@ -51,7 +61,7 @@ pub fn spawn_structures(
     let lap = track.lap_length();
     for tunnel in scenery.tunnels {
         let indices = indices(track, *tunnel, lap);
-        let parts = tunnel_meshes(track, terrain, &indices);
+        let parts = tunnel_meshes(track, terrain, scenery.soil, &indices);
         let rock = match scenery.soil {
             Soil::Rock => StandardMaterial {
                 base_color: Color::srgb(0.85, 0.75, 0.6),
@@ -98,14 +108,25 @@ pub fn spawn_structures(
             perceptual_roughness: 0.7,
             ..default()
         };
+        let grass = StandardMaterial {
+            base_color_texture: Some(assets.textures.grass.clone()),
+            perceptual_roughness: 0.9,
+            reflectance: 0.18,
+            ..default()
+        };
         for (mesh, material) in [
             (parts.rock, rock),
+            (parts.grass, grass),
             (parts.lining, lining),
             (parts.portals, concrete.clone()),
             (parts.sidewalks, concrete),
             (parts.lights, lights),
             (parts.checker, checker),
         ] {
+            // Through checkerboard earth, no grass grows on the top.
+            if mesh.count_vertices() == 0 {
+                continue;
+            }
             world.spawn((
                 Mesh3d(assets.meshes.add(mesh)),
                 MeshMaterial3d(assets.materials.add(material)),
@@ -163,6 +184,60 @@ pub fn spawn_structures(
     }
 }
 
+/// The tunnels of a track, as runs of segments of its centre line: the
+/// first point and how many segments.
+pub struct Tunnels(Vec<(usize, usize)>);
+
+impl Tunnels {
+    pub fn new(track: &Track, scenery: &Scenery) -> Self {
+        let lap = track.lap_length();
+        Self(
+            scenery
+                .tunnels
+                .iter()
+                .map(|&span| {
+                    let indices = indices(track, span, lap);
+                    (indices[0], indices.len() - 1)
+                })
+                .collect(),
+        )
+    }
+
+    /// Where another stretch of the track passes over a tunnel and `point`
+    /// is within `reach` of the road through it, under its rock (at most
+    /// [`TUNNEL_SHELL`]), near that stretch: the point of the road through
+    /// the tunnel nearest to it. The ground stays down there, at the level of
+    /// the tunnel, and the rock carries the road above (see
+    /// [`tunnel_meshes`]).
+    pub fn beneath(&self, track: &Track, point: Vec2, reach: f32) -> Option<Nearest> {
+        self.0.iter().find_map(|&(from, count)| {
+            let road = track.nearest_among(point, from, count);
+            if road.distance >= reach {
+                return None;
+            }
+            let over = passing_over(track, from, count, point, track.height_beside(&road))?;
+            (over.distance < TUNNEL_SHELL).then_some(road)
+        })
+    }
+}
+
+/// The point nearest to `point` of the stretch of the track that passes
+/// over the tunnel through the `count` segments from `from` on, whose road
+/// is at `height` there: the nearest away from the tunnel and its
+/// approaches, if it is above the tunnel's rock.
+fn passing_over(
+    track: &Track,
+    from: usize,
+    count: usize,
+    point: Vec2,
+    height: f32,
+) -> Option<Nearest> {
+    let n = track.sample_count();
+    let skipped = (count + 2 * OTHER_STRETCH).min(n - 1);
+    let over = track.nearest_among(point, (from + count + OTHER_STRETCH) % n, n - skipped);
+    (track.height_beside(&over) > height + TUNNEL_HEIGHT + 2.0).then_some(over)
+}
+
 /// Los puntos del trazado de un tramo, en orden de carrera.
 fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
     let first = track.index_at(span.from);
@@ -176,6 +251,8 @@ fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
 struct TunnelParts {
     /// La roca por encima y a los lados.
     rock: Mesh,
+    /// Grass on the gentle parts of the top.
+    grass: Mesh,
     /// Paredes y techo por dentro.
     lining: Mesh,
     /// El marco de hormigón de las bocas.
@@ -190,8 +267,9 @@ struct TunnelParts {
 /// Un túnel recto por dentro, con el techo plano, luces cálidas y las
 /// paredes con tablero de ajedrez abajo, como en Moto Racer. Por fuera es un
 /// bloque de roca que se mete en las paredes de roca que lo rodean.
-fn tunnel_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> TunnelParts {
+fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]) -> TunnelParts {
     let mut rock = MeshBuilder::default();
+    let mut grass = MeshBuilder::default();
     let mut lining = MeshBuilder::default();
     let mut portals = MeshBuilder::default();
     let mut sidewalks = MeshBuilder::default();
@@ -211,12 +289,28 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> TunnelP
         let beyond = track.offset_point(i, side * (TUNNEL_SHELL + 1.0));
         (terrain.height(beyond) - road(i)).max(TUNNEL_HEIGHT + 3.0)
     };
+    // Where another stretch of the road passes over the tunnel, the rock
+    // carries it: just below its asphalt, and sloping down to the rest of
+    // the rock on either side.
+    let (first, count) = (indices[0], indices.len() - 1);
+    let deck = |i: usize, lateral: f32| {
+        let ground = track.offset_point(i, lateral);
+        let over = passing_over(track, first, count, ground, road(i))?;
+        let reach = 1.0 - smoothstep(DECK_FLAT, DECK_FLAT + DECK_SLOPE, over.distance);
+        (reach > 0.0).then(|| (track.height_beside(&over) - DECK_DROP - road(i), reach))
+    };
     let rock_top = |i: usize, lateral: f32| {
         let t = (lateral / TUNNEL_SHELL + 1.0) / 2.0;
         let ground = track.surface_point(i, lateral);
         let rugged = fbm(Vec2::new(ground.x, ground.z) / 19.0, 3);
         let hump = TUNNEL_ROCK * 0.2 * (1.0 - (2.0 * t - 1.0).powi(2)) * (0.5 + rugged);
-        edge(i, -1.0).lerp(edge(i, 1.0), t) + hump
+        let top = edge(i, -1.0).lerp(edge(i, 1.0), t) + hump;
+        deck(i, lateral).map_or(top, |(deck, reach)| {
+            // Over the ground that rises towards the road above, too, but
+            // never over that road.
+            let earth = terrain.height(Vec2::new(ground.x, ground.z)) - road(i);
+            top.lerp(deck, reach).max((earth + 0.05).min(deck))
+        })
     };
     let inner = WALL_DISTANCE;
     let sidewalk_from = track.half_width();
@@ -330,22 +424,34 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> TunnelP
             }
         }
         // La roca de encima, en franjas de lado a lado.
-        const STRIPS: usize = 8;
+        const STRIPS: usize = 12;
         for k in 0..STRIPS {
             let (a, b) = (
                 -TUNNEL_SHELL + 2.0 * TUNNEL_SHELL * k as f32 / STRIPS as f32,
                 -TUNNEL_SHELL + 2.0 * TUNNEL_SHELL * (k + 1) as f32 / STRIPS as f32,
             );
-            rock.quad(
-                [
-                    (at(i, a, rock_top(i, a)), Vec2::new(vi, a / 4.0)),
-                    (at(j, a, rock_top(j, a)), Vec2::new(vj, a / 4.0)),
-                    (at(j, b, rock_top(j, b)), Vec2::new(vj, b / 4.0)),
-                    (at(i, b, rock_top(i, b)), Vec2::new(vi, b / 4.0)),
-                ],
-                Vec3::Y,
-                Color::WHITE,
-            );
+            let corners = [
+                (at(i, a, rock_top(i, a)), Vec2::new(vi, a / 4.0)),
+                (at(j, a, rock_top(j, a)), Vec2::new(vj, a / 4.0)),
+                (at(j, b, rock_top(j, b)), Vec2::new(vj, b / 4.0)),
+                (at(i, b, rock_top(i, b)), Vec2::new(vi, b / 4.0)),
+            ];
+            // Through natural rock, grass grows where the top is gentle, as
+            // on the hills around.
+            let [p, q, r, _] = corners.map(|(p, _)| p);
+            let face = (q - p).cross(r - p).normalize_or_zero();
+            let face = if face.y < 0.0 { -face } else { face };
+            if soil == Soil::Rock && face.y > CLIFF_NORMAL_Y {
+                let center = corners.iter().map(|(p, _)| *p).sum::<Vec3>() / 4.0;
+                let tint = ground_vertex_color(Ground::Grass, center, face);
+                grass.quad(
+                    corners.map(|(p, _)| (p, Vec2::new(p.x, p.z) / GRASS_TILE)),
+                    Vec3::Y,
+                    Color::LinearRgba(LinearRgba::from_f32_array(tint)),
+                );
+            } else {
+                rock.quad(corners, Vec3::Y, Color::WHITE);
+            }
         }
     }
     // Las bocas: la roca, de lado a lado, con la abertura del túnel en un
@@ -396,6 +502,7 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> TunnelP
     }
     TunnelParts {
         rock: rock.build(),
+        grass: grass.build(),
         lining: lining.build(),
         portals: portals.build(),
         sidewalks: sidewalks.build(),

@@ -22,8 +22,15 @@ mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --remove-name-section --remove-producers-section \
   --out-dir "$out" target/wasm32-unknown-unknown/release/motorust.wasm
 bytes=$(wc -c < "$out/motorust_bg.wasm" | tr -d ' ')
+# The SHA-256 names this build: the page asks for the .wasm with it, so a
+# browser never reuses another build's copy, and checks the copy it keeps.
+if command -v sha256sum > /dev/null; then
+  hash=$(sha256sum "$out/motorust_bg.wasm" | cut -d' ' -f1)
+else
+  hash=$(shasum -a 256 "$out/motorust_bg.wasm" | cut -d' ' -f1)
+fi
 version=$(grep '^version = ' Cargo.toml | head -n 1 | cut -d'"' -f 2)
-sed "s/const WASM_BYTES = 0;/const WASM_BYTES = $bytes/; s/const GAME_VERSION = \"[^\"]*\";/const GAME_VERSION = \"$version\";/; s/<div class=\"version\" id=\"game-version\">[^<]*<\/div>/<div class=\"version\" id=\"game-version\">v$version<\/div>/" web/index.html > "$out/index.html"
+sed "s/const WASM_BYTES = 0;/const WASM_BYTES = $bytes;/; s/const WASM_SHA256 = \"\";/const WASM_SHA256 = \"$hash\";/; s/const GAME_VERSION = \"[^\"]*\";/const GAME_VERSION = \"$version\";/; s/<div class=\"version\" id=\"game-version\">[^<]*<\/div>/<div class=\"version\" id=\"game-version\">v$version<\/div>/" web/index.html > "$out/index.html"
 cp web/favicon.png "$out/favicon.png"
 [ -f web/favicon.ico ] && cp web/favicon.ico "$out/favicon.ico"
 ls -l "$out"

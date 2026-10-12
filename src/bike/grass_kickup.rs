@@ -202,7 +202,7 @@ pub fn kick_up_grass(
             continue;
         }
 
-        let nearest = track.nearest(state.position);
+        let nearest = track.nearest_at(state.position, state.elevation);
         if track.surface_beside(&nearest) != Surface::Grass {
             kickup.accumulator = 0.0;
             continue;

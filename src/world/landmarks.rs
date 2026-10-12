@@ -1,4 +1,4 @@
-//! Green Hill landmarks, where the scenery of a track asks for them
+//! Loops Hill landmarks, where the scenery of a track asks for them
 //! ([`Scenery`]): giant loops on blocks of checkerboard earth, carved totem
 //! poles, sunflowers turned towards the road, lines of spinning golden rings
 //! floating over it and waterfalls pouring down the rock walls.
@@ -177,7 +177,7 @@ fn block_half_size(radius: f32) -> Vec2 {
 /// the grass of the running surface, of its edges and of the top of the
 /// block. The ribbon comes in along +X, goes round anticlockwise seen from
 /// +Z and leaves along +X, shifted sideways (Z) so that it does not run into
-/// itself, as in the loops of Green Hill.
+/// itself, as in the loops of Sonic's Green Hill.
 fn loop_meshes(radius: f32, depth: f32) -> (Mesh, Mesh) {
     let mut earth = MeshBuilder::default();
     let mut lawn = MeshBuilder::default();

@@ -320,7 +320,16 @@
     // build.sh pone aquí el tamaño del .wasm, para la barra de progreso (el
     // servidor lo manda comprimido y no siempre dice cuánto ocupa).
     const WASM_BYTES = 0;
+    // build.sh fills in the SHA-256 of the .wasm. The .wasm is requested with
+    // it, so after a release no browser reuses the previous build's copy (the
+    // server lets browsers keep it for a year), and it checks the copy that is
+    // kept in Cache Storage.
+    const WASM_SHA256 = "";
     const GAME_VERSION = "0.0.1";
+    const WASM_URL = WASM_SHA256
+      ? `./motorust_bg.wasm?v=${WASM_SHA256.slice(0, 16)}`
+      : "./motorust_bg.wasm";
+    const WASM_CACHE = "motorust-wasm";
 
     const page = document.documentElement;
     const status = document.getElementById("status");
@@ -408,15 +417,72 @@
       return bytes;
     }
 
+    // Cache Storage keeps the .wasm between visits, so reloading the tab (even
+    // a hard reload) starts the game without downloading it again. It only
+    // exists on https and localhost, and the browser may refuse it (private
+    // windows, no disk space): then the game is downloaded every time.
+    async function openWasmCache() {
+      if (!WASM_SHA256 || !globalThis.caches || !globalThis.crypto?.subtle) return null;
+      try {
+        return await caches.open(WASM_CACHE);
+      } catch (error) {
+        console.warn("Cache Storage is not available:", error);
+        return null;
+      }
+    }
+
+    // This build's .wasm if it was kept on an earlier visit, or null.
+    async function cachedWasm(cache) {
+      try {
+        const response = await cache.match(WASM_URL);
+        if (!response) return null;
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (!WASM_BYTES || bytes.length === WASM_BYTES) return bytes;
+      } catch (error) {
+        console.warn("The kept .wasm could not be read:", error);
+      }
+      return null;
+    }
+
+    // Keeps a downloaded .wasm for the next visit, but only if it is this
+    // page's build (while a release is being published the server may send
+    // another one), and drops the ones kept from older builds.
+    async function keepWasm(cache, bytes) {
+      try {
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+        const hash = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        if (hash !== WASM_SHA256) {
+          console.warn("The downloaded .wasm is not this page's build; it is not kept");
+          return;
+        }
+        const url = new URL(WASM_URL, location.href).href;
+        const headers = { "content-type": "application/wasm" };
+        await cache.put(url, new Response(bytes, { headers }));
+        for (const request of await cache.keys()) {
+          if (request.url !== url) await cache.delete(request);
+        }
+      } catch (error) {
+        console.warn("The .wasm could not be kept for the next visit:", error);
+      }
+    }
+
     try {
       if (!document.createElement("canvas").getContext("webgl2")) {
         throw new Error("este navegador no tiene WebGL2");
       }
-      const bytes = await download("./motorust_bg.wasm");
+      const cache = await openWasmCache();
+      let bytes = cache && (await cachedWasm(cache));
+      if (bytes) {
+        status.textContent = "Listo, sin volver a descargarlo";
+      } else {
+        bytes = await download(WASM_URL);
+        status.textContent = "Descarga completada";
+        // Saved in the background while the player presses the button.
+        if (cache) keepWasm(cache, bytes);
+      }
 
       // Descarga de WASM completada: mostrar botón de inicio en lugar de arrancar inmediatamente
       progress.style.width = "100%";
-      status.textContent = "Descarga completada";
       startBtn.style.display = "inline-flex";
       startBtn.focus();
 

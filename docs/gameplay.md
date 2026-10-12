@@ -76,7 +76,7 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 ### Jumps, wheelies and suspension
 
 - **Jumps.** Taken flat out, crests make the bike take off. Jumps are short and sharp: in the air the bike falls with more gravity than in real life. You can correct your direction a little, but you cannot accelerate. Pulling back in the air lifts the nose.
-- **Wheelies.** Pull back with the throttle open to lift the front wheel. With the wheel in the air you can barely steer, but you gain a little acceleration and top speed, so it pays off on straights.
+- **Wheelies.** Hold the wheelie control (Space, or B on a gamepad) with the throttle open to lift the front wheel. With the wheel in the air you can barely steer, but you gain a little acceleration and top speed, so it pays off on straights.
 - **Suspension and inertia.** The bike has weight you can feel:
   - The rear squats under acceleration and the fork dives under braking. Braking hard at speed lifts the rear.
   - In the air the suspension unloads and the wheels hang. On landing it compresses and rebounds while the wheels stay on the ground.
@@ -114,14 +114,14 @@ These are the defaults. Every action except the sticks, mute and fullscreen can 
 | Throttle | W / ↑ | Right trigger (RT) / A |
 | Brake, and reverse when stopped | S / ↓ | Left trigger (LT) / X |
 | Steer | A, D / ←, → | Left stick (progressive) / D-pad |
-| Wheelie (with throttle) | Space / Left Shift | Left stick pulled back / B |
+| Wheelie (with throttle) | Space / Left Shift | B, or RT and A together |
 | Look around | | Right stick |
 | Restart the race | R | Select |
 | Pause | Esc | Start |
 | Mute or unmute sound | M | |
 | Toggle fullscreen | Cmd+Enter (macOS) / Alt+Enter (Windows, Linux) | |
 
-The triggers are analogue: throttle and brake follow how far you squeeze them. Restart sends every bike back to its grid slot, and the rivals wait again until you accelerate. In the browser, both fullscreen shortcuts work, because the game cannot tell which system the browser runs on.
+The triggers are analogue: throttle and brake follow how far you squeeze them. The first 15 % of their travel does nothing, so a trigger that does not quite return to zero at rest (as a DualSense can, with its adaptive resistance on) neither opens the throttle nor stops the engine braking. Restart sends every bike back to its grid slot, and the rivals wait again until you accelerate. In the browser, both fullscreen shortcuts work, because the game cannot tell which system the browser runs on.
 
 ## Options
 
@@ -152,7 +152,7 @@ To rebind an action:
 
 Esc cancels, and so does waiting eight seconds without pressing anything. M cannot be bound, because it always toggles sound. "Restablecer los controles" (Reset controls) restores the defaults.
 
-Some controls cannot be changed: the left stick (steering, and wheelie when pulled back), the right stick (look around), M (sound) and the menu navigation. The race's controls legend always shows the keys you have chosen.
+Some controls cannot be changed: the left stick (steering), the right stick (look around), M (sound) and the menu navigation. Pulling the left stick back does nothing: it used to pop a wheelie, which was easy to do by mistake while steering. Controls saved without a wheelie button get B, unless B already does something else. The race's controls legend always shows the keys you have chosen.
 
 ### Where settings are saved
 

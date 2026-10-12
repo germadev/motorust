@@ -1,9 +1,9 @@
-//! Green Hill: a lap inspired by the first zone of Sonic the Hedgehog. A
-//! roller coaster of a road, clockwise round an island of green hills
-//! under a blue sky, with the sea all around.
+//! Loops Hill: a lap inspired by Green Hill, the first zone of Sonic the
+//! Hedgehog. A roller coaster of a road, clockwise round an island of green
+//! hills under a blue sky, with the sea all around.
 //!
 //! 1. The start straight runs north between palm trees and sunflowers, with
-//!    a crest where the bike takes off, under a line of golden rings.
+//!    a crest where the bike takes off.
 //! 2. A long right-hander climbs past a giant loop standing on a block of
 //!    checkerboard earth, and S-bends roll on east over the hills.
 //! 3. The road climbs into a tunnel through a checkerboard ridge and comes
@@ -11,7 +11,7 @@
 //! 4. Down past a second waterfall, a wooden bridge crosses an inlet where
 //!    the sea runs in under the road.
 //! 5. Rolling S-bends with totem poles lead down to the south shore: a
-//!    beach road with palms, a jump and more rings, back to the start.
+//!    beach road with palms and a jump, back to the start.
 
 use bevy::prelude::*;
 
@@ -26,18 +26,18 @@ const TUNNEL: Span = span(770.0, 870.0);
 const BRIDGE: Span = span(1230.0, 1310.0);
 const SHORE: Span = span(1660.0, 1960.0);
 
-/// Sonic blue and ring gold.
+/// Sonic blue and gold.
 const BLUE: Color = Color::srgb(0.08, 0.28, 0.85);
 const GOLD: Color = Color::srgb(1.0, 0.8, 0.1);
 const RED: Color = Color::srgb(0.8, 0.08, 0.06);
 
-pub const GREEN_HILL: Circuit = Circuit {
-    name: "Green Hill",
-    name_en: "Green Hill",
+pub const LOOPS_HILL: Circuit = Circuit {
+    name: "Loops Hill",
+    name_en: "Loops Hill",
     description: "Inspirada en Sonic: colinas de tierra a cuadros,\n\
-                  rizos, girasoles, tótems, cascadas y anillos",
+                  rizos, girasoles, tótems y cascadas",
     description_en: "Inspired by Sonic: checkered hills, loops,\n\
-                     sunflowers, totems, waterfalls and rings",
+                     sunflowers, totems and waterfalls",
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
@@ -93,7 +93,7 @@ pub const GREEN_HILL: Circuit = Circuit {
             Gantry {
                 along: 0.0,
                 color: BLUE,
-                text: Some("GREEN HILL"),
+                text: Some("LOOPS HILL"),
             },
             Gantry {
                 along: 700.0,
@@ -301,33 +301,7 @@ pub const GREEN_HILL: Circuit = Circuit {
                 radius: 11.0,
             },
         ],
-        rings: &[
-            // Over the crest of the start straight, and in the air beyond it.
-            Rings {
-                along: 150.0,
-                count: 9,
-                lateral: 0.0,
-                height: 1.0,
-            },
-            Rings {
-                along: 560.0,
-                count: 6,
-                lateral: -3.5,
-                height: 0.6,
-            },
-            Rings {
-                along: 1380.0,
-                count: 7,
-                lateral: 2.5,
-                height: 1.0,
-            },
-            Rings {
-                along: 1740.0,
-                count: 8,
-                lateral: 0.0,
-                height: 1.0,
-            },
-        ],
+        rings: &[],
         waterfalls: &[
             Waterfall {
                 along: 945.0,
@@ -496,7 +470,7 @@ const CUTTINGS: [Cutting; 6] = [
 ];
 
 /// Across the sea, checkerboard mountains to the north and west, as in the
-/// background of Green Hill; to the south and east, open sea.
+/// background of Sonic's Green Hill; to the south and east, open sea.
 fn mountains(point: Vec2) -> f32 {
     const CENTER: Vec2 = Vec2::new(280.0, -200.0);
     let away = point - CENTER;

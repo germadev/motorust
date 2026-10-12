@@ -52,6 +52,9 @@ pub struct Line(pub f32);
 #[derive(Clone, Copy, Debug)]
 pub struct Traffic {
     pub position: Vec2,
+    /// How high it is (m): where the track passes over itself, a bike on
+    /// the other stretch is not in the way.
+    pub elevation: f32,
     pub speed: f32,
 }
 
@@ -76,6 +79,7 @@ pub fn drive_rivals(
         .map(|(entity, state)| {
             let traffic = Traffic {
                 position: state.position,
+                elevation: state.elevation,
                 speed: state.speed,
             };
             (entity, traffic)
@@ -111,7 +115,7 @@ pub fn plan_line(
     traffic: &[Traffic],
 ) -> (f32, f32) {
     let n = track.sample_count() as i64;
-    let here = track.nearest_index(state.position) as i64;
+    let here = track.nearest_index_at(state.position, state.elevation) as i64;
     let speed = state.speed.max(0.0);
     let horizon = TRAFFIC_DISTANCE + speed * TRAFFIC_TIME;
     // Las motos que tiene delante (o al lado) y a las que se acerca: cuánto
@@ -119,11 +123,14 @@ pub fn plan_line(
     let ahead: Vec<(f32, f32, f32)> = traffic
         .iter()
         .filter_map(|other| {
-            let index = track.nearest_index(other.position) as i64;
+            let index = track.nearest_index_at(other.position, other.elevation) as i64;
             let gap = ((index - here + n + n / 2) % n - n / 2) as f32 * SAMPLE_SPACING;
             let closing = speed - other.speed;
             (gap > -SAMPLE_SPACING && gap < horizon && (closing > 0.5 || gap < TRAFFIC_DISTANCE))
-                .then(|| (gap, track.nearest(other.position).lateral, other.speed))
+                .then(|| {
+                    let lateral = track.nearest_at(other.position, other.elevation).lateral;
+                    (gap, lateral, other.speed)
+                })
         })
         .collect();
     let limit = track.half_width() - EDGE_MARGIN;
@@ -171,7 +178,7 @@ pub fn decide(
     track: &Track,
     tuning: &BikeTuning,
 ) -> BikeInput {
-    let here = track.nearest_index(state.position);
+    let here = track.nearest_index_at(state.position, state.elevation);
     let speed = state.speed.max(0.0);
 
     // Dirección: persecución pura de un punto de su carril por delante. La
@@ -232,18 +239,18 @@ mod tests {
             let dt = 1.0 / 120.0;
             let n = track.sample_count() as i64;
             let mut progress = 0;
-            let mut last_index = track.nearest_index(state.position) as i64;
+            let mut last_index = track.nearest_index_at(state.position, state.elevation) as i64;
             for _ in 0..(90.0 / dt) as usize {
                 let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
                 state = advance(&state, &input, &track, &tuning, dt);
                 assert!(
-                    track.distance_to_centerline(state.position) < 8.5,
+                    track.nearest_at(state.position, state.elevation).distance < 8.5,
                     "se ha salido de {} en {:?}",
                     circuit.name,
                     state.position
                 );
                 // Avance con signo, teniendo en cuenta que el índice da la vuelta.
-                let index = track.nearest_index(state.position) as i64;
+                let index = track.nearest_index_at(state.position, state.elevation) as i64;
                 progress += (index - last_index + n + n / 2) % n - n / 2;
                 last_index = index;
             }
@@ -281,6 +288,7 @@ mod tests {
         for _ in 0..(8.0 / dt) as usize {
             let traffic = [Traffic {
                 position: stopped.position,
+                elevation: stopped.elevation,
                 speed: stopped.speed,
             }];
             let (target, limit) = plan_line(&rival, line.0, &state, &track, &traffic);
@@ -348,6 +356,7 @@ mod tests {
                 .iter()
                 .map(|racer| Traffic {
                     position: racer.state.position,
+                    elevation: racer.state.elevation,
                     speed: racer.state.speed,
                 })
                 .collect();
@@ -362,8 +371,12 @@ mod tests {
                     );
                     if racer.crash.is_over() {
                         let (position, heading, lateral) =
-                            rejoin_pose(&track, racer.state.position, &[]);
-                        racer.state = BikeState::parked_on(&track, (position, heading));
+                            rejoin_pose(&track, racer.state.position, racer.state.elevation, &[]);
+                        racer.state = BikeState::parked_at_level(
+                            &track,
+                            (position, heading),
+                            racer.state.elevation,
+                        );
                         racer.knock = Knock::default();
                         racer.crash = CrashState::default();
                         racer.line.0 = lateral;
@@ -464,7 +477,8 @@ mod tests {
                 state = advance(&state, &input, &track, &tuning, dt);
                 if !state.grounded {
                     air += 1;
-                    let height = state.elevation - track.road_height(state.position);
+                    let height =
+                        state.elevation - track.road_height_at(state.position, state.elevation);
                     assert!(height < 1.3, "vuela muy alto en {name}: {height} m");
                 } else if air > 0 {
                     flights += 1;

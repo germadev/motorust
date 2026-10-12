@@ -224,7 +224,7 @@ impl Default for Controls {
             brake: Binding::new(&[K::KeyS, K::ArrowDown], &[B::LeftTrigger2, B::West]),
             left: Binding::new(&[K::KeyA, K::ArrowLeft], &[B::DPadLeft]),
             right: Binding::new(&[K::KeyD, K::ArrowRight], &[B::DPadRight]),
-            wheelie: Binding::new(&[K::Space, K::ShiftLeft], &[]),
+            wheelie: Binding::new(&[K::Space, K::ShiftLeft], &[B::East]),
             restart: Binding::new(&[K::KeyR], &[B::Select]),
             pause: Binding::new(&[K::Escape], &[B::Start]),
         }
@@ -253,6 +253,19 @@ impl Controls {
             Action::Wheelie => &mut self.wheelie,
             Action::Restart => &mut self.restart,
             Action::Pause => &mut self.pause,
+        }
+    }
+
+    /// The wheelie used to have no gamepad button (it was the left stick
+    /// pulled back): settings saved then get B, unless B already does
+    /// something else.
+    fn give_the_wheelie_a_button(&mut self) {
+        let east = GamepadButton::East;
+        let taken = ACTIONS
+            .iter()
+            .any(|&action| self.get(action).buttons.contains(&east));
+        if self.wheelie.buttons.is_empty() && !taken {
+            self.wheelie.buttons.push(east);
         }
     }
 
@@ -466,6 +479,7 @@ impl Settings {
             settings.fullscreen = true;
             settings.resolution = Resolution::Dynamic;
         }
+        settings.controls.give_the_wheelie_a_button();
         settings
     }
 
@@ -805,8 +819,22 @@ mod tests {
         assert_eq!(controls.describe(Action::Throttle), "W, Arriba   ·   RT, A");
         assert_eq!(
             controls.describe(Action::Wheelie),
-            "Espacio, Mayús izq.   ·   RT + A"
+            "Espacio, Mayús izq.   ·   B"
         );
         assert_eq!(controls.first_key(Action::Pause), "Esc");
+    }
+
+    #[test]
+    fn saved_controls_without_a_wheelie_button_get_b() {
+        let mut saved = Controls::default();
+        saved.wheelie.buttons.clear();
+        saved.give_the_wheelie_a_button();
+        assert_eq!(saved.wheelie.buttons, [GamepadButton::East]);
+        // Unless B already does something else.
+        let mut taken = Controls::default();
+        taken.bind_button(Action::Brake, GamepadButton::East);
+        taken.give_the_wheelie_a_button();
+        assert!(taken.wheelie.buttons.is_empty());
+        assert_eq!(taken.brake.buttons, [GamepadButton::East]);
     }
 }

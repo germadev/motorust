@@ -112,6 +112,12 @@ pub enum Coast {
     /// la meta y distancia; entre ellos se interpola). Con una distancia
     /// negativa el mar entra por debajo de la carretera: una ría.
     AroundTrack(&'static [(f32, f32)]),
+    /// An island whose shore is a smooth closed curve through these points
+    /// (x, z), drawn like the centre line of the track: the land is inside
+    /// it, with its own bays, headlands and inlets. As with `AroundTrack`,
+    /// the land drops to the sea right beyond the walls where the shore is
+    /// near; an inlet drawn under a bridge brings the sea in under it.
+    Outline(&'static [Vec2]),
 }
 
 /// Cómo se cierra la carretera por los lados.
@@ -125,7 +131,7 @@ pub enum WallStyle {
     Railing,
     /// Seto sobre un murete.
     Hedge,
-    /// Blocks of brown checkerboard earth, as in Green Hill.
+    /// Blocks of brown checkerboard earth, as in Loops Hill.
     Checkered,
 }
 
@@ -135,7 +141,7 @@ pub enum WallStyle {
 pub enum Soil {
     /// Natural rock with tilted strata.
     Rock,
-    /// Brown checkerboard earth under a grass top, as in Green Hill.
+    /// Brown checkerboard earth under a grass top, as in Loops Hill.
     Checkered,
 }
 

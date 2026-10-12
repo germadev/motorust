@@ -1,4 +1,4 @@
-//! Terreno alrededor del circuito, inspirado en Speed Bay: junto a la
+//! Terreno alrededor del circuito, inspirado en Speed Bay (Moto Racer): junto a la
 //! carretera sigue su altura y su peralte; más allá hay colinas de hierba,
 //! peñascos que caen a pico sobre los muros, playas y el mar al oeste y al
 //! sur, y montañas tierra adentro, al noreste.
@@ -11,9 +11,10 @@ use bevy::{
 };
 
 use super::scenery::{Coast, Scenery, Side, Soil};
+use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep, value_noise};
-use crate::track::{Nearest, Track, WALL_DISTANCE};
+use crate::track::{Nearest, Track, WALL_DISTANCE, closed_curve};
 
 pub const SEA_LEVEL: f32 = -1.0;
 /// Hasta esta distancia de la línea central, el terreno es la prolongación de
@@ -28,16 +29,29 @@ const FINE_MARGIN: f32 = 260.0;
 const EXTENT: f32 = 3500.0;
 /// Cuánto crece cada celda respecto a la anterior fuera de la zona fina.
 const COARSE_GROWTH: f32 = 1.15;
+/// The sea: what each repetition of its texture covers (m), how far it is
+/// turned (rad) and warped (m) to hide that it repeats, and over what
+/// distance the warp changes (m).
+const SEA_TILE: f32 = 110.0;
+const SEA_TURN: f32 = 0.37;
+const SEA_WARP: f32 = 140.0;
+const SEA_WARP_SCALE: f32 = 520.0;
 /// Tamaño (m) que cubre cada repetición de las texturas.
-const GRASS_TILE: f32 = 11.0;
+pub const GRASS_TILE: f32 = 11.0;
 const SAND_TILE: f32 = 8.5;
 const ROCK_TILE: f32 = 20.0;
 /// Size (m) of each repetition of the checkerboard earth: two by two squares.
 const SOIL_TILE: f32 = 7.0;
 /// Las caras más inclinadas que esto son roca.
-const CLIFF_NORMAL_Y: f32 = 0.8;
+pub const CLIFF_NORMAL_Y: f32 = 0.8;
 /// Por debajo de esta altura, cerca del mar, hay arena.
 const BEACH_HEIGHT: f32 = SEA_LEVEL + 1.6;
+/// Where a road passes over a tunnel, the ground stays down at the tunnel
+/// this far from its centre line (m): short of the edge of its rock, so the
+/// slope up to the road above is under it too.
+const BURIED: f32 = TUNNEL_SHELL - 2.0 * FINE_SPACING;
+/// How far apart the points of a shore drawn as an outline are (m).
+const SHORE_SPACING: f32 = 4.0;
 /// How far above the road the earth must stand to stop a bike (m), and the
 /// steps in which [`Terrain::track_edges`] looks for it (m).
 const EARTH_RISE: f32 = 0.3;
@@ -70,6 +84,7 @@ impl Terrain {
         let zs = axis(min.y - FINE_MARGIN, max.y + FINE_MARGIN, center.y);
         let fine = (min - FINE_MARGIN, max + FINE_MARGIN);
         let shaper = Shaper::new(track, scenery);
+        let tunnels = Tunnels::new(track, scenery);
 
         let points: Vec<Vec2> = zs
             .iter()
@@ -79,8 +94,15 @@ impl Terrain {
             part.iter()
                 .map(|&point| {
                     let inside = point.cmpge(fine.0).all() && point.cmple(fine.1).all();
-                    let nearest = inside.then(|| track.nearest(point));
-                    shaper.height_at(point, nearest.as_ref())
+                    if !inside {
+                        return shaper.height_at(point, None);
+                    }
+                    // Under the road that passes over a tunnel, the ground
+                    // stays down at the tunnel, under its rock.
+                    if let Some(tunnel) = tunnels.beneath(track, point, BURIED) {
+                        return track.height_beside(&tunnel) - UNDER_ROAD;
+                    }
+                    shaper.height_at(point, Some(&track.nearest(point)))
                 })
                 .collect::<Vec<_>>()
         };
@@ -211,7 +233,7 @@ impl Terrain {
                                 Vec2::new(p.x + warp.x, p.z + warp.y)
                             }
                             // Checkerboard earth: straight rows at the same
-                            // heights on every cliff, as in Green Hill.
+                            // heights on every cliff, as in Loops Hill.
                             None if self.soil == Soil::Checkered => rock_projection(p, face),
                             None => {
                                 // Continuous 3D domain warp based on world coordinates before projection.
@@ -293,23 +315,9 @@ pub fn spawn_terrain(
         ));
     }
 
-    // El mar: un plano que llega hasta el horizonte, con agua viva mediterránea y reflejos.
-    let mut sea_mesh: Mesh = Plane3d::default()
-        .mesh()
-        .size(4.0 * EXTENT, 4.0 * EXTENT)
-        .build();
-    let sea_tile = 160.0;
-    let sea_repeat = (4.0 * EXTENT) / sea_tile;
-    if let Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) =
-        sea_mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
-    {
-        for uv in uvs {
-            uv[0] *= sea_repeat;
-            uv[1] *= sea_repeat;
-        }
-    }
+    // El mar: llega hasta el horizonte, con agua viva mediterránea y reflejos.
     world.spawn((
-        Mesh3d(meshes.add(sea_mesh)),
+        Mesh3d(meshes.add(sea_mesh())),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::WHITE,
             base_color_texture: Some(textures.water.clone()),
@@ -319,6 +327,73 @@ pub fn spawn_terrain(
         })),
         Transform::from_xyz(0.0, SEA_LEVEL, 0.0),
     ));
+}
+
+/// The sea: a flat grid out to the horizon. Its texture would repeat in a
+/// regular pattern seen from afar, so it is laid a little askew and warped
+/// over hundreds of metres, and broad patches of the water are darker or
+/// more turquoise than others.
+fn sea_mesh() -> Mesh {
+    const CELLS: usize = 160;
+    let size = 4.0 * EXTENT;
+    let (turn_cos, turn_sin) = (SEA_TURN.cos(), SEA_TURN.sin());
+    let mut positions = Vec::with_capacity((CELLS + 1) * (CELLS + 1));
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut colors = Vec::with_capacity(positions.capacity());
+    for j in 0..=CELLS {
+        for i in 0..=CELLS {
+            let p = Vec2::new(
+                (i as f32 / CELLS as f32 - 0.5) * size,
+                (j as f32 / CELLS as f32 - 0.5) * size,
+            );
+            positions.push([p.x, 0.0, p.y]);
+            let warp = Vec2::new(
+                fbm(p / SEA_WARP_SCALE, 3) - 0.5,
+                fbm(p / SEA_WARP_SCALE + Vec2::new(31.7, -12.9), 3) - 0.5,
+            ) * SEA_WARP;
+            let q = p + warp;
+            let turned = Vec2::new(
+                q.x * turn_cos - q.y * turn_sin,
+                q.x * turn_sin + q.y * turn_cos,
+            );
+            uvs.push((turned / SEA_TILE).to_array());
+            let broad = fbm(p / 1100.0 + Vec2::new(-7.3, 4.1), 3);
+            let patches = fbm(p / 360.0, 3);
+            let shade = 0.84 + 0.3 * broad;
+            let teal = (patches - 0.5) * 0.24;
+            colors.push(
+                Color::srgb(shade * (1.0 - teal), shade * (1.0 + teal * 0.6), shade)
+                    .to_linear()
+                    .to_f32_array(),
+            );
+        }
+    }
+    let row = CELLS + 1;
+    let indices: Vec<u32> = (0..CELLS)
+        .flat_map(|j| (0..CELLS).map(move |i| (i, j)))
+        .flat_map(|(i, j)| {
+            let corner = |di: usize, dj: usize| ((j + dj) * row + i + di) as u32;
+            // Anticlockwise seen from above, facing up.
+            [
+                corner(0, 0),
+                corner(0, 1),
+                corner(1, 0),
+                corner(1, 0),
+                corner(0, 1),
+                corner(1, 1),
+            ]
+        })
+        .collect();
+    let normals = vec![[0.0, 1.0, 0.0]; positions.len()];
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32(indices))
 }
 
 fn classify(height: f32, normal: Vec3) -> Ground {
@@ -354,23 +429,26 @@ impl<'a> Shaper<'a> {
             .map(|(&point, &height)| (point, height))
             .collect();
         let lap = track.lap_length();
-        let shore = match scenery.coast {
+        let polygon: Option<Vec<Vec2>> = match scenery.coast {
             Coast::Function(_) => None,
-            Coast::AroundTrack(margins) => {
-                let polygon: Vec<Vec2> = (0..track.sample_count())
+            Coast::AroundTrack(margins) => Some(
+                (0..track.sample_count())
                     .step_by(2)
                     .map(|index| {
                         let along = index as f32 * track.step_length();
                         track.offset_point(index, interpolate(margins, lap, along))
                     })
-                    .collect();
-                let (min, max) = polygon.iter().fold(
-                    (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY)),
-                    |(min, max), &p| (min.min(p), max.max(p)),
-                );
-                Some((polygon, min, max))
-            }
+                    .collect(),
+            ),
+            Coast::Outline(points) => Some(closed_curve(points, SHORE_SPACING)),
         };
+        let shore = polygon.map(|polygon| {
+            let (min, max) = polygon.iter().fold(
+                (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY)),
+                |(min, max), &p| (min.min(p), max.max(p)),
+            );
+            (polygon, min, max)
+        });
         Self {
             track,
             scenery,
@@ -597,7 +675,7 @@ fn rock_projection(point: Vec3, face: Vec3) -> Vec2 {
     }
 }
 
-fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
     let color = match ground {
         Ground::Grass => {
             // Natural macro variation across tens of meters (bright meadows, shaded hollows, golden knolls)
@@ -785,6 +863,7 @@ mod tests {
         for circuit in &CIRCUITS {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
+            let tunnels = Tunnels::new(&track, &circuit.scenery);
             let lap = track.lap_length();
             for index in (0..track.sample_count()).step_by(7) {
                 let along = index as f32 * track.step_length();
@@ -800,6 +879,13 @@ mod tests {
                 for lateral in [-9.0, 0.0, 9.0] {
                     let road = track.surface_point(index, lateral);
                     let ground = terrain.height(Vec2::new(road.x, road.z));
+                    // Over a tunnel, the road rests on its rock.
+                    if tunnels
+                        .beneath(&track, Vec2::new(road.x, road.z), TUNNEL_SHELL)
+                        .is_some_and(|tunnel| track.height_beside(&tunnel) < road.y - 5.0)
+                    {
+                        continue;
+                    }
                     let name = circuit.name;
                     // Por debajo del asfalto (si no, asomaría), pero muy cerca.
                     assert!(
@@ -850,15 +936,20 @@ mod tests {
     }
 
     #[test]
-    fn speed_bay_is_a_peninsula_with_an_inlet_under_the_bridge() {
+    fn turbo_bay_is_an_island_with_a_river_under_the_bridge() {
         let circuit = &CIRCUITS[1];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
-        // Mar más allá del paseo marítimo y tierra dentro del circuito.
-        assert!(terrain.height(Vec2::new(-80.0, -100.0)) < SEA_LEVEL);
-        assert!(terrain.height(Vec2::new(-15.0, -100.0)) > SEA_LEVEL + 1.0);
-        assert!(terrain.height(Vec2::new(230.0, -450.0)) > SEA_LEVEL + 1.0);
-        // Bajo el centro del puente, agua.
+        // Sea beyond the beach of the seafront, and land inside both loops
+        // of the figure of eight.
+        assert!(terrain.height(Vec2::new(-90.0, -100.0)) < SEA_LEVEL);
+        assert!(terrain.height(Vec2::new(-22.0, -100.0)) > SEA_LEVEL + 1.0);
+        assert!(terrain.height(Vec2::new(90.0, -150.0)) > SEA_LEVEL + 1.0);
+        assert!(terrain.height(Vec2::new(420.0, -500.0)) > SEA_LEVEL + 1.0);
+        // The bays between the loops, north and south of the waist.
+        assert!(terrain.height(Vec2::new(120.0, -520.0)) < SEA_LEVEL);
+        assert!(terrain.height(Vec2::new(330.0, -60.0)) < SEA_LEVEL);
+        // The river runs in under the middle of the bridge.
         let bridge = circuit.scenery.bridges[0];
         let middle = track.index_at((bridge.from + bridge.to) / 2.0);
         let below = track.offset_point(middle, 0.0);
@@ -870,7 +961,44 @@ mod tests {
     }
 
     #[test]
-    fn green_hill_is_an_island_of_checkerboard_cliffs() {
+    fn turbo_bay_passes_over_its_own_tunnel() {
+        let circuit = &CIRCUITS[1];
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let tunnels = Tunnels::new(&track, &circuit.scenery);
+        // Where the stretch coming down from the forest crosses the tunnel.
+        let lap = track.lap_length();
+        let tunnel = circuit.scenery.tunnels[0];
+        let (below, above) = (0..track.sample_count())
+            .filter(|&i| tunnel.contains(i as f32 * track.step_length(), lap))
+            .flat_map(|i| (0..track.sample_count()).map(move |j| (i, j)))
+            .filter(|&(i, j)| {
+                !tunnel.contains(j as f32 * track.step_length(), lap)
+                    && (i as f32 - j as f32).abs() > 200.0
+            })
+            .min_by(|&(a, b), &(c, d)| {
+                let gap =
+                    |i: usize, j: usize| track.centerline()[i].distance(track.centerline()[j]);
+                gap(a, b).total_cmp(&gap(c, d))
+            })
+            .expect("the track crosses the tunnel");
+        let point = track.centerline()[below];
+        assert!(point.distance(track.centerline()[above]) < 2.0);
+        let (low, high) = (track.elevations()[below], track.elevations()[above]);
+        assert!(high - low > 14.0, "{low} m under {high} m");
+        // On each level, the track is the road at that level.
+        assert_eq!(track.nearest_index_at(point, low), below);
+        assert_eq!(track.nearest_index_at(point, high), above);
+        assert!((track.road_height_at(point, low) - low).abs() < 0.5);
+        assert!((track.road_height_at(point, high) - high).abs() < 0.5);
+        // The ground stays down at the tunnel, under the rock that carries
+        // the road above.
+        assert!(tunnels.beneath(&track, point, BURIED).is_some());
+        assert!((terrain.height(point) - low).abs() < 0.1);
+    }
+
+    #[test]
+    fn loops_hill_is_an_island_of_checkerboard_cliffs() {
         let circuit = &CIRCUITS[2];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
