@@ -26,12 +26,6 @@ use super::{ChassisRig, Design, Geometry};
 use crate::bike::{BikeInput, BikeState, BikeTuning};
 use crate::geometry::approach;
 
-/// Right hand and ankle of a rider down on the track, from the hips, with the
-/// back straightened (the left ones are their mirror image): arms spread out
-/// and legs stretched in line with the body.
-const SLIDE_HAND: Vec3 = Vec3::new(0.5, 0.35, -0.05);
-const SLIDE_FOOT: Vec3 = Vec3::new(0.16, -0.8, 0.0);
-
 /// Cuánto se inclina la pelvis hacia delante sobre el asiento (rad).
 const PELVIS_PITCH: f32 = 0.9;
 /// Cuánto se dobla cada vértebra hacia delante, de abajo arriba (rad).
@@ -607,18 +601,19 @@ pub(super) fn pose_pilots(
         let right_peg = peg(1.0).lerp(foot_ground, pilot.foot_down);
 
         let (grips, pegs) = if let Some(c) = crash.filter(|c| c.is_down()) {
+            // Off the bike, hands and feet move as the fall goes (see
+            // `ThrownRider::limbs`).
             let let_go = c.let_go();
-            // Off the bike: hands in front of the chest and legs stretched
-            // out of the hips, which on the back go feet first.
-            let off = |side: f32, offset: Vec3| geometry.seat + offset * Vec3::new(side, 1.0, 1.0);
+            let limbs = c.rider.limbs(c.elapsed);
+            let off = |offset: Vec3| geometry.seat + offset;
             (
                 [
-                    grip(1.0).lerp(off(1.0, SLIDE_HAND), let_go),
-                    grip(-1.0).lerp(off(-1.0, SLIDE_HAND), let_go),
+                    grip(1.0).lerp(off(limbs.hands[0]), let_go),
+                    grip(-1.0).lerp(off(limbs.hands[1]), let_go),
                 ],
                 [
-                    right_peg.lerp(off(1.0, SLIDE_FOOT), let_go),
-                    peg(-1.0).lerp(off(-1.0, SLIDE_FOOT), let_go),
+                    right_peg.lerp(off(limbs.feet[0]), let_go),
+                    peg(-1.0).lerp(off(limbs.feet[1]), let_go),
                 ],
             )
         } else {

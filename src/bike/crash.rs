@@ -159,7 +159,149 @@ pub struct ThrownRider {
     pub lie: f32,
 }
 
+/// Where a rider down on the track has their hands and feet: offsets from
+/// the hips in the frame of the body with its back straight (x to the right,
+/// y along the back, -z out of the chest). The right one first.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Limbs {
+    pub hands: [Vec3; 2],
+    pub feet: [Vec3; 2],
+}
+
+impl Limbs {
+    /// The same pose for both sides, mirrored: `hand` and `foot` are the
+    /// right ones.
+    fn mirrored(hand: Vec3, foot: Vec3) -> Self {
+        let left = Vec3::new(-1.0, 1.0, 1.0);
+        Self {
+            hands: [hand, hand * left],
+            feet: [foot, foot * left],
+        }
+    }
+
+    fn weighted(poses: &[(f32, Limbs)]) -> Self {
+        let total = poses
+            .iter()
+            .map(|(weight, _)| weight)
+            .sum::<f32>()
+            .max(1e-6);
+        let sum = |part: fn(&Limbs) -> Vec3| {
+            poses
+                .iter()
+                .map(|(weight, limbs)| part(limbs) * *weight)
+                .sum::<Vec3>()
+                / total
+        };
+        Self {
+            hands: [sum(|l| l.hands[0]), sum(|l| l.hands[1])],
+            feet: [sum(|l| l.feet[0]), sum(|l| l.feet[1])],
+        }
+    }
+
+    fn shifted(mut self, by: Vec3) -> Self {
+        for limb in self.hands.iter_mut().chain(&mut self.feet) {
+            *limb += by;
+        }
+        self
+    }
+}
+
+/// A rider's right shoulder from the hips, with the back straight.
+const SHOULDER: Vec3 = Vec3::new(0.18, 0.45, 0.0);
+/// Flailing in the air: how fast the arms windmill and the legs pedal (Hz)
+/// and how far the hands go round the shoulders (m).
+const FLAIL_RATE: f32 = 2.2;
+const FLAIL_REACH: f32 = 0.5;
+/// How much the limbs flop as the body rolls over while tumbling (m), and
+/// how far they trail behind while sliding (m).
+const TUMBLE_FLOP: f32 = 0.12;
+const TRAIL: f32 = 0.15;
+/// How much the asphalt jolts the limbs of a rider sliding fast (m), and how
+/// often (Hz) and how far (m) a rider lying still stirs an arm or a leg.
+const JOLT: f32 = 0.05;
+const STIR_RATE: f32 = 0.35;
+const STIR: f32 = 0.15;
+
 impl ThrownRider {
+    /// Where the hands and feet are `elapsed` seconds into the fall, from what
+    /// racers do when they crash: thrown, arms and legs flail; tumbling, they
+    /// are tucked in against the body (hands out break wrists and
+    /// collarbones); sliding, they are spread out like a starfish to slow down,
+    /// spread the load and stop rolling, trailing behind on the asphalt; once
+    /// still, they rest. Each moment blends these by how much the rider is
+    /// flying, rolling and sliding, so the pose changes smoothly.
+    pub fn limbs(&self, elapsed: f32) -> Limbs {
+        let flying = if self.climb > 0.0 {
+            1.0
+        } else {
+            crate::geometry::smoothstep(LYING_HEIGHT, LYING_HEIGHT + 0.25, self.height)
+        };
+        let tumbling =
+            crate::geometry::smoothstep(SETTLE_RATE, 2.0 * SETTLE_RATE + 1.0, self.roll_rate.abs());
+        let speed = self.velocity.length();
+        let sliding = crate::geometry::smoothstep(STILL_SPEED, 3.0, speed);
+
+        // Thrown: the arms windmill round the shoulders in turn and the legs
+        // pedal, like anyone falling.
+        let phase = elapsed * FLAIL_RATE * std::f32::consts::TAU;
+        let windmill = |side_phase: f32| {
+            let (sin, cos) = (phase + side_phase).sin_cos();
+            SHOULDER + Vec3::new(0.2, cos, -sin) * FLAIL_REACH
+        };
+        let pedal = |side_phase: f32| {
+            let (sin, cos) = (1.3 * phase + side_phase).sin_cos();
+            Vec3::new(0.2, -0.62 + 0.15 * sin, -0.25 * cos - 0.1)
+        };
+        let mut flail = Limbs::mirrored(windmill(0.0), pedal(0.0));
+        let left = Vec3::new(-1.0, 1.0, 1.0);
+        flail.hands[1] = windmill(PI) * left;
+        flail.feet[1] = pedal(PI) * left;
+
+        // Rolling over: tucked in, hands by the face and knees to the chest,
+        // flopping a little with each turn.
+        let flop = Vec3::new(0.0, (2.0 * self.roll).sin(), (2.0 * self.roll).cos()) * TUMBLE_FLOP;
+        let mut tuck = Limbs::mirrored(Vec3::new(0.12, 0.32, -0.25), Vec3::new(0.15, -0.32, -0.35));
+        tuck.hands[0] += flop;
+        tuck.feet[1] -= flop;
+
+        // Sliding: spread out, trailing behind on the asphalt.
+        let spread = Limbs::mirrored(Vec3::new(0.65, 0.4, 0.05), Vec3::new(0.38, -0.78, 0.05));
+        let rest = Limbs::mirrored(Vec3::new(0.32, 0.02, -0.1), Vec3::new(0.18, -0.8, 0.0));
+
+        let on_ground = 1.0 - flying;
+        let (spreading, resting) = (
+            on_ground * (1.0 - tumbling) * sliding,
+            on_ground * (1.0 - tumbling) * (1.0 - sliding),
+        );
+        let mut pose = Limbs::weighted(&[
+            (flying, flail),
+            (on_ground * tumbling, tuck),
+            (spreading, spread),
+            (resting, rest),
+        ]);
+        // Sliding, the asphalt jolts every limb on its own; lying still, the
+        // rider stirs, slowly bending an arm or a knee.
+        let jolts = speed.min(10.0) / 10.0 * spreading * JOLT;
+        let limbs = pose.hands.iter_mut().chain(&mut pose.feet);
+        for (i, limb) in limbs.enumerate() {
+            let i = i as f32;
+            let jolt = Vec3::new(
+                (elapsed * (17.0 + 3.0 * i)).sin(),
+                (elapsed * (23.0 + 5.0 * i)).sin(),
+                (elapsed * (19.0 + 2.0 * i)).cos(),
+            );
+            let stir = (elapsed * STIR_RATE * std::f32::consts::TAU + 1.9 * i)
+                .sin()
+                .max(0.0);
+            *limb += jolt * jolts + Vec3::new(0.0, 0.6, -1.0) * stir * STIR * resting;
+        }
+        // The asphalt drags the limbs back against the way the body slides.
+        let body = Self::body_rotation(self.heading, self.roll, self.lie);
+        let slide = body.inverse() * Vec3::new(self.velocity.x, 0.0, self.velocity.y);
+        let trail = -slide.normalize_or_zero() * TRAIL * on_ground * sliding;
+        pose.shifted(trail)
+    }
+
     /// How the body is turned: facing `heading`, rolled about its long axis
     /// by `roll` and laid back by `lie`. Seated (`lie` 0) the roll is a lean
     /// like the bike's; laid on the back, the back points behind, the feet
@@ -926,6 +1068,78 @@ mod tests {
                 assert!(into < 1e-3, "the rider goes into the wall: {into}");
             }
         }
+    }
+
+    fn lying(velocity: Vec2, roll_rate: f32) -> ThrownRider {
+        ThrownRider {
+            height: LYING_HEIGHT,
+            velocity,
+            roll_rate,
+            lie: LIE_ANGLE,
+            ..default()
+        }
+    }
+
+    /// How far the hands and the feet move in a tenth of a second.
+    fn motion(rider: &ThrownRider, elapsed: f32) -> f32 {
+        let (a, b) = (rider.limbs(elapsed), rider.limbs(elapsed + 0.1));
+        (0..2)
+            .map(|i| a.hands[i].distance(b.hands[i]) + a.feet[i].distance(b.feet[i]))
+            .sum()
+    }
+
+    fn spread(limbs: &Limbs) -> f32 {
+        limbs.hands[0].x - limbs.hands[1].x + limbs.feet[0].x - limbs.feet[1].x
+    }
+
+    #[test]
+    fn a_thrown_rider_flails_arms_and_legs() {
+        let flying = ThrownRider {
+            height: 0.9,
+            climb: 1.0,
+            ..default()
+        };
+        assert!(motion(&flying, 0.3) > 0.4, "{}", motion(&flying, 0.3));
+        // The arms go round in turn, not together.
+        let limbs = flying.limbs(0.3);
+        assert!((limbs.hands[0].y - limbs.hands[1].y).abs() > 0.2);
+        // Lying still, they stir, but slowly.
+        let still = lying(Vec2::ZERO, 0.0);
+        let stirring = (0..30)
+            .map(|i| motion(&still, i as f32 * 0.1))
+            .fold(0.0, f32::max);
+        assert!(stirring > 0.01 && stirring < 0.15, "{stirring}");
+    }
+
+    #[test]
+    fn the_asphalt_jolts_the_limbs_of_a_sliding_rider() {
+        let sliding = lying(Vec2::new(0.0, -8.0), 0.0);
+        let jolted = (0..10)
+            .map(|i| motion(&sliding, i as f32 * 0.1))
+            .fold(0.0, f32::max);
+        assert!(jolted > 0.05, "{jolted}");
+    }
+
+    #[test]
+    fn tumbling_tucks_in_and_sliding_spreads_out() {
+        let tumbling = lying(Vec2::new(0.0, -8.0), 8.0).limbs(1.0);
+        let sliding = lying(Vec2::new(0.0, -8.0), 0.0).limbs(1.0);
+        assert!(spread(&sliding) > spread(&tumbling) + 0.6);
+        // Tucked: knees to the chest, hands by the face.
+        for i in 0..2 {
+            assert!(tumbling.feet[i].y > sliding.feet[i].y + 0.1, "knees up");
+            assert!(tumbling.hands[i].length() < sliding.hands[i].length());
+        }
+    }
+
+    #[test]
+    fn sliding_limbs_trail_behind() {
+        // On the back, feet first (heading 0 slides towards -Z): in the body,
+        // the feet are ahead (-y), so trailing pulls everything towards +y.
+        let sliding = lying(Vec2::new(0.0, -8.0), 0.0).limbs(1.0);
+        let still = lying(Vec2::new(0.0, -0.01), 0.0).limbs(1.0);
+        assert!(sliding.feet[0].y > still.feet[0].y + 0.1);
+        assert!(sliding.hands[0].y > still.hands[0].y + 0.1);
     }
 
     #[test]

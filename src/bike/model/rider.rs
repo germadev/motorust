@@ -38,11 +38,6 @@ pub(super) const ANKLE: Vec3 = Vec3::new(0.17, 0.45, 0.29);
 /// Centro del casco.
 pub(super) const HELMET: Vec3 = Vec3::new(0.0, 1.16, -0.30);
 
-/// Right hand and ankle of a rider down on the track, from the hips (the left
-/// ones are their mirror image): arms spread out and legs stretched in line
-/// with the straightened back.
-const SLIDE_HAND: Vec3 = Vec3::new(0.5, 0.3, -0.05);
-const SLIDE_FOOT: Vec3 = Vec3::new(0.14, -0.78, 0.0);
 /// Turn of the chest that stands the back up straight over the hips: the
 /// shoulders sit 0.40 m ahead of and 0.16 m above them (atan2(0.40, 0.16)).
 const UPRIGHT_ANGLE: f32 = 1.19;
@@ -720,6 +715,11 @@ pub(super) fn look_ahead(
 
 /// Coloca los huesos de los brazos para que, se mueva como se mueva el
 /// tronco, las manos sigan en los puños.
+/// Index of a side (1 right, -1 left) in [`crate::bike::crash::Limbs`].
+fn side_index(side: f32) -> usize {
+    if side > 0.0 { 0 } else { 1 }
+}
+
 pub(super) fn reach_grips(
     rigs: Query<&Rig>,
     bikes: Query<&CrashState>,
@@ -741,10 +741,14 @@ pub(super) fn reach_grips(
         let shoulder = (*pelvis * *chest).transform_point((SHOULDER - HIPS) * mirror);
         let geometry = &rig.geometry;
         let grip = steering.transform_point((geometry.grip - geometry.steering_head) * mirror);
-        // Off the bike: hands off the grips, in front of the chest.
-        let let_go = bikes.get(arm.bike).map_or(0.0, |crash| crash.let_go());
-        let off = pelvis.transform_point(SLIDE_HAND * mirror);
-        let grip = grip.lerp(off, let_go);
+        // Off the bike, the hands move as the fall goes (see `ThrownRider::limbs`).
+        let grip = match bikes.get(arm.bike).ok().filter(|crash| crash.is_down()) {
+            Some(crash) => {
+                let hand = crash.rider.limbs(crash.elapsed).hands[side_index(arm.side)];
+                grip.lerp(pelvis.transform_point(hand), crash.let_go())
+            }
+            None => grip,
+        };
         let elbow = elbow(shoulder, grip, UPPER_ARM, FOREARM, ELBOW_POLE * mirror);
         *transform = if arm.forearm {
             between(elbow, grip)
@@ -773,7 +777,6 @@ pub(super) fn reach_pegs(
         };
         let hip = pelvis.transform_point((HIP_JOINT - HIPS) * mirror(leg.side));
         let mut ankle = rig.geometry.peg * mirror(leg.side);
-        let let_go = bikes.get(leg.bike).map_or(0.0, |(_, crash)| crash.let_go());
         if leg.side > 0.0 {
             let stopped = bikes.get(leg.bike).map_or(0.0, |(state, crash)| {
                 if state.grounded && !crash.is_down() {
@@ -785,9 +788,15 @@ pub(super) fn reach_pegs(
             let foot_ground = Vec3::new(0.38, 0.19, rig.geometry.peg.z - 0.04);
             ankle = ankle.lerp(foot_ground, stopped);
         }
-        // Off the bike: feet off the pegs, legs stretched out of the hips.
-        let off = pelvis.transform_point(SLIDE_FOOT * mirror(leg.side));
-        ankle = ankle.lerp(off, let_go);
+        // Off the bike, the feet move as the fall goes (see `ThrownRider::limbs`).
+        if let Some((_, crash)) = bikes
+            .get(leg.bike)
+            .ok()
+            .filter(|(_, crash)| crash.is_down())
+        {
+            let foot = crash.rider.limbs(crash.elapsed).feet[side_index(leg.side)];
+            ankle = ankle.lerp(pelvis.transform_point(foot), crash.let_go());
+        }
         // Inclinación positiva = hacia la izquierda: la pierna de dentro es la izquierda.
         let inside = (-rider.hang * leg.side).max(0.0);
         let pole = knee_pole(leg.side, hip, ankle, inside);
