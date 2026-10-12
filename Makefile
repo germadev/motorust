@@ -1,7 +1,7 @@
 # Atajos para desarrollar motorust. `make` a secas muestra la lista.
 
 .DEFAULT_GOAL := help
-.PHONY: help install up build test linux-deps
+.PHONY: help install up preview build test linux-deps
 
 CARGO ?= cargo
 # Como root (contenedores, CI) no hace falta sudo, y a veces ni existe.
@@ -28,6 +28,23 @@ install: ## Instala las dependencias del sistema (en Linux) y descarga las crate
 
 up: ## Arranca el juego en modo desarrollo (compila rápido)
 	$(CARGO) run
+
+preview: ## Lanza la última build generada (sin recompilar)
+	@latest=""; \
+	for f in target/release/motorust target/release/motorust.exe target/debug/motorust target/debug/motorust.exe; do \
+		if [ -f "$$f" ]; then \
+			if [ -z "$$latest" ] || [ "$$f" -nt "$$latest" ]; then \
+				latest="$$f"; \
+			fi; \
+		fi; \
+	done; \
+	if [ -n "$$latest" ]; then \
+		echo "Ejecutando $$latest..."; \
+		"$$latest"; \
+	else \
+		echo "No hay ninguna build generada. Ejecuta 'make up' o 'make build' primero."; \
+		exit 1; \
+	fi
 
 build: ## Compila la versión optimizada en target/release/motorust
 	$(CARGO) build --release

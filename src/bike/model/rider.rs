@@ -621,13 +621,19 @@ pub(super) fn helmet_mesh() -> Mesh {
 pub(super) fn hang_off(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
-    bikes: Query<&BikeState>,
+    bikes: Query<(&BikeState, Option<&super::super::CrashState>)>,
     mut riders: Query<(&mut Rider, &mut Transform)>,
 ) {
     for (mut rider, mut transform) in &mut riders {
-        let Ok(state) = bikes.get(rider.bike) else {
+        let Ok((state, crash)) = bikes.get(rider.bike) else {
             continue;
         };
+        if crash.is_some_and(|c| c.timer > 0.0) {
+            rider.hang = approach(rider.hang, 0.0, POSE_RESPONSE, time.delta_secs());
+            transform.translation = rider.seat;
+            transform.rotation = Quat::IDENTITY;
+            continue;
+        }
         let target = (state.lean / tuning.max_lean).clamp(-1.0, 1.0);
         rider.hang = approach(rider.hang, target, POSE_RESPONSE, time.delta_secs());
         // Inclinación positiva = hacia la izquierda (-X): el piloto se va hacia ese lado.
@@ -698,6 +704,7 @@ pub(super) fn look_ahead(
 /// tronco, las manos sigan en los puños.
 pub(super) fn reach_grips(
     rigs: Query<&Rig>,
+    bikes: Query<(&BikeState, Option<&super::super::CrashState>)>,
     pivots: Query<&Transform, Without<Arm>>,
     mut arms: Query<(&Arm, &mut Transform)>,
 ) {
@@ -715,7 +722,18 @@ pub(super) fn reach_grips(
         let mirror = mirror(arm.side);
         let shoulder = (*pelvis * *chest).transform_point((SHOULDER - HIPS) * mirror);
         let geometry = &rig.geometry;
-        let grip = steering.transform_point((geometry.grip - geometry.steering_head) * mirror);
+        let crash = bikes.get(arm.bike).ok().and_then(|(_, c)| c);
+        let grip = if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
+            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
+            let slide_t = smoothstep(0.0, 0.25, progress) * (1.0 - smoothstep(0.85, 1.0, progress));
+            let normal_grip =
+                steering.transform_point((geometry.grip - geometry.steering_head) * mirror);
+            let slide_grip =
+                (*pelvis * *chest).transform_point(Vec3::new(arm.side * 0.18, 0.15, -0.32));
+            normal_grip.lerp(slide_grip, slide_t)
+        } else {
+            steering.transform_point((geometry.grip - geometry.steering_head) * mirror)
+        };
         let elbow = elbow(shoulder, grip, UPPER_ARM, FOREARM, ELBOW_POLE * mirror);
         *transform = if arm.forearm {
             between(elbow, grip)
@@ -730,7 +748,7 @@ pub(super) fn reach_grips(
 /// parado), y saca la rodilla de dentro de la curva hacia el suelo.
 pub(super) fn reach_pegs(
     rigs: Query<&Rig>,
-    bikes: Query<&BikeState>,
+    bikes: Query<(&BikeState, Option<&super::super::CrashState>)>,
     riders: Query<(&Rider, &Transform), Without<Leg>>,
     mut legs: Query<(&Leg, &mut Transform), Without<Rider>>,
 ) {
@@ -744,8 +762,14 @@ pub(super) fn reach_pegs(
         };
         let hip = pelvis.transform_point((HIP_JOINT - HIPS) * mirror(leg.side));
         let mut ankle = rig.geometry.peg * mirror(leg.side);
-        if leg.side > 0.0 {
-            let stopped = bikes.get(leg.bike).map_or(0.0, |state| {
+        let crash = bikes.get(leg.bike).ok().and_then(|(_, c)| c);
+        if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
+            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
+            let slide_t = smoothstep(0.0, 0.25, progress) * (1.0 - smoothstep(0.85, 1.0, progress));
+            let slide_ankle = pelvis.transform_point(Vec3::new(leg.side * 0.16, -0.12, 0.52));
+            ankle = ankle.lerp(slide_ankle, slide_t);
+        } else if leg.side > 0.0 {
+            let stopped = bikes.get(leg.bike).map_or(0.0, |(state, _)| {
                 if state.grounded {
                     (1.0 - state.speed.abs() / crate::bike::STOPPED_SPEED).clamp(0.0, 1.0)
                 } else {

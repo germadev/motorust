@@ -104,6 +104,7 @@ impl Plugin for BikeModelPlugin {
             (
                 spin_wheels,
                 brake_light,
+                update_rider_mount,
                 (
                     (steer_front, rider::hang_off, rider::sit_up),
                     (
@@ -682,6 +683,15 @@ struct Steering {
     bike: Entity,
 }
 
+/// Punto de montaje para el piloto, situado bajo `body`.
+/// Durante carrera normal va solidario al chasis, pero en una caída (`CrashState`)
+/// se desliga de la inclinación del chasis para que el piloto salga despedido y deslice
+/// de forma independiente sobre el asfalto.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct RiderMount {
+    pub bike: Entity,
+}
+
 /// En la moto: los pivotes que mueven el caballito y la suspensión.
 #[derive(Component)]
 struct ChassisRig {
@@ -719,6 +729,7 @@ pub fn spawn(
     let lean = pivot(commands, bike, Vec3::ZERO, LeanPivot);
     let tilt = pivot(commands, lean, Vec3::ZERO, ());
     let body = pivot(commands, tilt, Vec3::ZERO, ());
+    let rider_mount = pivot(commands, body, Vec3::ZERO, RiderMount { bike });
     let steering = pivot(commands, body, geometry.steering_head, ());
     if bodywork.steers {
         commands.entity(steering).insert(Steering { bike });
@@ -752,7 +763,7 @@ pub fn spawn(
     ));
     let rider = bodywork
         .procedural
-        .then(|| rider::spawn_pivots(commands, bike, body, geometry));
+        .then(|| rider::spawn_pivots(commands, bike, rider_mount, geometry));
 
     // Las motos importadas traen su propio material: la decoración solo se
     // pinta en las hechas por código.
@@ -817,7 +828,7 @@ pub fn spawn(
         (Some(rider), _) => rider::spawn_body(
             commands,
             bike,
-            body,
+            rider_mount,
             steering,
             rider,
             livery,
@@ -827,7 +838,7 @@ pub fn spawn(
             meshes,
             materials,
         ),
-        (None, Some(pilot)) => pilot::spawn(commands, bike, body, pilot, design),
+        (None, Some(pilot)) => pilot::spawn(commands, bike, rider_mount, pilot, design),
         (None, None) => {}
     }
 
@@ -918,6 +929,50 @@ fn move_chassis(
             let axle =
                 unsprung.transform_point3(geometry.front_axle - hanging) - geometry.steering_head;
             transform.translation = steering.inverse() * axle;
+        }
+    }
+}
+
+/// Actualiza el punto de montaje del piloto.
+/// En marcha normal, el piloto va sujeto al chasis (posición cero respecto a `body`).
+/// Durante una caída, se suelta de la moto: se cancela la inclinación de la moto y el
+/// piloto sale despedido hacia delante y hacia fuera, deslizándose sobre el asfalto.
+fn update_rider_mount(
+    bikes: Query<(&BikeState, Option<&super::CrashState>)>,
+    mut mounts: Query<(&RiderMount, &mut Transform)>,
+) {
+    for (mount, mut transform) in &mut mounts {
+        let Ok((state, crash)) = bikes.get(mount.bike) else {
+            continue;
+        };
+        if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
+            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
+            // Cancelar la inclinación de la moto (lean) para proyectar el arrastrón sobre el asfalto.
+            let unroll = Quat::from_rotation_z(-state.lean);
+
+            let slide_t = smoothstep(0.0, 0.45, progress);
+            let recovery = smoothstep(0.80, 1.0, progress);
+
+            // Eyección hacia delante (inercia) y hacia fuera (lateral):
+            let max_forward = (c.impact_speed * 0.28).clamp(2.5, 6.0);
+            let forward_slide = -max_forward * slide_t * (1.0 - recovery);
+            let lateral_slide = -c.fall_side * 1.7 * slide_t * (1.0 - recovery);
+            let ground_drop = -0.52 * smoothstep(0.0, 0.25, progress) * (1.0 - recovery);
+
+            let ground_pos = Vec3::new(lateral_slide, ground_drop, forward_slide);
+
+            // Giro del piloto sobre el asfalto (tumbado deslizándose):
+            let tumble_roll =
+                c.fall_side * 1.35 * smoothstep(0.0, 0.3, progress) * (1.0 - recovery);
+            let tumble_pitch = -0.35 * smoothstep(0.0, 0.3, progress) * (1.0 - recovery);
+            let ground_rot =
+                Quat::from_rotation_z(tumble_roll) * Quat::from_rotation_x(tumble_pitch);
+
+            transform.translation = unroll * ground_pos;
+            transform.rotation = unroll * ground_rot;
+        } else {
+            transform.translation = Vec3::ZERO;
+            transform.rotation = Quat::IDENTITY;
         }
     }
 }

@@ -32,21 +32,28 @@ pub enum InputDevice {
 
 fn update_input_device(
     keyboard: Res<ButtonInput<KeyCode>>,
-    gamepads: Query<&Gamepad>,
+    gamepads: Query<(Entity, &Gamepad)>,
     mut device: ResMut<InputDevice>,
+    mut active_controller: Option<ResMut<crate::gamepads::ActiveController>>,
 ) {
     if keyboard.get_just_pressed().next().is_some() {
         if *device != InputDevice::Keyboard {
             *device = InputDevice::Keyboard;
         }
+        if let Some(ref mut ac) = active_controller {
+            ac.gamepad = None;
+        }
     } else {
-        for gamepad in &gamepads {
+        for (entity, gamepad) in &gamepads {
             let has_button = gamepad.get_just_pressed().next().is_some();
             let stick_x = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0).abs();
             let stick_y = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0).abs();
             if has_button || stick_x > 0.4 || stick_y > 0.4 {
                 if *device != InputDevice::Gamepad {
                     *device = InputDevice::Gamepad;
+                }
+                if let Some(ref mut ac) = active_controller {
+                    ac.gamepad = Some(entity);
                 }
                 break;
             }

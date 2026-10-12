@@ -24,7 +24,7 @@ use bevy::{
 use super::imported::{self, Joint, Model};
 use super::{ChassisRig, Design, Geometry};
 use crate::bike::{BikeInput, BikeState, BikeTuning};
-use crate::geometry::approach;
+use crate::geometry::{approach, smoothstep};
 
 /// Cuánto se inclina la pelvis hacia delante sobre el asiento (rad).
 const PELVIS_PITCH: f32 = 0.9;
@@ -524,29 +524,59 @@ fn bend_point(root: Vec3, target: Vec3, upper: f32, lower: f32, pole: Vec3) -> V
 }
 
 /// Coloca cada fotograma los huesos de los pilotos.
+#[allow(clippy::type_complexity)]
 pub(super) fn pose_pilots(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
     blueprint: Res<super::BikeBlueprint>,
-    mut bikes: Query<(&BikeState, &BikeInput, &Geometry, &ChassisRig, &mut Pilot)>,
+    mut bikes: Query<(
+        &BikeState,
+        &BikeInput,
+        &Geometry,
+        &ChassisRig,
+        &mut Pilot,
+        Option<&super::super::CrashState>,
+    )>,
     mut transforms: Query<&mut Transform>,
 ) {
     let dt = time.delta_secs();
-    for (state, input, geometry, rig, mut pilot) in &mut bikes {
+    for (state, input, geometry, rig, mut pilot, crash) in &mut bikes {
         let Some(pilot_blueprint) = &blueprint.bodies[pilot.design.index()].pilot else {
             continue;
         };
-        let hang = (state.lean / tuning.max_lean).clamp(-1.0, 1.0);
+        let is_crashing = crash.is_some_and(|c| c.timer > 0.0 && c.duration > 0.0);
+        let hang = if is_crashing {
+            0.0
+        } else {
+            (state.lean / tuning.max_lean).clamp(-1.0, 1.0)
+        };
         pilot.hang = approach(pilot.hang, hang, POSE_RESPONSE, dt);
         let slow = 1.0 - (state.speed.abs() / CRUISING_SPEED).min(1.0);
-        pilot.sit_up = approach(pilot.sit_up, input.brake.max(slow), POSE_RESPONSE, dt);
-        let tuck = super::tuck_amount(state, &tuning);
+        let sit_up_target = if is_crashing {
+            0.0
+        } else {
+            input.brake.max(slow)
+        };
+        pilot.sit_up = approach(pilot.sit_up, sit_up_target, POSE_RESPONSE, dt);
+        let tuck = if is_crashing {
+            0.0
+        } else {
+            super::tuck_amount(state, &tuning)
+        };
         pilot.tuck = approach(pilot.tuck, tuck, POSE_RESPONSE, dt);
-        let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.0, SURGE.1);
+        let surge = if is_crashing {
+            0.0
+        } else {
+            (state.accel * SURGE_PER_ACCEL).clamp(SURGE.0, SURGE.1)
+        };
         pilot.surge = approach(pilot.surge, surge, POSE_RESPONSE * 1.5, dt);
-        let look = super::look_angle(state, &tuning);
+        let look = if is_crashing {
+            0.0
+        } else {
+            super::look_angle(state, &tuning)
+        };
         pilot.look = approach(pilot.look, look, POSE_RESPONSE, dt);
-        let stopped = if state.grounded {
+        let stopped = if state.grounded && !is_crashing {
             (1.0 - state.speed.abs() / crate::bike::STOPPED_SPEED).clamp(0.0, 1.0)
         } else {
             0.0
@@ -563,17 +593,49 @@ pub(super) fn pose_pilots(
         let peg = |side: f32| geometry.peg * Vec3::new(side, 1.0, 1.0);
         let foot_ground = Vec3::new(0.38, 0.19, geometry.seat.z);
         let right_peg = peg(1.0).lerp(foot_ground, pilot.foot_down);
+
+        let (grips, pegs) = if let Some(c) = crash.filter(|c| c.timer > 0.0 && c.duration > 0.0) {
+            let progress = (1.0 - c.timer / c.duration).clamp(0.0, 1.0);
+            let slide_t = smoothstep(0.0, 0.25, progress) * (1.0 - smoothstep(0.85, 1.0, progress));
+            // Manos sueltas cerca del pecho/cabeza protegiéndose en el arrastrón:
+            let slide_grips = [
+                geometry.seat + Vec3::new(0.18, 0.15, -0.32),
+                geometry.seat + Vec3::new(-0.18, 0.15, -0.32),
+            ];
+            // Piernas extendidas deslizándose sobre el asfalto detrás de la cadera:
+            let slide_pegs = [
+                geometry.seat + Vec3::new(0.16, -0.12, 0.52),
+                geometry.seat + Vec3::new(-0.16, -0.12, 0.52),
+            ];
+            (
+                [
+                    grip(1.0).lerp(slide_grips[0], slide_t),
+                    grip(-1.0).lerp(slide_grips[1], slide_t),
+                ],
+                [
+                    right_peg.lerp(slide_pegs[0], slide_t),
+                    peg(-1.0).lerp(slide_pegs[1], slide_t),
+                ],
+            )
+        } else {
+            ([grip(1.0), grip(-1.0)], [right_peg, peg(-1.0)])
+        };
+
         let stance = Stance {
             seat: geometry.seat,
-            grips: [grip(1.0), grip(-1.0)],
-            pegs: [right_peg, peg(-1.0)],
+            grips,
+            pegs,
             hang: pilot.hang,
             sit_up: pilot.sit_up,
             tuck: pilot.tuck,
             surge: pilot.surge,
-            wheelie: state.chassis.wheelie,
+            wheelie: if is_crashing {
+                0.0
+            } else {
+                state.chassis.wheelie
+            },
             look: pilot.look,
-            lean: state.lean,
+            lean: if is_crashing { 0.0 } else { state.lean },
             foot_down: pilot.foot_down,
         };
         for (entity, transform) in pilot

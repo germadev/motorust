@@ -20,9 +20,11 @@
 #[cfg(target_os = "macos")]
 mod apple;
 
+use core::time::Duration;
+
 use bevy::input::InputSystems;
 use bevy::input::gamepad::{
-    GamepadAxis, GamepadButton, GamepadConnection, GamepadConnectionEvent,
+    GamepadAxis, GamepadButton, GamepadConnection, GamepadConnectionEvent, GamepadRumbleRequest,
     RawGamepadAxisChangedEvent, RawGamepadButtonChangedEvent, RawGamepadEvent,
 };
 use bevy::platform::cell::SyncCell;
@@ -46,48 +48,59 @@ impl Plugin for GamepadsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Gamepads::new())
             .init_resource::<ClaimedPads>()
-            .add_systems(PreUpdate, read_gamepads.before(InputSystems));
+            .init_resource::<ActiveController>()
+            .add_systems(
+                PreUpdate,
+                (
+                    read_gamepads.before(InputSystems),
+                    handle_rumble_requests.after(read_gamepads),
+                ),
+            );
         #[cfg(target_os = "macos")]
-        app.init_non_send::<apple::ApplePads>().add_systems(
-            PreUpdate,
-            apple::read_apple_pads
-                .before(read_gamepads)
-                .before(InputSystems),
-        );
+        app.init_non_send::<apple::ApplePads>()
+            .add_systems(
+                PreUpdate,
+                apple::read_apple_pads
+                    .before(read_gamepads)
+                    .before(InputSystems),
+            )
+            .add_systems(PostUpdate, apple::update_dualsense_triggers);
     }
 }
 
+/// Dispositivo o mando activo usado por el jugador principal.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ActiveController {
+    /// Si el último dispositivo usado fue un mando, la entidad de Bevy de ese mando.
+    pub gamepad: Option<Entity>,
+}
+
 /// Los mandos que lee otro sistema (en macOS, GameController), por su
-/// nombre: gilrs no los cuenta, para que no salgan dos veces.
+/// entidad y nombre: gilrs no los duplica, pero puede enviarles vibración.
 #[derive(Resource, Default)]
-pub struct ClaimedPads(pub Vec<String>);
+pub struct ClaimedPads(pub Vec<(Entity, String)>);
 
 impl ClaimedPads {
     /// Si el mando de gilrs que se llama `name` ya lo lee otro.
     pub fn has(&self, name: &str) -> bool {
+        self.find_entity(name).is_some()
+    }
+
+    /// Encuentra la entidad de Bevy de un mando reclamado cuyo nombre coincida con el de gilrs.
+    pub fn find_entity(&self, name: &str) -> Option<Entity> {
         let name_norm = name.to_ascii_lowercase();
-        self.0.iter().any(|claimed| {
+        for (entity, claimed) in &self.0 {
             let claimed_norm = claimed.to_ascii_lowercase();
             if claimed_norm == name_norm
                 || claimed_norm.contains(&name_norm)
                 || name_norm.contains(&claimed_norm)
             {
-                return true;
+                return Some(*entity);
             }
             // En macOS, GameController usa el vendorName ("DualSense Wireless Controller",
             // "Xbox Wireless Controller", "DUALSHOCK 4 Wireless Controller", etc.)
             // mientras que gilrs/IOKit suele llamarlo "Wireless Controller", "Sony Interactive
             // Entertainment Wireless Controller", "Microsoft Xbox Controller", etc.
-            let is_generic_wireless = name_norm == "wireless controller"
-                || name_norm == "wireless gamepad"
-                || name_norm.starts_with("controller");
-            let claimed_is_wireless = claimed_norm.contains("controller")
-                || claimed_norm.contains("dualsense")
-                || claimed_norm.contains("dualshock")
-                || claimed_norm.contains("xbox");
-            if is_generic_wireless && claimed_is_wireless {
-                return true;
-            }
             let is_sony = claimed_norm.contains("dualsense")
                 || claimed_norm.contains("dualshock")
                 || claimed_norm.contains("playstation")
@@ -96,22 +109,32 @@ impl ClaimedPads {
                 || name_norm.contains("playstation")
                 || name_norm.contains("wireless controller");
             if is_sony && gilrs_sony {
-                return true;
+                return Some(*entity);
             }
             let is_xbox = claimed_norm.contains("xbox") || claimed_norm.contains("gulikit");
             let gilrs_xbox = name_norm.contains("xbox")
                 || name_norm.contains("xinput")
                 || name_norm.contains("gulikit");
             if is_xbox && gilrs_xbox {
-                return true;
+                return Some(*entity);
             }
             let is_nintendo = claimed_norm.contains("switch") || claimed_norm.contains("nintendo");
             let gilrs_nintendo = name_norm.contains("switch") || name_norm.contains("nintendo");
             if is_nintendo && gilrs_nintendo {
-                return true;
+                return Some(*entity);
             }
-            false
-        })
+            let is_generic_wireless = name_norm == "wireless controller"
+                || name_norm == "wireless gamepad"
+                || name_norm.starts_with("controller");
+            let claimed_is_wireless = claimed_norm.contains("controller")
+                || claimed_norm.contains("dualsense")
+                || claimed_norm.contains("dualshock")
+                || claimed_norm.contains("xbox");
+            if is_generic_wireless && claimed_is_wireless {
+                return Some(*entity);
+            }
+        }
+        None
     }
 }
 
@@ -121,6 +144,8 @@ pub struct Gamepads {
     gilrs: Option<SyncCell<gilrs::Gilrs>>,
     /// La entidad de cada mando que ha visto este gilrs.
     entities: HashMap<GamepadId, Entity>,
+    /// Mapeo de mandos reclamados por GameController a su GamepadId en gilrs para rumble.
+    claimed_entities: HashMap<Entity, GamepadId>,
     /// Desde cuándo no hay ningún mando (s), cuántas veces se ha vuelto a
     /// buscar y si ya se ha dejado de buscar.
     without: f32,
@@ -138,6 +163,7 @@ impl Gamepads {
         Self {
             gilrs: start(),
             entities: HashMap::default(),
+            claimed_entities: HashMap::default(),
             without: 0.0,
             searches: 0,
             gave_up: false,
@@ -263,6 +289,15 @@ fn read_gamepads(
         connections.write(event);
         pads.silent.insert(entity, (pad.name().to_string(), 0.0));
     }
+
+    // Mapear los mandos leídos por otro sistema (GameController en macOS) a sus GamepadId de gilrs
+    // para poder aplicarles fuerza/vibración (rumble) a través del backend de gilrs.
+    pads.claimed_entities.clear();
+    for (id, pad) in gilrs.gamepads() {
+        if let Some(claimed_entity) = claimed.find_entity(pad.name()) {
+            pads.claimed_entities.insert(claimed_entity, id);
+        }
+    }
     for event in changes {
         let Some(&entity) = pads.entities.get(&event.id) else {
             continue;
@@ -387,4 +422,111 @@ fn convert_axis(axis: gilrs::Axis) -> Option<GamepadAxis> {
         // La cruceta llega como botones (filtro `axis_dpad_to_button`).
         gilrs::Axis::Unknown | gilrs::Axis::DPadX | gilrs::Axis::DPadY => return None,
     })
+}
+
+/// Aplica vibración/rumble en los mandos que gestiona gilrs según los eventos `GamepadRumbleRequest`.
+fn handle_rumble_requests(
+    mut pads: ResMut<Gamepads>,
+    mut running: Local<HashMap<GamepadId, Vec<(Duration, gilrs::ff::Effect)>>>,
+    time: Res<Time<Real>>,
+    mut requests: MessageReader<GamepadRumbleRequest>,
+) {
+    let now = time.elapsed();
+    for effects in running.values_mut() {
+        effects.retain(|(deadline, _)| *deadline > now);
+    }
+    running.retain(|_, effects| !effects.is_empty());
+
+    let entity_map: Vec<(Entity, GamepadId)> = pads
+        .entities
+        .iter()
+        .map(|(&id, &e)| (e, id))
+        .chain(pads.claimed_entities.iter().map(|(&e, &id)| (e, id)))
+        .collect();
+
+    let Some(gilrs) = pads.gilrs.as_mut().map(SyncCell::get) else {
+        return;
+    };
+
+    for request in requests.read() {
+        let target_entity = request.gamepad();
+        let Some(&(_, gamepad_id)) = entity_map.iter().find(|(e, _)| *e == target_entity) else {
+            continue;
+        };
+
+        match request {
+            GamepadRumbleRequest::Stop { .. } => {
+                running.remove(&gamepad_id);
+            }
+            GamepadRumbleRequest::Add {
+                duration,
+                intensity,
+                ..
+            } => {
+                let strong = (intensity.strong_motor * u16::MAX as f32) as u16;
+                let weak = (intensity.weak_motor * u16::MAX as f32) as u16;
+                let mut builder = gilrs::ff::EffectBuilder::new();
+                if strong > 0 {
+                    builder.add_effect(gilrs::ff::BaseEffect {
+                        kind: gilrs::ff::BaseEffectType::Strong { magnitude: strong },
+                        scheduling: gilrs::ff::Replay {
+                            play_for: (*duration).into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    });
+                }
+                if weak > 0 {
+                    builder.add_effect(gilrs::ff::BaseEffect {
+                        kind: gilrs::ff::BaseEffectType::Weak { magnitude: weak },
+                        scheduling: gilrs::ff::Replay {
+                            play_for: (*duration).into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    });
+                }
+                builder.gamepads(&[gamepad_id]);
+                if let Ok(effect) = builder.finish(gilrs) {
+                    let _ = effect.play();
+                    running
+                        .entry(gamepad_id)
+                        .or_default()
+                        .push((now + *duration, effect));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claimed_pads_matches_specific_vendors_correctly() {
+        let e_dualsense = Entity::from_raw_u32(1).unwrap();
+        let e_gulikit = Entity::from_raw_u32(2).unwrap();
+
+        let claimed = ClaimedPads(vec![
+            (e_dualsense, "DualSense Wireless Controller".to_string()),
+            (e_gulikit, "Xbox Wireless Controller".to_string()),
+        ]);
+
+        // Sony controller in gilrs matches DualSense entity
+        assert_eq!(
+            claimed.find_entity("Sony Interactive Entertainment Wireless Controller"),
+            Some(e_dualsense)
+        );
+
+        // GuliKit / Xbox controller in gilrs matches Xbox/GuliKit entity
+        assert_eq!(
+            claimed.find_entity("Microsoft Xbox Controller"),
+            Some(e_gulikit)
+        );
+        assert_eq!(claimed.find_entity("GuliKit Controller"), Some(e_gulikit));
+
+        // Generic wireless when no specific vendor should not mismatch
+        assert!(claimed.has("Wireless Controller"));
+    }
 }

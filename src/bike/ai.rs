@@ -55,13 +55,21 @@ pub struct Traffic {
     pub speed: f32,
 }
 
+#[allow(clippy::type_complexity)]
 pub fn drive_rivals(
     time: Res<Time>,
     race: Res<Race>,
     tuning: Res<BikeTuning>,
     track: Res<Track>,
     bikes: Query<(Entity, &BikeState)>,
-    mut rivals: Query<(Entity, &Rival, &BikeState, &mut Line, &mut BikeInput)>,
+    mut rivals: Query<(
+        Entity,
+        &Rival,
+        &BikeState,
+        &mut Line,
+        &mut BikeInput,
+        Option<&super::CrashState>,
+    )>,
 ) {
     let traffic: Vec<(Entity, Traffic)> = bikes
         .iter()
@@ -73,8 +81,8 @@ pub fn drive_rivals(
             (entity, traffic)
         })
         .collect();
-    for (entity, rival, state, mut line, mut input) in &mut rivals {
-        if !race.started {
+    for (entity, rival, state, mut line, mut input, crash) in &mut rivals {
+        if !race.started || crash.is_some_and(|c| c.timer > 0.0) {
             *input = BikeInput::default();
             continue;
         }

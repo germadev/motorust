@@ -729,7 +729,7 @@ fn spawn_trees(
     }
     let models: Vec<(Species, Vec<TreeVariant>)> = species
         .iter()
-        .map(|&kind| (kind, build_tree_variants(kind, &mut assets.meshes)))
+        .map(|&kind| (kind, build_tree_variants(kind, assets.meshes)))
         .collect();
     let model = |kind: Species| {
         &models
