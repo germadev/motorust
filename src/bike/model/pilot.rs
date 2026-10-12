@@ -61,6 +61,9 @@ const FINGERS: Vec3 = Vec3::new(-0.2, -0.5, -1.0);
 /// De la muñeca al centro de la palma (m) y altura de la palma sobre el eje
 /// del puño.
 const PALM_FROM_WRIST: f32 = 0.07;
+/// Off the bike, how far a relaxed hand bends in at the wrist (the tangent of
+/// the angle).
+const RELAXED_WRIST: f32 = 0.9;
 const PALM_ABOVE_GRIP: f32 = 0.03;
 /// La inercia desplaza la cadera (m por cada m/s²) entre estos topes.
 const SURGE_PER_ACCEL: f32 = 0.003;
@@ -294,9 +297,12 @@ pub(super) fn pose(skeleton: &Skeleton, stance: &Stance) -> Vec<Transform> {
     let joints = &skeleton.joints;
     let bones = &skeleton.bones;
     let fingers = [1.0, -1.0].map(|side| (FINGERS * Vec3::new(side, 1.0, 1.0)).normalize());
-    // La palma va sobre el puño y la muñeca, detrás de ella.
-    let wrists =
-        [0, 1].map(|side| palm_target(stance.grips[side]) - fingers[side] * PALM_FROM_WRIST);
+    // La palma va sobre el puño y la muñeca, detrás de ella. Off the bike
+    // there is no grip: the wrist goes where the hand reaches for.
+    let wrists = [0, 1].map(|side| {
+        let gripping = palm_target(stance.grips[side]) - fingers[side] * PALM_FROM_WRIST;
+        gripping.lerp(stance.grips[side], stance.down)
+    });
 
     // La espalda se dobla lo que pide la postura y, si así los brazos no
     // llegan a los puños (al incorporarse o al descolgarse), lo justo más.
@@ -345,7 +351,19 @@ pub(super) fn pose(skeleton: &Skeleton, stance: &Stance) -> Vec<Transform> {
             wrists[side_index],
             pole,
         );
-        rotation[hand] = grip_rotation(&joints[hand], fingers[side_index]);
+        let gripping = grip_rotation(&joints[hand], fingers[side_index]);
+        rotation[hand] = if stance.down > 0.0 {
+            // Off the bike the hand hangs from the forearm, relaxed: bent a
+            // little at the wrist towards the body, the palm facing it.
+            let inward = Vec3::X * -side;
+            let forearm_along =
+                (position[hand] - position[forearm]).normalize_or(fingers[side_index]);
+            let along = (forearm_along + inward * RELAXED_WRIST).normalize_or(forearm_along);
+            let relaxed = hand_rotation(&joints[hand], along, inward);
+            gripping.slerp(relaxed, stance.down)
+        } else {
+            gripping
+        };
 
         let [thigh, shin, foot, toe] = bones.legs[side_index];
         let hip = position[thigh];
@@ -474,13 +492,22 @@ fn palm_target(grip: Vec3) -> Vec3 {
 /// hacia abajo, sobre el puño. En reposo (los brazos en cruz) la mano apunta
 /// por su eje Y, como todos los huesos de Mixamo, con la palma hacia el suelo.
 fn grip_rotation(rest: &Joint, fingers: Vec3) -> Quat {
+    hand_rotation(rest, fingers, Vec3::NEG_Y)
+}
+
+/// Giro de una mano con los dedos hacia `fingers` y la palma, en lo posible,
+/// hacia `palm`.
+fn hand_rotation(rest: &Joint, fingers: Vec3, palm: Vec3) -> Quat {
     let local_palm = rest.rotation.inverse() * Vec3::NEG_Y;
     let frame = |along: Vec3, palm: Vec3| {
-        let palm = palm.reject_from_normalized(along).normalize();
+        let palm = palm
+            .reject_from_normalized(along)
+            .try_normalize()
+            .unwrap_or_else(|| along.any_orthonormal_vector());
         Mat3::from_cols(along, palm, along.cross(palm))
     };
     let local = frame(Vec3::Y, local_palm);
-    let world = frame(fingers, Vec3::NEG_Y);
+    let world = frame(fingers, palm);
     Quat::from_mat3(&(world * local.transpose())).normalize()
 }
 
