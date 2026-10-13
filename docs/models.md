@@ -105,7 +105,7 @@ Upload the original GLB files to a model release of the repository so they can b
 
 ## Textures
 
-The scenery textures are CC0 (public domain) photos from [Poly Haven](https://polyhaven.com), reduced in size and retouched to look closer to 90s games: more saturation, less contrast in the asphalt cracks, the grass recoloured to a brighter green and the sky cropped to the upper hemisphere. Mipmaps are computed at startup so distant surfaces do not flicker (`src/world/textures.rs`).
+The scenery textures are CC0 (public domain) photos from [Poly Haven](https://polyhaven.com), reduced in size and retouched to look closer to 90s games: more saturation, less contrast in the asphalt cracks and the grass recoloured to a brighter green. Mipmaps are computed at startup so distant surfaces do not flicker (`src/world/textures.rs`).
 
 | File | Used for |
 |---|---|
@@ -116,10 +116,10 @@ The scenery textures are CC0 (public domain) photos from [Poly Haven](https://po
 | `assets/textures/wall.jpg` | Stone walls |
 | `assets/textures/roof.jpg` | Tiled roofs |
 | `assets/textures/plaster.jpg` | Plastered and concrete surfaces: houses, hotels, walls and structures |
-| `assets/textures/sky.jpg` | Sky dome |
 | *(procedural)* `crowd` | Pixelated grandstand spectators with vibrant retro clothing |
 | *(procedural)* `checker` | Start/finish and tunnel checkerboard strip |
 | *(procedural)* `panels` | Concrete tunnel lining panels |
+| *(procedural)* sky | Sky dome: a gradient from deep blue overhead to the fog colour at the horizon, the sun, and cartoon clouds drawn with zeno (`src/world/sky.rs`) |
 
 The labels use the [Russo One](https://fonts.google.com/specimen/Russo+One) font by Jovanny Lemonad, under the SIL Open Font License 1.1 (`assets/fonts/RussoOne-OFL.txt`).
 

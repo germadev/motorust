@@ -30,7 +30,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/world/landmarks.rs` | Loop Island landmarks: the loops the bikes ride (asphalt with kerbs on a ring of checkerboard earth), giant loops to look at on blocks of checkerboard earth, totem poles, sunflowers, spinning golden rings (no track has them now) and waterfalls with flowing water. |
 | `src/world/lettering.rs` | Chunky pixel lettering, like 90s games, for the finish arches, banners and signs. |
 | `src/world/quads.rs` | Mesh builder made of flat quads and triangles that orient themselves the way they are asked to. |
-| `src/world/sky.rs` | Sky dome with a summer-sky photo, always centred on the camera so it looks infinitely far away. |
+| `src/world/sky.rs` | Cartoon sky dome, always centred on the camera so it looks infinitely far away: a gradient from deep blue overhead to the fog colour at the horizon, the sun, and cartoon clouds (vector outlines rasterized once at startup with zeno) slowly turning round the horizon. |
 | `src/world/textures.rs` | Scenery textures (CC0 photos from Poly Haven), embedded, plus procedural ones (checkerboards, water, crowds, checkerboard earth, waterfalls, planks), with mipmaps computed at startup. |
 | `src/bike/mod.rs` | The bike: controls, arcade physics (`step`), collisions with walls and other bikes, interpolation, the starting grid and the `ROSTER` of bikes. |
 | `src/bike/chassis.rs` | Wheelies and suspension: damped springs that advance with the fixed-step physics. |

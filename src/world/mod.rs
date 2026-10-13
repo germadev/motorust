@@ -9,7 +9,7 @@ mod quads;
 mod road;
 pub mod scenery;
 mod sea;
-mod sky;
+pub mod sky;
 mod structures;
 mod terrain;
 mod textures;
@@ -51,6 +51,7 @@ impl Plugin for WorldPlugin {
                 (
                     landmarks::spin,
                     landmarks::flow,
+                    sky::drift_clouds,
                     spawn_prepared_circuit.run_if(in_state(GameState::Tracks)),
                 ),
             )

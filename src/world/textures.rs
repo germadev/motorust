@@ -16,7 +16,6 @@ use bevy::{
 
 #[derive(Resource)]
 pub struct WorldTextures {
-    pub sky: Handle<Image>,
     pub grass: Handle<Image>,
     pub rock: Handle<Image>,
     pub sand: Handle<Image>,
@@ -72,12 +71,6 @@ impl FromWorld for WorldTextures {
             include_bytes!("../../assets/textures/plaster.jpg"),
             TextureEnhance::None,
         );
-        // El cielo da la vuelta en horizontal pero no en vertical.
-        let sky = images.add(embedded(
-            include_bytes!("../../assets/textures/sky.jpg"),
-            ImageAddressMode::ClampToEdge,
-            TextureEnhance::None,
-        ));
         let checker = images.add(checker());
         let panels = images.add(panels());
         let crowd = images.add(crowd());
@@ -85,7 +78,6 @@ impl FromWorld for WorldTextures {
         let falls = images.add(falls());
         let planks = images.add(planks());
         Self {
-            sky,
             grass,
             rock,
             sand,

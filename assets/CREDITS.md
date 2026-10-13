@@ -6,12 +6,11 @@ domain): they can be used, modified and redistributed without permission or
 attribution. Thank you anyway.
 
 They have been downsized and retouched (more saturation, less contrast in the
-asphalt cracks, the grass recoloured to a brighter green and the sky cropped to
-the upper hemisphere) to bring them closer to the look of 90s games.
+asphalt cracks and the grass recoloured to a brighter green) to bring them
+closer to the look of 90s games.
 
 | File | Poly Haven original |
 |---|---|
-| `textures/sky.jpg` | [Kloofendal 48d Partly Cloudy (Pure Sky)](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) |
 | `textures/grass.jpg` | [Leafy Grass](https://polyhaven.com/a/leafy_grass) |
 | `textures/rock.jpg` | [Marble Cliff 03](https://polyhaven.com/a/marble_cliff_03) |
 | `textures/wall.jpg` | [Stone Wall](https://polyhaven.com/a/stone_wall) |
