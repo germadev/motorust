@@ -54,7 +54,7 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 - **Keyboard and D-pad.** These are on/off inputs, so the game shapes them:
   - The turn starts the moment you press, already quickly, and builds faster the longer you hold. A tap corrects your line. In about 0.4 s the bike turns as much as it can at that speed (0.3 s with the fast turn rate, see [Options](#options)).
   - The bike leans almost at once, because keyboard steering goes in directly, without the spring that smooths the stick.
-  - On release, the steering returns to centre more gently: slowly at first, then faster. The bike is straight again in about 0.7 s (0.6 s with the fast return rate).
+  - On release, the steering returns to centre more gently: slowly at first, then faster. The bike is straight again in about 0.9 s (0.6 s with the fast return rate, 1.1 s with the slow one).
   - With nothing pressed, the bike does not turn. Switching from one side to the other passes through the centre.
 - **Speed-dependent turn limit.** The keyboard and D-pad respond equally fast at any speed, but the faster you go, the less they turn when held. At low speed they turn fully. At top speed they stop at 80 % of full lock, just short of the point where the bike starts to scrub speed. By default both the stick and the keyboard use two thirds of that limit. Both can be changed under [Options](#options).
 - **Physical limits.** Turning is limited by a minimum turning radius at low speed and by lateral grip at high speed. A stopped bike cannot turn.
@@ -150,7 +150,7 @@ The triggers are analogue: throttle and brake follow how far you squeeze them. T
   | "Keyboard: sustained turn rate" | slow, medium, fast | medium |
   | "Keyboard: return rate released" | slow, medium, fast | medium |
 
-  The turn-limit levels apply a share of the speed-dependent limit described under [Steering](#steering): off is no limit, low a third, medium two thirds and high the whole limit (at top speed, holding the input gives 80 % of full lock). The two rates scale how fast keyboard and D-pad steering builds up while a key is held, and how fast it returns to centre once released: slow is half as fast as fast, medium three quarters.
+  The turn-limit levels apply a share of the speed-dependent limit described under [Steering](#steering): off is no limit, low a third, medium two thirds and high the whole limit (at top speed, holding the input gives 80 % of full lock). The two rates scale how fast keyboard and D-pad steering builds up while a key is held (slow is half as fast as fast, medium three quarters), and how fast it returns to centre once released (medium is half as fast as fast, slow a third).
 - **Control.** One row per action (see [Rebinding](#rebinding)), "Reset controls", the race's "Controls legend" (shown or hidden, hidden by default) and "Rescan gamepads".
 - **Sound.** "FX Volume" and "Music Volume", from 0 to 100 % in steps of 10 (80 % by default), and the music on or off. 80 % is the balance found by ear: the effects at a fifth and the music at nine tenths of the scale the game used before. Volumes saved with that older scale are not carried over: they start again at 80 %.
 - **Graphics.**

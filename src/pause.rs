@@ -117,11 +117,14 @@ pub enum ReturnRate {
 const RETURN_RATES: [ReturnRate; 3] = [ReturnRate::Slow, ReturnRate::Medium, ReturnRate::Fast];
 
 impl ReturnRate {
-    /// Factor que multiplica la rapidez de recuperación al soltar.
+    /// Factor que multiplica la rapidez de recuperación al soltar. Medium,
+    /// the default, is what slow used to be (straight again about 0.9 s
+    /// after letting go); slow is two thirds of it, as before (1.1 s), and
+    /// fast is the original (0.6 s).
     pub fn factor(self) -> f32 {
         match self {
-            ReturnRate::Slow => 0.5,
-            ReturnRate::Medium => 0.75,
+            ReturnRate::Slow => 1.0 / 3.0,
+            ReturnRate::Medium => 0.5,
             ReturnRate::Fast => 1.0,
         }
     }
