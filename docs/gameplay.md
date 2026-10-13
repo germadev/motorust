@@ -88,7 +88,7 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 
 On Loop Island a branch forks off the lap to the right on the climb to the start straight's crest (see [tracks.md](tracks.md#loop-island)). Keep right to take it, or stay on the lap. Its walls close in before a loop of checkerboard earth:
 
-- **Round the loop** the bike follows the running surface by itself: steering does nothing, and nobody can hit you. The throttle and the brake still work, and gravity slows you on the way up and speeds you up on the way down. The camera turns over with you.
+- **Round the loop** you steer as on the road: turn and you go across the running surface as you go round, and keep pointing that way once you let go. Ride straight on and the loop carries you round by itself, out beside the mouth. The low walls along its edges keep you on it: you scrape along them, losing more speed the more head on you hit them, but you never fall against them. Nobody can hit you. The throttle and the brake still work, and gravity slows you on the way up and speeds you up on the way down. The less the loop presses you against it, the less your tyres grip: slow near the top, you can hardly turn. You come out of the loop pointing the way you were, and the camera turns over with you and follows you as you turn.
 - **Fast enough,** you go round, upside down at the top, and come out beside the mouth, on the road back to the lap. Off the throttle that takes about 130 km/h at the mouth; with the throttle open, the engine carries you round from much slower.
 - **Too slow to reach the side,** you come back down and stop on the slope; reverse to roll out of the mouth, or open the throttle to try again.
 - **Past the side but too slow,** the loop no longer holds you: bike and rider fall to the road below, and the bike is put back on the road once everything is still, as after any fall.
@@ -97,7 +97,7 @@ Two of the rivals always take the branch.
 
 ### Rivals
 
-Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole. On Loop Island two of them take the branch and go round the loop, flat out.
+Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole. On Loop Island two of them take the branch and go round the loop, flat out, steering to keep to their line.
 
 ## Race HUD
 

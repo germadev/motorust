@@ -369,6 +369,17 @@ fn tilted_chase_view(target: Vec3, heading: f32, distance: f32, tilt: Quat) -> (
     )
 }
 
+/// The tilt (see [`tilted_chase_view`]) of the camera facing `yaw` behind a
+/// bike turned `rotation` round a loop: turned over with the bike, and on
+/// the running surface turned as far as the camera has followed it there,
+/// about the bike's own up. `bike_yaw` is the heading the bike would have
+/// off the loop, which the camera's `yaw` follows; once the camera has
+/// caught up, it is right behind the bike. Out of the loop, upright, there
+/// is no tilt left.
+fn loop_tilt(rotation: Quat, yaw: f32, bike_yaw: f32) -> Quat {
+    Quat::from_rotation_y(-yaw) * rotation * Quat::from_rotation_y(yaw - bike_yaw)
+}
+
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn follow_player(
     time: Res<Time>,
@@ -419,12 +430,13 @@ fn follow_player(
 
         // El Transform de la moto ya viene interpolado y solo lleva guiñada (la
         // inclinación va en un hijo) y cabeceo. Round a loop the pitch goes
-        // past the vertical, so the heading comes from the bike itself.
+        // past the vertical, so the heading comes from the bike itself: the
+        // one it will have off the loop, turned as it is on the running
+        // surface.
         let (bike_yaw, _, _) = bike_transform.rotation.to_euler(EulerRot::YXZ);
-        let bike_yaw = if state.ride.is_some() {
-            state.heading
-        } else {
-            bike_yaw
+        let bike_yaw = match state.ride {
+            Some(ride) => state.heading + ride.yaw,
+            None => bike_yaw,
         };
         let yaw = match chase.yaw {
             Some(yaw) if down => yaw,
@@ -464,7 +476,7 @@ fn follow_player(
         // Round a loop the camera turns over with the bike, behind and above
         // it in its own frame; off it, it comes back upright.
         chase.tilt = if state.ride.is_some() {
-            Some(Quat::from_rotation_y(-state.heading) * bike_transform.rotation)
+            Some(loop_tilt(bike_transform.rotation, yaw, bike_yaw))
         } else {
             chase.tilt.and_then(|tilt| {
                 let blend = 1.0 - (-UPRIGHT_RESPONSE * dt).exp();
@@ -489,7 +501,7 @@ fn follow_player(
 
 #[cfg(test)]
 mod tests {
-    use std::f32::consts::{FRAC_PI_2, PI};
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
     use super::*;
 
@@ -520,5 +532,41 @@ mod tests {
         // Hacia atrás: la cámara delante de la moto, mirando hacia atrás.
         let (camera, looking) = view(PI);
         assert!(camera.z < -3.9 && looking.z > 0.0);
+    }
+
+    #[test]
+    fn round_a_loop_the_camera_follows_the_bike_turning_on_the_running_surface() {
+        // A bike heading 0.5 rad round a loop, turned 0.3 rad to its left on
+        // the running surface: off the loop it would head 0.8 rad.
+        let (heading, yaw) = (0.5, 0.3);
+        let turned = |pitch: f32| {
+            Quat::from_rotation_y(heading)
+                * Quat::from_rotation_x(pitch)
+                * Quat::from_rotation_y(yaw)
+        };
+        // Whether two rotations turn the axes the same way.
+        let same = |a: Quat, b: Quat| {
+            [Vec3::X, Vec3::Y, Vec3::Z]
+                .iter()
+                .all(|&axis| (a * axis - b * axis).length() < 1e-4)
+        };
+        for pitch in [0.3, FRAC_PI_2, PI, 4.5] {
+            let rotation = turned(pitch);
+            // Caught up, the camera is right behind the bike, upright in
+            // its frame.
+            let tilt = loop_tilt(rotation, heading + yaw, heading + yaw);
+            let frame = Quat::from_rotation_y(heading + yaw) * tilt;
+            assert!(same(frame, rotation), "{pitch}");
+            // Still turned as the bike was before it turned, it stays on
+            // the running surface: its up is the bike's.
+            let tilt = loop_tilt(rotation, heading, heading + yaw);
+            let frame = Quat::from_rotation_y(heading) * tilt;
+            let unturned = Quat::from_rotation_y(heading) * Quat::from_rotation_x(pitch);
+            assert!(same(frame, unturned), "{pitch}");
+            assert!((frame * Vec3::Y - rotation * Vec3::Y).length() < 1e-4);
+        }
+        // Out of the loop, a whole turn round, there is no tilt left.
+        let tilt = loop_tilt(turned(TAU), heading + yaw, heading + yaw);
+        assert!(same(tilt, Quat::IDENTITY));
     }
 }

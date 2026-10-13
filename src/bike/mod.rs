@@ -323,6 +323,16 @@ impl BikeState {
             ..Self::parked_at(pose)
         }
     }
+
+    /// Which way the bike points, without its lean: its heading and pitch
+    /// and, on a loop, how far it has turned on the running surface, about
+    /// its own up (which is down at the top).
+    pub fn orientation(&self) -> Quat {
+        let yaw = self.ride.map_or(0.0, |ride| ride.yaw);
+        Quat::from_rotation_y(self.heading)
+            * Quat::from_rotation_x(self.pitch)
+            * Quat::from_rotation_y(yaw)
+    }
 }
 
 /// Lo que hay bajo las ruedas al empezar un paso.
@@ -1542,11 +1552,21 @@ fn simulate_bikes(
             let outcome;
             let looped = &track.loops()[ride.index];
             (*state, outcome) = loop_ride::ride(&state, input, looped, &tuning, dt);
-            if let loop_ride::Outcome::Fell(velocity) = outcome {
-                *crash = crash::fall_off(&mut state, &mut knock, velocity, &track);
-                if let Some(mut impact) = impact {
-                    impact.record(1.0, true);
+            match outcome {
+                loop_ride::Outcome::Fell(velocity) => {
+                    *crash = crash::fall_off(&mut state, &mut knock, velocity, &track);
+                    if let Some(mut impact) = impact {
+                        impact.record(1.0, true);
+                    }
                 }
+                // Felt as against the walls of a road, though nobody falls
+                // against these.
+                loop_ride::Outcome::HitWall(into) => {
+                    if let Some(mut impact) = impact.filter(|_| into > WALL_FELT) {
+                        impact.record((into / crash::WALL_FALL).min(1.0), false);
+                    }
+                }
+                loop_ride::Outcome::Riding | loop_ride::Outcome::Off => {}
             }
             continue;
         }
@@ -1618,7 +1638,7 @@ fn separate_bikes(
         ],
     ) = pairs.fetch_next()
     {
-        // A bike on a loop runs on rails, clear of the others.
+        // A bike on a loop is clear of the others.
         if state_a.ride.is_some() || state_b.ride.is_some() {
             continue;
         }
@@ -1724,11 +1744,10 @@ fn interpolate_bikes(
         let (from, to) = (&previous.0, state);
         let position = from.position.lerp(to.position, alpha);
         let elevation = from.elevation.lerp(to.elevation, alpha);
-        let heading = from.heading.lerp(to.heading, alpha);
-        // Out of a loop the pitch goes from a whole turn back to about zero.
-        let pitch = from.pitch + wrap_angle(to.pitch - from.pitch) * alpha;
         transform.translation = to_world(position, elevation + SURFACE_Y);
-        transform.rotation = Quat::from_rotation_y(heading) * Quat::from_rotation_x(pitch);
+        // As a whole: round a loop the bike turns about its own up, and out
+        // of it the pitch goes from a whole turn back to about zero.
+        transform.rotation = from.orientation().slerp(to.orientation(), alpha);
     }
     for (child_of, mut transform) in &mut pivots {
         if let Ok((state, previous, _)) = bikes.get(child_of.parent()) {
