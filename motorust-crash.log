@@ -1,0 +1,6 @@
+Motorust se ha cerrado por un error:
+
+panicked at src/track.rs:601:34:
+index out of bounds: the len is 0 but the index is 1
+
+Se ha guardado un informe en motorust-crash.log.

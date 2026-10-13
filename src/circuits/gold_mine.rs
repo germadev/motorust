@@ -20,12 +20,12 @@ use bevy::prelude::*;
 
 use super::{Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
-use crate::track::{Banking, Layout, WALL_DISTANCE};
+use crate::track::{Banking, Branch, Layout, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 /// Where things are, in metres from the finish line.
 const TOWN: Span = span(2140.0, 300.0);
-const GALLERY: Span = span(560.0, 845.0);
+const GALLERY: Span = span(555.0, 875.0);
 const CANYON: Span = span(880.0, 1200.0);
 const BRIDGE: Span = span(1700.0, 1765.0);
 
@@ -55,7 +55,25 @@ pub const GOLD_MINE: Circuit = Circuit {
             to: 2110.0,
             factor: 1.4,
         }],
-        branches: &[],
+        // Two other ways through the excavation, past pillars of rock: one
+        // to the left, round the outside of its curve, and one to the right,
+        // round the inside. Between them, three roads side by side.
+        branches: &[
+            Branch {
+                from: 590.0,
+                to: 825.0,
+                approach: &LEFT_WAY,
+                vertical_loop: None,
+                exit: &[],
+            },
+            Branch {
+                from: 665.0,
+                to: 858.0,
+                approach: &RIGHT_WAY,
+                vertical_loop: None,
+                exit: &[],
+            },
+        ],
     },
     scenery: Scenery {
         coast: Coast::Function(river),
@@ -237,6 +255,27 @@ pub const GOLD_MINE: Circuit = Circuit {
                     every: 40.0,
                 },
             ],
+            // From the timbered mouth into a hall of red sandstone, where
+            // the way to the left parts, a higher one of slate veined with
+            // gold, where the three roads run side by side, and one of
+            // clay lined with planks, then timber again to the way out.
+            halls: &[
+                Hall {
+                    span: span(600.0, 690.0),
+                    stone: Stone::Sandstone,
+                    crown: 27.0,
+                },
+                Hall {
+                    span: span(690.0, 785.0),
+                    stone: Stone::Slate,
+                    crown: 34.0,
+                },
+                Hall {
+                    span: span(785.0, 850.0),
+                    stone: Stone::Clay,
+                    crown: 21.0,
+                },
+            ],
             piles: &[
                 Pile {
                     along: 160.0,
@@ -278,6 +317,52 @@ pub const GOLD_MINE: Circuit = Circuit {
         }),
     },
 };
+
+/// The way to the left through the excavation, from 590 m to 825 m: out
+/// to 38 m from the lap (m along the lap and to its left in the comments).
+const LEFT_WAY: [Vec2; 9] = [
+    // 605 m, 1.5 m.
+    Vec2::new(215.1, -470.9),
+    // 625 m, 8 m.
+    Vec2::new(235.0, -478.1),
+    // 650 m, 20 m.
+    Vec2::new(260.6, -490.0),
+    // 680 m, 33 m.
+    Vec2::new(293.4, -501.2),
+    // 710 m, 38 m.
+    Vec2::new(326.9, -501.3),
+    // 740 m, 32 m.
+    Vec2::new(357.6, -488.0),
+    // 765 m, 20 m.
+    Vec2::new(379.6, -468.1),
+    // 790 m, 8 m.
+    Vec2::new(399.1, -446.7),
+    // 810 m, 2 m.
+    Vec2::new(414.2, -431.8),
+];
+
+/// The way to the right, from 665 m to 858 m: out to 35 m from the lap
+/// (m along the lap and to its right).
+const RIGHT_WAY: [Vec2; 9] = [
+    // 680 m, 1.5 m.
+    Vec2::new(290.0, -466.9),
+    // 700 m, 7 m.
+    Vec2::new(308.8, -459.0),
+    // 725 m, 18 m.
+    Vec2::new(330.2, -443.4),
+    // 750 m, 30 m.
+    Vec2::new(349.4, -425.6),
+    // 775 m, 35 m.
+    Vec2::new(368.6, -413.4),
+    // 798 m, 28 m.
+    Vec2::new(389.8, -411.2),
+    // 818 m, 16 m.
+    Vec2::new(411.7, -412.5),
+    // 835 m, 6 m.
+    Vec2::new(430.7, -411.7),
+    // 847 m, 1.5 m.
+    Vec2::new(442.8, -408.1),
+];
 
 const CONTROL_POINTS: [Vec2; 26] = [
     // 1. The start straight, north (-Z) through town.
@@ -375,8 +460,8 @@ fn river(point: Vec2) -> f32 {
 }
 
 const MASSIFS: [Massif; 8] = [
-    // The mesa the gallery goes through.
-    massif(300.0, -510.0, 170.0, 46.0),
+    // The mesa the excavation goes through, high over its halls.
+    massif(300.0, -465.0, 230.0, 80.0),
     // Inside the lap: buttes between the canyon and the lake.
     massif(420.0, -250.0, 90.0, 34.0),
     massif(170.0, -230.0, 85.0, 30.0),
@@ -391,14 +476,14 @@ const MASSIFS: [Massif; 8] = [
 ];
 
 const CUTTINGS: [Cutting; 5] = [
-    // The rock round the mouths of the gallery.
+    // The rock round the mouths of the excavation.
     Cutting {
-        span: span(530.0, 875.0),
+        span: span(530.0, 900.0),
         side: Side::Left,
         height: 26.0,
     },
     Cutting {
-        span: span(530.0, 875.0),
+        span: span(530.0, 900.0),
         side: Side::Right,
         height: 26.0,
     },

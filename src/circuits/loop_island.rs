@@ -84,14 +84,14 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 Vec2::new(30.6, -204.0),
                 Vec2::new(38.3, -213.9),
             ],
-            vertical_loop: VerticalLoop {
+            vertical_loop: Some(VerticalLoop {
                 mouth: Vec2::new(82.2, -258.5),
                 // North-east.
                 heading: -FRAC_PI_4,
                 height: 5.5,
                 radius: 16.0,
                 shift: -16.0,
-            },
+            }),
             // On north-east, round to the right (200 m radius), straight on
             // towards the lap, and onto it in a last long right-hander
             // (340 m radius), climbing gently all the way.

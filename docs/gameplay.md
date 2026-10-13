@@ -98,9 +98,11 @@ On Loop Island a branch forks off the lap to the right on the climb to the start
 
 Two of the rivals always take the branch.
 
+In Gold Mine's excavation the road splits twice with no loop (see [tracks.md](tracks.md#gold-mine)): a way to the left forks off in the sandstone hall and a way to the right in the slate hall, each between pillars of rock, narrower than the lap and laid with planks, and both join the lap again before the way out. Keep to that side to take one, or stay in the middle on the lap.
+
 ### Rivals
 
-Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole. On Loop Island two of them take the branch and go round the loop, flat out, steering to keep to their line.
+Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole. On Loop Island two of them take the branch and go round the loop, flat out, steering to keep to their line. In Gold Mine those two take both ways through the excavation, and the others take the way on the side of their lane, or stay on the lap; coming back onto the lap, they give way to the bikes on it.
 
 ## Race HUD
 

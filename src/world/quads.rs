@@ -61,6 +61,26 @@ impl MeshBuilder {
         self.indices.extend([base, base + 1, base + 2]);
     }
 
+    /// Adds a triangle like [`Self::triangle`], with a colour at each
+    /// corner, blended across it.
+    pub fn shaded_triangle(&mut self, corners: [(Vec3, Vec2, Color); 3], facing: Vec3) {
+        let [a, b, c] = corners.map(|(p, ..)| p);
+        let normal = (b - a).cross(c - a).normalize_or_zero();
+        let (corners, normal) = if normal.dot(facing) >= 0.0 {
+            (corners, normal)
+        } else {
+            ([corners[0], corners[2], corners[1]], -normal)
+        };
+        let base = self.positions.len() as u32;
+        for (position, uv, color) in corners {
+            self.positions.push(position.to_array());
+            self.normals.push(normal.to_array());
+            self.uvs.push(uv.to_array());
+            self.colors.push(color.to_linear().to_f32_array());
+        }
+        self.indices.extend([base, base + 1, base + 2]);
+    }
+
     /// Añade una viga: un prisma de sección rectangular de `a` a `b`, de
     /// `width` de ancho y `height` de alto (de canto, hacia arriba si la viga
     /// no es vertical), con sus dos extremos cerrados.

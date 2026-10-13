@@ -10,7 +10,7 @@ use bevy::{
     asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
 };
 
-use super::scenery::{Coast, Scenery, Side, Soil};
+use super::scenery::{Coast, Scenery, Side, Soil, span};
 use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep, value_noise};
@@ -481,11 +481,18 @@ impl<'a> Shaper<'a> {
         // La roca sube a pico justo detrás de los muros. En los túneles,
         // algo más lejos: la rejilla del terreno es más gruesa que el hueco
         // entre la pared y la roca, y sus triángulos asomarían dentro.
+        // A mine's excavation has no walls of its own past the bikes' (see
+        // `cavern`): the rock keeps clear of them all the way to its mouths.
+        let past = if self.scenery.soil == Soil::Mine {
+            20.0
+        } else {
+            0.0
+        };
         let tunnel = self
             .scenery
             .tunnels
             .iter()
-            .map(|span| span.weight(along, self.lap, 20.0))
+            .map(|tunnel| span(tunnel.from - past, tunnel.to + past).weight(along, self.lap, 20.0))
             .fold(0.0, f32::max);
         let rise = smoothstep(FLAT, FLAT + 4.0, distance)
             .lerp(smoothstep(FLAT + 4.0, FLAT + 8.0, distance), tunnel);

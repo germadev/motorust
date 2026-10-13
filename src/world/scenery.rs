@@ -292,13 +292,39 @@ pub struct Scenery {
 
 /// The works of a mine: rails with ore carts rolling on them, timber
 /// trestles carrying a rail over the road, headframes over the shafts,
-/// lanterns on posts, and piles of crates, barrels and ore.
+/// lanterns on posts, piles of crates, barrels and ore, and the halls of
+/// its excavation (its tunnels, see [`Scenery::tunnels`]).
 pub struct Mine {
     pub rails: &'static [Rails],
     pub trestles: &'static [Trestle],
     pub headframes: &'static [Headframe],
     pub lanterns: &'static [Row],
     pub piles: &'static [Pile],
+    pub halls: &'static [Hall],
+}
+
+/// A stretch of a mine's excavation, in metres along the lap (a branch off
+/// the lap counts as the stretch it stands in for): the rock it is cut
+/// through and how high its roof rises above the road in the middle (m).
+/// Where there is none, the excavation is a gallery propped with timber.
+pub struct Hall {
+    pub span: Span,
+    pub stone: Stone,
+    pub crown: f32,
+}
+
+/// What the rock of a stretch of a mine's excavation is like, and the
+/// ground beside its roads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stone {
+    /// A gallery propped with timber sets, with planks beside the road.
+    Timbered,
+    /// Red and cream sandstone in layers, over red gravel.
+    Sandstone,
+    /// Dark slate with veins of gold, over black gravel.
+    Slate,
+    /// Ochre clay, its walls lined with planks, over beaten earth.
+    Clay,
 }
 
 /// A rail line beside the road over a span, `lateral` metres from its

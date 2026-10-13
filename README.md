@@ -41,9 +41,11 @@ lap goes round a loop you ride upside down.
 ![Two bikes leaning between Loop Island's checkerboard hills, with a waterfall ahead](docs/images/track-loop-island.jpg)
 
 **Gold Mine** ("Mina Dorada"), after Wario's Gold Mine and Crash Team Racing's
-Dragon Mines, runs through a desert canyon at dusk: a mining town, a long
-gallery propped with timber, a trestle where an ore cart crosses over the road,
-headframes and a wooden bridge over the river.
+Dragon Mines, runs through a desert canyon at dusk: a mining town, an
+excavation with lantern-lit halls of sandstone, gold-veined slate and clay under
+roofs up to 34 m high, where the road splits into three ways between pillars of
+rock, a trestle where an ore cart crosses over the road, headframes and a
+wooden bridge over the river.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

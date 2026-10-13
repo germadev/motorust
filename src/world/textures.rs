@@ -36,6 +36,9 @@ pub struct WorldTextures {
     pub falls: Handle<Image>,
     /// Wooden planks laid across, for the wooden bridges.
     pub planks: Handle<Image>,
+    /// Layers of sandstone, cream, salmon, rust and ochre, one over another
+    /// down the texture.
+    pub strata: Handle<Image>,
 }
 
 impl FromWorld for WorldTextures {
@@ -78,6 +81,7 @@ impl FromWorld for WorldTextures {
         let soil = images.add(soil());
         let falls = images.add(falls());
         let planks = images.add(planks());
+        let strata = images.add(strata());
         Self {
             grass,
             rock,
@@ -92,6 +96,7 @@ impl FromWorld for WorldTextures {
             soil,
             falls,
             planks,
+            strata,
         }
     }
 }
@@ -485,6 +490,42 @@ fn planks() -> Image {
         let point = Vec2::new(x as f32 / 14.0, y as f32 * 1.6 + board as f32 * 31.0);
         let grain = 0.85 + 0.3 * value_noise(point);
         Color::LinearRgba(wood * (tone * grain))
+    })
+}
+
+/// Layers of sandstone down the texture: bands of cream, salmon, rust and
+/// ochre, each of its own thickness, wavering a little across, with thin
+/// dark seams between some of them and grain. It repeats both ways.
+fn strata() -> Image {
+    const WIDTH: u32 = 64;
+    const HEIGHT: u32 = 256;
+    const BANDS: u32 = 11;
+    let colors = [
+        Color::srgb(0.95, 0.82, 0.64),
+        Color::srgb(0.9, 0.58, 0.42),
+        Color::srgb(0.72, 0.33, 0.2),
+        Color::srgb(0.88, 0.62, 0.34),
+        Color::srgb(0.8, 0.45, 0.3),
+    ]
+    .map(|color| color.to_linear());
+    // Where each band starts down the texture (0..1), at irregular steps.
+    let mut starts = [0.0; BANDS as usize];
+    let mut total = 0.0;
+    for (band, start) in starts.iter_mut().enumerate() {
+        *start = total;
+        total += 0.4 + random01(band as u32 + 91);
+    }
+    tiling(WIDTH, HEIGHT, |x, y| {
+        let across = x as f32 / WIDTH as f32 * std::f32::consts::TAU;
+        let waver = 0.012 * (across + 0.7).sin() + 0.006 * (3.0 * across).sin();
+        let down = (y as f32 / HEIGHT as f32 + waver).rem_euclid(1.0) * total;
+        let band = starts.iter().rposition(|&start| start <= down).unwrap_or(0);
+        let next = starts.get(band + 1).copied().unwrap_or(total);
+        let seam = random01(band as u32 + 7) < 0.45 && next - down < 0.035;
+        let color = colors[(band * 3 + 1) % colors.len()];
+        let grain = 0.86 + 0.24 * random01(x * 7919 + y * 104_729);
+        let shade = if seam { 0.45 } else { grain };
+        Color::LinearRgba(color * shade)
     })
 }
 

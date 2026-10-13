@@ -2,6 +2,7 @@
 //! la bordea y el decorado de la pista elegida ([`crate::circuits`]), bajo
 //! un cielo de verano. Al cambiar de pista se vuelve a construir.
 
+mod cavern;
 mod landmarks;
 mod lettering;
 mod mine;
