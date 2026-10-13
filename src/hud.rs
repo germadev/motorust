@@ -1,18 +1,19 @@
 //! Marcador en pantalla: velocímetro y leyenda de los controles (oculta de
 //! entrada; se enseña desde Depuración) en la carrera, y fotogramas por
-//! segundo siempre. El minimapa va aparte, en [`crate::minimap`].
+//! segundo siempre. El minimapa va aparte, en [`crate::minimap`], and the
+//! speedometer's dial is drawn in [`crate::speedometer`].
 
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::*,
 };
 
-use crate::bike::{BikeState, LocalPlayer, Player};
 use crate::gamepads::ActiveController;
 use crate::legend::{KeyPrompt, race_prompts, spawn_legend};
 use crate::menu::GameState;
 use crate::pause::{DebugOptions, Pause};
 use crate::settings::Settings;
+use crate::speedometer::{SpeedometerPlugin, spawn_speedometer};
 use crate::ui::{InputDevice, UiIcons, current_active_device};
 use crate::welcome::GameMode;
 
@@ -20,14 +21,14 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(FrameTimeDiagnosticsPlugin::default())
+        app.add_plugins((FrameTimeDiagnosticsPlugin::default(), SpeedometerPlugin))
             .init_resource::<UiFont>()
             .add_systems(Startup, spawn_fps_counter)
             .add_systems(OnEnter(GameState::Race), spawn_race_hud)
             .add_systems(
                 Update,
                 (
-                    (update_speedometer, show_race_legend).run_if(in_state(GameState::Race)),
+                    show_race_legend.run_if(in_state(GameState::Race)),
                     update_fps,
                 ),
             );
@@ -46,9 +47,6 @@ impl FromWorld for UiFont {
         Self(world.resource_mut::<Assets<Font>>().add(font))
     }
 }
-
-#[derive(Component)]
-struct Speedometer(pub usize);
 
 /// La leyenda con los controles.
 #[derive(Component)]
@@ -73,6 +71,11 @@ fn spawn_fps_counter(mut commands: Commands) {
         },
     ));
 }
+
+/// How wide the speedometer is (px): alone, and with two players, in each
+/// half of the screen.
+const DIAL: f32 = 220.0;
+const SPLIT_DIAL: f32 = 160.0;
 
 fn spawn_race_hud(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
     if *game_mode == GameMode::SplitScreen {
@@ -111,24 +114,19 @@ fn spawn_race_hud(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Game
         ));
 
         // Velocímetro Jugador 1 (abajo a la derecha de la mitad superior)
-        commands.spawn((
-            DespawnOnExit(GameState::Race),
-            Speedometer(0),
-            Text::new("0 km/h"),
-            TextFont {
-                font: font.0.clone().into(),
-                font_size: FontSize::Px(38.0),
-                ..default()
-            },
-            TextShadow::default(),
+        spawn_speedometer(
+            &mut commands,
+            0,
+            SPLIT_DIAL,
             Node {
                 position_type: PositionType::Absolute,
                 bottom: percent(50.0),
-                right: px(24),
+                right: px(16),
                 margin: UiRect::bottom(px(10.0)),
                 ..default()
             },
-        ));
+            &font.0,
+        );
 
         // Indicador Jugador 2 (Abajo)
         commands.spawn((
@@ -151,42 +149,32 @@ fn spawn_race_hud(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Game
         ));
 
         // Velocímetro Jugador 2 (abajo a la derecha de la mitad inferior)
-        commands.spawn((
-            DespawnOnExit(GameState::Race),
-            Speedometer(1),
-            Text::new("0 km/h"),
-            TextFont {
-                font: font.0.clone().into(),
-                font_size: FontSize::Px(38.0),
-                ..default()
-            },
-            TextShadow::default(),
+        spawn_speedometer(
+            &mut commands,
+            1,
+            SPLIT_DIAL,
             Node {
                 position_type: PositionType::Absolute,
                 bottom: px(16),
-                right: px(24),
+                right: px(16),
                 ..default()
             },
-        ));
+            &font.0,
+        );
     } else {
         // Velocímetro modo 1 jugador
-        commands.spawn((
-            DespawnOnExit(GameState::Race),
-            Speedometer(0),
-            Text::new("0 km/h"),
-            TextFont {
-                font: font.0.clone().into(),
-                font_size: FontSize::Px(48.0),
-                ..default()
-            },
-            TextShadow::default(),
+        spawn_speedometer(
+            &mut commands,
+            0,
+            DIAL,
             Node {
                 position_type: PositionType::Absolute,
                 bottom: px(16),
-                right: px(24),
+                right: px(16),
                 ..default()
             },
-        ));
+            &font.0,
+        );
     }
 }
 
@@ -238,31 +226,6 @@ fn show_race_legend(
         .with_children(|screen| {
             spawn_legend(screen, &font, &icons, active_dev, &prompts);
         });
-}
-
-fn update_speedometer(
-    p1_bike: Query<&BikeState, With<Player>>,
-    other_bikes: Query<(&BikeState, &LocalPlayer)>,
-    mut speedometers: Query<(&mut Text, &Speedometer)>,
-) {
-    let p1_speed = p1_bike
-        .iter()
-        .next()
-        .map(|b| b.speed.abs() * 3.6)
-        .unwrap_or(0.0);
-    let p2_speed = other_bikes
-        .iter()
-        .find(|(_, lp)| lp.0 == 1)
-        .map(|(b, _)| b.speed.abs() * 3.6)
-        .unwrap_or(0.0);
-
-    for (mut text, sp) in &mut speedometers {
-        let speed = if sp.0 == 0 { p1_speed } else { p2_speed };
-        let label = format!("{speed:.0} km/h");
-        if text.0 != label {
-            text.0 = label;
-        }
-    }
 }
 
 /// Fotogramas por segundo, suavizados para que se puedan leer.

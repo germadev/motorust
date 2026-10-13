@@ -19,6 +19,7 @@ mod pause;
 mod settings;
 mod shapes;
 mod sound;
+mod speedometer;
 mod track;
 mod track_select;
 mod ui;

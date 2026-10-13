@@ -45,13 +45,14 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/bike/model/livery.rs` | Liveries for the code-built bikes (colours, fairing graphics, suit and helmet), painted into textures at startup. |
 | `src/shapes.rs` | Procedural meshes: smooth and faceted lofts, tubes, prisms and skinned sweeps. |
 | `src/camera.rs` | Chase camera with fog and a field of view that widens with speed, right-stick look-around, turning over with the bike round a loop, and the camera slide between menu screens. |
-| `src/hud.rs` | Speedometer, the race's controls legend, frames per second and the font used for labels. |
+| `src/hud.rs` | The race HUD (where the speedometers go, the race's controls legend), frames per second and the font used for labels. |
+| `src/speedometer.rs` | The race speedometer: a see-through dial with the speeds from 0 to 360 km/h, drawn with zeno and the UI font at its size on screen, a pointer turned with its `UiTransform`, and the speed in figures. |
 | `src/minimap.rs` | Track map drawn from the centreline and the branches, used on the track selection screen and as the race minimap (one dot per bike in its colour). |
 | `src/menu.rs` | The game screens (`GameState`) and the bike and rider selection screen. |
 | `src/welcome.rs` | Welcome screen: the start menu as in its design, as wide as the title, with its buttons drawn by `src/menu_card.wgsl` (rounded cards and the sliding chequered flag). |
 | `src/options.rs` | The Options menu (Game, Control, Sound and Graphics), from the welcome screen or the pause menu. |
 | `src/legend.rs` | The controls legend shown at the bottom of every screen, as the keys and buttons look on the device in use. |
-| `src/vector_art.rs` | Vector art of the start menu drawn at its size on screen: the slanted lettering (the UI font) and the helmet (`assets/ui/helmet.svg`). |
+| `src/vector_art.rs` | Vector art of the start menu drawn at its size on screen: the slanted lettering (the UI font) and the helmet (`assets/ui/helmet.svg`); also the plain lettering of the speedometer's figures. |
 | `src/track_select.rs` | Track selection, with the map drawn from the layout. |
 | `src/settings.rs` | Settings kept between sessions (resolution, FPS limit, keys and buttons for each action), the fullscreen shortcut and the frame limiter. Saved to `ajustes.ron` on the desktop and to `localStorage` on the web. |
 | `src/ui.rs` | Shared menu code: navigation with keyboard or gamepad, the options panel and the gamepad status notice. |
@@ -85,7 +86,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 
 ## Tests
 
-There are **229 tests**, all headless. Run them with:
+There are **259 tests**, all headless. Run them with:
 
 ```sh
 cargo test   # or: make test
@@ -102,10 +103,10 @@ CI runs them on every push and PR, together with `cargo fmt --check` and `cargo 
 | Loops (`src/bike/loop_ride.rs`) | 11 | Going round and out beside the mouth, coming back down too slow, falling off, going in at the mouth; steering across the running surface and coming out pointing that way, turning about the bike's own up, the walls along the edges, less grip the less the surface presses, falling off turned the way it was going. |
 | Bike and rider models (`src/bike/model/`) | 27 | Imported parts and wheels on the ground, open exhausts, rigged riders, hands on the grips and feet on the pegs on every bike, liveries, race numbers. |
 | Track (`src/track.rs`) | 16 | Drivable curves, rideable slopes and banking, walls of distant stretches that do not meet, the grid, branches that leave and join the lap along it and on its surface, climb and drop smoothly once apart from it, and bikes on a branch finding its road. |
-| World and tracks (`src/world/`, `src/circuits/`) | 29 | Terrain hugs the road and keeps it dry, sea and mountains where expected, kerbs only in corners, textures decode, houses fit, loops clear of the road, waterfalls down rock walls, wooden bridges fenced, checkpoints, Turbo Bay passing over its own tunnel, Loop Island's branch forking before the crest in a long curve. |
+| World and tracks (`src/world/`, `src/circuits/`) | 38 | Terrain hugs the road and keeps it dry, sea and mountains where expected, a shore round every circuit for the waves, the sky meeting the fog at the horizon and the clouds' shapes, kerbs only in corners, textures decode, houses fit, loops clear of the road, waterfalls down rock walls, wooden bridges fenced, checkpoints, Turbo Bay passing over its own tunnel, Loop Island's branch forking before the crest in a long curve. |
 | Meshes (`src/shapes.rs`) | 9 | Faces point outwards, sections and bone weights are consistent. |
-| Sound (`src/sound/`) | 14 | Gear changes, throttle loudness, panning, one-shot sounds; the music: every song decodes and loops back to its start, plays at the same loudness and well under the player's engine, fades, and plays only during the race. |
-| Other (geometry, settings, camera, minimap, menus, HUD) | 33 | Heading conventions, settings survive a save and load, one action per key, map projection, menu items, the camera following a bike turning round a loop. |
+| Sound (`src/sound/`) | 17 | Gear changes, throttle loudness, panning, one-shot sounds; the music: every song decodes and loops back to its start, plays at the same loudness and well under the player's engine, fades, and plays only during the race. |
+| Other (geometry, settings, camera, minimap, menus, HUD) | 51 | Heading conventions, settings survive a save and load, one action per key, map projection, menu items and their vector art, the camera following a bike turning round a loop, the speedometer's scale and dial. |
 
 The track tests run on every circuit: when you change a track, they tell you if it has impossible corners, excessive slopes, overlaps itself, or if the terrain covers the road or leaves it in the air (see [tracks.md](tracks.md)).
 

@@ -9,6 +9,8 @@
 //!   already uses for the fonts, reads SVG path data.
 //!
 //! Each piece is drawn once per size into a white image that the menu tints.
+//! The speedometer (see [`crate::speedometer`]) draws its figures with
+//! [`draw_plain_text`].
 
 use std::collections::HashMap;
 
@@ -25,12 +27,28 @@ use crate::world::generate_mipmaps;
 
 /// The UI font, the same one as [`crate::hud::UiFont`].
 pub const FONT: &[u8] = include_bytes!("../assets/fonts/RussoOne-Regular.ttf");
-/// How much the letters lean forward (degrees), as in the design.
-const SLANT: f32 = 14.0;
-/// How much heavier the strokes are, and the extra space between letters,
-/// as fractions of the font size.
-const WEIGHT: f32 = 0.04;
-const TRACKING: f32 = 0.07;
+/// How the letters are drawn: how much they lean forward (degrees), how
+/// much heavier their strokes are and the extra space between them (as
+/// fractions of the font size).
+#[derive(Clone, Copy)]
+struct Lettering {
+    slant: f32,
+    weight: f32,
+    tracking: f32,
+}
+
+/// The lettering of the menu design.
+const MENU: Lettering = Lettering {
+    slant: 14.0,
+    weight: 0.04,
+    tracking: 0.07,
+};
+/// The font as it is.
+const PLAIN: Lettering = Lettering {
+    slant: 0.0,
+    weight: 0.0,
+    tracking: 0.0,
+};
 
 /// The helmet of the menu design (white, facing right).
 const HELMET_SVG: &str = include_str!("../assets/ui/helmet.svg");
@@ -91,31 +109,39 @@ pub fn draw_text(text: &str, height: u32) -> Coverage {
     // The ink is a little taller than the capitals of the font: drawn once
     // to see how much, then at the size that gives the height wanted.
     let guess = height as f32 / 0.72;
-    let first = draw_text_at(text, guess);
+    let first = draw_text_at(text, guess, MENU);
     if first.height <= 1 {
         return first;
     }
-    draw_text_at(text, guess * height as f32 / first.height as f32)
+    draw_text_at(text, guess * height as f32 / first.height as f32, MENU)
 }
 
-/// `text` in slanted heavy letters with the font at `size` px.
-fn draw_text_at(text: &str, size: f32) -> Coverage {
+/// `text` in the UI font as it is, at `size` px, cropped to the ink.
+pub fn draw_plain_text(text: &str, size: f32) -> Coverage {
+    draw_text_at(text, size, PLAIN)
+}
+
+/// `text` with the font at `size` px, drawn as `lettering` says.
+fn draw_text_at(text: &str, size: f32, lettering: Lettering) -> Coverage {
     let font = font();
     let mut context = ScaleContext::new();
     let mut scaler = context.builder(font).size(size).hint(false).build();
     let mut render = Render::new(&[Source::Outline]);
-    render
-        .format(Format::Alpha)
-        .embolden(size * WEIGHT)
-        .transform(Some(Transform::skew(
-            Angle::from_degrees(SLANT),
+    render.format(Format::Alpha);
+    if lettering.weight > 0.0 {
+        render.embolden(size * lettering.weight);
+    }
+    if lettering.slant != 0.0 {
+        render.transform(Some(Transform::skew(
+            Angle::from_degrees(lettering.slant),
             Angle::ZERO,
         )));
+    }
 
     // Each glyph's mask and where its top left corner goes (px, y down from
     // the baseline).
     let mut masks = Vec::new();
-    for (id, x) in shape(text, size, size * TRACKING) {
+    for (id, x) in shape(text, size, size * lettering.tracking) {
         let Some(image) = render.render(&mut scaler, id) else {
             continue;
         };

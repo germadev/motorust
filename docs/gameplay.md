@@ -106,7 +106,7 @@ Rivals keep to their own lane. They pull out to pass a bike they catch, or lift 
 
 | Element | Where | What it shows |
 |---|---|---|
-| Speedometer | Bottom right | Speed in km/h. |
+| Speedometer | Bottom right | A see-through dial, clear in the middle and darker towards its rim, marked from 0 to 360 km/h (red from 300, over a red arc), with a blue pointer and the speed in figures in the middle. With two players, each has their own at the bottom right of their half. |
 | FPS counter | Top right | Frames per second, smoothed so it can be read. |
 | Minimap | Bottom left | The layout seen from above (north up), with the finish line in yellow and one dot per bike in that bike's colour. Your dot is larger, with a white border; with two players, each one's dot carries their number (1 or 2). |
 | Controls legend | Bottom centre | The keys or buttons currently bound to each action, on the device in use (see [Controls legend](#controls-legend)). It is hidden by default; turn it on in **Options > Control**. It gives way to the pause menu's own legend. |
