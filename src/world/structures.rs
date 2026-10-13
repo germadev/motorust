@@ -943,7 +943,7 @@ mod tests {
                 let u = (b2 - point).perp_dot(c2 - point) / area;
                 let v = (c2 - point).perp_dot(a2 - point) / area;
                 let w = 1.0 - u - v;
-                (u >= 0.0 && v >= 0.0 && w >= 0.0).then(|| a.y * u + b.y * v + c.y * w)
+                (u >= 0.0 && v >= 0.0 && w >= 0.0).then_some(a.y * u + b.y * v + c.y * w)
             })
             .reduce(f32::max)
     }
