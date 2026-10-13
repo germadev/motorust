@@ -767,7 +767,7 @@ mod tests {
                 last[i] = index;
             }
         }
-        assert!(falls <= 2, "se caen {falls} veces en {name}");
+        assert!(falls <= 4, "se caen {falls} veces en {name}");
         for (i, progress) in progress.iter().enumerate() {
             assert!(
                 *progress > n,

@@ -4,12 +4,16 @@
 
 use bevy::prelude::*;
 
-use crate::gamepads::Gamepads;
+use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::menu::GameState;
+use crate::options::{OptionsMenu, OptionsReturn};
 use crate::settings::{Action as Control, Settings, WEB, cycle};
-use crate::ui::{MenuInput, Row, spawn_hint, spawn_panel, spawn_title};
+use crate::ui::{
+    InputDevice, MenuInput, MenuSound, Row, current_active_device, menu_prompts, spawn_legend_bar,
+    spawn_panel, spawn_title,
+};
 
 pub struct PausePlugin;
 
@@ -17,6 +21,7 @@ impl Plugin for PausePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Pause>()
             .init_resource::<DebugOptions>()
+            .init_resource::<OptionsMenu>()
             .add_systems(OnExit(GameState::Race), close)
             .add_systems(
                 Update,
@@ -78,7 +83,7 @@ impl SteerRate {
         }
     }
 
-    fn name(self, lang: Language) -> &'static str {
+    pub fn name(self, lang: Language) -> &'static str {
         match lang {
             Language::Spanish => match self {
                 SteerRate::Slow => "lento",
@@ -94,7 +99,7 @@ impl SteerRate {
     }
 
     /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta.
-    fn next(self, step: i32) -> Self {
+    pub fn next(self, step: i32) -> Self {
         cycle(&STEER_RATES, self, step)
     }
 }
@@ -120,7 +125,7 @@ impl ReturnRate {
         }
     }
 
-    fn name(self, lang: Language) -> &'static str {
+    pub fn name(self, lang: Language) -> &'static str {
         match lang {
             Language::Spanish => match self {
                 ReturnRate::Slow => "lenta",
@@ -136,7 +141,7 @@ impl ReturnRate {
     }
 
     /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta.
-    fn next(self, step: i32) -> Self {
+    pub fn next(self, step: i32) -> Self {
         cycle(&RETURN_RATES, self, step)
     }
 }
@@ -169,7 +174,7 @@ impl TurnLimit {
         }
     }
 
-    fn name(self, lang: Language) -> &'static str {
+    pub fn name(self, lang: Language) -> &'static str {
         match lang {
             Language::Spanish => match self {
                 TurnLimit::Off => "no",
@@ -188,7 +193,7 @@ impl TurnLimit {
 
     /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta:
     /// después del más alto, sin límite.
-    fn next(self, step: i32) -> Self {
+    pub fn next(self, step: i32) -> Self {
         cycle(&TURN_LIMITS, self, step)
     }
 }
@@ -213,31 +218,23 @@ pub fn running(pause: Res<Pause>) -> bool {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Page {
+pub enum Page {
     Main,
     QuitConfirm,
-    Debug,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Action {
+pub enum Action {
     Resume,
+    OpenOptions,
     MainMenu,
-    OpenDebug,
     OpenQuitConfirm,
     CancelQuit,
     ConfirmQuit,
-    NextStickLimit,
-    NextKeyboardLimit,
-    NextKeyboardRate,
-    NextKeyboardReturn,
-    ToggleLegend,
-    SearchGamepads,
-    Back,
 }
 
 /// Las opciones de cada página: su texto y lo que hacen.
-fn items(page: Page, options: &DebugOptions, lang: Language) -> Vec<(String, Action)> {
+pub fn items(page: Page, lang: Language) -> Vec<(String, Action)> {
     match page {
         Page::Main => {
             let mut items = vec![
@@ -250,28 +247,22 @@ fn items(page: Page, options: &DebugOptions, lang: Language) -> Vec<(String, Act
                 ),
                 (
                     match lang {
+                        Language::Spanish => "Opciones".into(),
+                        Language::English => "Options".into(),
+                    },
+                    Action::OpenOptions,
+                ),
+                (
+                    match lang {
                         Language::Spanish => "Volver al menú principal".into(),
                         Language::English => "Return to main menu".into(),
                     },
                     Action::MainMenu,
                 ),
-                (
-                    match lang {
-                        Language::Spanish => "Depuración".into(),
-                        Language::English => "Debug".into(),
-                    },
-                    Action::OpenDebug,
-                ),
             ];
             // En la web se sale cerrando la pestaña.
             if !WEB {
-                items.push((
-                    match lang {
-                        Language::Spanish => "Salir del juego".into(),
-                        Language::English => "Exit game".into(),
-                    },
-                    Action::OpenQuitConfirm,
-                ));
+                items.push((lang.exit_game().into(), Action::OpenQuitConfirm));
             }
             items
         }
@@ -283,102 +274,7 @@ fn items(page: Page, options: &DebugOptions, lang: Language) -> Vec<(String, Act
                 },
                 Action::CancelQuit,
             ),
-            (
-                match lang {
-                    Language::Spanish => "Salir del juego".into(),
-                    Language::English => "Exit game".into(),
-                },
-                Action::ConfirmQuit,
-            ),
-        ],
-        Page::Debug => vec![
-            (
-                match lang {
-                    Language::Spanish => format!(
-                        "Stick: limitar el giro con la velocidad: {}",
-                        options.stick_limit.name(lang)
-                    ),
-                    Language::English => format!(
-                        "Stick: limit turn with speed: {}",
-                        options.stick_limit.name(lang)
-                    ),
-                },
-                Action::NextStickLimit,
-            ),
-            (
-                match lang {
-                    Language::Spanish => format!(
-                        "Teclado y cruceta: limitar el giro con la velocidad: {}",
-                        options.keyboard_limit.name(lang)
-                    ),
-                    Language::English => format!(
-                        "Keyboard and D-pad: limit turn with speed: {}",
-                        options.keyboard_limit.name(lang)
-                    ),
-                },
-                Action::NextKeyboardLimit,
-            ),
-            (
-                match lang {
-                    Language::Spanish => format!(
-                        "Teclado y cruceta: cuánto gira al dejar pulsado: {}",
-                        options.keyboard_rate.name(lang)
-                    ),
-                    Language::English => format!(
-                        "Keyboard and D-pad: turn rate when held: {}",
-                        options.keyboard_rate.name(lang)
-                    ),
-                },
-                Action::NextKeyboardRate,
-            ),
-            (
-                match lang {
-                    Language::Spanish => format!(
-                        "Teclado y cruceta: al soltar la tecla de girar: {}",
-                        options.keyboard_return.name(lang)
-                    ),
-                    Language::English => format!(
-                        "Keyboard and D-pad: return rate when released: {}",
-                        options.keyboard_return.name(lang)
-                    ),
-                },
-                Action::NextKeyboardReturn,
-            ),
-            (
-                match lang {
-                    Language::Spanish => format!(
-                        "Leyenda de los controles: {}",
-                        if options.show_legend {
-                            "se ve"
-                        } else {
-                            "oculta"
-                        }
-                    ),
-                    Language::English => format!(
-                        "Controls legend: {}",
-                        if options.show_legend {
-                            "visible"
-                        } else {
-                            "hidden"
-                        }
-                    ),
-                },
-                Action::ToggleLegend,
-            ),
-            (
-                match lang {
-                    Language::Spanish => "Volver a buscar mandos".into(),
-                    Language::English => "Scan for controllers again".into(),
-                },
-                Action::SearchGamepads,
-            ),
-            (
-                match lang {
-                    Language::Spanish => "Volver".into(),
-                    Language::English => "Back".into(),
-                },
-                Action::Back,
-            ),
+            (lang.exit_game().into(), Action::ConfirmQuit),
         ],
     }
 }
@@ -389,12 +285,16 @@ fn use_pause_menu(
     mut input: MenuInput,
     settings: Res<Settings>,
     mut pause: ResMut<Pause>,
-    mut options: ResMut<DebugOptions>,
+    mut options_menu: Option<ResMut<OptionsMenu>>,
     mut time: ResMut<Time<Virtual>>,
     mut next: ResMut<NextState<GameState>>,
     mut exit: MessageWriter<AppExit>,
-    mut gamepads: ResMut<Gamepads>,
+    mut sounds: MessageWriter<MenuSound>,
 ) {
+    if options_menu.as_ref().is_some_and(|m| m.is_open) {
+        return;
+    }
+
     let request = input.read();
     // La tecla o el botón de pausa (Esc o Start, si no se han cambiado).
     let toggle =
@@ -407,101 +307,63 @@ fn use_pause_menu(
                 page: Some(Page::Main),
                 selected: 0,
             };
+            sounds.write(MenuSound::Confirm);
             time.pause();
         }
         return;
     };
-    let items = items(page, &options, settings.language);
+    let items = items(page, settings.language);
     if request.step != 0 {
         pause.selected =
             (pause.selected as i32 + request.step).rem_euclid(items.len() as i32) as usize;
+        sounds.write(MenuSound::Move);
     }
-    // Pausa, Esc o B: atrás desde confirmación de salida y depuración; desde el menú, seguir.
-    // Izquierda y derecha cambian la opción de depuración.
+
     let action = if toggle || request.back {
         Some(match page {
             Page::QuitConfirm => Action::CancelQuit,
-            Page::Debug => Action::Back,
             Page::Main => Action::Resume,
         })
-    } else if request.confirm
-        || (request.side != 0
-            && matches!(
-                items[pause.selected].1,
-                Action::NextStickLimit
-                    | Action::NextKeyboardLimit
-                    | Action::NextKeyboardRate
-                    | Action::NextKeyboardReturn
-                    | Action::ToggleLegend
-            ))
-    {
+    } else if request.confirm {
         Some(items[pause.selected].1)
     } else {
         None
     };
+
     match action {
         Some(Action::Resume) => {
+            sounds.write(MenuSound::Move);
             *pause = Pause::default();
             time.unpause();
         }
+        Some(Action::OpenOptions) => {
+            sounds.write(MenuSound::Confirm);
+            if let Some(ref mut menu) = options_menu {
+                menu.open(OptionsReturn::Pause);
+            }
+        }
         Some(Action::MainMenu) => {
+            sounds.write(MenuSound::Confirm);
+            *pause = Pause::default();
+            time.unpause();
             next.set(GameState::Welcome);
         }
-        Some(Action::OpenDebug) => {
-            *pause = Pause {
-                page: Some(Page::Debug),
-                selected: 0,
-            };
-        }
         Some(Action::OpenQuitConfirm) => {
+            sounds.write(MenuSound::Move);
             *pause = Pause {
                 page: Some(Page::QuitConfirm),
                 selected: 0,
             };
         }
         Some(Action::CancelQuit) => {
+            sounds.write(MenuSound::Move);
             *pause = Pause {
                 page: Some(Page::Main),
-                selected: 3,
+                selected: 3.min(items.len() - 1),
             };
         }
         Some(Action::ConfirmQuit) => {
             exit.write(AppExit::Success);
-        }
-        Some(Action::NextStickLimit) => {
-            options.stick_limit = options
-                .stick_limit
-                .next(if request.side < 0 { -1 } else { 1 });
-        }
-        Some(Action::NextKeyboardLimit) => {
-            options.keyboard_limit =
-                options
-                    .keyboard_limit
-                    .next(if request.side < 0 { -1 } else { 1 });
-        }
-        Some(Action::NextKeyboardRate) => {
-            options.keyboard_rate =
-                options
-                    .keyboard_rate
-                    .next(if request.side < 0 { -1 } else { 1 });
-        }
-        Some(Action::NextKeyboardReturn) => {
-            options.keyboard_return =
-                options
-                    .keyboard_return
-                    .next(if request.side < 0 { -1 } else { 1 });
-        }
-        Some(Action::ToggleLegend) => {
-            options.show_legend = !options.show_legend;
-        }
-        Some(Action::SearchGamepads) => {
-            gamepads.search_again();
-        }
-        Some(Action::Back) => {
-            *pause = Pause {
-                page: Some(Page::Main),
-                selected: 2,
-            };
         }
         None => {}
     }
@@ -517,24 +379,39 @@ fn close(mut pause: ResMut<Pause>, mut time: ResMut<Time<Virtual>>) {
 #[derive(Component)]
 struct PauseMenu;
 
+#[allow(clippy::too_many_arguments)]
 fn show_pause_menu(
     mut commands: Commands,
     pause: Res<Pause>,
-    options: Res<DebugOptions>,
+    options_menu: Option<Res<OptionsMenu>>,
     settings: Res<Settings>,
+    device: Option<Res<InputDevice>>,
+    active_controller: Option<Res<ActiveController>>,
     font: Res<UiFont>,
     shown: Query<Entity, With<PauseMenu>>,
 ) {
-    if !pause.is_changed() && !options.is_changed() && !settings.is_changed() {
+    if !pause.is_changed()
+        && options_menu.as_ref().is_some_and(|m| !m.is_changed())
+        && !settings.is_changed()
+        && device.as_ref().is_some_and(|d| !d.is_changed())
+        && active_controller.as_ref().is_some_and(|c| !c.is_changed())
+    {
         return;
     }
     for entity in &shown {
         commands.entity(entity).despawn();
     }
+    if options_menu.as_ref().is_some_and(|m| m.is_open) {
+        return;
+    }
     let Some(page) = pause.page else {
         return;
     };
     let lang = settings.language;
+    let active_dev = current_active_device(
+        device.as_deref().copied().unwrap_or_default(),
+        active_controller.as_deref(),
+    );
     let title = match page {
         Page::Main => match lang {
             Language::Spanish => "PAUSA",
@@ -544,33 +421,41 @@ fn show_pause_menu(
             Language::Spanish => "¿SALIR DEL JUEGO?",
             Language::English => "EXIT GAME?",
         },
-        Page::Debug => match lang {
-            Language::Spanish => "DEPURACIÓN",
-            Language::English => "DEBUG",
-        },
     };
-    let rows: Vec<Row> = items(page, &options, lang)
+    let rows: Vec<Row> = items(page, lang)
         .into_iter()
         .map(|(label, _)| Row::new(label))
         .collect();
-    let hint = match page {
-        Page::QuitConfirm => match lang {
-            Language::Spanish => {
-                "Arriba y abajo: elegir   ·   Enter o A: aceptar   ·   Esc o B: cancelar"
-            }
-            Language::English => {
-                "Up and down: choose   ·   Enter or A: accept   ·   Esc or B: cancel"
-            }
-        },
-        _ => match lang {
-            Language::Spanish => {
-                "Arriba y abajo: elegir   ·   Enter o A: aceptar   ·   Esc o B: volver"
-            }
-            Language::English => {
-                "Up and down: choose   ·   Enter or A: accept   ·   Esc or B: back"
-            }
-        },
+
+    let prompts = match page {
+        Page::QuitConfirm => menu_prompts(
+            active_dev,
+            lang,
+            false,
+            match lang {
+                Language::Spanish => "Aceptar",
+                Language::English => "Select",
+            },
+            Some(match lang {
+                Language::Spanish => "Cancelar",
+                Language::English => "Cancel",
+            }),
+        ),
+        Page::Main => menu_prompts(
+            active_dev,
+            lang,
+            false,
+            match lang {
+                Language::Spanish => "Aceptar",
+                Language::English => "Select",
+            },
+            Some(match lang {
+                Language::Spanish => "Reanudar",
+                Language::English => "Resume",
+            }),
+        ),
     };
+
     commands
         .spawn((
             PauseMenu,
@@ -585,14 +470,14 @@ fn show_pause_menu(
                 row_gap: px(14),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.02, 0.06, 0.6)),
+            BackgroundColor(Color::srgba(0.0, 0.02, 0.06, 0.7)),
             // Por encima del marcador.
             GlobalZIndex(10),
         ))
         .with_children(|menu| {
             spawn_title(menu, &font, title, 52.0);
             spawn_panel(menu, &font, &rows, pause.selected, false);
-            spawn_hint(menu, &font, hint);
+            spawn_legend_bar(menu, &font, &prompts);
         });
 }
 
@@ -602,8 +487,7 @@ mod tests {
 
     #[test]
     fn the_pause_menu_offers_what_was_asked() {
-        let options = DebugOptions::default();
-        let main: Vec<Action> = items(Page::Main, &options, Language::Spanish)
+        let main: Vec<Action> = items(Page::Main, Language::Spanish)
             .into_iter()
             .map(|i| i.1)
             .collect();
@@ -611,122 +495,37 @@ mod tests {
             main,
             [
                 Action::Resume,
+                Action::OpenOptions,
                 Action::MainMenu,
-                Action::OpenDebug,
-                Action::OpenQuitConfirm
+                Action::OpenQuitConfirm,
             ]
         );
-        let quit_confirm: Vec<Action> = items(Page::QuitConfirm, &options, Language::Spanish)
+        let quit_confirm: Vec<Action> = items(Page::QuitConfirm, Language::Spanish)
             .into_iter()
             .map(|i| i.1)
             .collect();
         assert_eq!(quit_confirm, [Action::CancelQuit, Action::ConfirmQuit]);
 
-        // La opción de limitar el giro del stick con la velocidad.
-        let mut limit = options.stick_limit;
-        let mut shown = Vec::new();
-        for _ in 0..5 {
-            let options = DebugOptions {
-                stick_limit: limit,
-                ..default()
-            };
-            let label = items(Page::Debug, &options, Language::Spanish)[0].0.clone();
-            shown.push(label.rsplit(' ').next().unwrap().to_string());
-            limit = limit.next(1);
-        }
-        assert_eq!(shown, ["medio", "alto", "no", "bajo", "medio"]);
-        assert_eq!(TurnLimit::Off.next(-1), TurnLimit::High);
-        // El teclado y la cruceta, limitados a medio de entrada.
-        assert_eq!(
-            items(Page::Debug, &options, Language::Spanish)[1].1,
-            Action::NextKeyboardLimit
-        );
-        assert!(
-            items(Page::Debug, &options, Language::Spanish)[1]
-                .0
-                .ends_with("medio")
-        );
-        // Cuánto gira al dejar pulsado: medio de entrada, y pasa por alto y lento.
-        assert_eq!(
-            items(Page::Debug, &options, Language::Spanish)[2].1,
-            Action::NextKeyboardRate
-        );
-        assert!(
-            items(Page::Debug, &options, Language::Spanish)[2]
-                .0
-                .ends_with("medio")
-        );
-        let mut rate = options.keyboard_rate;
-        let mut shown_rates = Vec::new();
-        for _ in 0..4 {
-            let options = DebugOptions {
-                keyboard_rate: rate,
-                ..default()
-            };
-            let label = items(Page::Debug, &options, Language::Spanish)[2].0.clone();
-            shown_rates.push(label.rsplit(' ').next().unwrap().to_string());
-            rate = rate.next(1);
-        }
-        assert_eq!(shown_rates, ["medio", "alto", "lento", "medio"]);
-        assert_eq!(SteerRate::Slow.next(-1), SteerRate::Fast);
-        assert_eq!(SteerRate::Fast.factor(), 1.0);
-        assert!(SteerRate::Slow.factor() < SteerRate::Medium.factor());
-        assert!(SteerRate::Medium.factor() < SteerRate::Fast.factor());
-        // The rate at which it returns on release: medium by default, then
-        // fast and slow.
-        assert_eq!(
-            items(Page::Debug, &options, Language::Spanish)[3].1,
-            Action::NextKeyboardReturn
-        );
-        assert!(
-            items(Page::Debug, &options, Language::Spanish)[3]
-                .0
-                .ends_with("media")
-        );
-        let mut ret = options.keyboard_return;
-        let mut shown_returns = Vec::new();
-        for _ in 0..4 {
-            let options = DebugOptions {
-                keyboard_return: ret,
-                ..default()
-            };
-            let label = items(Page::Debug, &options, Language::Spanish)[3].0.clone();
-            shown_returns.push(label.split(": ").last().unwrap().to_string());
-            ret = ret.next(1);
-        }
-        assert_eq!(shown_returns, ["media", "rápida", "lenta", "media"]);
-        assert_eq!(ReturnRate::Slow.next(-1), ReturnRate::Fast);
-        assert_eq!(ReturnRate::Fast.factor(), 1.0);
-        assert!(ReturnRate::Slow.factor() < ReturnRate::Medium.factor());
-        assert!(ReturnRate::Medium.factor() < ReturnRate::Fast.factor());
-        // La leyenda de los controles, oculta de entrada.
-        assert_eq!(
-            items(Page::Debug, &options, Language::Spanish)[4].1,
-            Action::ToggleLegend
-        );
-        assert!(
-            items(Page::Debug, &options, Language::Spanish)[4]
-                .0
-                .ends_with("oculta")
-        );
-        assert_eq!(TurnLimit::High.strength(), 1.0);
-        // Volver desde depuración deja elegida la entrada de depuración.
-        assert_eq!(
-            items(Page::Main, &options, Language::Spanish)[2].1,
-            Action::OpenDebug
-        );
-
         // English items verification
-        let main_en: Vec<String> = items(Page::Main, &options, Language::English)
+        let main_en: Vec<String> = items(Page::Main, Language::English)
             .into_iter()
             .map(|i| i.0)
             .collect();
         assert_eq!(main_en[0], "Resume");
-        assert_eq!(main_en[1], "Return to main menu");
-        assert_eq!(main_en[2], "Debug");
+        assert_eq!(main_en[1], "Options");
+        assert_eq!(main_en[2], "Return to main menu");
         assert_eq!(main_en[3], "Exit game");
-        let debug_en = items(Page::Debug, &options, Language::English);
-        assert!(debug_en[0].0.ends_with("medium"));
-        assert!(debug_en[3].0.ends_with("medium"));
+
+        // Rates and limits behavior
+        assert_eq!(TurnLimit::Off.next(-1), TurnLimit::High);
+        assert_eq!(TurnLimit::High.strength(), 1.0);
+        assert_eq!(SteerRate::Slow.next(-1), SteerRate::Fast);
+        assert_eq!(SteerRate::Fast.factor(), 1.0);
+        assert!(SteerRate::Slow.factor() < SteerRate::Medium.factor());
+        assert!(SteerRate::Medium.factor() < SteerRate::Fast.factor());
+        assert_eq!(ReturnRate::Slow.next(-1), ReturnRate::Fast);
+        assert_eq!(ReturnRate::Fast.factor(), 1.0);
+        assert!(ReturnRate::Slow.factor() < ReturnRate::Medium.factor());
+        assert!(ReturnRate::Medium.factor() < ReturnRate::Fast.factor());
     }
 }

@@ -95,6 +95,7 @@ pub fn play_music(
     circuit: Res<CurrentCircuit>,
     pause: Res<Pause>,
     controls: Res<SoundControls>,
+    settings: Option<Res<crate::settings::Settings>>,
     mut songs: ResMut<Assets<SongSource>>,
     mut playing: Query<(Entity, &mut Music, Option<&mut AudioSink>)>,
 ) {
@@ -102,6 +103,11 @@ pub fn play_music(
     let racing = (*state.get() == GameState::Race).then_some(circuit.0);
     // M mutes the music too.
     let master = controls.0.master.get() / MASTER;
+    let (music_vol, music_enabled) = settings
+        .as_ref()
+        .map(|s| (s.music_volume as f32 / 100.0, s.music_enabled))
+        .unwrap_or((0.8, true));
+    let music_factor = if music_enabled { music_vol } else { 0.0 };
     let mut started = false;
     for (entity, mut music, sink) in &mut playing {
         let current = racing == Some(music.circuit);
@@ -111,7 +117,9 @@ pub fn play_music(
             commands.entity(entity).despawn();
         } else if let Some(mut sink) = sink {
             let song = &CIRCUITS[music.circuit].song;
-            sink.set_volume(Volume::Linear(music.fader * gain(song) * master));
+            sink.set_volume(Volume::Linear(
+                music.fader * gain(song) * master * music_factor,
+            ));
         }
     }
     if let Some(index) = racing

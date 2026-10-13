@@ -30,7 +30,7 @@ impl Plugin for SettingsPlugin {
 pub const WEB: bool = cfg!(target_arch = "wasm32");
 
 /// Todo lo que se puede ajustar.
-#[derive(Resource, Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[derive(Resource, Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub fullscreen: bool,
@@ -38,6 +38,24 @@ pub struct Settings {
     pub fps: FpsLimit,
     pub language: Language,
     pub controls: Controls,
+    pub fx_volume: u32,
+    pub music_volume: u32,
+    pub music_enabled: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            fullscreen: false,
+            resolution: Resolution::default(),
+            fps: FpsLimit::default(),
+            language: Language::default(),
+            controls: Controls::default(),
+            fx_volume: 80,
+            music_volume: 80,
+            music_enabled: true,
+        }
+    }
 }
 
 /// Tamaño de la ventana (dinámica o fija en puntos —en una pantalla Retina, el
@@ -323,6 +341,7 @@ impl Controls {
     }
 
     /// La primera tecla de la acción, para las ayudas en pantalla.
+    #[allow(dead_code)]
     pub fn first_key(&self, action: Action) -> String {
         self.get(action)
             .keys

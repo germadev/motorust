@@ -13,6 +13,7 @@ mod lobby;
 pub mod locale;
 mod menu;
 mod minimap;
+mod options;
 mod pause;
 mod settings;
 mod shapes;
@@ -126,6 +127,7 @@ fn main() {
         welcome::WelcomePlugin,
         track_select::TrackSelectPlugin,
         pause::PausePlugin,
+        options::OptionsPlugin,
         settings::SettingsPlugin,
         sound::SoundPlugin,
         ui::UiPlugin,

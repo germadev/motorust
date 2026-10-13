@@ -72,6 +72,7 @@ impl Plugin for SoundPlugin {
             .add_systems(
                 Update,
                 (
+                    sync_settings_sound,
                     attach_engines,
                     (menu_blip.run_if(in_state(GameState::Select)), run_engines).chain(),
                     place_sounds,
@@ -92,12 +93,27 @@ struct SoundControls(Arc<Controls>);
 fn start_mixer(
     mut commands: Commands,
     controls: Res<SoundControls>,
+    settings: Option<Res<crate::settings::Settings>>,
     mut mixes: ResMut<Assets<Mix>>,
 ) {
+    if let Some(s) = settings {
+        controls.0.fx.set(s.fx_volume as f32 / 100.0);
+    }
     let mix = mixes.add(Mix {
         controls: controls.0.clone(),
     });
     commands.spawn(AudioPlayer(mix));
+}
+
+fn sync_settings_sound(
+    settings: Option<Res<crate::settings::Settings>>,
+    controls: Res<SoundControls>,
+) {
+    if let Some(s) = settings
+        && s.is_changed()
+    {
+        controls.0.fx.set(s.fx_volume as f32 / 100.0);
+    }
 }
 
 /// El motor de una moto.

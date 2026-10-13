@@ -451,4 +451,116 @@ impl Language {
             Language::English => "No gamepad (keys in Options)",
         }
     }
+
+    pub fn exit_game(self) -> &'static str {
+        match self {
+            Language::Spanish => "Salir del juego",
+            Language::English => "Exit game",
+        }
+    }
+
+    pub fn tab_game(self) -> &'static str {
+        match self {
+            Language::Spanish => "Juego",
+            Language::English => "Game",
+        }
+    }
+
+    pub fn tab_controls(self) -> &'static str {
+        match self {
+            Language::Spanish => "Control",
+            Language::English => "Control",
+        }
+    }
+
+    pub fn tab_sound(self) -> &'static str {
+        match self {
+            Language::Spanish => "Sonido",
+            Language::English => "Sound",
+        }
+    }
+
+    pub fn tab_graphics(self) -> &'static str {
+        match self {
+            Language::Spanish => "Gráficos",
+            Language::English => "Graphics",
+        }
+    }
+
+    pub fn sound_fx_volume(self) -> &'static str {
+        match self {
+            Language::Spanish => "Volumen FX",
+            Language::English => "FX Volume",
+        }
+    }
+
+    pub fn sound_music_volume(self) -> &'static str {
+        match self {
+            Language::Spanish => "Volumen música",
+            Language::English => "Music Volume",
+        }
+    }
+
+    pub fn sound_music(self) -> &'static str {
+        match self {
+            Language::Spanish => "Música",
+            Language::English => "Music",
+        }
+    }
+
+    pub fn enabled(self) -> &'static str {
+        match self {
+            Language::Spanish => "Activada",
+            Language::English => "Enabled",
+        }
+    }
+
+    pub fn disabled(self) -> &'static str {
+        match self {
+            Language::Spanish => "Desactivada",
+            Language::English => "Disabled",
+        }
+    }
+
+    pub fn show_legend(self) -> &'static str {
+        match self {
+            Language::Spanish => "Leyenda de controles",
+            Language::English => "Controls legend",
+        }
+    }
+
+    pub fn rescan_gamepads(self) -> &'static str {
+        match self {
+            Language::Spanish => "Volver a buscar mandos",
+            Language::English => "Rescan gamepads",
+        }
+    }
+
+    pub fn one_player(self) -> &'static str {
+        match self {
+            Language::Spanish => "1 jugador",
+            Language::English => "1 player",
+        }
+    }
+
+    pub fn two_players(self) -> &'static str {
+        match self {
+            Language::Spanish => "2 jugadores",
+            Language::English => "2 players",
+        }
+    }
+
+    pub fn return_to_main_menu(self) -> &'static str {
+        match self {
+            Language::Spanish => "Volver al menú principal",
+            Language::English => "Return to main menu",
+        }
+    }
+
+    pub fn reset_controls(self) -> &'static str {
+        match self {
+            Language::Spanish => "Restablecer controles",
+            Language::English => "Reset controls",
+        }
+    }
 }

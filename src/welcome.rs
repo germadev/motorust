@@ -1,27 +1,22 @@
 //! Pantalla de bienvenida: el título del juego mientras la cámara recorre la
-//! pista, con Comenzar, Opciones y Salir. En Opciones se cambian la
-//! resolución, el límite de fotogramas por segundo y las teclas y botones de
-//! cada acción ([`crate::settings`]). En la web no se sale del juego (se
-//! cierra la pestaña) y los fotogramas los marca el navegador.
+//! pista, con opciones de 1 jugador, 2 jugadores, Opciones y Salir.
+//! En la web no se sale del juego (se cierra la pestaña).
 
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 
 use crate::camera::CameraGlide;
+use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
-use crate::locale::{LANGUAGES, Language};
+use crate::locale::Language;
 use crate::menu::GameState;
-use crate::settings::{
-    ACTIONS, Action, Controls, FPS_LIMITS, FULLSCREEN_KEYS, RESOLUTIONS, Settings, WEB, cycle,
-};
+use crate::options::{OptionsMenu, OptionsReturn};
+use crate::settings::{Settings, WEB};
 use crate::track::Track;
 use crate::ui::{
-    InputDevice, MenuInput, MenuSound, Row, spawn_hint, spawn_logo, spawn_panel, spawn_title,
-    text_font, version_label,
+    InputDevice, MenuInput, MenuSound, UiIcons, current_active_device, menu_prompts,
+    spawn_legend_bar, spawn_logo, spawn_title, text_font, version_label,
 };
 
-/// Tiempo para pulsar la tecla o el botón nuevo antes de que se cancele (s).
-const CAPTURE_TIME: f32 = 8.0;
 /// La cámara recorre la pista a esta velocidad (m/s), a un lado del centro
 /// de la carretera (m, positivo a la izquierda) y a esta altura sobre ella;
 /// mira a un punto de la carretera más adelante (m), a esta altura, con este
@@ -43,7 +38,8 @@ impl Plugin for WelcomePlugin {
             .add_systems(
                 Update,
                 (
-                    (use_welcome, show_welcome).run_if(in_state(GameState::Welcome)),
+                    (use_welcome, show_welcome, animate_welcome_cards)
+                        .run_if(in_state(GameState::Welcome)),
                     fly_over_track
                         .run_if(in_state(GameState::Welcome).or_else(in_state(GameState::Lobby))),
                 ),
@@ -59,390 +55,226 @@ pub enum GameMode {
     SplitScreen,
 }
 
-/// Qué página se ve, qué opción está elegida y si se espera una tecla nueva.
+/// Qué página se ve y qué opción está elegida.
 #[derive(Resource, Default)]
-struct Welcome {
-    page: Page,
-    selected: usize,
-    capture: Option<Capture>,
+pub struct Welcome {
+    pub page: Page,
+    pub selected: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-enum Page {
+pub enum Page {
     #[default]
     Main,
     QuitConfirm,
-    Options,
-    Controls,
-}
-
-/// Esperando la tecla o el botón nuevo de una acción desde este momento (s
-/// de reloj).
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct Capture {
-    action: Action,
-    since: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Item {
+pub enum Item {
     SinglePlayer,
     SplitScreen,
+    Options,
+    Quit,
     CancelQuit,
     ConfirmQuit,
-    Fullscreen,
-    Resolution,
-    Fps,
-    Language,
-    Controls,
-    Bind(Action),
-    ResetControls,
-    Back,
 }
 
-/// Las opciones de cada página.
-fn items(page: Page) -> Vec<Item> {
+pub fn items(page: Page) -> Vec<Item> {
     match page {
-        Page::Main => vec![Item::SinglePlayer, Item::SplitScreen],
-        Page::QuitConfirm => vec![Item::CancelQuit, Item::ConfirmQuit],
-        Page::Options if WEB => vec![
-            Item::Fullscreen,
-            Item::Resolution,
-            Item::Language,
-            Item::Controls,
-            Item::Back,
-        ],
-        Page::Options => vec![
-            Item::Fullscreen,
-            Item::Resolution,
-            Item::Fps,
-            Item::Language,
-            Item::Controls,
-            Item::Back,
-        ],
-        Page::Controls => ACTIONS
-            .iter()
-            .map(|&action| Item::Bind(action))
-            .chain([Item::ResetControls, Item::Back])
-            .collect(),
-    }
-}
-
-/// Cómo se ve una opción, con su valor si tiene.
-fn row(item: Item, settings: &Settings, capture: Option<Capture>, window: Option<&Window>) -> Row {
-    let lang = settings.language;
-    match item {
-        Item::SinglePlayer => Row::new(match lang {
-            Language::Spanish => "1 jugador local",
-            Language::English => "1 local player",
-        }),
-        Item::SplitScreen => Row::new(match lang {
-            Language::Spanish => "2 jugadores locales a pantalla dividida",
-            Language::English => "2 local players split-screen",
-        }),
-        Item::CancelQuit => Row::new(match lang {
-            Language::Spanish => "Cancelar",
-            Language::English => "Cancel",
-        }),
-        Item::ConfirmQuit => Row::new(match lang {
-            Language::Spanish => "Salir del juego",
-            Language::English => "Exit game",
-        }),
-        Item::Fullscreen => Row::with_value(
-            lang.fullscreen(),
-            if settings.fullscreen { "[X]" } else { "[ ]" },
-        ),
-        Item::Resolution => {
-            let name = settings.resolution.name(window, lang);
+        Page::Main => {
             if WEB {
-                Row::disabled(lang.resolution(), name)
+                vec![Item::SinglePlayer, Item::SplitScreen, Item::Options]
             } else {
-                Row::with_value(lang.resolution(), format!("<  {name}  >"))
+                vec![
+                    Item::SinglePlayer,
+                    Item::SplitScreen,
+                    Item::Options,
+                    Item::Quit,
+                ]
             }
         }
-        Item::Fps => Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang))),
-        Item::Language => Row::with_value(lang.language(), format!("<  {}  >", lang.name())),
-        Item::Controls => Row::new(lang.controls()),
-        Item::Bind(action) => Row::with_value(
-            action.name(lang),
-            match capture {
-                Some(capture) if capture.action == action => match lang {
-                    Language::Spanish => "Pulsa una tecla o un botón".into(),
-                    Language::English => "Press a key or a button".into(),
-                },
-                _ => settings.controls.describe(action),
-            },
-        ),
-        Item::ResetControls => Row::new(match lang {
-            Language::Spanish => "Restablecer los controles",
-            Language::English => "Reset controls",
-        }),
-        Item::Back => Row::new(lang.back()),
+        Page::QuitConfirm => vec![Item::CancelQuit, Item::ConfirmQuit],
     }
 }
 
-/// Al llegar, la página principal con la primera opción elegida.
-fn open(mut welcome: ResMut<Welcome>) {
+fn open(mut welcome: ResMut<Welcome>, mut options_menu: ResMut<OptionsMenu>) {
     *welcome = Welcome::default();
+    options_menu.close();
 }
 
 #[allow(clippy::too_many_arguments)]
 fn use_welcome(
     mut input: MenuInput,
-    time: Res<Time<Real>>,
     mut welcome: ResMut<Welcome>,
-    mut settings: ResMut<Settings>,
+    mut options_menu: ResMut<OptionsMenu>,
     mut game_mode: ResMut<GameMode>,
     mut next: ResMut<NextState<GameState>>,
     mut exit: MessageWriter<AppExit>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
+    if options_menu.is_open {
+        return;
+    }
+
     let request = input.read();
-    let now = time.elapsed_secs();
-    if let Some(capture) = welcome.capture {
-        // La primera tecla o el primer botón que se pulse; Esc cancela, y M
-        // es siempre el sonido.
-        let key = input
-            .keyboard
-            .get_just_pressed()
-            .copied()
-            .find(|&key| key != KeyCode::KeyM);
-        let button = input
-            .gamepads
-            .iter()
-            .find_map(|gamepad| gamepad.get_just_pressed().next().copied());
-        if key == Some(KeyCode::Escape) || now - capture.since > CAPTURE_TIME {
-            welcome.capture = None;
-            sounds.write(MenuSound::Move);
-        } else if let Some(key) = key {
-            settings.controls.bind_key(capture.action, key);
-            welcome.capture = None;
-            sounds.write(MenuSound::Confirm);
-        } else if let Some(button) = button {
-            settings.controls.bind_button(capture.action, button);
-            welcome.capture = None;
-            sounds.write(MenuSound::Confirm);
-        }
-        return;
-    }
-
-    // TAB o SELECT en la pantalla principal para ir a opciones.
-    if request.options && welcome.page == Page::Main {
-        go(&mut welcome, Page::Options, Item::Fullscreen);
-        sounds.write(MenuSound::Confirm);
-        return;
-    }
-
-    let items = items(welcome.page);
-    if request.step != 0 {
-        welcome.selected =
-            (welcome.selected as i32 + request.step).rem_euclid(items.len() as i32) as usize;
-        sounds.write(MenuSound::Move);
-    }
-    let item = items[welcome.selected];
 
     // Esc o B:
     if request.back {
         match welcome.page {
             Page::Main => {
                 if !WEB {
-                    go(&mut welcome, Page::QuitConfirm, Item::CancelQuit);
+                    welcome.page = Page::QuitConfirm;
+                    welcome.selected = 0;
                     sounds.write(MenuSound::Move);
                 }
             }
             Page::QuitConfirm => {
-                go(&mut welcome, Page::Main, Item::SinglePlayer);
-                sounds.write(MenuSound::Move);
-            }
-            Page::Options => {
-                go(&mut welcome, Page::Main, Item::SinglePlayer);
-                sounds.write(MenuSound::Move);
-            }
-            Page::Controls => {
-                go(&mut welcome, Page::Options, Item::Controls);
+                welcome.page = Page::Main;
+                welcome.selected = 0;
                 sounds.write(MenuSound::Move);
             }
         }
         return;
     }
 
-    // Izquierda y derecha cambian los valores; Enter, A o Start confirman.
-    let change = if request.side != 0 {
-        request.side
-    } else {
-        i32::from(request.confirm)
-    };
-    match item {
-        Item::Fullscreen if change != 0 => {
-            settings.fullscreen = !settings.fullscreen;
+    // Navegación en la pantalla principal
+    if welcome.page == Page::Main {
+        if request.step != 0 {
+            let max_idx = if WEB { 2 } else { 3 };
+            welcome.selected = match welcome.selected {
+                0 | 1 => {
+                    if request.step > 0 {
+                        2
+                    } else {
+                        max_idx
+                    }
+                }
+                2 => {
+                    if request.step > 0 {
+                        if WEB { 0 } else { 3 }
+                    } else {
+                        0
+                    }
+                }
+                3 => {
+                    if request.step > 0 {
+                        0
+                    } else {
+                        2
+                    }
+                }
+                _ => 0,
+            };
             sounds.write(MenuSound::Move);
         }
-        Item::Resolution if change != 0 => {
-            if !WEB {
-                settings.resolution = cycle(RESOLUTIONS, settings.resolution, change);
+
+        if request.side != 0 {
+            if welcome.selected == 0 && request.side > 0 {
+                welcome.selected = 1;
+                sounds.write(MenuSound::Move);
+            } else if welcome.selected == 1 && request.side < 0 {
+                welcome.selected = 0;
                 sounds.write(MenuSound::Move);
             }
         }
-        Item::Fps if change != 0 => {
-            settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
-            sounds.write(MenuSound::Move);
-        }
-        Item::Language if change != 0 => {
-            settings.language = cycle(&LANGUAGES, settings.language, change);
-            sounds.write(MenuSound::Move);
-        }
-        _ if !(request.confirm || (request.start && welcome.page == Page::Main)) => {}
-        Item::SinglePlayer => {
-            sounds.write(MenuSound::Confirm);
-            *game_mode = GameMode::SinglePlayer;
-            next.set(GameState::Tracks);
-        }
-        Item::SplitScreen => {
-            sounds.write(MenuSound::Confirm);
-            *game_mode = GameMode::SplitScreen;
-            next.set(GameState::Lobby);
-        }
-        Item::CancelQuit => {
-            sounds.write(MenuSound::Move);
-            go(&mut welcome, Page::Main, Item::SinglePlayer);
-        }
-        Item::ConfirmQuit => {
-            exit.write(AppExit::Success);
-        }
-        Item::Controls => {
-            go(&mut welcome, Page::Controls, Item::Bind(ACTIONS[0]));
-            sounds.write(MenuSound::Confirm);
-        }
-        Item::Bind(action) => {
-            welcome.capture = Some(Capture { action, since: now });
-            sounds.write(MenuSound::Confirm);
-        }
-        Item::ResetControls => {
-            if settings.controls != Controls::default() {
-                settings.controls = Controls::default();
+
+        if request.confirm || request.start {
+            match welcome.selected {
+                0 => {
+                    sounds.write(MenuSound::Confirm);
+                    *game_mode = GameMode::SinglePlayer;
+                    next.set(GameState::Tracks);
+                }
+                1 => {
+                    sounds.write(MenuSound::Confirm);
+                    *game_mode = GameMode::SplitScreen;
+                    next.set(GameState::Lobby);
+                }
+                2 => {
+                    sounds.write(MenuSound::Confirm);
+                    options_menu.open(OptionsReturn::Welcome);
+                }
+                3 => {
+                    sounds.write(MenuSound::Move);
+                    welcome.page = Page::QuitConfirm;
+                    welcome.selected = 0;
+                }
+                _ => {}
             }
-            sounds.write(MenuSound::Confirm);
         }
-        Item::Back => {
-            match welcome.page {
-                Page::Controls => go(&mut welcome, Page::Options, Item::Controls),
-                _ => go(&mut welcome, Page::Main, Item::SinglePlayer),
-            }
+        return;
+    }
+
+    // Navegación en confirmación de salida
+    if welcome.page == Page::QuitConfirm {
+        let items = items(Page::QuitConfirm);
+        if request.step != 0 || request.side != 0 {
+            let delta = if request.step != 0 {
+                request.step
+            } else {
+                request.side
+            };
+            welcome.selected =
+                (welcome.selected as i32 + delta).rem_euclid(items.len() as i32) as usize;
             sounds.write(MenuSound::Move);
         }
-        Item::Fullscreen | Item::Resolution | Item::Fps | Item::Language => {}
+
+        if request.confirm {
+            match items[welcome.selected] {
+                Item::CancelQuit => {
+                    sounds.write(MenuSound::Move);
+                    welcome.page = Page::Main;
+                    welcome.selected = 0;
+                }
+                Item::ConfirmQuit => {
+                    exit.write(AppExit::Success);
+                }
+                _ => {}
+            }
+        }
     }
 }
 
-/// Pasa a otra página con una opción elegida.
-fn go(welcome: &mut Welcome, page: Page, item: Item) {
-    let selected = items(page).iter().position(|&i| i == item).unwrap_or(0);
-    (welcome.page, welcome.selected) = (page, selected);
-}
-
-/// La pantalla, rehecha cada vez que cambia algo.
 #[derive(Component)]
 struct WelcomeScreen;
 
+#[derive(Component)]
+struct WelcomeCard {
+    index: usize,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn show_welcome(
     mut commands: Commands,
     welcome: Res<Welcome>,
+    options_menu: Res<OptionsMenu>,
     settings: Res<Settings>,
     device: Res<InputDevice>,
-    window: Query<Ref<Window>, With<PrimaryWindow>>,
+    active_controller: Option<Res<ActiveController>>,
+    icons: Res<UiIcons>,
     font: Res<UiFont>,
     shown: Query<Entity, With<WelcomeScreen>>,
 ) {
-    let window_ref = window.iter().next();
-    let window_changed = window_ref.as_ref().is_some_and(|w| w.is_changed());
-    if !welcome.is_changed() && !settings.is_changed() && !window_changed && !device.is_changed() {
+    if !welcome.is_changed()
+        && !options_menu.is_changed()
+        && !settings.is_changed()
+        && !device.is_changed()
+    {
         return;
     }
+
     for entity in &shown {
         commands.entity(entity).despawn();
     }
-    let window_inner = window_ref.as_deref();
-    let rows: Vec<Row> = items(welcome.page)
-        .into_iter()
-        .map(|item| row(item, &settings, welcome.capture, window_inner))
-        .collect();
+
+    // Si el menú de opciones está abierto, ocultamos la pantalla de bienvenida
+    if options_menu.is_open {
+        return;
+    }
+
     let lang = settings.language;
-    let hint = match (welcome.page, welcome.capture) {
-        (Page::Main, _) => match (*device, lang) {
-            (InputDevice::Keyboard, Language::Spanish) => {
-                "Arriba y abajo: elegir   ·   ENTER: jugar".to_string()
-            }
-            (InputDevice::Keyboard, Language::English) => {
-                "Up and down: choose   ·   ENTER: play".to_string()
-            }
-            (InputDevice::Gamepad, Language::Spanish) => {
-                "Cruz o stick: elegir   ·   A o START: jugar".to_string()
-            }
-            (InputDevice::Gamepad, Language::English) => {
-                "D-pad or stick: choose   ·   A or START: play".to_string()
-            }
-        },
-        (Page::QuitConfirm, _) => match (*device, lang) {
-            (InputDevice::Keyboard, Language::Spanish) => {
-                "Arriba y abajo: elegir   ·   ENTER: confirmar   ·   ESC: cancelar".to_string()
-            }
-            (InputDevice::Keyboard, Language::English) => {
-                "Up and down: choose   ·   ENTER: confirm   ·   ESC: cancel".to_string()
-            }
-            (InputDevice::Gamepad, Language::Spanish) => {
-                "Cruz o stick: elegir   ·   A o START: confirmar   ·   B: cancelar".to_string()
-            }
-            (InputDevice::Gamepad, Language::English) => {
-                "D-pad or stick: choose   ·   A or START: confirm   ·   B: cancel".to_string()
-            }
-        },
-        (Page::Options, _) => match (*device, lang) {
-            (InputDevice::Keyboard, Language::Spanish) => {
-                "Arriba y abajo: elegir   ·   Izquierda y derecha: cambiar   ·   ESC: volver"
-                    .to_string()
-            }
-            (InputDevice::Keyboard, Language::English) => {
-                "Up and down: choose   ·   Left and right: change   ·   ESC: back".to_string()
-            }
-            (InputDevice::Gamepad, Language::Spanish) => {
-                "Cruz o stick: elegir   ·   Izquierda y derecha: cambiar   ·   B: volver"
-                    .to_string()
-            }
-            (InputDevice::Gamepad, Language::English) => {
-                "D-pad or stick: choose   ·   Left and right: change   ·   B: back".to_string()
-            }
-        },
-        (Page::Controls, None) => match (*device, lang) {
-            (InputDevice::Keyboard, Language::Spanish) => {
-                "ENTER: cambiar la tecla o el botón   ·   ESC: volver".to_string()
-            }
-            (InputDevice::Keyboard, Language::English) => {
-                "ENTER: change key or button   ·   ESC: back".to_string()
-            }
-            (InputDevice::Gamepad, Language::Spanish) => {
-                "A o START: cambiar la tecla o el botón   ·   B: volver".to_string()
-            }
-            (InputDevice::Gamepad, Language::English) => {
-                "A or START: change key or button   ·   B: back".to_string()
-            }
-        },
-        (Page::Controls, Some(capture)) => {
-            let back = match *device {
-                InputDevice::Keyboard => "ESC",
-                InputDevice::Gamepad => "B",
-            };
-            match lang {
-                Language::Spanish => format!(
-                    "Pulsa la tecla o el botón para «{}»   ·   {back}: cancelar",
-                    capture.action.name(lang)
-                ),
-                Language::English => format!(
-                    "Press key or button for \"{}\"   ·   {back}: cancel",
-                    capture.action.name(lang)
-                ),
-            }
-        }
-    };
+    let active_dev = current_active_device(*device, active_controller.as_deref());
+
     commands
         .spawn((
             WelcomeScreen,
@@ -453,7 +285,7 @@ fn show_welcome(
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                row_gap: px(14),
+                row_gap: px(12),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.02, 0.06, 0.3)),
@@ -462,122 +294,352 @@ fn show_welcome(
             match welcome.page {
                 Page::Main => {
                     spawn_logo(screen, &font, 110.0);
-                    screen.spawn((
-                        Text::new(match lang {
-                            Language::Spanish => "Carreras de motos arcade",
-                            Language::English => "Arcade motorcycle racing",
-                        }),
-                        text_font(&font, 24.0),
-                        TextShadow::default(),
-                        Node {
-                            margin: UiRect::bottom(px(26)),
-                            ..default()
-                        },
-                    ));
-                }
-                Page::QuitConfirm => spawn_title(
-                    screen,
-                    &font,
-                    match lang {
-                        Language::Spanish => "¿SALIR DEL JUEGO?",
-                        Language::English => "EXIT GAME?",
-                    },
-                    52.0,
-                ),
-                Page::Options => spawn_title(
-                    screen,
-                    &font,
-                    match lang {
-                        Language::Spanish => "OPCIONES",
-                        Language::English => "OPTIONS",
-                    },
-                    52.0,
-                ),
-                Page::Controls => spawn_title(
-                    screen,
-                    &font,
-                    match lang {
-                        Language::Spanish => "CONTROLES",
-                        Language::English => "CONTROLS",
-                    },
-                    52.0,
-                ),
-            }
-            spawn_panel(
-                screen,
-                &font,
-                &rows,
-                welcome.selected,
-                welcome.page == Page::Controls,
-            );
-            if welcome.page == Page::Controls {
-                let note = match lang {
-                    Language::Spanish => format!(
-                        "Siempre: stick izquierdo para girar (hacia atrás, caballito)   ·   \
-                         stick derecho para mirar   ·   M para el sonido   ·   \
-                         {FULLSCREEN_KEYS} para la pantalla completa"
-                    ),
-                    Language::English => format!(
-                        "Always: left stick to steer (backward, wheelie)   ·   \
-                         right stick to look   ·   M for sound   ·   \
-                         {FULLSCREEN_KEYS} for fullscreen"
-                    ),
-                };
-                screen.spawn((
-                    Text::new(note),
-                    text_font(&font, 16.0),
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
-                    TextShadow::default(),
-                ));
-            }
-            spawn_hint(screen, &font, &hint);
 
-            if welcome.page == Page::Main {
-                let footer_text = match (*device, lang) {
-                    (InputDevice::Keyboard, Language::Spanish) => {
-                        if WEB {
-                            "TAB para ver las opciones".to_string()
-                        } else {
-                            "TAB para ver las opciones   ·   ESC para salir".to_string()
-                        }
-                    }
-                    (InputDevice::Keyboard, Language::English) => {
-                        if WEB {
-                            "TAB for options".to_string()
-                        } else {
-                            "TAB for options   ·   ESC to exit".to_string()
-                        }
-                    }
-                    (InputDevice::Gamepad, Language::Spanish) => {
-                        if WEB {
-                            "SELECT para ver las opciones".to_string()
-                        } else {
-                            "SELECT para ver las opciones   ·   B para salir".to_string()
-                        }
-                    }
-                    (InputDevice::Gamepad, Language::English) => {
-                        if WEB {
-                            "SELECT for options".to_string()
-                        } else {
-                            "SELECT for options   ·   B to exit".to_string()
-                        }
-                    }
-                };
-                screen.spawn((
-                    Text::new(footer_text),
-                    text_font(&font, 17.0),
-                    TextColor(Color::srgba(1.0, 0.85, 0.25, 0.85)),
-                    TextShadow::default(),
-                    Node {
-                        position_type: PositionType::Absolute,
-                        bottom: px(14),
-                        ..default()
-                    },
-                ));
+                    // Contenedor principal de tarjetas según el diseño de referencia
+                    screen
+                        .spawn((Node {
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            row_gap: px(16),
+                            margin: UiRect::top(px(14)),
+                            ..default()
+                        },))
+                        .with_children(|menu_box| {
+                            // Fila superior: [ 1P ][ 2P ]
+                            menu_box
+                                .spawn((Node {
+                                    flex_direction: FlexDirection::Row,
+                                    column_gap: px(20),
+                                    ..default()
+                                },))
+                                .with_children(|row| {
+                                    // 1P Card: Casco a la izquierda mirando a la derecha, 1P a la derecha
+                                    let is_1p = welcome.selected == 0;
+                                    row.spawn((
+                                        WelcomeCard { index: 0 },
+                                        Node {
+                                            width: px(360),
+                                            height: px(180),
+                                            padding: UiRect::axes(px(24), px(16)),
+                                            border_radius: BorderRadius::all(px(16)),
+                                            border: UiRect::all(if is_1p {
+                                                px(3.0)
+                                            } else {
+                                                px(1.5)
+                                            }),
+                                            flex_direction: FlexDirection::Row,
+                                            align_items: AlignItems::Center,
+                                            justify_content: JustifyContent::SpaceEvenly,
+                                            overflow: Overflow::clip(),
+                                            ..default()
+                                        },
+                                        ImageNode::new(if is_1p {
+                                            icons.card_blue.clone()
+                                        } else {
+                                            icons.card_dark.clone()
+                                        }),
+                                        BorderColor::all(if is_1p {
+                                            Color::WHITE
+                                        } else {
+                                            Color::srgba(1.0, 1.0, 1.0, 0.22)
+                                        }),
+                                    ))
+                                    .with_children(|card| {
+                                        card.spawn((
+                                            ImageNode::new(icons.helmet.clone()),
+                                            Node {
+                                                width: px(122),
+                                                height: px(122),
+                                                ..default()
+                                            },
+                                        ));
+                                        card.spawn((
+                                            Text::new("1P"),
+                                            text_font(&font, 70.0),
+                                            TextColor(Color::WHITE),
+                                            TextShadow {
+                                                offset: Vec2::splat(2.5),
+                                                color: Color::srgba(0.0, 0.0, 0.0, 0.7),
+                                            },
+                                        ));
+                                    });
+
+                                    // 2P Card: Casco izquierda, 2P centro, Casco invertido derecha
+                                    let is_2p = welcome.selected == 1;
+                                    row.spawn((
+                                        WelcomeCard { index: 1 },
+                                        Node {
+                                            width: px(360),
+                                            height: px(180),
+                                            padding: UiRect::axes(px(16), px(16)),
+                                            border_radius: BorderRadius::all(px(16)),
+                                            border: UiRect::all(if is_2p {
+                                                px(3.0)
+                                            } else {
+                                                px(1.5)
+                                            }),
+                                            flex_direction: FlexDirection::Row,
+                                            align_items: AlignItems::Center,
+                                            justify_content: JustifyContent::SpaceBetween,
+                                            overflow: Overflow::clip(),
+                                            ..default()
+                                        },
+                                        ImageNode::new(if is_2p {
+                                            icons.card_blue.clone()
+                                        } else {
+                                            icons.card_dark.clone()
+                                        }),
+                                        BorderColor::all(if is_2p {
+                                            Color::WHITE
+                                        } else {
+                                            Color::srgba(1.0, 1.0, 1.0, 0.22)
+                                        }),
+                                    ))
+                                    .with_children(|card| {
+                                        card.spawn((
+                                            ImageNode::new(icons.helmet.clone()),
+                                            Node {
+                                                width: px(96),
+                                                height: px(96),
+                                                ..default()
+                                            },
+                                        ));
+                                        card.spawn((
+                                            Text::new("2P"),
+                                            text_font(&font, 62.0),
+                                            TextColor(Color::WHITE),
+                                            TextShadow {
+                                                offset: Vec2::splat(2.5),
+                                                color: Color::srgba(0.0, 0.0, 0.0, 0.7),
+                                            },
+                                        ));
+                                        card.spawn((
+                                            ImageNode {
+                                                image: icons.helmet.clone(),
+                                                flip_x: true,
+                                                ..default()
+                                            },
+                                            Node {
+                                                width: px(96),
+                                                height: px(96),
+                                                ..default()
+                                            },
+                                        ));
+                                    });
+                                });
+
+                            // Fila Opciones: Banner horizontal con fondo amarillo/dorado
+                            let is_opt = welcome.selected == 2;
+                            menu_box
+                                .spawn((
+                                    WelcomeCard { index: 2 },
+                                    Node {
+                                        width: px(740),
+                                        height: px(68),
+                                        padding: UiRect::axes(px(24), px(12)),
+                                        border_radius: BorderRadius::all(px(14)),
+                                        border: UiRect::all(if is_opt { px(3.0) } else { px(1.5) }),
+                                        flex_direction: FlexDirection::Row,
+                                        align_items: AlignItems::Center,
+                                        justify_content: JustifyContent::Center,
+                                        overflow: Overflow::clip(),
+                                        ..default()
+                                    },
+                                    ImageNode {
+                                        image: icons.banner_yellow.clone(),
+                                        color: if is_opt {
+                                            Color::WHITE
+                                        } else {
+                                            Color::srgba(0.85, 0.85, 0.85, 0.82)
+                                        },
+                                        ..default()
+                                    },
+                                    BorderColor::all(if is_opt {
+                                        Color::WHITE
+                                    } else {
+                                        Color::srgba(1.0, 1.0, 1.0, 0.22)
+                                    }),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new(lang.options().to_uppercase()),
+                                        text_font(&font, 32.0),
+                                        TextColor(Color::WHITE),
+                                        TextShadow {
+                                            offset: Vec2::splat(2.0),
+                                            color: Color::srgba(0.0, 0.0, 0.0, 0.6),
+                                        },
+                                    ));
+                                });
+
+                            // Fila Salir del juego: Banner horizontal con fondo rojo
+                            if !WEB {
+                                let is_quit = welcome.selected == 3;
+                                menu_box
+                                    .spawn((
+                                        WelcomeCard { index: 3 },
+                                        Node {
+                                            width: px(740),
+                                            height: px(68),
+                                            padding: UiRect::axes(px(24), px(12)),
+                                            border_radius: BorderRadius::all(px(14)),
+                                            border: UiRect::all(if is_quit {
+                                                px(3.0)
+                                            } else {
+                                                px(1.5)
+                                            }),
+                                            flex_direction: FlexDirection::Row,
+                                            align_items: AlignItems::Center,
+                                            justify_content: JustifyContent::Center,
+                                            overflow: Overflow::clip(),
+                                            ..default()
+                                        },
+                                        ImageNode {
+                                            image: icons.banner_red.clone(),
+                                            color: if is_quit {
+                                                Color::WHITE
+                                            } else {
+                                                Color::srgba(0.85, 0.85, 0.85, 0.82)
+                                            },
+                                            ..default()
+                                        },
+                                        BorderColor::all(if is_quit {
+                                            Color::WHITE
+                                        } else {
+                                            Color::srgba(1.0, 1.0, 1.0, 0.22)
+                                        }),
+                                    ))
+                                    .with_children(|btn| {
+                                        btn.spawn((
+                                            Text::new(lang.exit_game().to_uppercase()),
+                                            text_font(&font, 32.0),
+                                            TextColor(Color::WHITE),
+                                            TextShadow {
+                                                offset: Vec2::splat(2.0),
+                                                color: Color::srgba(0.0, 0.0, 0.0, 0.6),
+                                            },
+                                        ));
+                                    });
+                            }
+                        });
+
+                    // Leyenda de control en la parte inferior de la pantalla
+                    let prompts = menu_prompts(
+                        active_dev,
+                        lang,
+                        welcome.selected < 2,
+                        match lang {
+                            Language::Spanish => "Jugar / Aceptar",
+                            Language::English => "Play / Select",
+                        },
+                        if !WEB { Some(lang.exit_game()) } else { None },
+                    );
+                    spawn_legend_bar(screen, &font, &prompts);
+                }
+                Page::QuitConfirm => {
+                    spawn_title(
+                        screen,
+                        &font,
+                        match lang {
+                            Language::Spanish => "¿SALIR DEL JUEGO?",
+                            Language::English => "EXIT GAME?",
+                        },
+                        48.0,
+                    );
+
+                    screen
+                        .spawn((
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                row_gap: px(12),
+                                min_width: px(380),
+                                padding: UiRect::all(px(16)),
+                                border_radius: BorderRadius::all(px(16)),
+                                border: UiRect::all(px(1)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.88)),
+                            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.16)),
+                        ))
+                        .with_children(|panel| {
+                            let items = [
+                                match lang {
+                                    Language::Spanish => "Cancelar",
+                                    Language::English => "Cancel",
+                                },
+                                match lang {
+                                    Language::Spanish => "Salir del juego",
+                                    Language::English => "Exit game",
+                                },
+                            ];
+                            for (index, label) in items.iter().enumerate() {
+                                let chosen = index == welcome.selected;
+                                panel
+                                    .spawn((
+                                        Node {
+                                            width: percent(100),
+                                            justify_content: JustifyContent::Center,
+                                            padding: UiRect::axes(px(24), px(10)),
+                                            border_radius: BorderRadius::all(px(10)),
+                                            ..default()
+                                        },
+                                        BackgroundColor(if chosen {
+                                            Color::srgba(1.0, 0.8, 0.2, 0.95)
+                                        } else {
+                                            Color::NONE
+                                        }),
+                                    ))
+                                    .with_child((
+                                        Text::new(*label),
+                                        text_font(&font, 22.0),
+                                        TextColor(if chosen {
+                                            Color::srgb(0.08, 0.06, 0.02)
+                                        } else {
+                                            Color::WHITE
+                                        }),
+                                    ));
+                            }
+                        });
+
+                    let prompts = menu_prompts(
+                        active_dev,
+                        lang,
+                        false,
+                        match lang {
+                            Language::Spanish => "Aceptar",
+                            Language::English => "Select",
+                        },
+                        Some(match lang {
+                            Language::Spanish => "Cancelar",
+                            Language::English => "Cancel",
+                        }),
+                    );
+                    spawn_legend_bar(screen, &font, &prompts);
+                }
             }
 
             screen.spawn(version_label(&font));
         });
+}
+
+/// Animación de respiración y realce de escala para la opción seleccionada.
+fn animate_welcome_cards(
+    time: Res<Time>,
+    welcome: Res<Welcome>,
+    mut query: Query<(&WelcomeCard, &mut Transform)>,
+) {
+    if welcome.page != Page::Main {
+        return;
+    }
+    for (card, mut transform) in &mut query {
+        if card.index == welcome.selected {
+            let pulse = 1.0 + 0.016 * (time.elapsed_secs() * 5.0).sin();
+            transform.scale = Vec3::splat(pulse);
+        } else {
+            transform.scale = Vec3::ONE;
+        }
+    }
 }
 
 /// La cámara recorre la pista despacio, un poco por encima de la carretera.
@@ -609,108 +671,29 @@ fn fly_over_track(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::Resolution;
 
     #[test]
     fn the_welcome_screen_offers_what_was_asked() {
-        assert_eq!(items(Page::Main), [Item::SinglePlayer, Item::SplitScreen]);
+        if WEB {
+            assert_eq!(
+                items(Page::Main),
+                [Item::SinglePlayer, Item::SplitScreen, Item::Options]
+            );
+        } else {
+            assert_eq!(
+                items(Page::Main),
+                [
+                    Item::SinglePlayer,
+                    Item::SplitScreen,
+                    Item::Options,
+                    Item::Quit
+                ]
+            );
+        }
         assert_eq!(
             items(Page::QuitConfirm),
             [Item::CancelQuit, Item::ConfirmQuit]
         );
-        if WEB {
-            assert_eq!(
-                items(Page::Options),
-                [
-                    Item::Fullscreen,
-                    Item::Resolution,
-                    Item::Language,
-                    Item::Controls,
-                    Item::Back,
-                ]
-            );
-        } else {
-            assert_eq!(
-                items(Page::Options),
-                [
-                    Item::Fullscreen,
-                    Item::Resolution,
-                    Item::Fps,
-                    Item::Language,
-                    Item::Controls,
-                    Item::Back,
-                ]
-            );
-        }
-        // Una fila por acción, y después restablecer y volver.
-        let controls = items(Page::Controls);
-        assert_eq!(controls.len(), ACTIONS.len() + 2);
-        assert_eq!(controls[0], Item::Bind(Action::Throttle));
-        // Mientras se espera la tecla nueva, su fila lo dice.
-        let mut settings = Settings {
-            language: Language::Spanish,
-            ..default()
-        };
-        let capture = Capture {
-            action: Action::Brake,
-            since: 0.0,
-        };
-        let value = |action| {
-            row(Item::Bind(action), &settings, Some(capture), None)
-                .value
-                .unwrap()
-        };
-        assert_eq!(value(Action::Brake), "Pulsa una tecla o un botón");
-        assert_eq!(value(Action::Throttle), "W, Arriba   ·   RT, A");
-
-        settings.language = Language::English;
-        let value_en = |action| {
-            row(Item::Bind(action), &settings, Some(capture), None)
-                .value
-                .unwrap()
-        };
-        assert_eq!(value_en(Action::Brake), "Press a key or a button");
-    }
-
-    #[test]
-    fn the_resolution_row_shows_dynamic_by_default() {
-        let mut settings = Settings {
-            language: Language::Spanish,
-            ..default()
-        };
-        assert_eq!(settings.resolution, Resolution::Dynamic);
-        let res_row = row(Item::Resolution, &settings, None, None);
-        if WEB {
-            assert!(res_row.disabled);
-            assert_eq!(res_row.value, Some("Dinámica".into()));
-        } else {
-            assert!(!res_row.disabled);
-            assert_eq!(res_row.value, Some("<  Dinámica  >".into()));
-        }
-
-        settings.language = Language::English;
-        let res_row_en = row(Item::Resolution, &settings, None, None);
-        if WEB {
-            assert!(res_row_en.disabled);
-            assert_eq!(res_row_en.value, Some("Dynamic".into()));
-        } else {
-            assert!(!res_row_en.disabled);
-            assert_eq!(res_row_en.value, Some("<  Dynamic  >".into()));
-        }
-    }
-
-    #[test]
-    fn the_fullscreen_row_shows_checkbox() {
-        let mut settings = Settings {
-            fullscreen: false,
-            ..default()
-        };
-        let fs_row = row(Item::Fullscreen, &settings, None, None);
-        assert_eq!(fs_row.value, Some("[ ]".into()));
-
-        settings.fullscreen = true;
-        let fs_row_on = row(Item::Fullscreen, &settings, None, None);
-        assert_eq!(fs_row_on.value, Some("[X]".into()));
     }
 
     #[test]

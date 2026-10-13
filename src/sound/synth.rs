@@ -54,6 +54,10 @@ const WHINE: f32 = 0.025;
 pub struct Param(AtomicU32);
 
 impl Param {
+    pub fn new(value: f32) -> Self {
+        Self(AtomicU32::new(value.to_bits()))
+    }
+
     pub fn set(&self, value: f32) {
         self.0.store(value.to_bits(), Relaxed);
     }
@@ -98,19 +102,35 @@ pub enum Sound {
 }
 
 /// Todo lo que el juego controla del sonido.
-#[derive(Default)]
 pub struct Controls {
     pub engines: [EngineParams; VOICES],
     /// Viento, chirrido de neumáticos y hierba, de 0 a 1.
     pub wind: Param,
     pub skid: Param,
     pub grass: Param,
+    /// Volumen de efectos de sonido (FX), de 0 a 1.
+    pub fx: Param,
     /// Volumen general.
     pub master: Param,
     /// De 0 a 1, cuánto se apagan los motores, el viento, los neumáticos y la
     /// hierba (en pausa); los avisos y clics siguen sonando.
     pub muffle: Param,
     queue: Mutex<Vec<Sound>>,
+}
+
+impl Default for Controls {
+    fn default() -> Self {
+        Self {
+            engines: Default::default(),
+            wind: Param::default(),
+            skid: Param::default(),
+            grass: Param::default(),
+            fx: Param::new(1.0),
+            master: Param::default(),
+            muffle: Param::default(),
+            queue: Mutex::new(Vec::new()),
+        }
+    }
 }
 
 impl Controls {
@@ -407,12 +427,14 @@ pub struct Mixer {
     skid: (f32, BandPass, f32),
     grass: (f32, f32),
     ambient: f32,
+    fx: f32,
     master: f32,
     right: Option<f32>,
 }
 
 impl Mixer {
     pub fn new(controls: Arc<Controls>) -> Self {
+        let init_fx = controls.fx.get();
         Self {
             controls,
             engines: Default::default(),
@@ -426,6 +448,7 @@ impl Mixer {
             skid: (0.0, BandPass::tuned(1150.0, 9.0), 0.0),
             grass: (0.0, 0.0),
             ambient: 1.0,
+            fx: if init_fx > 0.0 { init_fx } else { 1.0 },
             master: 0.0,
             right: None,
         }
@@ -508,9 +531,11 @@ impl Mixer {
         }
         self.shots.retain(|shot| shot.time < shot.duration());
 
+        self.fx += (controls.fx.get() - self.fx) * self.smooth;
         self.master += (controls.master.get() - self.master) * self.smooth;
+        let total_vol = self.fx * self.master;
         // Saturación suave: nunca pasa de 1.
-        ((left * self.master).tanh(), (right * self.master).tanh())
+        ((left * total_vol).tanh(), (right * total_vol).tanh())
     }
 }
 

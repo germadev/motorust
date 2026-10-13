@@ -8,10 +8,11 @@ use bevy::{
 };
 
 use crate::bike::{BikeState, LocalPlayer, Player};
-use crate::locale::Language;
+use crate::gamepads::ActiveController;
 use crate::menu::GameState;
 use crate::pause::DebugOptions;
-use crate::settings::{Action, Controls, Settings};
+use crate::settings::Settings;
+use crate::ui::{InputDevice, current_active_device, race_prompts, spawn_legend_bar};
 use crate::welcome::GameMode;
 
 pub struct HudPlugin;
@@ -25,7 +26,7 @@ impl Plugin for HudPlugin {
             .add_systems(
                 Update,
                 (
-                    (update_speedometer, show_legend).run_if(in_state(GameState::Race)),
+                    (update_speedometer, show_race_legend).run_if(in_state(GameState::Race)),
                     update_fps,
                 ),
             );
@@ -72,59 +73,7 @@ fn spawn_fps_counter(mut commands: Commands) {
     ));
 }
 
-/// La ayuda de los controles, con las teclas que haya elegido el jugador.
-fn help(controls: &Controls, lang: Language) -> String {
-    let key = |action| controls.first_key(action);
-    match lang {
-        Language::Spanish => format!(
-            "{}/{} acelerar y frenar  |  {}/{} girar  |  {} caballito  |  {} reiniciar  |  {} pausa  |  M sonido",
-            key(Action::Throttle),
-            key(Action::Brake),
-            key(Action::Left),
-            key(Action::Right),
-            key(Action::Wheelie),
-            key(Action::Restart),
-            key(Action::Pause),
-        ),
-        Language::English => format!(
-            "{}/{} accelerate and brake  |  {}/{} steer  |  {} wheelie  |  {} restart  |  {} pause  |  M sound",
-            key(Action::Throttle),
-            key(Action::Brake),
-            key(Action::Left),
-            key(Action::Right),
-            key(Action::Wheelie),
-            key(Action::Restart),
-            key(Action::Pause),
-        ),
-    }
-}
-
-fn spawn_race_hud(
-    mut commands: Commands,
-    font: Res<UiFont>,
-    settings: Res<Settings>,
-    options: Res<DebugOptions>,
-    game_mode: Res<GameMode>,
-) {
-    commands.spawn((
-        DespawnOnExit(GameState::Race),
-        Legend,
-        legend_visibility(&options),
-        Text::new(help(&settings.controls, settings.language)),
-        TextFont {
-            font: font.0.clone().into(),
-            font_size: FontSize::Px(17.0),
-            ..default()
-        },
-        TextShadow::default(),
-        Node {
-            position_type: PositionType::Absolute,
-            top: px(12),
-            left: px(12),
-            ..default()
-        },
-    ));
-
+fn spawn_race_hud(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
     if *game_mode == GameMode::SplitScreen {
         // Línea divisoria central entre ambos jugadores
         commands.spawn((
@@ -240,22 +189,56 @@ fn spawn_race_hud(
     }
 }
 
-fn legend_visibility(options: &DebugOptions) -> Visibility {
-    if options.show_legend {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    }
-}
-
-/// La leyenda se ve u oculta según la opción de depuración.
-fn show_legend(options: Res<DebugOptions>, mut legend: Query<&mut Visibility, With<Legend>>) {
-    if !options.is_changed() {
+/// La leyenda se ve u oculta según la opción de depuración y se adapta al mando activo.
+fn show_race_legend(
+    mut commands: Commands,
+    options: Res<DebugOptions>,
+    settings: Res<Settings>,
+    device: Option<Res<InputDevice>>,
+    active_controller: Option<Res<ActiveController>>,
+    font: Res<UiFont>,
+    shown: Query<Entity, With<Legend>>,
+) {
+    if !options.is_changed()
+        && !settings.is_changed()
+        && device.as_ref().is_some_and(|d| !d.is_changed())
+        && active_controller.as_ref().is_some_and(|c| !c.is_changed())
+        && (!shown.is_empty() || !options.show_legend)
+    {
         return;
     }
-    for mut visibility in &mut legend {
-        *visibility = legend_visibility(&options);
+
+    for entity in &shown {
+        commands.entity(entity).despawn();
     }
+
+    if !options.show_legend {
+        return;
+    }
+
+    let active_dev = current_active_device(
+        device.as_deref().copied().unwrap_or_default(),
+        active_controller.as_deref(),
+    );
+    let prompts = race_prompts(active_dev, settings.language);
+
+    commands
+        .spawn((
+            DespawnOnExit(GameState::Race),
+            Legend,
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100.0),
+                height: percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            GlobalZIndex(5),
+        ))
+        .with_children(|screen| {
+            spawn_legend_bar(screen, &font, &prompts);
+        });
 }
 
 fn update_speedometer(
@@ -300,6 +283,35 @@ fn update_fps(diagnostics: Res<DiagnosticsStore>, mut text: Single<&mut Text, Wi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locale::Language;
+    use crate::settings::{Action, Controls};
+    use crate::ui::ActiveDevice;
+
+    fn help(controls: &Controls, lang: Language) -> String {
+        let key = |action| controls.first_key(action);
+        match lang {
+            Language::Spanish => format!(
+                "{}/{} acelerar y frenar  |  {}/{} girar  |  {} caballito  |  {} reiniciar  |  {} pausa  |  M sonido",
+                key(Action::Throttle),
+                key(Action::Brake),
+                key(Action::Left),
+                key(Action::Right),
+                key(Action::Wheelie),
+                key(Action::Restart),
+                key(Action::Pause),
+            ),
+            Language::English => format!(
+                "{}/{} accelerate and brake  |  {}/{} steer  |  {} wheelie  |  {} restart  |  {} pause  |  M sound",
+                key(Action::Throttle),
+                key(Action::Brake),
+                key(Action::Left),
+                key(Action::Right),
+                key(Action::Wheelie),
+                key(Action::Restart),
+                key(Action::Pause),
+            ),
+        }
+    }
 
     #[test]
     fn the_help_shows_the_chosen_keys() {
@@ -311,5 +323,24 @@ mod tests {
         controls.bind_key(Action::Wheelie, KeyCode::KeyJ);
         assert!(help(&controls, Language::Spanish).contains("J caballito"));
         assert!(help(&controls, Language::English).contains("J wheelie"));
+    }
+
+    #[test]
+    fn race_prompts_adapt_to_active_device() {
+        let ps = race_prompts(ActiveDevice::PlayStation, Language::Spanish);
+        assert!(ps.iter().any(|p| p.badge == "R2"));
+        assert!(ps.iter().any(|p| p.badge == "○"));
+
+        let xbox = race_prompts(ActiveDevice::Xbox, Language::Spanish);
+        assert!(xbox.iter().any(|p| p.badge == "RT"));
+        assert!(xbox.iter().any(|p| p.badge == "B"));
+
+        let switch = race_prompts(ActiveDevice::Switch, Language::Spanish);
+        assert!(switch.iter().any(|p| p.badge == "ZR"));
+        assert!(switch.iter().any(|p| p.badge == "A"));
+
+        let kb = race_prompts(ActiveDevice::Keyboard, Language::Spanish);
+        assert!(kb.iter().any(|p| p.badge == "W / ↑"));
+        assert!(kb.iter().any(|p| p.badge == "Espacio"));
     }
 }

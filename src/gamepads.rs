@@ -68,11 +68,54 @@ impl Plugin for GamepadsPlugin {
     }
 }
 
+/// Familia o estilo visual del mando.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ControllerModel {
+    #[default]
+    Xbox,
+    PlayStation,
+    Switch,
+}
+
+impl ControllerModel {
+    #[allow(dead_code)]
+    pub fn name(self) -> &'static str {
+        match self {
+            ControllerModel::Xbox => "Xbox",
+            ControllerModel::PlayStation => "PlayStation",
+            ControllerModel::Switch => "Switch Pro",
+        }
+    }
+}
+
+pub fn detect_controller_model(name: &str) -> ControllerModel {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("dualsense")
+        || lower.contains("dualshock")
+        || lower.contains("playstation")
+        || lower.contains("ps5")
+        || lower.contains("ps4")
+        || lower.contains("sony")
+    {
+        ControllerModel::PlayStation
+    } else if lower.contains("switch")
+        || lower.contains("nintendo")
+        || lower.contains("joy-con")
+        || lower.contains("pro controller")
+    {
+        ControllerModel::Switch
+    } else {
+        ControllerModel::Xbox
+    }
+}
+
 /// Dispositivo o mando activo usado por el jugador principal.
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ActiveController {
     /// Si el último dispositivo usado fue un mando, la entidad de Bevy de ese mando.
     pub gamepad: Option<Entity>,
+    /// Modelo detectado del mando (PlayStation, Xbox o Switch).
+    pub model: ControllerModel,
 }
 
 /// Los mandos que lee otro sistema (en macOS, GameController), por su
@@ -154,6 +197,8 @@ pub struct Gamepads {
     /// De cada mando conectado que todavía no ha mandado nada: su nombre y
     /// cuánto lleva conectado (s).
     silent: HashMap<Entity, (String, f32)>,
+    /// Nombres de todos los mandos conocidos por entidad.
+    pub pad_names: HashMap<Entity, String>,
     /// Si se ha pedido volver a buscar los mandos.
     search_requested: bool,
 }
@@ -168,6 +213,7 @@ impl Gamepads {
             searches: 0,
             gave_up: false,
             silent: HashMap::default(),
+            pad_names: HashMap::default(),
             search_requested: false,
         }
     }
@@ -288,6 +334,7 @@ fn read_gamepads(
         events.write(event.clone().into());
         connections.write(event);
         pads.silent.insert(entity, (pad.name().to_string(), 0.0));
+        pads.pad_names.insert(entity, pad.name().to_string());
     }
 
     // Mapear los mandos leídos por otro sistema (GameController en macOS) a sus GamepadId de gilrs
@@ -312,6 +359,7 @@ fn read_gamepads(
         match event.event {
             EventType::Disconnected => {
                 pads.silent.remove(&entity);
+                pads.pad_names.remove(&entity);
                 let event = GamepadConnectionEvent::new(entity, GamepadConnection::Disconnected);
                 events.write(event.clone().into());
                 connections.write(event);
