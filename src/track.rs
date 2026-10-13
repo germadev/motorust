@@ -24,7 +24,27 @@ pub struct Layout {
     pub banking: &'static [Banking],
     /// Alternative routes that leave the lap and join it again.
     pub branches: &'static [Branch],
+    /// Stretches where the walls close in, narrower than the road: a narrow
+    /// bridge.
+    pub narrows: &'static [Narrowing],
 }
+
+/// A stretch of the lap, `from` and `to` metres from the finish line, where
+/// the walls stand `wall` metres from the centre line, closer than the edge
+/// of the asphalt: a bridge narrower than the road. They close in over the
+/// [`NARROW_EASE`] metres before it and open out over as many after it.
+pub struct Narrowing {
+    pub from: f32,
+    pub to: f32,
+    pub wall: f32,
+}
+
+/// How far before a narrow stretch the walls start closing in, and after it
+/// they have opened out again (m).
+pub const NARROW_EASE: f32 = 25.0;
+/// Where the walls are closer than the edge of the asphalt, how far short of
+/// them the road counts as ending (m): the bikes keep that far off them.
+const NARROW_MARGIN: f32 = 0.5;
 
 /// An alternative route: a road that forks off the lap `from` metres after
 /// the finish line and joins it again `to` metres after it.
@@ -132,6 +152,12 @@ const FORK_BLEND: f32 = 10.0;
 /// Points to either side over which how far along the lap a branch without
 /// a loop runs beside is smoothed.
 const FORK_SMOOTHING: usize = 8;
+/// Past where it parts from the lap, a branch without a loop goes over,
+/// over this much further away (m), from the height of the lap's surface
+/// beside it to that of the lap as far along it as it counts as: far from
+/// a lap that winds, the point of the lap nearest to it runs on in fits and
+/// starts, and its climbs and drops with it.
+const FORK_FAR_BLEND: f32 = 45.0;
 /// Distance from the centre line of a branch without a loop to its walls
 /// once it has parted from the lap (m): closer than the lap's.
 pub const FORK_WALL: f32 = 8.5;
@@ -348,6 +374,31 @@ impl Track {
                 (curvature * BANK_PER_CURVATURE).clamp(-MAX_BANK, MAX_BANK)
             })
             .collect();
+        if !layout.narrows.is_empty() {
+            track.walls = (0..n)
+                .map(|i| {
+                    let along = i as f32 * step;
+                    layout
+                        .narrows
+                        .iter()
+                        .map(|narrow| {
+                            // From where they start closing in to where they
+                            // have opened out again.
+                            let total =
+                                (narrow.to - narrow.from).rem_euclid(lap) + 2.0 * NARROW_EASE;
+                            let into = (along - narrow.from + NARROW_EASE).rem_euclid(lap);
+                            let closed = if into > total {
+                                0.0
+                            } else {
+                                smoothstep(0.0, NARROW_EASE, into)
+                                    * smoothstep(0.0, NARROW_EASE, total - into)
+                            };
+                            WALL_DISTANCE.lerp(narrow.wall, closed)
+                        })
+                        .fold(WALL_DISTANCE, f32::min)
+                })
+                .collect();
+        }
         track
     }
 
@@ -505,7 +556,9 @@ impl Track {
             // higher or lower by its rise. Far from the lap its nearest
             // point moves along the lap's polyline in fits and starts: how
             // far along the lap it is beside is smoothed first, less of it
-            // towards the ends, where it lies on the lap.
+            // towards the ends, where it lies on the lap; and further away,
+            // it runs at the height of the lap as far along it as it counts
+            // as, which runs on steadily.
             None => {
                 let laps = self.sample_count();
                 let first = on_lap[0].index;
@@ -526,8 +579,17 @@ impl Track {
                         let elevation = self.elevation[k].lerp(self.elevation[next], t);
                         let bank = self.bank[k].lerp(self.bank[next], t);
                         let lateral = on_lap[i].lateral.clamp(-WALL_DISTANCE, WALL_DISTANCE);
-                        elevation - lateral * bank.tan()
-                            + open_profile(rise, length, i as f32 * step)
+                        let beside = elevation - lateral * bank.tan();
+                        let counted = counts_as(i as f32 * step) / self.step;
+                        let k = counted.floor() as usize % laps;
+                        let far =
+                            self.elevation[k].lerp(self.elevation[(k + 1) % laps], counted.fract());
+                        let away = smoothstep(
+                            JUNCTION_APART,
+                            JUNCTION_APART + FORK_FAR_BLEND,
+                            on_lap[i].distance,
+                        );
+                        beside.lerp(far, away) + open_profile(rise, length, i as f32 * step)
                     })
                     .collect()
             }
@@ -1025,8 +1087,17 @@ impl Track {
 
     /// Half the width of the asphalt of the road beside a point already
     /// found.
+    /// Half the width of the asphalt beside a point (m): short of the walls
+    /// where they close in on it (see [`Narrowing`]).
     pub fn half_width_beside(&self, nearest: &Nearest) -> f32 {
-        self.road(nearest.road).half_width
+        self.road(nearest.road).half_width_at(nearest.index)
+    }
+
+    /// Half the width of the asphalt at point `index` of the centre line
+    /// (m): short of the walls where they close in on it (see
+    /// [`Narrowing`]).
+    pub fn half_width_at(&self, index: usize) -> f32 {
+        self.half_width.min(self.wall_at(index) - NARROW_MARGIN)
     }
 
     /// Punto de la superficie de la carretera `lateral` metros a la izquierda
@@ -1705,6 +1776,47 @@ mod tests {
                 assert!(along > fork.fork as f32 * step && along < fork.join as f32 * step);
             }
         }
+    }
+
+    #[test]
+    fn walls_close_in_on_a_narrow_bridge_and_open_out_after_it() {
+        let layout = &crate::circuits::CIRCUITS
+            .iter()
+            .find(|circuit| !circuit.layout.narrows.is_empty())
+            .expect("some track has a narrow stretch")
+            .layout;
+        let track = Track::new(layout);
+        for narrow in layout.narrows {
+            let middle = track.index_at((narrow.from + narrow.to) / 2.0);
+            // Narrower than the asphalt, and the road ends short of them.
+            assert!(narrow.wall < TRACK_WIDTH / 2.0);
+            assert!((track.wall_at(middle) - narrow.wall).abs() < 1e-4);
+            assert!(track.half_width_at(middle) < narrow.wall);
+            // Closed in all the way from where it begins (from the first point
+            // of the centre line on it).
+            let first = track.index_at(narrow.from + track.step_length());
+            assert!((track.wall_at(first) - narrow.wall).abs() < 1e-4);
+            // Well before and after it, the walls are where they always are,
+            // and they close in and open out without a step.
+            for along in [
+                narrow.from - NARROW_EASE - 5.0,
+                narrow.to + NARROW_EASE + 5.0,
+            ] {
+                assert_eq!(track.wall_at(track.index_at(along)), WALL_DISTANCE);
+                assert_eq!(
+                    track.half_width_at(track.index_at(along)),
+                    TRACK_WIDTH / 2.0
+                );
+            }
+            let first = track.index_at(narrow.from - NARROW_EASE - 10.0);
+            for k in 0..((NARROW_EASE + 20.0) / track.step_length()) as usize {
+                let (a, b) = (track.wall_at(first + k), track.wall_at(first + k + 1));
+                assert!(b <= a + 1e-5 && a - b < 0.8, "{a} {b}");
+            }
+        }
+        // Elsewhere, and on every other track, nothing changes.
+        let bay = Track::default();
+        assert!((0..bay.sample_count()).all(|i| bay.wall_at(i) == WALL_DISTANCE));
     }
 
     #[test]

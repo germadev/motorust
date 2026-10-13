@@ -42,6 +42,13 @@ const ARCH_RISE: f32 = 15.0;
 const ARCH_THICKNESS: f32 = 0.9;
 const HANGER_EVERY: usize = 2;
 const BRIDGE_RED: Color = Color::srgb(0.72, 0.1, 0.07);
+/// Steel truss bridges: how high the trusses stand over the deck (m), every
+/// how many points of the lap a panel point is, and a pier, and the colour
+/// of the steel, a weathered blue grey.
+const TRUSS_HEIGHT: f32 = 7.5;
+const TRUSS_PANEL: usize = 3;
+const TRUSS_PIER_EVERY: usize = 24;
+const TRUSS_STEEL: Color = Color::srgb(0.36, 0.48, 0.55);
 /// Grosor del tablero del puente (m).
 const DECK_DEPTH: f32 = 1.6;
 /// What each repetition of the concrete texture covers on the deck (m).
@@ -144,8 +151,8 @@ pub fn structure_pieces(
         }
     }
     for bridge in scenery.bridges {
-        let indices = indices(track, *bridge, lap);
-        if scenery.bridge_style == BridgeStyle::Wooden {
+        let indices = indices(track, bridge.span, lap);
+        if bridge.style == BridgeStyle::Wooden {
             let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices);
             pieces.push((
                 planks,
@@ -164,7 +171,11 @@ pub fn structure_pieces(
             ));
             continue;
         }
-        let (deck, arches) = bridge_meshes(track, terrain, &indices);
+        let (deck, steel) = if bridge.style == BridgeStyle::Truss {
+            truss_bridge_meshes(track, terrain, &indices)
+        } else {
+            bridge_meshes(track, terrain, &indices)
+        };
         pieces.push((
             deck,
             StandardMaterial {
@@ -175,7 +186,7 @@ pub fn structure_pieces(
             },
         ));
         pieces.push((
-            arches,
+            steel,
             StandardMaterial {
                 perceptual_roughness: 0.45,
                 metallic: 0.2,
@@ -537,13 +548,60 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
 /// The deck's top runs out from under the asphalt to past the walls: off
 /// the bridge the ground does that, but under a bridge it drops away.
 fn bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, Mesh) {
-    let mut deck = MeshBuilder::default();
+    let deck = concrete_deck(
+        track,
+        terrain,
+        indices,
+        &[0, indices.len() / 2, indices.len() - 1],
+    );
     let mut arches = MeshBuilder::default();
+    let edge = WALL_DISTANCE + 0.8;
+    let road = |i: usize, lateral: f32| track.surface_point(i, lateral);
+    for (k, pair) in indices.windows(2).enumerate() {
+        let i = pair[0];
+        for side in [-1.0, 1.0] {
+            // El arco, a lo largo de todo el puente.
+            let arch = |k: usize| {
+                let t = k as f32 / (indices.len() - 1) as f32;
+                road(indices[k], side * (edge + 0.4))
+                    + Vec3::Y * ARCH_RISE * (std::f32::consts::PI * t).sin()
+            };
+            arches.beam(
+                arch(k),
+                arch(k + 1),
+                ARCH_THICKNESS,
+                ARCH_THICKNESS * 1.4,
+                BRIDGE_RED,
+            );
+            if k % HANGER_EVERY == 0 && k > 0 {
+                arches.beam(
+                    road(i, side * (edge + 0.4)),
+                    arch(k),
+                    0.18,
+                    0.18,
+                    BRIDGE_RED,
+                );
+            }
+        }
+    }
+    (deck.build(), arches.build())
+}
+
+/// A concrete deck along the points `indices` of the lap, out to its walls,
+/// on pairs of pillars at the points `piers` (of `indices`) down to the
+/// ground below.
+fn concrete_deck(
+    track: &Track,
+    terrain: &Terrain,
+    indices: &[usize],
+    piers: &[usize],
+) -> MeshBuilder {
+    let mut deck = MeshBuilder::default();
     let edge = WALL_DISTANCE + 0.8;
     // Tucked a little under the asphalt, so no crack shows between them.
     let inner = track.half_width() - 0.3;
     let road = |i: usize, lateral: f32| track.surface_point(i, lateral);
-    for (k, pair) in indices.windows(2).enumerate() {
+    for pair in indices.windows(2) {
         let (i, j) = (pair[0], pair[1]);
         let down = Vec3::Y * DECK_DEPTH;
         // The top, beside the asphalt, on each side.
@@ -586,32 +644,10 @@ fn bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, 
                 out,
                 Color::WHITE,
             );
-            // El arco, a lo largo de todo el puente.
-            let arch = |k: usize| {
-                let t = k as f32 / (indices.len() - 1) as f32;
-                road(indices[k], side * (edge + 0.4))
-                    + Vec3::Y * ARCH_RISE * (std::f32::consts::PI * t).sin()
-            };
-            arches.beam(
-                arch(k),
-                arch(k + 1),
-                ARCH_THICKNESS,
-                ARCH_THICKNESS * 1.4,
-                BRIDGE_RED,
-            );
-            if k % HANGER_EVERY == 0 && k > 0 {
-                arches.beam(
-                    road(i, side * (edge + 0.4)),
-                    arch(k),
-                    0.18,
-                    0.18,
-                    BRIDGE_RED,
-                );
-            }
         }
     }
-    // Pilares hasta el agua en los dos extremos y en el centro.
-    for &k in &[0, indices.len() / 2, indices.len() - 1] {
+    // Pilares hasta el suelo.
+    for &k in piers {
         let i = indices[k];
         for side in [-1.0, 1.0] {
             let top = road(i, side * (edge - 1.5)) - Vec3::Y * DECK_DEPTH;
@@ -619,7 +655,65 @@ fn bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, 
             deck.beam(Vec3::new(top.x, ground, top.z), top, 2.2, 2.2, Color::WHITE);
         }
     }
-    (deck.build(), arches.build())
+    deck
+}
+
+/// A steel truss bridge: a concrete deck (the first mesh) on piers, and two
+/// through trusses (the second), one along each edge of the deck, with a top
+/// chord over sloping end posts, a post at every panel point and diagonals
+/// sloping down towards the middle, braced to each other overhead.
+fn truss_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, Mesh) {
+    let last = indices.len() - 1;
+    let piers: Vec<usize> = (0..=last)
+        .step_by(TRUSS_PIER_EVERY)
+        .chain(std::iter::once(last))
+        .collect();
+    let deck = concrete_deck(track, terrain, indices, &piers);
+    let mut steel = MeshBuilder::default();
+    let edge = WALL_DISTANCE + 0.8;
+    let lateral = edge + 0.3;
+    // The panel points, every few points of the lap, the first and the last
+    // where the bridge begins and ends.
+    let panels = (last / TRUSS_PANEL).max(2);
+    let point = |k: usize| indices[(k * last / panels).min(last)];
+    let bottom =
+        |k: usize, side: f32| track.surface_point(point(k), side * lateral) + Vec3::Y * 0.2;
+    let top = |k: usize, side: f32| bottom(k, side) + Vec3::Y * TRUSS_HEIGHT;
+    for side in [-1.0, 1.0] {
+        for k in 0..panels {
+            steel.beam(bottom(k, side), bottom(k + 1, side), 0.5, 0.7, TRUSS_STEEL);
+            // The top chord, between the ends, which slope down to the deck.
+            if k == 0 {
+                steel.beam(bottom(0, side), top(1, side), 0.5, 0.6, TRUSS_STEEL);
+            } else if k == panels - 1 {
+                steel.beam(top(k, side), bottom(panels, side), 0.5, 0.6, TRUSS_STEEL);
+            } else {
+                steel.beam(top(k, side), top(k + 1, side), 0.5, 0.6, TRUSS_STEEL);
+            }
+            if k > 0 {
+                steel.beam(bottom(k, side), top(k, side), 0.32, 0.32, TRUSS_STEEL);
+            }
+            // Diagonals sloping down towards the middle of the span.
+            if k > 0 && k < panels - 1 {
+                let (from, to) = if 2 * k < panels {
+                    (top(k, side), bottom(k + 1, side))
+                } else {
+                    (bottom(k, side), top(k + 1, side))
+                };
+                steel.beam(from, to, 0.28, 0.28, TRUSS_STEEL);
+            }
+        }
+    }
+    // Braced to each other overhead: a strut across at each panel point and
+    // a cross between them.
+    for k in 1..panels {
+        steel.beam(top(k, -1.0), top(k, 1.0), 0.35, 0.45, TRUSS_STEEL);
+        if k + 1 < panels {
+            steel.beam(top(k, -1.0), top(k + 1, 1.0), 0.18, 0.18, TRUSS_STEEL);
+            steel.beam(top(k, 1.0), top(k + 1, -1.0), 0.18, 0.18, TRUSS_STEEL);
+        }
+    }
+    (deck.build(), steel.build())
 }
 
 /// A wooden bridge: planks laid across from fence to fence over the road and
@@ -629,14 +723,16 @@ fn bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, 
 fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, Mesh) {
     let mut planks = MeshBuilder::default();
     let mut logs = MeshBuilder::default();
-    let edge = WALL_DISTANCE + 0.8;
+    // Out to its fence, which stands where the walls are: closer than the
+    // edge of the asphalt where the bridge is narrower than the road.
+    let edge = |i: usize| track.wall_at(i) + 0.8;
     let step = track.step_length();
     let road = |i: usize, lateral: f32| track.surface_point(i, lateral);
     let deck = |i: usize, lateral: f32| road(i, lateral) + Vec3::Y * (SURFACE_Y + PLANK_LIFT);
     let down = Vec3::Y * (DECK_DEPTH + SURFACE_Y + PLANK_LIFT);
-    let across = 2.0 * edge / PLANK_TILE;
     for (k, pair) in indices.windows(2).enumerate() {
         let (i, j) = (pair[0], pair[1]);
+        let across = 2.0 * edge(i) / PLANK_TILE;
         let (v0, v1) = (
             k as f32 * step / PLANK_TILE,
             (k + 1) as f32 * step / PLANK_TILE,
@@ -645,31 +741,31 @@ fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> 
         for (lift, facing) in [(Vec3::ZERO, Vec3::Y), (down, Vec3::NEG_Y)] {
             planks.quad(
                 [
-                    (deck(i, -edge) - lift, Vec2::new(0.0, v0)),
-                    (deck(j, -edge) - lift, Vec2::new(0.0, v1)),
-                    (deck(j, edge) - lift, Vec2::new(across, v1)),
-                    (deck(i, edge) - lift, Vec2::new(across, v0)),
+                    (deck(i, -edge(i)) - lift, Vec2::new(0.0, v0)),
+                    (deck(j, -edge(j)) - lift, Vec2::new(0.0, v1)),
+                    (deck(j, edge(j)) - lift, Vec2::new(across, v1)),
+                    (deck(i, edge(i)) - lift, Vec2::new(across, v0)),
                 ],
                 facing,
                 Color::WHITE,
             );
         }
         for side in [-1.0, 1.0] {
-            let out = road(i, side * (edge + 1.0)) - road(i, side * edge);
+            let out = road(i, side * (edge(i) + 1.0)) - road(i, side * edge(i));
             let thick = DECK_DEPTH / PLANK_TILE;
             planks.quad(
                 [
-                    (deck(i, side * edge), Vec2::new(0.0, v0)),
-                    (deck(j, side * edge), Vec2::new(0.0, v1)),
-                    (deck(j, side * edge) - down, Vec2::new(thick, v1)),
-                    (deck(i, side * edge) - down, Vec2::new(thick, v0)),
+                    (deck(i, side * edge(i)), Vec2::new(0.0, v0)),
+                    (deck(j, side * edge(j)), Vec2::new(0.0, v1)),
+                    (deck(j, side * edge(j)) - down, Vec2::new(thick, v1)),
+                    (deck(i, side * edge(i)) - down, Vec2::new(thick, v0)),
                 ],
                 out,
                 Color::WHITE,
             );
             // The fence: a post every other point, rails between them.
             let fence =
-                |i: usize, height: f32| deck(i, side * (WALL_DISTANCE + 0.2)) + Vec3::Y * height;
+                |i: usize, height: f32| deck(i, side * (track.wall_at(i) + 0.2)) + Vec3::Y * height;
             for (at, wanted) in [(i, k % 2 == 0), (j, k + 2 == indices.len())] {
                 if !wanted {
                     continue;
@@ -693,7 +789,7 @@ fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> 
         let i = indices[k];
         let mut tops = [Vec3::ZERO; 2];
         for (top, side) in tops.iter_mut().zip([-1.0, 1.0]) {
-            *top = road(i, side * (edge - 1.2)) - Vec3::Y * DECK_DEPTH;
+            *top = road(i, side * (edge(i) - 1.2)) - Vec3::Y * DECK_DEPTH;
             let ground = terrain.height(Vec2::new(top.x, top.z)).min(top.y) - 2.0;
             logs.beam(Vec3::new(top.x, ground, top.z), *top, 1.1, 1.1, POST_WOOD);
         }
@@ -1019,19 +1115,27 @@ mod tests {
     }
 
     #[test]
-    fn red_bridges_have_a_deck_out_to_the_walls() {
+    fn concrete_bridges_have_a_deck_out_to_the_walls() {
         let mut checked = 0;
         for circuit in &CIRCUITS {
             let scenery = &circuit.scenery;
-            if scenery.bridge_style != BridgeStyle::RedArches {
+            if !scenery
+                .bridges
+                .iter()
+                .any(|bridge| bridge.style != BridgeStyle::Wooden)
+            {
                 continue;
             }
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, scenery);
             let lap = track.lap_length();
             for bridge in scenery.bridges {
-                let indices = indices(&track, *bridge, lap);
-                let (deck, _) = bridge_meshes(&track, &terrain, &indices);
+                let indices = indices(&track, bridge.span, lap);
+                let (deck, _) = match bridge.style {
+                    BridgeStyle::Wooden => continue,
+                    BridgeStyle::RedArches => bridge_meshes(&track, &terrain, &indices),
+                    BridgeStyle::Truss => truss_bridge_meshes(&track, &terrain, &indices),
+                };
                 let middle = indices[indices.len() / 2];
                 let beside = track.half_width() + 0.5;
                 let by_the_wall = WALL_DISTANCE - 0.3;
@@ -1045,6 +1149,6 @@ mod tests {
                 }
             }
         }
-        assert!(checked > 0, "some circuit has a red bridge");
+        assert!(checked > 0, "some circuit has a concrete bridge");
     }
 }

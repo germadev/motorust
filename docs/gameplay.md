@@ -98,7 +98,9 @@ On Loop Island a branch forks off the lap to the right on the climb to the start
 
 Two of the rivals always take the branch.
 
-In Gold Mine's excavation the road splits three ways twice, with no loop (see [tracks.md](tracks.md#gold-mine)): in the sandstone and slate halls a high road forks off to the left and a deep road to the right, and in the clay and sandstone halls an upper gallery to the left and a lower one to the right, each between pillars of rock, narrower than the lap and laid with planks, over a hump or through a dip, and joining the lap again further on. Keep to that side to take one, or stay in the middle on the lap, which snakes between them: no way is clearly the quickest.
+In Gold Mine's excavation the road splits three ways twice, with no loop (see [tracks.md](tracks.md#gold-mine)): in the sandstone and slate halls a high road forks off to the left and a deep road to the right, and in the clay and sandstone halls an upper gallery to the left and a lower one to the right, each between pillars of rock, narrower than the lap and laid with planks, over a hump or through a dip, and joining the lap again further on. The three ways fan out up to 130 m apart and none runs straight through: at each split one branch runs straight on where the lap swings away, and the other swings out before it. Keep to that side to take one, or stay in the middle on the lap: no way is clearly the quickest.
+
+Gold Mine's wooden bridge over the lake is narrower than the road: its fences close in on it over the 25 m before it, 6 m either side of the middle, and are as solid as walls.
 
 ### Rivals
 

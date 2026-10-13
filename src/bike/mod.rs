@@ -2705,7 +2705,7 @@ mod tests {
         let (mut progress, mut last) = (0i64, here(&state) as i64);
         let mut on_grass = 0;
         // Long enough for a lap of the longest track.
-        let steps = (80.0 / DT) as usize;
+        let steps = (100.0 / DT) as usize;
         for _ in 0..steps {
             // Mira 18 m por delante de la línea central y gira hacia allí.
             let ahead = track.offset_point(here(&state) + 9, 0.0);
@@ -2716,9 +2716,10 @@ mod tests {
                 ..default()
             };
             state = advance(&state, &input, track, &tuning, DT);
-            let distance = track.nearest_at(state.position, state.elevation).distance;
+            let nearest = track.nearest_at(state.position, state.elevation);
+            let distance = nearest.distance;
             assert!(
-                distance < WALL_DISTANCE - BIKE_HALF_WIDTH - 0.01,
+                distance < track.edge_beside(&nearest) - BIKE_HALF_WIDTH - 0.01,
                 "toca el muro de {name} en {:?} (muestra {}) a {:.0} km/h",
                 state.position,
                 here(&state),

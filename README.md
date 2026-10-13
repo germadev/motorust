@@ -41,13 +41,18 @@ lap goes round a loop you ride upside down.
 ![Two bikes leaning between Loop Island's checkerboard hills, with a waterfall ahead](docs/images/track-loop-island.jpg)
 
 **Gold Mine** ("Mina Dorada"), after Wario's Gold Mine and Crash Team Racing's
-Dragon Mines, is a figure of eight in a desert at dusk that crosses a mountain
-twice: first through it, by lantern-lit halls of sandstone, gold-veined slate
-and clay under roofs up to 34 m high, where the road splits three ways twice
-between pillars of rock, and then over it, 65 m above the galleries. On the
-way: a mining town, a trestle where an ore cart crosses over the road,
-headframes, and a wooden bridge nearly half a kilometre long over the red
-water of a flooded open pit, its benches stepping down to the water all round.
+Dragon Mines, with the roads of Moto Racer's West Way round it, is a twisting,
+rolling figure of eight in a desert at dusk that crosses a mountain twice:
+first through it, by lantern-lit halls of sandstone, gold-veined slate and
+clay under roofs up to 34 m high, where the road splits three ways twice,
+fanning out 130 m between pillars of rock, each way with its own climb or
+drop; and then over it, up switchbacks and over a steel truss bridge, 70 m
+above the galleries. On the way: a mining town of false fronts, dunes with a
+gas station and nodding oil pumpjacks, cacti and tumbleweeds, a narrow red
+canyon under a highway viaduct, an adobe pueblo, big diamond warning signs,
+and a wooden bridge nearly half a kilometre long, narrower than the road, over
+the red water of a flooded open pit, its benches stepping down to the water
+all round.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

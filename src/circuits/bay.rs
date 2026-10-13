@@ -25,6 +25,7 @@ pub const BAY: Circuit = Circuit {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         banking: &[],
+        narrows: &[],
         branches: &[],
     },
     scenery: Scenery {
@@ -117,6 +118,7 @@ pub const BAY: Circuit = Circuit {
                 Color::srgb(0.95, 0.83, 0.8),
             ],
             spans: &[],
+            style: HouseStyle::Cottage,
         },
         palms: &[],
         hotels: &[],
@@ -204,7 +206,6 @@ pub const BAY: Circuit = Circuit {
             },
         ],
         soil: Soil::Rock,
-        bridge_style: BridgeStyle::RedArches,
         sunflowers: &[],
         totems: &[],
         loops: &[],
@@ -214,6 +215,7 @@ pub const BAY: Circuit = Circuit {
         water: Water::Sea,
         pit: None,
         mine: None,
+        desert: None,
     },
 };
 
