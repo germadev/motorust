@@ -4,12 +4,14 @@
 use bevy::prelude::*;
 
 use super::Assets3d;
+use super::cavern::cavern_pieces;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
 use super::scenery::{
     Billboard, BrakeMarker, BridgeStyle, ChevronDirection, ChevronSign, Scenery, Soil, Span,
 };
 use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, Terrain, ground_vertex_color};
+use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
 
@@ -53,26 +55,35 @@ const FENCE_HEIGHT: f32 = 1.2;
 const POST_WOOD: Color = Color::srgb(0.34, 0.2, 0.09);
 const RAIL_WOOD: Color = Color::srgb(0.52, 0.33, 0.15);
 
-pub fn spawn_structures(
-    world: &mut ChildSpawnerCommands,
+/// The meshes of the tunnels and the bridges, with their materials: worked
+/// out away from the main thread, with the rest of the circuit (see
+/// [`super::prepare`]).
+pub fn structure_pieces(
     track: &Track,
     terrain: &Terrain,
     scenery: &Scenery,
-    assets: &mut Assets3d,
-) {
+    textures: &WorldTextures,
+) -> Vec<(Mesh, StandardMaterial)> {
+    let mut pieces = Vec::new();
     let lap = track.lap_length();
     for tunnel in scenery.tunnels {
+        // A mine's tunnels are its excavation.
+        if scenery.soil == Soil::Mine {
+            let halls = scenery.mine.as_ref().map_or(&[][..], |mine| mine.halls);
+            pieces.extend(cavern_pieces(track, terrain, *tunnel, halls, textures));
+            continue;
+        }
         let indices = indices(track, *tunnel, lap);
         let parts = tunnel_meshes(track, terrain, scenery.soil, &indices);
         let rock = match scenery.soil {
-            Soil::Rock => StandardMaterial {
+            Soil::Rock | Soil::Mine => StandardMaterial {
                 base_color: Color::srgb(0.85, 0.75, 0.6),
-                base_color_texture: Some(assets.textures.rock.clone()),
+                base_color_texture: Some(textures.rock.clone()),
                 perceptual_roughness: 0.9,
                 ..default()
             },
             Soil::Checkered => StandardMaterial {
-                base_color_texture: Some(assets.textures.soil.clone()),
+                base_color_texture: Some(textures.soil.clone()),
                 perceptual_roughness: 0.9,
                 ..default()
             },
@@ -80,15 +91,15 @@ pub fn spawn_structures(
         // Warm and lit by the lamps, as in Moto Racer; through checkerboard
         // earth, a cave of it.
         let lining = match scenery.soil {
-            Soil::Rock => StandardMaterial {
+            Soil::Rock | Soil::Mine => StandardMaterial {
                 base_color: Color::srgb(0.95, 0.78, 0.52),
-                base_color_texture: Some(assets.textures.panels.clone()),
+                base_color_texture: Some(textures.panels.clone()),
                 emissive: LinearRgba::rgb(0.12, 0.08, 0.035),
                 perceptual_roughness: 0.85,
                 ..default()
             },
             Soil::Checkered => StandardMaterial {
-                base_color_texture: Some(assets.textures.soil.clone()),
+                base_color_texture: Some(textures.soil.clone()),
                 emissive: LinearRgba::rgb(0.1, 0.06, 0.02),
                 perceptual_roughness: 0.9,
                 ..default()
@@ -96,7 +107,7 @@ pub fn spawn_structures(
         };
         let concrete = StandardMaterial {
             base_color: Color::srgb(0.75, 0.73, 0.7),
-            base_color_texture: Some(assets.textures.plaster.clone()),
+            base_color_texture: Some(textures.plaster.clone()),
             perceptual_roughness: 0.9,
             ..default()
         };
@@ -106,12 +117,12 @@ pub fn spawn_structures(
             ..default()
         };
         let checker = StandardMaterial {
-            base_color_texture: Some(assets.textures.checker.clone()),
+            base_color_texture: Some(textures.checker.clone()),
             perceptual_roughness: 0.7,
             ..default()
         };
         let grass = StandardMaterial {
-            base_color_texture: Some(assets.textures.grass.clone()),
+            base_color_texture: Some(textures.grass.clone()),
             perceptual_roughness: 0.9,
             reflectance: 0.18,
             ..default()
@@ -129,52 +140,60 @@ pub fn spawn_structures(
             if mesh.count_vertices() == 0 {
                 continue;
             }
-            world.spawn((
-                Mesh3d(assets.meshes.add(mesh)),
-                MeshMaterial3d(assets.materials.add(material)),
-            ));
+            pieces.push((mesh, material));
         }
     }
     for bridge in scenery.bridges {
         let indices = indices(track, *bridge, lap);
         if scenery.bridge_style == BridgeStyle::Wooden {
             let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices);
-            world.spawn((
-                Mesh3d(assets.meshes.add(planks)),
-                MeshMaterial3d(assets.materials.add(StandardMaterial {
-                    base_color_texture: Some(assets.textures.planks.clone()),
+            pieces.push((
+                planks,
+                StandardMaterial {
+                    base_color_texture: Some(textures.planks.clone()),
                     perceptual_roughness: 0.85,
                     ..default()
-                })),
+                },
             ));
-            world.spawn((
-                Mesh3d(assets.meshes.add(logs)),
-                MeshMaterial3d(assets.materials.add(StandardMaterial {
+            pieces.push((
+                logs,
+                StandardMaterial {
                     perceptual_roughness: 0.9,
                     ..default()
-                })),
+                },
             ));
             continue;
         }
         let (deck, arches) = bridge_meshes(track, terrain, &indices);
-        world.spawn((
-            Mesh3d(assets.meshes.add(deck)),
-            MeshMaterial3d(assets.materials.add(StandardMaterial {
+        pieces.push((
+            deck,
+            StandardMaterial {
                 base_color: Color::srgb(0.7, 0.7, 0.68),
-                base_color_texture: Some(assets.textures.plaster.clone()),
+                base_color_texture: Some(textures.plaster.clone()),
                 perceptual_roughness: 0.9,
                 ..default()
-            })),
+            },
         ));
-        world.spawn((
-            Mesh3d(assets.meshes.add(arches)),
-            MeshMaterial3d(assets.materials.add(StandardMaterial {
+        pieces.push((
+            arches,
+            StandardMaterial {
                 perceptual_roughness: 0.45,
                 metallic: 0.2,
                 ..default()
-            })),
+            },
         ));
     }
+    pieces
+}
+
+/// The signs along the road: billboards, curve chevrons and brake markers.
+pub fn spawn_signs(
+    world: &mut ChildSpawnerCommands,
+    track: &Track,
+    terrain: &Terrain,
+    scenery: &Scenery,
+    assets: &mut Assets3d,
+) {
     for billboard in scenery.billboards {
         spawn_billboard(world, track, terrain, billboard, assets);
     }
@@ -691,6 +710,73 @@ fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> 
 
 /// Un cartel con un rótulo, sobre dos postes detrás del muro, mirando a los
 /// que llegan.
+/// The size of the billboards, chevron signs and brake markers (m).
+const BILLBOARD: Vec2 = Vec2::new(12.0, 3.0);
+const CHEVRON: Vec2 = Vec2::new(4.8, 1.6);
+const BRAKE_MARKER: Vec2 = Vec2::new(2.2, 1.8);
+
+/// What a billboard says, on white with a border of its colour.
+fn billboard_image(billboard: &Billboard) -> Image {
+    sign_image(
+        billboard.text,
+        billboard.color,
+        billboard.accent,
+        Color::WHITE,
+        Some(billboard.color),
+        BILLBOARD.x / BILLBOARD.y,
+    )
+}
+
+/// The arrows of a curve sign: black on yellow.
+fn chevron_image(chevron: &ChevronSign) -> Image {
+    let text = match chevron.direction {
+        ChevronDirection::Left => "<<<",
+        ChevronDirection::Right => ">>>",
+    };
+    let yellow = Color::srgb(0.98, 0.84, 0.05);
+    let black = Color::srgb(0.08, 0.08, 0.1);
+    sign_image(
+        text,
+        black,
+        None,
+        yellow,
+        Some(black),
+        CHEVRON.x / CHEVRON.y,
+    )
+}
+
+/// The distance on a brake marker: black on white.
+fn brake_marker_image(marker: &BrakeMarker) -> Image {
+    let text = if marker.distance >= 100 { "100" } else { "50" };
+    let white = Color::srgb(0.96, 0.96, 0.96);
+    let black = Color::srgb(0.08, 0.08, 0.1);
+    sign_image(
+        text,
+        black,
+        None,
+        white,
+        Some(black),
+        BRAKE_MARKER.x / BRAKE_MARKER.y,
+    )
+}
+
+/// Draws the signs of `scenery` ahead (see [`sign_image`]): on the
+/// threads that prepare the circuits, so the main thread only copies them.
+pub fn draw_signs(scenery: &Scenery) {
+    for gantry in scenery.gantries {
+        super::road::gantry_image(gantry);
+    }
+    for billboard in scenery.billboards {
+        billboard_image(billboard);
+    }
+    for chevron in scenery.chevrons {
+        chevron_image(chevron);
+    }
+    for marker in scenery.brake_markers {
+        brake_marker_image(marker);
+    }
+}
+
 fn spawn_billboard(
     world: &mut ChildSpawnerCommands,
     track: &Track,
@@ -698,8 +784,8 @@ fn spawn_billboard(
     billboard: &Billboard,
     assets: &mut Assets3d,
 ) {
-    const WIDTH: f32 = 12.0;
-    const HEIGHT: f32 = 3.0;
+    const WIDTH: f32 = BILLBOARD.x;
+    const HEIGHT: f32 = BILLBOARD.y;
     const LIFT: f32 = 1.4;
     let index = track.index_at(billboard.along);
     let lateral = billboard.side.sign() * (WALL_DISTANCE + 3.0);
@@ -708,14 +794,7 @@ fn spawn_billboard(
     let (_, heading) = track.pose_at(index);
     // Girado hacia la carretera para que se lea al llegar.
     let turn = billboard.side.sign() * 0.5;
-    let image = sign_image(
-        billboard.text,
-        billboard.color,
-        billboard.accent,
-        Color::WHITE,
-        Some(billboard.color),
-        WIDTH / HEIGHT,
-    );
+    let image = billboard_image(billboard);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [
@@ -779,8 +858,8 @@ fn spawn_chevron(
     chevron: &ChevronSign,
     assets: &mut Assets3d,
 ) {
-    const WIDTH: f32 = 4.8;
-    const HEIGHT: f32 = 1.6;
+    const WIDTH: f32 = CHEVRON.x;
+    const HEIGHT: f32 = CHEVRON.y;
     const LIFT: f32 = 1.0;
     let index = track.index_at(chevron.along);
     let lateral = chevron.side.sign() * (WALL_DISTANCE + 2.4);
@@ -788,13 +867,7 @@ fn spawn_chevron(
     let base = terrain.height(point);
     let (_, heading) = track.pose_at(index);
     let turn = chevron.side.sign() * 0.4;
-    let text = match chevron.direction {
-        ChevronDirection::Left => "<<<",
-        ChevronDirection::Right => ">>>",
-    };
-    let yellow = Color::srgb(0.98, 0.84, 0.05);
-    let black = Color::srgb(0.08, 0.08, 0.1);
-    let image = sign_image(text, black, None, yellow, Some(black), WIDTH / HEIGHT);
+    let image = chevron_image(chevron);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [
@@ -851,8 +924,8 @@ fn spawn_brake_marker(
     marker: &BrakeMarker,
     assets: &mut Assets3d,
 ) {
-    const WIDTH: f32 = 2.2;
-    const HEIGHT: f32 = 1.8;
+    const WIDTH: f32 = BRAKE_MARKER.x;
+    const HEIGHT: f32 = BRAKE_MARKER.y;
     const LIFT: f32 = 0.9;
     let index = track.index_at(marker.along);
     let lateral = marker.side.sign() * (WALL_DISTANCE + 2.0);
@@ -860,10 +933,7 @@ fn spawn_brake_marker(
     let base = terrain.height(point);
     let (_, heading) = track.pose_at(index);
     let turn = marker.side.sign() * 0.35;
-    let text = if marker.distance >= 100 { "100" } else { "50" };
-    let white = Color::srgb(0.96, 0.96, 0.96);
-    let black = Color::srgb(0.08, 0.08, 0.1);
-    let image = sign_image(text, black, None, white, Some(black), WIDTH / HEIGHT);
+    let image = brake_marker_image(marker);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [

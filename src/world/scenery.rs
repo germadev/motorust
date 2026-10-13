@@ -77,6 +77,9 @@ pub struct Massif {
     pub center: Vec2,
     pub radius: f32,
     pub height: f32,
+    /// Whether the road climbs it: its smooth slopes are the ground the road
+    /// is cut into, rather than rock standing up behind the walls.
+    pub climbed: bool,
 }
 
 pub const fn massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
@@ -84,6 +87,15 @@ pub const fn massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
         center: Vec2::new(x, z),
         radius,
         height,
+        climbed: false,
+    }
+}
+
+/// A mountain the road climbs (see [`Massif::climbed`]).
+pub const fn climbed_massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
+    Massif {
+        climbed: true,
+        ..massif(x, z, radius, height)
     }
 }
 
@@ -133,6 +145,8 @@ pub enum WallStyle {
     Hedge,
     /// Blocks of brown checkerboard earth, as in Loop Island.
     Checkered,
+    /// A fence of heavy timber planks, as round a mine.
+    Timber,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -143,6 +157,39 @@ pub enum Soil {
     Rock,
     /// Brown checkerboard earth under a grass top, as in Loop Island.
     Checkered,
+    /// A desert canyon of red and ochre rock over dry, dusty earth; its
+    /// tunnels are mine galleries propped with timber and lit by lanterns.
+    Mine,
+}
+
+/// The light of a track: a summer day, or a low sun setting in a warm,
+/// hazy sky.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SkyStyle {
+    Day,
+    Dusk,
+}
+
+/// The colour of the water: the blue sea, or the red water of a flooded pit
+/// rich in iron, as at Rio Tinto.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Water {
+    Sea,
+    Iron,
+}
+
+/// An open-pit mine round the water (see [`Scenery::pit`]): benches cut in
+/// steps from its rim down to the water, following the shore, and its spoil
+/// heaped round the rim.
+pub struct Pit {
+    /// How many benches, how high each face steps up (m) and how wide each
+    /// bench is (m).
+    pub benches: u32,
+    pub step: f32,
+    pub tread: f32,
+    /// How far past the rim the spoil heaped round it slopes down to the
+    /// ground (m).
+    pub spoil: f32,
 }
 
 /// How the bridges are built.
@@ -271,6 +318,91 @@ pub struct Scenery {
     pub rings: &'static [Rings],
     /// Waterfalls pouring down the rock walls of the cuttings.
     pub waterfalls: &'static [Waterfall],
+    /// The light: day or dusk.
+    pub sky: SkyStyle,
+    /// The colour of the sea, the lakes and the rivers.
+    pub water: Water,
+    /// An open pit round the water, if there is one.
+    pub pit: Option<Pit>,
+    /// The works of a mine around the road, if there is one.
+    pub mine: Option<Mine>,
+}
+
+/// The works of a mine: rails with ore carts rolling on them, timber
+/// trestles carrying a rail over the road, headframes over the shafts,
+/// lanterns on posts, piles of crates, barrels and ore, and the halls of
+/// its excavation (its tunnels, see [`Scenery::tunnels`]).
+pub struct Mine {
+    pub rails: &'static [Rails],
+    pub trestles: &'static [Trestle],
+    pub headframes: &'static [Headframe],
+    pub lanterns: &'static [Row],
+    pub piles: &'static [Pile],
+    pub halls: &'static [Hall],
+}
+
+/// A stretch of a mine's excavation, in metres along the lap (a branch off
+/// the lap counts as the stretch it stands in for): the rock it is cut
+/// through and how high its roof rises above the road in the middle (m).
+/// Where there is none, the excavation is a gallery propped with timber.
+pub struct Hall {
+    pub span: Span,
+    pub stone: Stone,
+    pub crown: f32,
+}
+
+/// What the rock of a stretch of a mine's excavation is like, and the
+/// ground beside its roads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stone {
+    /// A gallery propped with timber sets, with planks beside the road.
+    Timbered,
+    /// Red and cream sandstone in layers, over red gravel.
+    Sandstone,
+    /// Dark slate with veins of gold, over black gravel.
+    Slate,
+    /// Ochre clay, its walls lined with planks, over beaten earth.
+    Clay,
+}
+
+/// A rail line beside the road over a span, `lateral` metres from its
+/// centre line, with `carts` ore carts rolling up and down it.
+pub struct Rails {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+    pub carts: u32,
+}
+
+/// A timber trestle carrying a rail across the road at `along`, from one
+/// rock wall to the other, with an ore cart going over and back.
+pub struct Trestle {
+    pub along: f32,
+}
+
+/// A headframe over a mine shaft: a timber tower with the winding wheels
+/// turning on top, beside the road.
+pub struct Headframe {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// What a pile beside the road is made of.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PileKind {
+    /// Crates, barrels and a box of dynamite.
+    Supplies,
+    /// A heap of ore with gold glinting in it.
+    Ore,
+}
+
+/// A pile of something beside the road.
+pub struct Pile {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub kind: PileKind,
 }
 
 /// A carved totem pole beside the road, facing it.

@@ -15,7 +15,11 @@
 //! nudge from behind is part of racing; a T-bone at speed is not.
 //!
 //! When a rider goes down, bike and rider separate: the bike drops onto its
-//! side and slides with the velocity it had after the hit, and the rider keeps
+//! side and slides with the velocity it had after the hit, rolling over its
+//! outline (see [`OUTLINE`]) as hard as the hit and the speed throw it, bouncing
+//! when it lands on its side hard, and flipping end over end when it hits
+//! something head on, as in real highsides; its wheels spin on freely,
+//! slowing down. The rider keeps
 //! going with the momentum they had before it (nothing holds them to the
 //! bike), is thrown, lands, tumbles and slides on their leathers. Both stop by
 //! friction. Accident reconstruction gives the drag factors: about 0.3–0.55
@@ -24,7 +28,7 @@
 //! asphalt. Once everything is still the bike is put back on the track at
 //! once, on the spot where it ended up ([`rejoin_pose`]).
 
-use std::f32::consts::{FRAC_PI_2, PI};
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use bevy::prelude::*;
 
@@ -69,8 +73,71 @@ const RIDER_SLIDE: (f32, f32) = (0.6, 0.75);
 const SLIDE_SPIN_DAMPING: f32 = 1.5;
 /// A fallen bike lies almost flat: handlebar and footpeg prop it (rad).
 pub const DOWN_LEAN: f32 = 1.3;
-/// How fast the bike drops onto its side (1/s).
+/// How fast the bike comes back level end to end once it is down (1/s).
 const FALL_RATE: f32 = 8.0;
+/// The bike as it rolls and flips over: the points of it that can touch the
+/// ground (x to the right, y up, z back, m, on the ground between the
+/// wheels): the tyres, their shoulders, front and back, the footpegs, the
+/// fairing, the bar ends, the mirrors, the top of the screen, the nose and
+/// the tail. The right side is mirrored. Down, it lies on a bar end and a
+/// footpeg, [`DOWN_LEAN`] from upright.
+const OUTLINE: [Vec3; 12] = [
+    Vec3::new(0.0, 0.0, -0.7),
+    Vec3::new(0.0, 0.0, 0.68),
+    Vec3::new(0.0, 0.31, -1.0),
+    Vec3::new(0.0, 0.31, 0.99),
+    Vec3::new(0.09, 0.06, -0.7),
+    Vec3::new(0.09, 0.06, 0.68),
+    Vec3::new(0.22, 0.36, 0.25),
+    Vec3::new(0.26, 0.6, -0.35),
+    Vec3::new(0.35, 0.84, -0.4),
+    Vec3::new(0.16, 1.08, -0.55),
+    Vec3::new(0.0, 1.16, -0.45),
+    Vec3::new(0.12, 0.9, 0.85),
+];
+/// Height of the bike's centre of mass on its wheels (m).
+const BIKE_CENTER: f32 = 0.5;
+/// Rolling over on the ground: squared radius of gyration about the edge it
+/// rolls on (m²), friction while it rolls faster than this (rad/s²; slower,
+/// it rocks and settles on its side) and damping (1/s).
+const ROLL_GYRATION: f32 = 0.3;
+const ROLL_FRICTION: f32 = 3.0;
+const ROLL_SLIDING: f32 = 1.0;
+const ROLL_DAMPING: f32 = 1.5;
+/// How fast a falling bike starts to roll over (rad/s): at least this, plus
+/// this much per m/s of jolt and per m/s faster than this, and the most.
+const FALL_ROLL: f32 = 2.0;
+const ROLL_PER_JOLT: f32 = 0.35;
+const ROLL_PER_SPEED: f32 = 0.09;
+const ROLL_FROM_SPEED: f32 = 20.0;
+const MAX_ROLL: f32 = 11.0;
+/// How fast a hard hit throws the bike up (m/s): this much per m/s of jolt
+/// beyond the first, per m/s faster than the second, and the most.
+const LAUNCH_PER_JOLT: f32 = 0.25;
+const LAUNCH_FROM_JOLT: f32 = 4.0;
+const LAUNCH_PER_SPEED: f32 = 0.04;
+const LAUNCH_FROM_SPEED: f32 = 25.0;
+const MAX_LAUNCH: f32 = 3.0;
+/// Rolling onto its side faster than this (rad/s) it bounces up, at this
+/// many m/s per rad/s, keeping this much of its roll.
+const HOP_FROM: f32 = 5.0;
+const HOP_PER_ROLL: f32 = 0.3;
+const HOP_KEEPS: f32 = 0.75;
+/// Landing faster than this (m/s), it bounces back this much of it, up to
+/// this speed (m/s).
+const BOUNCE_FROM: f32 = 3.0;
+const BOUNCE: f32 = 0.3;
+const MAX_BOUNCE: f32 = 1.5;
+/// Stopped head on by more than this (m/s), the bike flips over its front
+/// wheel: thrown up at this much per m/s, within these limits, it turns
+/// once end over end while it is up.
+const FLIP_FROM: f32 = 8.0;
+const FLIP_LAUNCH: f32 = 0.45;
+const FLIP_LAUNCH_RANGE: (f32, f32) = (4.5, 6.0);
+/// The wheels of a fallen bike spin on, slowed by the air and the bearings
+/// (1/s) and by friction (m/s² at the tread).
+const WHEEL_DRAG: f32 = 0.35;
+const WHEEL_FRICTION: f32 = 0.8;
 /// The rider's hips when seated: height above the ground and how far behind
 /// the centre of the bike (m).
 const SEAT_HEIGHT: f32 = 0.92;
@@ -465,8 +532,14 @@ pub struct CrashState {
     pub elapsed: f32,
     /// Seconds that bike and rider have been still.
     pub still: f32,
-    /// Side the bike lies on: 1 on its left, -1 on its right (like the lean).
+    /// Side the bike falls to: 1 to its left, -1 to its right (like the lean).
     pub fall_side: f32,
+    /// How fast the bike rolls over about its length (rad/s, like the
+    /// lean) and flips end over end (rad/s, like the pitch).
+    pub roll_rate: f32,
+    pub flip_rate: f32,
+    /// How fast its wheels still turn (m/s at the tread): front and rear.
+    pub wheels: [f32; 2],
     pub rider: ThrownRider,
     /// The rider in the previous step, to interpolate the drawing.
     pub previous: ThrownRider,
@@ -700,6 +773,7 @@ pub fn carry(state: &mut BikeState, knock: &mut Knock, track: &Track, dt: f32) {
 pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
     let ahead = forward(state.heading);
     let left = -ahead.perp();
+    let rolling = state.speed;
     knock.velocity += ahead * state.speed;
     state.speed = 0.0;
     state.steer = 0.0;
@@ -718,6 +792,29 @@ pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
         1.0
     };
     let jolt = hit.dv.length();
+    let speed = hit.before.length();
+    // The harder the hit and the faster it was going, the harder the bike
+    // rolls over and the higher it is thrown; stopped head on, it flips.
+    let roll_rate = fall_side
+        * (FALL_ROLL + ROLL_PER_JOLT * jolt + ROLL_PER_SPEED * (speed - ROLL_FROM_SPEED).max(0.0))
+            .min(MAX_ROLL);
+    let launch = (LAUNCH_PER_JOLT * (jolt - LAUNCH_FROM_JOLT).max(0.0)
+        + LAUNCH_PER_SPEED * (speed - LAUNCH_FROM_SPEED).max(0.0))
+    .min(MAX_LAUNCH);
+    let head_on = -hit.dv.dot(ahead);
+    let (launch, flip_rate) = if head_on > FLIP_FROM {
+        let launch = (FLIP_LAUNCH * head_on)
+            .clamp(FLIP_LAUNCH_RANGE.0, FLIP_LAUNCH_RANGE.1)
+            .max(launch);
+        // One turn over the front wheel (nose down) while it is up.
+        (launch, -TAU * GRAVITY / (2.0 * launch))
+    } else {
+        (launch, 0.0)
+    };
+    if launch > 0.0 {
+        state.grounded = false;
+        state.climb = launch;
+    }
     let mut rider = ThrownRider {
         position: state.position + left * state.lean.sin() * SEAT_HEIGHT - ahead * SEAT_BACK,
         height: state.lean.cos() * SEAT_HEIGHT,
@@ -736,6 +833,9 @@ pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
         elapsed: 0.0,
         still: 0.0,
         fall_side,
+        roll_rate,
+        flip_rate,
+        wheels: [rolling; 2],
         rider,
         previous: rider,
     }
@@ -753,6 +853,7 @@ pub fn fall_off(
     let ground = track.road_height_at(state.position, state.elevation);
     let across = Vec2::new(velocity.x, velocity.z);
     let upside_down = state.pitch.cos() < 0.0;
+    let rolling = state.speed;
     knock.velocity = across;
     knock.yaw_rate = 0.0;
     state.speed = 0.0;
@@ -782,6 +883,9 @@ pub fn fall_off(
         elapsed: 0.0,
         still: 0.0,
         fall_side: 1.0,
+        roll_rate: 0.0,
+        flip_rate: 0.0,
+        wheels: [rolling; 2],
         rider,
         previous: rider,
     }
@@ -800,6 +904,7 @@ pub fn wall_knocks_down(hit: &WallHit) -> bool {
 pub fn fall_against_wall(state: &mut BikeState, knock: &mut Knock, hit: &WallHit) -> CrashState {
     let dv = -hit.normal * hit.into * (1.0 + WALL_RESTITUTION);
     let dw = (cross(hit.at, dv) / SLIDING_GYRATION).clamp(-MAX_WALL_SPIN, MAX_WALL_SPIN);
+    let rolling = state.speed;
     state.speed = 0.0;
     knock.velocity = hit.before + dv;
     knock.yaw_rate = dw;
@@ -809,7 +914,9 @@ pub fn fall_against_wall(state: &mut BikeState, knock: &mut Knock, hit: &WallHit
         dw,
         falls: true,
     };
-    fall(state, knock, &hit)
+    let mut crash = fall(state, knock, &hit);
+    crash.wheels = [rolling; 2];
+    crash
 }
 
 /// One step of a fallen bike sliding on its side and of its rider.
@@ -821,29 +928,22 @@ pub fn slide(
     dt: f32,
 ) {
     crash.elapsed += dt;
-    let drag = drag_factor(track, state.position, state.elevation, BIKE_SLIDE);
-    knock.velocity = shrink(knock.velocity, drag * GRAVITY * dt);
-    knock.yaw_rate = approach(knock.yaw_rate, 0.0, SLIDE_SPIN_DAMPING, dt);
+    // On the ground it slides and the friction stops it; in the air (thrown
+    // up, bouncing, or off a loop) it flies on.
+    if state.grounded {
+        let drag = drag_factor(track, state.position, state.elevation, BIKE_SLIDE);
+        knock.velocity = shrink(knock.velocity, drag * GRAVITY * dt);
+        knock.yaw_rate = approach(knock.yaw_rate, 0.0, SLIDE_SPIN_DAMPING, dt);
+    }
     state.position += knock.velocity * dt;
     state.heading += knock.yaw_rate * dt;
     let contact = wall_contact(track, state.position, state.elevation, &footprint(state));
     contain(&mut state.position, &mut knock.velocity, contact);
-    state.lean = approach(state.lean, crash.fall_side * DOWN_LEAN, FALL_RATE, dt);
-    state.pitch = approach(state.pitch, 0.0, FALL_RATE, dt);
     let ground = track.road_height_at(state.position, state.elevation);
-    if state.grounded {
-        state.elevation = ground;
-        state.climb = 0.0;
-    } else {
-        // Fallen from a height (off a loop): it drops onto the road.
-        state.climb -= GRAVITY * dt;
-        state.elevation += state.climb * dt;
-        if state.elevation <= ground {
-            state.elevation = ground;
-            state.climb = 0.0;
-            state.grounded = true;
-        }
-    }
+    tumble(state, crash, ground, dt);
+    crash.wheels = crash
+        .wheels
+        .map(|wheel| move_toward(wheel * (-WHEEL_DRAG * dt).exp(), 0.0, WHEEL_FRICTION * dt));
 
     crash.previous = crash.rider;
     crash.rider.step(track, crash.elapsed, dt);
@@ -852,6 +952,100 @@ pub fn slide(
         && rider.velocity.length() < STILL_SPEED
         && !rider.is_airborne();
     crash.still = if still { crash.still + dt } else { 0.0 };
+}
+
+/// How a fallen bike is turned, without its heading: flipped end over end
+/// by `pitch` and rolled over by `lean`, as it is drawn.
+fn pose(pitch: f32, lean: f32) -> Quat {
+    Quat::from_rotation_x(pitch) * Quat::from_rotation_z(lean)
+}
+
+/// How far above the ground the bike's origin is when it rests on its
+/// outline turned as `pose` says (m).
+pub fn lift(pose: Quat) -> f32 {
+    let mirror = Vec3::new(-1.0, 1.0, 1.0);
+    -OUTLINE
+        .iter()
+        .flat_map(|&point| [point, point * mirror])
+        .map(|point| (pose * point).y)
+        .fold(f32::MAX, f32::min)
+}
+
+/// Height of the bike's centre of mass above the ground when it rests on
+/// its outline turned by `pitch` and `lean` (m): rolling over, gravity
+/// pulls it down this slope.
+fn center_height(pitch: f32, lean: f32) -> f32 {
+    let pose = pose(pitch, lean);
+    lift(pose) + (pose * Vec3::Y).y * BIKE_CENTER
+}
+
+/// The angles at which a bike lies on a side, [`DOWN_LEAN`] either way, that
+/// a bike rolling from `from` to `to` passes.
+fn lands_on_a_side(from: f32, to: f32) -> bool {
+    [DOWN_LEAN, -DOWN_LEAN]
+        .into_iter()
+        .any(|side| ((from - side) / TAU).floor() != ((to - side) / TAU).floor())
+}
+
+/// The nearest whole turn to `angle`, where a bike flipped over end to end
+/// comes to rest.
+fn whole_turn(angle: f32) -> f32 {
+    (angle / TAU).round() * TAU
+}
+
+/// One step of a fallen bike rolling and flipping over. On the ground it
+/// rolls over its outline: gravity pulls it towards a side and the ground
+/// slows it, so it settles on a side (or bounces up, rolling onto one
+/// hard), and it comes back level end to end. In the air it turns freely
+/// about its centre of mass, which falls, and lands on its outline.
+fn tumble(state: &mut BikeState, crash: &mut CrashState, ground: f32, dt: f32) {
+    if state.grounded {
+        const STEP: f32 = 1e-3;
+        let slope = (center_height(state.pitch, state.lean + STEP)
+            - center_height(state.pitch, state.lean - STEP))
+            / (2.0 * STEP);
+        crash.roll_rate -= GRAVITY * slope / ROLL_GYRATION * dt;
+        if crash.roll_rate.abs() > ROLL_SLIDING {
+            crash.roll_rate = move_toward(crash.roll_rate, 0.0, ROLL_FRICTION * dt);
+        }
+        crash.roll_rate *= (-ROLL_DAMPING * dt).exp();
+        let lean = state.lean + crash.roll_rate * dt;
+        let landed = lands_on_a_side(state.lean, lean);
+        state.lean = lean;
+        crash.flip_rate = 0.0;
+        state.pitch = approach(state.pitch, whole_turn(state.pitch), FALL_RATE, dt);
+        state.elevation = ground + lift(pose(state.pitch, state.lean));
+        state.climb = 0.0;
+        if landed && crash.roll_rate.abs() > HOP_FROM {
+            state.climb = HOP_PER_ROLL * crash.roll_rate.abs();
+            crash.roll_rate *= HOP_KEEPS;
+            state.grounded = false;
+        }
+        return;
+    }
+    let before = pose(state.pitch, state.lean);
+    let center = state.elevation + (before * Vec3::Y).y * BIKE_CENTER;
+    state.climb -= GRAVITY * dt;
+    let center = center + state.climb * dt;
+    state.lean += crash.roll_rate * dt;
+    state.pitch = if crash.flip_rate == 0.0 {
+        approach(state.pitch, whole_turn(state.pitch), FALL_RATE, dt)
+    } else {
+        state.pitch + crash.flip_rate * dt
+    };
+    let after = pose(state.pitch, state.lean);
+    state.elevation = center - (after * Vec3::Y).y * BIKE_CENTER;
+    let floor = ground + lift(after);
+    if state.elevation <= floor {
+        state.elevation = floor;
+        if state.climb < -BOUNCE_FROM {
+            state.climb = (-state.climb * BOUNCE).min(MAX_BOUNCE);
+        } else {
+            state.climb = 0.0;
+            state.grounded = true;
+            crash.flip_rate = 0.0;
+        }
+    }
 }
 
 /// Where a bike that ended up at `at`, at `height`, rejoins: on the
@@ -1085,8 +1279,10 @@ mod tests {
         let dt = 1.0 / 120.0;
         let mut landed = None;
         for step in 0..(MAX_DOWN_TIME / dt) as usize {
+            let falling = state.climb < 0.0;
             slide(&mut state, &mut knock, &mut crash, &track, dt);
-            if state.grounded && landed.is_none() {
+            // It touches the road when it stops falling (it may bounce).
+            if falling && state.climb >= 0.0 && landed.is_none() {
                 landed = Some(step as f32 * dt);
             }
         }
@@ -1094,8 +1290,10 @@ mod tests {
         // two seconds.
         let landed = landed.expect("the bike reaches the road");
         assert!((2.0..2.8).contains(&landed), "{landed} s");
+        assert!(state.grounded);
         let ground = track.road_height_at(state.position, state.elevation);
-        assert!((state.elevation - ground).abs() < 1e-3);
+        let above = state.elevation - ground;
+        assert!((0.0..0.2).contains(&above), "lying on the road: {above}");
         assert!(!crash.rider.is_airborne(), "the rider lands too");
         assert!(state.pitch.abs() < 0.2, "the bike ends up on its side");
     }
@@ -1135,18 +1333,140 @@ mod tests {
         assert!(rider > bike + 2.0, "rider {rider} m, bike {bike} m");
         assert!(!crash.rider.is_airborne(), "lands within a second");
         assert!((crash.rider.lie - LIE_ANGLE).abs() < 0.05, "on their back");
-        assert!(state.lean.abs() > DOWN_LEAN - 0.05, "bike on its side");
+        for _ in 0..(2.0 / DT) as usize {
+            slide(&mut state, &mut knock, &mut crash, &track, DT);
+        }
+        let side = wrap_angle(state.lean).abs();
+        assert!((side - DOWN_LEAN).abs() < 0.1, "bike on its side: {side}");
     }
 
     #[test]
     fn the_bike_slides_to_a_stop_with_asphalt_friction() {
         let (track, mut state, mut knock, mut crash) = crash_on_the_straight(15.0);
-        let v0 = knock.velocity.length();
-        for _ in 0..(1.0 / DT) as usize {
+        // Once it is down on the road (a hit like this may throw it up).
+        while !state.grounded {
             slide(&mut state, &mut knock, &mut crash, &track, DT);
         }
-        let expected = v0 - BIKE_SLIDE.0 * GRAVITY;
+        let v0 = knock.velocity.length();
+        for _ in 0..(0.5 / DT) as usize {
+            slide(&mut state, &mut knock, &mut crash, &track, DT);
+            assert!(state.grounded, "a slow fall does not bounce");
+        }
+        let expected = v0 - BIKE_SLIDE.0 * GRAVITY * 0.5;
         assert!((knock.velocity.length() - expected).abs() < 0.1);
+    }
+
+    /// Slides a fallen bike for `seconds`, checking that it never goes into
+    /// the road, and returns how far it rolled (rad), the most it turned end
+    /// over end (rad) and how many steps it was in the air.
+    fn tumbling(
+        track: &Track,
+        state: &mut BikeState,
+        knock: &mut Knock,
+        crash: &mut CrashState,
+        seconds: f32,
+    ) -> (f32, f32, usize) {
+        let start = state.lean;
+        let (mut flipped, mut flying) = (0.0f32, 0);
+        for _ in 0..(seconds / DT) as usize {
+            slide(state, knock, crash, track, DT);
+            let ground = track.road_height_at(state.position, state.elevation);
+            let floor = ground + lift(pose(state.pitch, state.lean));
+            assert!(state.elevation >= floor - 1e-4, "into the road");
+            flipped = flipped.max(state.pitch.abs());
+            flying += usize::from(!state.grounded);
+        }
+        ((state.lean - start).abs(), flipped, flying)
+    }
+
+    /// A bike at `speed` hit sideways by `jolt`, from the left.
+    fn knocked_over(speed: f32, jolt: f32) -> (Track, BikeState, Knock, CrashState) {
+        let track = Track::default();
+        let mut state = BikeState {
+            speed,
+            lean: 0.0,
+            ..BikeState::parked_on(&track, track.grid_slot(0))
+        };
+        let mut knock = Knock::default();
+        let ahead = forward(state.heading);
+        let hit = Hit {
+            before: ahead * speed,
+            dv: ahead.perp() * jolt,
+            dw: 0.0,
+            falls: true,
+        };
+        let crash = fall(&mut state, &mut knock, &hit);
+        (track, state, knock, crash)
+    }
+
+    #[test]
+    fn a_slow_fall_lays_the_bike_on_its_side() {
+        let (track, mut state, mut knock, mut crash) = knocked_over(12.0, 3.5);
+        let (rolled, flipped, flying) =
+            tumbling(&track, &mut state, &mut knock, &mut crash, MAX_DOWN_TIME);
+        assert!(rolled < PI, "rolled {rolled} rad");
+        assert_eq!((flipped, flying), (0.0, 0));
+        assert!((wrap_angle(state.lean).abs() - DOWN_LEAN).abs() < 0.1);
+    }
+
+    #[test]
+    fn a_crash_at_speed_rolls_the_bike_over_and_bounces_it() {
+        let (track, mut state, mut knock, mut crash) = knocked_over(60.0, 8.0);
+        let (rolled, _, flying) =
+            tumbling(&track, &mut state, &mut knock, &mut crash, MAX_DOWN_TIME);
+        assert!(rolled > TAU, "rolled {rolled} rad");
+        assert!(rolled < 4.0 * TAU, "rolled {rolled} rad");
+        assert!(flying > 20, "in the air {flying} steps");
+        // And it ends up on a side.
+        assert!(state.grounded);
+        assert!((wrap_angle(state.lean).abs() - DOWN_LEAN).abs() < 0.1);
+    }
+
+    #[test]
+    fn stopped_head_on_the_bike_flips_end_over_end() {
+        let (track, mut state, mut knock, mut crash) = crash_on_the_straight(40.0);
+        assert!(crash.flip_rate < 0.0, "nose down");
+        let (_, flipped, flying) =
+            tumbling(&track, &mut state, &mut knock, &mut crash, MAX_DOWN_TIME);
+        assert!(flipped > 1.5 * PI, "flipped {flipped} rad");
+        assert!(flying > 60, "in the air {flying} steps");
+        // Level again end to end, on a whole turn.
+        assert!((state.pitch - whole_turn(state.pitch)).abs() < 0.05);
+    }
+
+    #[test]
+    fn the_wheels_spin_on_and_slow_down() {
+        let (track, mut state, mut knock, mut crash) = crash_on_the_straight(40.0);
+        // As fast as the bike was going after the hit.
+        assert!(
+            crash
+                .wheels
+                .iter()
+                .all(|&wheel| (wheel - 80.0 / 3.0).abs() < 1e-3)
+        );
+        let mut last = crash.wheels[0];
+        for _ in 0..(2.0 / DT) as usize {
+            slide(&mut state, &mut knock, &mut crash, &track, DT);
+            assert!(crash.wheels[0] < last && crash.wheels[1] == crash.wheels[0]);
+            last = crash.wheels[0];
+        }
+        assert!(last > 10.0, "still spinning after two seconds: {last}");
+    }
+
+    #[test]
+    fn a_fallen_bike_rests_on_a_side() {
+        // The lowest the centre of mass gets, rolling over, is lying on a
+        // side; upright and upside down it would roll off.
+        let lowest = (0..=6283)
+            .map(|k| k as f32 / 1000.0 - PI)
+            .min_by(|&a, &b| center_height(0.0, a).total_cmp(&center_height(0.0, b)))
+            .unwrap();
+        assert!((lowest.abs() - DOWN_LEAN).abs() < 0.05, "{lowest}");
+        let side = center_height(0.0, DOWN_LEAN);
+        assert!(center_height(0.0, 0.0) > side + 0.15);
+        assert!(center_height(0.0, PI) > side + 0.3);
+        // On its wheels, nothing lifts it.
+        assert!(lift(pose(0.0, 0.0)).abs() < 1e-6);
     }
 
     #[test]
@@ -1200,12 +1520,12 @@ mod tests {
         // Along the straight after the finish, heading `angle` into the left wall.
         let track = Track::default();
         let (_, along) = track.pose_at(50);
+        let position = track.offset_point(50, WALL_DISTANCE - 0.9);
         let mut state = BikeState {
-            position: track.offset_point(50, WALL_DISTANCE - 0.9),
             heading: along + angle,
             speed,
             lean: 0.0,
-            ..BikeState::parked_at((Vec2::ZERO, 0.0))
+            ..BikeState::parked_on(&track, (position, along))
         };
         let mut hit = None;
         for _ in 0..60 {

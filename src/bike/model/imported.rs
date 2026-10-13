@@ -17,7 +17,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
-use super::{Geometry, Mount, Parts};
+use super::{Geometry, Mount, Parts, tyre};
 use crate::world::generate_mipmaps;
 
 /// Una moto de Meshy ya preparada: sus cuatro piezas, sus texturas, su
@@ -411,14 +411,17 @@ pub(super) fn exhaust_material(images: &mut Assets<Image>) -> StandardMaterial {
 }
 
 /// Los materiales de una moto importada: el suyo y el de las bocas de los
-/// escapes, que es el mismo para todas.
+/// escapes, que es el mismo para todas, and that of its tyres' pattern.
 pub(super) struct Materials {
     pub body: Handle<StandardMaterial>,
     pub exhaust: Handle<StandardMaterial>,
+    pub tyres: Handle<StandardMaterial>,
 }
 
-/// Añade las piezas de una moto, cada una en su punto de montaje.
+/// Añade las piezas de una moto, cada una en su punto de montaje. The
+/// wheels lose their Meshy tyres for round ones (see [`tyre`]).
 pub(super) fn build(parts: &mut Parts, model: &Model, materials: &Materials) {
+    let geometry = model.geometry;
     for PackedMesh { name, mesh } in read(model.bike).meshes {
         let mount = match name.as_str() {
             "chassis" | "exhaust" => Mount::Chassis,
@@ -426,6 +429,21 @@ pub(super) fn build(parts: &mut Parts, model: &Model, materials: &Materials) {
             "front_wheel" => Mount::FrontWheel,
             "rear_wheel" => Mount::RearWheel,
             other => panic!("pieza desconocida en una moto importada: {other}"),
+        };
+        let wheel = match mount {
+            Mount::FrontWheel => Some((geometry.front_axle, geometry.front_radius)),
+            Mount::RearWheel => Some((geometry.rear_axle, geometry.rear_radius)),
+            _ => None,
+        };
+        let mesh = match wheel {
+            Some((axle, radius)) => {
+                let (rim, half_width) = tyre::strip(mesh, axle, radius);
+                let round = tyre::mesh(radius, half_width).translated_by(axle);
+                let round = parts.meshes.add(round);
+                parts.add_textured(mount, round, materials.tyres.clone());
+                rim
+            }
+            None => mesh,
         };
         // Las bocas no llevan relieve: no les hacen falta tangentes.
         let (mesh, material) = if name == "exhaust" {

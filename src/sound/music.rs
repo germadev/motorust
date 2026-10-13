@@ -1,8 +1,11 @@
 //! Music: each track has its own song ([`crate::circuits::Song`]), which
-//! loops for the whole race. It plays well below the engines, so the bike
-//! (revs, gear changes, tyres, impacts) is always heard over it: every song
-//! is turned up or down to the same loudness, [`LOUDNESS`], about 13 dB under
-//! the player's engine flat out, and still under it off the throttle.
+//! loops for the whole race. Every song is turned up or down so that they
+//! all sound as loud over the engines: to the same loudness, [`LOUDNESS`],
+//! above 500 Hz, where the engines' drone does not cover it. Below that,
+//! songs with heavy bass carry more, and a song measured over all of it
+//! would be heard less. It plays well below the engines, so the bike (revs,
+//! gear changes, tyres, impacts) is always heard over it: its loudest second
+//! at least 10 dB under the player's engine flat out.
 //!
 //! It fades in when the race starts and out when leaving it, drops in the
 //! pause menu, and M mutes it with everything else.
@@ -18,12 +21,10 @@ use crate::menu::GameState;
 use crate::pause::Pause;
 use crate::settings::{DEFAULT_VOLUME, Settings};
 
-/// Loudness every song plays at (LUFS), with the sound on. The player's
-/// engine with the wind, measured the same way, is about -11 LUFS flat out,
-/// -15 at half throttle, -18 off the throttle at speed and -30 idling on the
-/// grid. The songs come mastered at -11 to -13 LUFS, as loud as the engine
-/// flat out: they are turned down by 11 to 13 dB.
-const LOUDNESS: f32 = -24.0;
+/// Loudness every song plays at above 500 Hz (LUFS), with the sound on (see
+/// [`Song::loudness`]). The songs come mastered at -13 to -17 LUFS there:
+/// they are turned down by 9 to 12 dB.
+const LOUDNESS: f32 = -25.4;
 /// Fader in the pause menu: about 6 dB lower.
 const PAUSED: f32 = 0.5;
 /// Time to fade in from silence to full volume, and out (s).

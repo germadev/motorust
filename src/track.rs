@@ -27,18 +27,28 @@ pub struct Layout {
 }
 
 /// An alternative route: a road that forks off the lap `from` metres after
-/// the finish line, runs through the control points of `approach` to the
-/// mouth of a vertical loop, goes round the loop, and from its way out runs
-/// through the control points of `exit` back onto the lap, `to` metres
-/// after the finish line. Both roads are narrower than the lap. Once they
-/// part from the lap, they climb or drop smoothly along all their length
-/// between it and the loop, to the height of the loop.
+/// the finish line and joins it again `to` metres after it.
+///
+/// With a vertical loop, it runs through the control points of `approach`
+/// to the mouth of the loop, goes round the loop, and from its way out runs
+/// through the control points of `exit` back onto the lap. Both roads are
+/// narrower than the lap. Once they part from the lap, they climb or drop
+/// smoothly along all their length between it and the loop, to the height
+/// of the loop.
+///
+/// Without one, it is a single road through the control points of
+/// `approach` (`exit` is left empty), narrower than the lap and between
+/// closer walls once it has parted from it: another way through, past rock
+/// between the two. It runs at the height of the lap beside it, higher or
+/// lower by what `rise` says: (metres along it, metres above the lap beside
+/// it) at some points, smoothly in between, and none at its ends.
 pub struct Branch {
     pub from: f32,
     pub to: f32,
     pub approach: &'static [Vec2],
-    pub vertical_loop: VerticalLoop,
+    pub vertical_loop: Option<VerticalLoop>,
     pub exit: &'static [Vec2],
+    pub rise: &'static [(f32, f32)],
 }
 
 /// A vertical loop the bikes ride round, upside down at the top.
@@ -57,6 +67,19 @@ pub struct VerticalLoop {
     /// way in (m): the running surface drifts sideways as it goes round, so
     /// that it does not run into itself.
     pub shift: f32,
+}
+
+/// A branch without a loop (see [`Branch`]), as the bikes ride it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fork {
+    /// The road it runs along (see [`Nearest::road`]).
+    pub road: usize,
+    /// The points of the lap's centre line where it leaves the lap and
+    /// where it joins it again.
+    pub fork: usize,
+    pub join: usize,
+    /// Which side of the lap it runs on: 1 to the left, -1 to the right.
+    pub side: f32,
 }
 
 /// Un tramo (m desde la meta) en el que el peralte se multiplica por
@@ -102,6 +125,16 @@ const SIDE_HALF_WIDTH: f32 = 5.0;
 /// its own height and banking, all of it this much further away (m).
 const JUNCTION_APART: f32 = 2.0 * WALL_DISTANCE;
 const JUNCTION_BLEND: f32 = 30.0;
+/// A branch without a loop goes over to its own height faster, over this
+/// much further away (m): it can climb or drop away from the lap as soon as
+/// there is rock between them.
+const FORK_BLEND: f32 = 10.0;
+/// Points to either side over which how far along the lap a branch without
+/// a loop runs beside is smoothed.
+const FORK_SMOOTHING: usize = 8;
+/// Distance from the centre line of a branch without a loop to its walls
+/// once it has parted from the lap (m): closer than the lap's.
+pub const FORK_WALL: f32 = 8.5;
 /// Half the width of the running surface of a loop (m): the asphalt of the
 /// road that leads to it and its curbs.
 pub const LOOP_HALF_WIDTH: f32 = SIDE_HALF_WIDTH + CURB_WIDTH;
@@ -157,6 +190,7 @@ pub struct Track {
     /// road back. Numbered from 1 in [`Nearest::road`]; the lap is 0.
     side_roads: Vec<Track>,
     loops: Vec<Loop>,
+    forks: Vec<Fork>,
 }
 
 /// El punto de la línea central más cercano a otro.
@@ -289,6 +323,7 @@ impl Track {
             apart: Vec::new(),
             side_roads: Vec::new(),
             loops: Vec::new(),
+            forks: Vec::new(),
         };
         track.step = track.segments().map(|(a, b)| a.distance(b)).sum::<f32>()
             / track.centerline.len() as f32;
@@ -316,9 +351,13 @@ impl Track {
         track
     }
 
-    /// Adds the two roads of a branch, and the loop between them.
+    /// Adds the two roads of a branch, and the loop between them, or the
+    /// one road of a branch without a loop.
     fn add_branch(&mut self, branch: &Branch) {
-        let spec = &branch.vertical_loop;
+        let Some(spec) = &branch.vertical_loop else {
+            self.add_fork(branch);
+            return;
+        };
         let ahead = forward(spec.heading);
         let looped = Loop {
             mouth: spec.mouth,
@@ -354,20 +393,58 @@ impl Track {
         let lap = self.lap_length();
         let span = (branch.to - branch.from).rem_euclid(lap);
         let counts_as = |from: f32| move |s: f32| (branch.from + span * (from + s) / total) % lap;
-        let approach = self.side_road(approach, &looped, true, counts_as(0.0));
-        let exit = self.side_road(exit, &looped, false, counts_as(into + looped.length()));
+        let approach = self.side_road(approach, Some((&looped, true)), &[], counts_as(0.0));
+        let exit = self.side_road(
+            exit,
+            Some((&looped, false)),
+            &[],
+            counts_as(into + looped.length()),
+        );
         self.side_roads.extend([approach, exit]);
         self.loops.push(looped);
     }
 
-    /// A road off the lap along `centerline`, which comes from the lap into
-    /// the loop if `into_loop`, or else out of the loop onto the lap.
-    /// `counts_as` says how far along the lap each metre of it counts as.
+    /// Adds the road of a branch without a loop: from the lap through the
+    /// control points back onto it, leaving it and joining it along it.
+    fn add_fork(&mut self, branch: &Branch) {
+        let lap_point = |along: f32| self.centerline[self.index_at(along)];
+        let mut points = vec![lap_point(branch.from)];
+        points.extend_from_slice(branch.approach);
+        points.push(lap_point(branch.to));
+        let centerline = open_curve(
+            &points,
+            lap_point(branch.from - 20.0),
+            lap_point(branch.to + 20.0),
+        );
+        let length = centerline
+            .windows(2)
+            .map(|w| w[0].distance(w[1]))
+            .sum::<f32>();
+        let lap = self.lap_length();
+        let span = (branch.to - branch.from).rem_euclid(lap);
+        let counts_as = |s: f32| (branch.from + span * s / length) % lap;
+        let middle = centerline[centerline.len() / 2];
+        let side = self.project_on_lap(middle).lateral.signum();
+        let road = self.side_road(centerline, None, branch.rise, counts_as);
+        self.forks.push(Fork {
+            road: self.side_roads.len() + 1,
+            fork: self.index_at(branch.from),
+            join: self.index_at(branch.to),
+            side,
+        });
+        self.side_roads.push(road);
+    }
+
+    /// A road off the lap along `centerline`. With a loop, it comes from the
+    /// lap into the loop if the flag says so, or else out of the loop onto
+    /// the lap; without one, it is a branch that leaves the lap and joins it
+    /// again. `counts_as` says how far along the lap each metre of it counts
+    /// as.
     fn side_road(
         &self,
         centerline: Vec<Vec2>,
-        looped: &Loop,
-        into_loop: bool,
+        toward: Option<(&Loop, bool)>,
+        rise: &[(f32, f32)],
         counts_as: impl Fn(f32) -> f32,
     ) -> Track {
         let n = centerline.len();
@@ -389,12 +466,17 @@ impl Track {
             apart: Vec::new(),
             side_roads: Vec::new(),
             loops: Vec::new(),
+            forks: Vec::new(),
         };
         let length = road.length();
-        // Metres from the end at the loop.
+        // Metres from the end at the loop, if any.
         let from_loop = |i: usize| {
             let s = i as f32 * step;
-            if into_loop { length - s } else { s }
+            match toward {
+                Some((_, true)) => length - s,
+                Some((_, false)) => s,
+                None => f32::INFINITY,
+            }
         };
         // Near the lap the road lies on its surface; once their walls part,
         // it has a surface of its own.
@@ -406,31 +488,50 @@ impl Track {
         let lap_height: Vec<f32> = on_lap.iter().map(|on| self.height_on_road(on)).collect();
         let apart: Vec<f32> = on_lap
             .iter()
-            .map(|on| smoothstep(JUNCTION_APART, JUNCTION_APART + JUNCTION_BLEND, on.distance))
+            .map(|on| {
+                let blend = if toward.is_some() {
+                    JUNCTION_BLEND
+                } else {
+                    FORK_BLEND
+                };
+                smoothstep(JUNCTION_APART, JUNCTION_APART + blend, on.distance)
+            })
             .collect();
-        // Its own height runs smoothly along it, from the lap's height and
-        // grade where it parts from the lap to the height of the loop,
-        // reached level at the straight into or out of it: spread over all
-        // the road in between, with no ramp or dip for a bike to take off
-        // from or slam into. Counted from the loop out to the lap.
-        let outwards = |k: usize| if into_loop { n - 1 - k } else { k };
-        let parts = (0..n)
-            .rposition(|k| apart[outwards(k)] > 0.0)
-            .unwrap_or(n - 1);
-        let lead = ((LOOP_LEAD / step).round() as usize).min(parts);
-        let span = (parts - lead).max(1) as f32 * step;
-        let grade = (lap_height[outwards((parts + 1).min(n - 1))]
-            - lap_height[outwards(parts.saturating_sub(1))])
-            / (2.0 * step);
-        let mut elevation = vec![looped.height; n];
-        for k in 0..n {
-            let u = k.saturating_sub(lead) as f32 * step / span;
-            elevation[outwards(k)] = if k >= parts {
-                lap_height[outwards(k)]
-            } else {
-                ease(looped.height, lap_height[outwards(parts)], grade * span, u)
-            };
-        }
+        let elevation = match toward {
+            Some((looped, into_loop)) => {
+                Self::toward_loop(&apart, &lap_height, looped.height, into_loop, step)
+            }
+            // Without a loop, at the height of the lap's surface beside it,
+            // higher or lower by its rise. Far from the lap its nearest
+            // point moves along the lap's polyline in fits and starts: how
+            // far along the lap it is beside is smoothed first, less of it
+            // towards the ends, where it lies on the lap.
+            None => {
+                let laps = self.sample_count();
+                let first = on_lap[0].index;
+                let beside: Vec<f32> = on_lap
+                    .iter()
+                    .map(|on| ((on.index + laps - first) % laps) as f32 + on.t)
+                    .collect();
+                (0..n)
+                    .map(|i| {
+                        // Evenly either side, so that a steady run is left
+                        // as it is.
+                        let reach = FORK_SMOOTHING.min(i).min(n - 1 - i);
+                        let near = i - reach..i + reach + 1;
+                        let count = near.len() as f32;
+                        let along = first as f32 + beside[near].iter().sum::<f32>() / count;
+                        let k = along.floor() as usize % laps;
+                        let (next, t) = ((k + 1) % laps, along.fract());
+                        let elevation = self.elevation[k].lerp(self.elevation[next], t);
+                        let bank = self.bank[k].lerp(self.bank[next], t);
+                        let lateral = on_lap[i].lateral.clamp(-WALL_DISTANCE, WALL_DISTANCE);
+                        elevation - lateral * bank.tan()
+                            + open_profile(rise, length, i as f32 * step)
+                    })
+                    .collect()
+            }
+        };
         // It banks for its own curves, but not in the straight into or out
         // of the loop.
         let bank = (0..n)
@@ -449,12 +550,54 @@ impl Track {
             .collect();
         road.elevation = elevation;
         road.bank = bank;
-        road.apart = apart;
+        // The walls close in towards a loop; on a branch without one, once
+        // it has parted from the lap.
         road.walls = (0..n)
-            .map(|i| LOOP_WALL.lerp(WALL_DISTANCE, smoothstep(10.0, FUNNEL, from_loop(i))))
+            .map(|i| match toward {
+                Some(_) => LOOP_WALL.lerp(WALL_DISTANCE, smoothstep(10.0, FUNNEL, from_loop(i))),
+                None => WALL_DISTANCE.lerp(FORK_WALL, apart[i]),
+            })
             .collect();
+        road.apart = apart;
         road.lap_along = (0..n).map(|i| counts_as(i as f32 * step)).collect();
         road
+    }
+
+    /// The heights of a road from the lap into a loop at `height` (or out
+    /// of it, if not `into_loop`), whose points are `step` apart and lie on
+    /// the lap's surface at `lap_height` as far as `apart` says. Its own
+    /// height runs smoothly along it, from the lap's height and grade where
+    /// it parts from the lap to the height of the loop, reached level at the
+    /// straight into or out of it: spread over all the road in between, with
+    /// no ramp or dip for a bike to take off from or slam into.
+    fn toward_loop(
+        apart: &[f32],
+        lap_height: &[f32],
+        height: f32,
+        into_loop: bool,
+        step: f32,
+    ) -> Vec<f32> {
+        let n = apart.len();
+        // Counted from the loop out to the lap.
+        let outwards = |k: usize| if into_loop { n - 1 - k } else { k };
+        let parts = (0..n)
+            .rposition(|k| apart[outwards(k)] > 0.0)
+            .unwrap_or(n - 1);
+        let lead = ((LOOP_LEAD / step).round() as usize).min(parts);
+        let span = (parts - lead).max(1) as f32 * step;
+        let grade = (lap_height[outwards((parts + 1).min(n - 1))]
+            - lap_height[outwards(parts.saturating_sub(1))])
+            / (2.0 * step);
+        let mut elevation = vec![height; n];
+        for k in 0..n {
+            let u = k.saturating_sub(lead) as f32 * step / span;
+            elevation[outwards(k)] = if k >= parts {
+                lap_height[outwards(k)]
+            } else {
+                ease(height, lap_height[outwards(parts)], grade * span, u)
+            };
+        }
+        elevation
     }
 
     /// The nearest point of the lap's own centre line, leaving out the roads
@@ -478,6 +621,11 @@ impl Track {
     /// The vertical loops of the branches.
     pub fn loops(&self) -> &[Loop] {
         &self.loops
+    }
+
+    /// The branches without a loop.
+    pub fn forks(&self) -> &[Fork] {
+        &self.forks
     }
 
     /// Adds a loop on its own, without roads in or out: for the tests.
@@ -1037,6 +1185,37 @@ fn ease(from: f32, to: f32, rise: f32, u: f32) -> f32 {
     (2.0 * u3 - 3.0 * u2 + 1.0) * from + (3.0 * u2 - 2.0 * u3) * to + (u3 - u2) * rise
 }
 
+/// The height at `s` of an open profile `length` metres long through
+/// `points` (metres along it, height), level at zero at both ends: a smooth
+/// curve (Hermite with Catmull-Rom tangents) through them all.
+fn open_profile(points: &[(f32, f32)], length: f32, s: f32) -> f32 {
+    let all: Vec<(f32, f32)> = std::iter::once((0.0, 0.0))
+        .chain(points.iter().copied())
+        .chain(std::iter::once((length, 0.0)))
+        .collect();
+    let s = s.clamp(0.0, length);
+    let i = all
+        .windows(2)
+        .position(|pair| s <= pair[1].0)
+        .unwrap_or(all.len() - 2);
+    let tangent = |k: usize| {
+        if k == 0 || k == all.len() - 1 {
+            0.0
+        } else {
+            (all[k + 1].1 - all[k - 1].1) / (all[k + 1].0 - all[k - 1].0)
+        }
+    };
+    let (p1, p2) = (all[i], all[i + 1]);
+    let span = (p2.0 - p1.0).max(1e-3);
+    let (m1, m2) = (tangent(i) * span, tangent(i + 1) * span);
+    let t = (s - p1.0) / span;
+    let (t2, t3) = (t * t, t * t * t);
+    (2.0 * t3 - 3.0 * t2 + 1.0) * p1.1
+        + (t3 - 2.0 * t2 + t) * m1
+        + (-2.0 * t3 + 3.0 * t2) * p2.1
+        + (t3 - t2) * m2
+}
+
 /// Altura de un perfil cerrado de `lap` metros en el punto `s`, con una curva
 /// suave (Hermite con tangentes de Catmull-Rom) que pasa por los puntos dados.
 fn profile_height(points: &[(f32, f32)], lap: f32, s: f32) -> f32 {
@@ -1440,6 +1619,90 @@ mod tests {
                 assert!(track.along(&nearest) > track.along(&start));
                 let (_, heading) = track.pose_beside(&nearest, 0.0);
                 assert!(wrap_angle(heading - looped.heading).abs() < 0.05);
+            }
+        }
+    }
+
+    /// The tracks with branches without a loop, with their names.
+    fn tracks_with_forks() -> Vec<(&'static str, Track)> {
+        let tracks: Vec<_> = every_track()
+            .into_iter()
+            .filter(|(_, track)| !track.forks.is_empty())
+            .collect();
+        assert!(!tracks.is_empty(), "some track has a fork");
+        tracks
+    }
+
+    #[test]
+    fn a_fork_leaves_the_lap_and_joins_it_again_past_rock() {
+        const MIN_RADIUS: f32 = 2.5 * WALL_DISTANCE;
+        for (name, track) in tracks_with_forks() {
+            for fork in &track.forks {
+                let road = track.road(fork.road);
+                let n = road.sample_count();
+                // It starts on the lap, going its way, and ends on it too,
+                // on its surface.
+                for (index, at) in [(0, fork.fork), (n - 1, fork.join)] {
+                    let on_lap = track.project_on_lap(road.centerline[index]);
+                    assert!(on_lap.distance < 0.5, "{name}: {}", on_lap.distance);
+                    assert!(on_lap.index.abs_diff(at) <= 1, "{name}: {}", on_lap.index);
+                    let (_, lap_heading) = track.pose_at(on_lap.index);
+                    let (_, heading) = road.pose_at(index);
+                    let turn = wrap_angle(heading - lap_heading).abs();
+                    assert!(turn < 0.08, "{name}: {turn} rad off the lap");
+                    let lap_height = track.height_on_road(&on_lap);
+                    assert!((road.elevation[index] - lap_height).abs() < 0.05);
+                }
+                // Rideable, and between walls as wide as the lap's where the
+                // two share the road; further on, rock between them.
+                let mut widest = 0.0f32;
+                for i in 0..n - 1 {
+                    let radius = 1.0 / road.curvature(i).abs();
+                    assert!(radius > MIN_RADIUS, "{name}: {radius} m at {i}");
+                    let grade = (road.elevation[i + 1] - road.elevation[i]) / road.step;
+                    assert!(grade.abs() < 0.12, "{name}: {grade} at {i}");
+                    assert!(road.bank[i].abs() <= MAX_BANK);
+                    // Its climbs and drops, as ridden, are rideable, with no
+                    // crest sharp enough to take off from flat out.
+                    let height = |k: usize| track.surface_point_on(fork.road, k, 0.0).y;
+                    let surface = (height(i + 1) - height(i)) / road.step;
+                    assert!(surface.abs() < 0.12, "{name}: {surface} at {i}");
+                    if (2..n - 2).contains(&i) {
+                        let span = 2.0 * road.step;
+                        let bend =
+                            (height(i + 2) - 2.0 * height(i) + height(i - 2)) / (span * span);
+                        assert!(bend > -0.0035, "{name}: crest of {bend} at {i}");
+                        let crest = track.crest(&Nearest {
+                            point: road.centerline[i],
+                            distance: 0.0,
+                            index: i,
+                            t: 0.0,
+                            lateral: 0.0,
+                            road: fork.road,
+                        });
+                        assert!(crest < 0.0035, "{name}: crest of {crest} at {i}");
+                    }
+                    let lap = track.project_on_lap(road.centerline[i]);
+                    if lap.distance > 1.0 {
+                        assert_eq!(lap.lateral.signum(), fork.side, "{name}: {i}");
+                    }
+                    if lap.distance < WALL_DISTANCE + road.wall_at(i) {
+                        assert!(road.wall_at(i) > WALL_DISTANCE - 0.25, "{name}: {i}");
+                    }
+                    widest = widest.max(lap.distance - WALL_DISTANCE - road.wall_at(i));
+                }
+                assert!(widest > 10.0, "{name}: {widest} m of rock at most");
+                // A bike half way along finds its road, counted as a stretch
+                // of the lap between the fork and the join.
+                let index = n / 2;
+                let point = road.offset_point(index, 2.0);
+                let height = track.surface_point_on(fork.road, index, 2.0).y;
+                let nearest = track.nearest_at(point, height);
+                assert_eq!(nearest.road, fork.road, "{name}");
+                assert!((track.height_beside(&nearest) - height).abs() < 0.05);
+                let along = track.along(&nearest);
+                let step = track.step_length();
+                assert!(along > fork.fork as f32 * step && along < fork.join as f32 * step);
             }
         }
     }

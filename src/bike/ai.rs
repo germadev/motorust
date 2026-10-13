@@ -6,13 +6,14 @@
 //! Some take the branches off the lap (see [`crate::track::Branch`]) and go
 //! round their loops, flat out, keeping to their line across the running
 //! surface; a rival pushed onto a branch it does not take follows it too,
-//! back to the lap.
+//! back to the lap. Where the road splits without a loop, each rival rides
+//! the branch on the side of its lane, or the lap.
 
 use bevy::prelude::*;
 
 use super::{BikeInput, BikeState, BikeTuning, Race, Ride, move_toward};
 use crate::geometry::{heading_of, wrap_angle};
-use crate::track::{SAMPLE_SPACING, Track, WALL_DISTANCE};
+use crate::track::{Fork, SAMPLE_SPACING, Track, WALL_DISTANCE};
 
 /// Distancia a la que mira por delante para apuntar: fija más la que recorre
 /// en este tiempo. Mirar más lejos a más velocidad evita los eses.
@@ -37,6 +38,15 @@ const LINE_RATE: f32 = 2.0;
 const LINE_RATE_PER_SPEED: f32 = 0.03;
 /// Si no puede pasar, se queda a esta distancia de la de delante (m).
 const FOLLOW_GAP: f32 = 4.0;
+/// Over the last this many metres of a branch without a loop (m), a rival
+/// gives way to a bike from this far behind to this far ahead (m) that is
+/// within this much more than the clearance across (m), going this much
+/// slower than it (m/s).
+const MERGE_ZONE: f32 = 120.0;
+const MERGE_BEHIND: f32 = 4.0;
+const MERGE_AHEAD: f32 = 15.0;
+const MERGE_MARGIN: f32 = 1.5;
+const MERGE_YIELD: f32 = 8.0;
 /// Round a loop, how long a rival takes to get back to its line across the
 /// running surface (s), how far it turns for that at most (rad), and how
 /// long it takes to point the way it wants to (s).
@@ -51,8 +61,30 @@ pub struct Rival {
     pub skill: f32,
     /// Distancia a la izquierda de la línea central por la que va (m).
     pub lane: f32,
-    /// Whether it takes the branches off the lap and rides their loops.
+    /// Whether it takes the branches off the lap and rides their loops (and
+    /// every branch without one).
     pub loops: bool,
+}
+
+/// How far to the side of the middle of the lap a rival's lane must be for
+/// it to take a branch without a loop on that side (m).
+const FORK_LANE: f32 = 2.0;
+
+impl Rival {
+    /// Whether it rides `fork` rather than the lap beside it: if it takes
+    /// the branches, or if its lane is on that side.
+    pub fn takes(&self, fork: &Fork) -> bool {
+        self.loops || self.lane * fork.side >= FORK_LANE
+    }
+
+    /// Whether it rides road `road` (see [`crate::track::Nearest::road`])
+    /// where it shares the lap's.
+    fn rides(&self, track: &Track, road: usize) -> bool {
+        match track.forks().iter().find(|fork| fork.road == road) {
+            Some(fork) => self.takes(fork),
+            None => self.loops,
+        }
+    }
 }
 
 /// A point of a rival's way ahead.
@@ -74,7 +106,7 @@ impl Waypoint {
         let lap = track.nearest_index_at(state.position, state.elevation);
         let nearest = track.nearest_at(state.position, state.elevation);
         let off_lap = state.position.distance(track.centerline()[lap]) > WALL_DISTANCE;
-        if nearest.road != 0 && (rival.loops || off_lap) {
+        if nearest.road != 0 && (rival.rides(track, nearest.road) || off_lap) {
             Waypoint::Road(nearest.road, nearest.index)
         } else {
             Waypoint::Road(0, lap)
@@ -86,9 +118,14 @@ impl Waypoint {
         match self {
             Waypoint::Road(0, index) => {
                 let index = (index + 1) % track.sample_count();
-                let fork = track.loops().iter().find(|looped| looped.fork == index);
-                match fork {
-                    Some(looped) if rival.loops => Waypoint::Road(looped.approach, 0),
+                let looped = track.loops().iter().find(|looped| looped.fork == index);
+                let fork = track
+                    .forks()
+                    .iter()
+                    .find(|fork| fork.fork == index && rival.takes(fork));
+                match (looped, fork) {
+                    (Some(looped), _) if rival.loops => Waypoint::Road(looped.approach, 0),
+                    (_, Some(fork)) => Waypoint::Road(fork.road, 0),
                     _ => Waypoint::Road(0, index),
                 }
             }
@@ -100,8 +137,15 @@ impl Waypoint {
                 match loops.iter().position(|looped| looped.approach == road) {
                     Some(looped) => Waypoint::Into(looped, SAMPLE_SPACING),
                     None => {
-                        let join = loops.iter().find(|looped| looped.exit == road);
-                        Waypoint::Road(0, join.map_or(0, |looped| looped.join))
+                        let join = loops
+                            .iter()
+                            .find(|looped| looped.exit == road)
+                            .map(|looped| looped.join)
+                            .or_else(|| {
+                                let forks = track.forks();
+                                forks.iter().find(|fork| fork.road == road).map(|f| f.join)
+                            });
+                        Waypoint::Road(0, join.unwrap_or(0))
                     }
                 }
             }
@@ -227,6 +271,26 @@ pub fn plan_line(
     let horizon = TRAFFIC_DISTANCE + speed * TRAFFIC_TIME;
     // Las motos que tiene delante (o al lado) y a las que se acerca: cuánto
     // por delante, por dónde van y a qué velocidad.
+    // Where they are across the road it rides, so that one coming off
+    // another road where the two meet is seen where it is.
+    let way = Waypoint::start(track, state, rival);
+    let across = |other: &Traffic| match way {
+        Waypoint::Road(road, index) => {
+            let line = track.road(road);
+            let reach = (horizon / line.step_length()).ceil() as usize + 2;
+            let (from, count) = if line.is_closed() {
+                (
+                    (index + line.sample_count() - 2) % line.sample_count(),
+                    reach + 2,
+                )
+            } else {
+                let from = index.saturating_sub(2).min(line.segment_count() - 1);
+                (from, (reach + 2).min(line.segment_count() - from))
+            };
+            line.nearest_among(other.position, from, count).lateral
+        }
+        Waypoint::Into(..) => track.nearest_at(other.position, other.elevation).lateral,
+    };
     let ahead: Vec<(f32, f32, f32)> = traffic
         .iter()
         .filter_map(|other| {
@@ -234,13 +298,38 @@ pub fn plan_line(
             let gap = ((index - here + n + n / 2) % n - n / 2) as f32 * SAMPLE_SPACING;
             let closing = speed - other.speed;
             (gap > -SAMPLE_SPACING && gap < horizon && (closing > 0.5 || gap < TRAFFIC_DISTANCE))
-                .then(|| {
-                    let lateral = track.nearest_at(other.position, other.elevation).lateral;
-                    (gap, lateral, other.speed)
-                })
+                .then(|| (gap, across(other), other.speed))
         })
         .collect();
-    let limit = Waypoint::start(track, state, rival).half_width(track) - EDGE_MARGIN;
+    // Coming off a branch without a loop, it joins the lap on its line
+    // there: it gives way to the bikes on the lap about level with it and
+    // near that line, dropping in behind them.
+    if let Waypoint::Road(road, index) = way
+        && track.forks().iter().any(|fork| fork.road == road)
+    {
+        let branch = track.road(road);
+        let last = branch.sample_count() - 1;
+        let to_join = (last - index.min(last)) as f32 * branch.step_length();
+        let reach = ((horizon + MERGE_BEHIND) / track.step_length()).ceil() as usize + 4;
+        let on_lap = |other: &Traffic| {
+            let from = (here as usize + track.sample_count() - 4) % track.sample_count();
+            track.nearest_among(other.position, from, reach).lateral
+        };
+        let beside = traffic
+            .iter()
+            .filter(|other| {
+                let index = track.nearest_index_at(other.position, other.elevation) as i64;
+                let gap = ((index - here + n + n / 2) % n - n / 2) as f32 * SAMPLE_SPACING;
+                (-MERGE_BEHIND..MERGE_AHEAD).contains(&gap)
+                    && (on_lap(other) - line).abs() < CLEARANCE + MERGE_MARGIN
+            })
+            .map(|other| other.speed)
+            .reduce(f32::min);
+        if let (true, Some(other)) = (to_join < MERGE_ZONE, beside) {
+            return (line, (other - MERGE_YIELD).max(0.0));
+        }
+    }
+    let limit = way.half_width(track) - EDGE_MARGIN;
     let free = |lateral: f32| {
         lateral.abs() <= limit
             && ahead
@@ -451,6 +540,110 @@ mod tests {
     }
 
     #[test]
+    fn rivals_ride_the_forks_on_their_side_and_back() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let tuning = BikeTuning::default();
+            let dt = 1.0 / 120.0;
+            let name = circuit.name;
+            for fork in track.forks() {
+                for lane in [3.0 * fork.side, 0.0] {
+                    let rival = Rival {
+                        skill: 0.9,
+                        lane,
+                        loops: false,
+                    };
+                    // From a little before the fork, at speed.
+                    let start = (fork.fork + track.sample_count() - 40) % track.sample_count();
+                    let mut state = BikeState {
+                        speed: 40.0,
+                        ..BikeState::parked_on(&track, track.pose_at(start))
+                    };
+                    let mut rode = false;
+                    for _ in 0..(20.0 / dt) as usize {
+                        let input = decide(&rival, lane, f32::INFINITY, &state, &track, &tuning);
+                        state = advance(&state, &input, &track, &tuning, dt);
+                        let nearest = track.nearest_at(state.position, state.elevation);
+                        assert!(
+                            nearest.distance < track.edge_beside(&nearest) - 0.5,
+                            "{name}: off the road at {:?}",
+                            state.position
+                        );
+                        let parted =
+                            track.road(fork.road).wall_at(nearest.index) < WALL_DISTANCE - 1.0;
+                        rode |= nearest.road == fork.road && parted;
+                    }
+                    assert_eq!(rode, rival.takes(fork), "{name}: lane {lane}");
+                    let nearest = track.nearest_at(state.position, state.elevation);
+                    assert_eq!(nearest.road, 0, "{name}: not back on the lap");
+                    assert!(track.along(&nearest) > fork.join as f32 * track.step_length());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn no_way_through_a_split_is_clearly_the_quickest() {
+        // Where the road splits three ways, a rival on each way (the one to
+        // the left, the lap, the one to the right) takes about as long from
+        // before the split to after it.
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let forks = track.forks();
+            let step = track.step_length();
+            let tuning = BikeTuning::default();
+            let dt = 1.0 / 120.0;
+            for left in forks.iter().filter(|fork| fork.side > 0.0) {
+                let Some(right) = forks
+                    .iter()
+                    .find(|fork| fork.side < 0.0 && fork.fork.abs_diff(left.fork) < 20)
+                else {
+                    continue;
+                };
+                let from = left.fork.min(right.fork) as f32 * step - 60.0;
+                let to = left.join.max(right.join) as f32 * step + 50.0;
+                let times: Vec<f32> = [3.0, 0.0, -3.0]
+                    .into_iter()
+                    .map(|lane| {
+                        let rival = Rival {
+                            skill: 1.0,
+                            lane,
+                            loops: false,
+                        };
+                        let start = track.index_at(from - 150.0);
+                        let mut state = BikeState::parked_on(&track, track.pose_at(start));
+                        let (mut time, mut started) = (0.0, None);
+                        for _ in 0..(40.0 / dt) as usize {
+                            let input =
+                                decide(&rival, lane, f32::INFINITY, &state, &track, &tuning);
+                            state = advance(&state, &input, &track, &tuning, dt);
+                            time += dt;
+                            let nearest = track.nearest_at(state.position, state.elevation);
+                            let along = track.along(&nearest);
+                            if started.is_none() && (from..from + 50.0).contains(&along) {
+                                started = Some(time);
+                            }
+                            if let Some(start) = started
+                                && (to..to + 50.0).contains(&along)
+                            {
+                                return time - start;
+                            }
+                        }
+                        panic!("{}: lane {lane} never got through", circuit.name)
+                    })
+                    .collect();
+                let quickest = times.iter().copied().fold(f32::MAX, f32::min);
+                let slowest = times.iter().copied().fold(0.0, f32::max);
+                assert!(
+                    slowest < 1.05 * quickest,
+                    "{}: {times:?} s through the split at {from} m",
+                    circuit.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn out_of_a_loop_the_road_back_keeps_the_wheels_on_the_ground() {
         for circuit in &crate::circuits::CIRCUITS {
             let track = Track::new(&circuit.layout);
@@ -626,9 +819,13 @@ mod tests {
 
     #[test]
     fn a_pack_of_rivals_races_without_wrecking_each_other() {
-        // On the Bay, and on Loop Island, with the rivals that take its
-        // branch going round the loop.
-        for circuit in [&crate::circuits::CIRCUITS[0], &crate::circuits::CIRCUITS[2]] {
+        // On the Bay, on Loop Island, with the rivals that take its branch
+        // going round the loop, and through the forks of Gold Mine.
+        for circuit in [
+            &crate::circuits::CIRCUITS[0],
+            &crate::circuits::CIRCUITS[2],
+            &crate::circuits::CIRCUITS[3],
+        ] {
             pack_race(&Track::new(&circuit.layout), circuit.name);
         }
     }
@@ -812,6 +1009,44 @@ mod tests {
                 flights >= 2,
                 "a fondo, en los cambios de rasante de {name} se vuela"
             );
+        }
+    }
+
+    #[test]
+    fn crests_only_throw_the_bikes_into_the_air_on_the_straights() {
+        // Flying, a bike neither turns nor leans: a crest in a bend, or one
+        // that lands in a bend, would straighten it up. Turbo Bay's seafront
+        // drops into its corner over a crest on purpose, as in Moto Racer.
+        for circuit in crate::circuits::CIRCUITS
+            .iter()
+            .filter(|circuit| circuit.name != "Turbo Bay")
+        {
+            let track = Track::new(&circuit.layout);
+            let tuning = BikeTuning::default();
+            for (skill, lane) in [(0.9, 4.0), (0.95, 2.0), (1.0, -3.0)] {
+                let rival = Rival {
+                    skill,
+                    lane,
+                    loops: false,
+                };
+                let mut state = BikeState::parked_on(&track, track.grid_pose(0, lane));
+                let dt = 1.0 / 120.0;
+                for _ in 0..(70.0 / dt) as usize {
+                    let input = decide(&rival, lane, f32::INFINITY, &state, &track, &tuning);
+                    let before = state;
+                    state = advance(&state, &input, &track, &tuning, dt);
+                    if before.grounded != state.grounded {
+                        let index = track.nearest_index_at(state.position, state.elevation);
+                        let radius = 1.0 / track.smoothed_curvature(index, 6).abs().max(1e-6);
+                        assert!(
+                            radius > 600.0,
+                            "{} takes off or lands in a bend of {radius:.0} m at {:.0} m",
+                            circuit.name,
+                            index as f32 * track.step_length()
+                        );
+                    }
+                }
+            }
         }
     }
 }

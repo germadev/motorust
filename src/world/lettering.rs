@@ -65,7 +65,33 @@ const PADDING: u32 = 2;
 /// Un rótulo: `text` sobre `paper`, centrado en una imagen que mide como
 /// mínimo `aspect` veces más de ancho que de alto, con un borde de `border`
 /// si hay. Las letras van en `ink` y, desde la `accent.0`, en `accent.1`.
+///
+/// Each sign is drawn once and kept: the threads that prepare the circuits
+/// draw theirs ahead (see [`super::prepare`]), so building a circuit on the
+/// main thread only copies them, and the circuits share their checkpoints.
 pub fn sign_image(
+    text: &str,
+    ink: Color,
+    accent: Option<(usize, Color)>,
+    paper: Color,
+    border: Option<Color>,
+    aspect: f32,
+) -> Image {
+    static DRAWN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Image>>> =
+        std::sync::LazyLock::new(Default::default);
+    let key = format!("{text}|{ink:?}|{accent:?}|{paper:?}|{border:?}|{aspect}");
+    if let Some(image) = DRAWN.lock().ok().and_then(|drawn| drawn.get(&key).cloned()) {
+        return image;
+    }
+    let image = draw_sign(text, ink, accent, paper, border, aspect);
+    if let Ok(mut drawn) = DRAWN.lock() {
+        drawn.insert(key, image.clone());
+    }
+    image
+}
+
+/// Draws a sign (see [`sign_image`]).
+fn draw_sign(
     text: &str,
     ink: Color,
     accent: Option<(usize, Color)>,
