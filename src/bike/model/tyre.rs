@@ -105,7 +105,9 @@ pub fn strip(mut mesh: Mesh, axle: Vec3, radius: f32) -> (Mesh, f32) {
     let radii: Vec<f32> = positions.iter().map(from_axle).collect();
     if let Some(Indices::U32(indices)) = mesh.indices() {
         let kept: Vec<u32> = indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter(|triangle| {
                 let reach = triangle.iter().map(|&i| radii[i as usize]);
                 let mean = reach.clone().sum::<f32>() / 3.0;
