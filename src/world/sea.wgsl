@@ -13,9 +13,13 @@
 // xy: corner of the shore map (m, x and z); zw: its size (m).
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> shore_area: vec4<f32>;
 // Distance to the shore, signed: red, close up (SHORE_NEAR to SHORE_FAR m);
-// green, as far as WAVES_REACH m out to sea.
+// green, as far as WAVES_REACH m out to sea. Blue and alpha: the way to the
+// nearest shore (x and z, from -1 to 1).
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var shore_map: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(2) var shore_sampler: sampler;
+// xy: where the swell heads (x and z). Waves only roll in to the shores that
+// face it, so they all go one way.
+@group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> swell: vec4<f32>;
 
 // What the shore map holds. Must match src/world/sea.rs.
 const SHORE_NEAR: f32 = -10.0;
@@ -88,7 +92,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     // Distance to the shore (m): far out at sea outside the map.
     // (Sampled everywhere: textures cannot be sampled under a branch.)
     let uv = (at - shore_area.xy) / shore_area.zw;
-    let stored = textureSample(shore_map, shore_sampler, clamp(uv, vec2(0.0), vec2(1.0))).rg;
+    let stored = textureSample(shore_map, shore_sampler, clamp(uv, vec2(0.0), vec2(1.0)));
     let inside = all(uv >= vec2(0.0)) && all(uv <= vec2(1.0));
     let shore = select(SHORE_FAR, mix(SHORE_NEAR, SHORE_FAR, stored.r), inside);
     let offshore = select(WAVES_REACH, stored.g * WAVES_REACH, inside);
@@ -106,7 +110,10 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     let fade = 1.0 - smoothstep(WAVE_FADE.x, WAVE_FADE.y, distance);
     // Close up the fine distance (with the wobble), further out the coarse.
     let to_shore = mix(near, offshore, smoothstep(30.0, 38.0, shore));
-    var foam = waves(at, to_shore, t) * 0.92 * fade;
+    // Only where the shore faces the swell (none outside the map).
+    let toward = select(vec2(0.0), stored.ba * 2.0 - 1.0, inside);
+    let exposed = smoothstep(0.15, 0.6, dot(toward, swell.xy));
+    var foam = waves(at, to_shore, t) * 0.92 * fade * exposed;
 
     // Foam along the shore, at least a pixel wide however far: seen from
     // afar it stays a line.
