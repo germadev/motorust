@@ -275,8 +275,10 @@ pub fn mesh(radius: f32, half_width: f32) -> Mesh {
     let mut indices = Vec::with_capacity(SEGMENTS * PROFILE * 6);
     for i in 0..SEGMENTS as u32 {
         for j in 0..PROFILE as u32 {
+            // Counter-clockwise seen from outside, so that the outside is
+            // the face that is drawn.
             let (a, b) = (i * row + j, (i + 1) * row + j);
-            indices.extend([a, a + 1, b, b, a + 1, b + 1]);
+            indices.extend([a, b, a + 1, b, b + 1, a + 1]);
         }
     }
     let mesh = Mesh::new(
@@ -410,6 +412,38 @@ pub fn material(tread: Tread, images: &mut Assets<Image>) -> StandardMaterial {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_face_of_the_tyre_is_drawn_from_outside() {
+        let tyre = mesh(0.3, 0.07);
+        let Some(VertexAttributeValues::Float32x3(positions)) =
+            tyre.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("no positions");
+        };
+        let Some(VertexAttributeValues::Float32x3(normals)) =
+            tyre.attribute(Mesh::ATTRIBUTE_NORMAL)
+        else {
+            panic!("no normals");
+        };
+        let Some(Indices::U32(indices)) = tyre.indices() else {
+            panic!("no indices");
+        };
+        // The front of each triangle (counter-clockwise, as drawn) faces the
+        // way its corners' normals point: out of the tyre.
+        for corners in indices.chunks(3) {
+            let [a, b, c] = [0, 1, 2].map(|k| Vec3::from(positions[corners[k] as usize]));
+            let front = (b - a).cross(c - a);
+            if front.length() < 1e-9 {
+                continue;
+            }
+            let normal: Vec3 = corners
+                .iter()
+                .map(|&k| Vec3::from(normals[k as usize]))
+                .sum();
+            assert!(front.dot(normal) > 0.0, "a face turned inwards at {a}");
+        }
+    }
 
     #[test]
     fn the_tyre_is_round_and_sits_on_its_rim() {

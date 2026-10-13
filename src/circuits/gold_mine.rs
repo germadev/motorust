@@ -44,7 +44,7 @@ pub const GOLD_MINE: Circuit = Circuit {
     // "Toll of the Iron Mile".
     song: Song {
         mp3: include_bytes!("../../assets/music/gold_mine.mp3"),
-        loudness: -11.9,
+        loudness: -16.8,
     },
     layout: Layout {
         control_points: &CONTROL_POINTS,

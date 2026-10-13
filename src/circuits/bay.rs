@@ -19,7 +19,7 @@ pub const BAY: Circuit = Circuit {
                      and a jump on the main straight",
     song: Song {
         mp3: include_bytes!("../../assets/music/bahia.mp3"),
-        loudness: -12.6,
+        loudness: -16.1,
     },
     layout: Layout {
         control_points: &CONTROL_POINTS,

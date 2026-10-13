@@ -51,7 +51,7 @@ pub const TURBO_BAY: Circuit = Circuit {
                      the track itself, a mountain pass and red bridge",
     song: Song {
         mp3: include_bytes!("../../assets/music/turbo_bay.mp3"),
-        loudness: -12.1,
+        loudness: -16.0,
     },
     layout: Layout {
         control_points: &CONTROL_POINTS,

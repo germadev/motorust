@@ -48,7 +48,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                      checkered hills and waterfalls",
     song: Song {
         mp3: include_bytes!("../../assets/music/loop_island.mp3"),
-        loudness: -10.9,
+        loudness: -13.3,
     },
     layout: Layout {
         control_points: &CONTROL_POINTS,

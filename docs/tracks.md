@@ -110,7 +110,7 @@ Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_is
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
-- `song`: the music for the race, an MP3 in `assets/music/` embedded with `include_bytes!`, and its `loudness`: the integrated loudness (LUFS) that `ffmpeg -i song.mp3 -af ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all play equally loud, under the engine.
+- `song`: the music for the race, an MP3 in `assets/music/` embedded with `include_bytes!`, and its `loudness`: the integrated loudness (LUFS) of its first two minutes above 500 Hz, which `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all sound equally loud over the engine (whose drone covers the lower notes), and well under it.
 - `layout`: the road itself (a `Layout` from `src/track.rs`).
 - `scenery`: everything around the road (a `Scenery` from `src/world/scenery.rs`).
 

@@ -64,7 +64,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/gamepads/apple.rs` | On macOS, the gamepads the system knows (DualSense, DualShock 4, Xbox, Switch Pro, MFi) are read with Apple's GameController framework instead of gilrs. |
 | `src/sound/mod.rs` | Decides what sounds, how loud and where (engines with their gearboxes, wind, tyres, grass, impacts, landings, menu), panned from the camera and with Doppler for rivals. |
 | `src/sound/synth.rs` | The synthesiser that generates and mixes everything on the audio thread, including the big-bang V4 engine. |
-| `src/sound/music.rs` | Each track's song: loops it straight from the embedded MP3 during the race, brought to the same loudness well below the engine, with fades, a lower level in the pause menu and mute. |
+| `src/sound/music.rs` | Each track's song: loops it straight from the embedded MP3 during the race, brought to the same loudness above 500 Hz (what is heard over the engines) and well below the engine, with fades, a lower level in the pause menu and mute. |
 | `src/web.rs` | Web only: tells the page the game is visible so it can remove the loading screen. |
 | `web/index.html` | The web page: canvas, loading screen with download progress, audio unlock on first input, error display. |
 | `web/build.sh` | Builds the web version into `dist/web` (see [building.md](building.md#web-version)). |
