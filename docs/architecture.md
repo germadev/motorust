@@ -42,7 +42,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/bike/model/mod.rs` | 3D bike and rider models (wheels, fork, livery, race number) and their animation: wheels, steering, suspension, brake light and rider pose. |
 | `src/bike/model/designs.rs` | The bike designs (`Design`): the four code-built bodies (Afilada, Escudo, Alerones, Rombo) with measurements taken from the design sheets and their vents, grilles and pinstripes, plus the eight imported ones. |
 | `src/bike/model/imported.rs` | Loads the Meshy bikes prepared by `tools/import_models.py`, with their riders, textures, exhaust outlets and measurements (`Model`). |
-| `src/bike/model/tyre.rs` | Round tyres for the Meshy bikes, whose own are cut off: a surface of revolution with a racing profile, and four tread patterns painted at startup into a texture and a normal map. |
+| `src/bike/model/tyre.rs` | Round tyres for the Meshy bikes, whose own are cut off: a surface of revolution with the round profile of a MotoGP tyre, slicks with their compound marked on the sidewall, painted at startup. |
 | `src/bike/model/pilot.rs` | The Meshy riders: their skeleton and the race pose, solved with inverse kinematics every frame. |
 | `src/bike/model/rider.rs` | The code-built rider: a skinned body with its bones, plus helmet and other rigid parts, and its pose. |
 | `src/bike/model/livery.rs` | Liveries for the code-built bikes (colours, fairing graphics, suit and helmet), painted into textures at startup. |
@@ -89,7 +89,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 
 ## Tests
 
-There are **286 tests**, all headless. Run them with:
+There are **288 tests**, all headless. Run them with:
 
 ```sh
 cargo test   # or: make test
@@ -104,7 +104,7 @@ CI runs them on every push and PR, together with `cargo fmt --check` and `cargo 
 | Chassis (`src/bike/chassis.rs`) | 9 | Wheelies, squat, dive, landing compression, suspension in the air. |
 | Rivals (`src/bike/ai.rs`) | 9 | A rival completes a lap without leaving the track, goes round a stopped bike, takes short jumps over the crests and, if it takes the branches, rides round the loop and back, steering to its line clear of the loop's walls, with its wheels on the ground all the way from the loop back onto the lap; it rides a branch without a loop on the side of its lane, gives way where the branch joins the lap, and is back on the lap after it; a pack races a lap with hardly any falls; crests only throw them into the air on the straights. |
 | Loops (`src/bike/loop_ride.rs`) | 11 | Going round and out beside the mouth, coming back down too slow, falling off, going in at the mouth; steering across the running surface and coming out pointing that way, turning about the bike's own up, the walls along the edges, less grip the less the surface presses, falling off turned the way it was going. |
-| Bike and rider models (`src/bike/model/`) | 34 | Imported parts and wheels on the ground, open exhausts, rigged riders, hands on the grips and feet on the pegs on every bike, liveries, race numbers; round tyres on their rims, their tread patterns and how they repeat. |
+| Bike and rider models (`src/bike/model/`) | 36 | Imported parts and wheels on the ground, open exhausts, rigged riders, hands on the grips and feet on the pegs on every bike, liveries, race numbers; round tyres on their rims, facing out, with a round crown; smooth slicks with their compound's band, repeating seamlessly. |
 | Track (`src/track.rs`) | 17 | Drivable curves, rideable slopes and banking, walls of distant stretches that do not meet, the grid, branches that leave and join the lap along it and on its surface, climb and drop smoothly once apart from it, and bikes on a branch finding its road; branches without a loop that part from the lap with rock between them. |
 | World and tracks (`src/world/`, `src/circuits/`) | 50 | Terrain hugs the road and keeps it dry, sea and mountains where expected, a shore round every circuit for the waves, the sky meeting the fog at the horizon by day and at dusk, the clouds heaped on flat grey bases with soft edges and the cirrus high up, kerbs only in corners, textures decode, houses fit, loops clear of the road, waterfalls down rock walls, wooden bridges fenced, checkpoints, Turbo Bay passing over its own tunnel, Loop Island's branch forking before the crest in a long curve, the Gold Mine's river under its bridge, its rails beside the road and its trestle from rock to rock, and its excavation: high halls and lower galleries, walls where the bikes hit them, rock between the ways through, and every stone drawn and lit. |
 | Meshes (`src/shapes.rs`) | 9 | Faces point outwards, sections and bone weights are consistent. |

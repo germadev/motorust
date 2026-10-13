@@ -304,11 +304,11 @@ impl FromWorld for BikeBlueprint {
         let exhaust = world
             .resource_mut::<Assets<StandardMaterial>>()
             .add(exhaust);
-        // The tread patterns, shared by every bike that wears them.
-        let treads: Vec<Handle<StandardMaterial>> = tyre::Tread::ALL
+        // The slicks of each compound, shared by every bike that wears them.
+        let tyres: Vec<Handle<StandardMaterial>> = tyre::Compound::ALL
             .into_iter()
-            .map(|tread| {
-                let material = tyre::material(tread, &mut world.resource_mut::<Assets<Image>>());
+            .map(|compound| {
+                let material = tyre::material(compound, &mut world.resource_mut::<Assets<Image>>());
                 world
                     .resource_mut::<Assets<StandardMaterial>>()
                     .add(material)
@@ -321,14 +321,14 @@ impl FromWorld for BikeBlueprint {
                     let body =
                         imported::material(model, &mut world.resource_mut::<Assets<Image>>());
                     let body = world.resource_mut::<Assets<StandardMaterial>>().add(body);
-                    let tread = tyre::Tread::of(design);
+                    let compound = tyre::Compound::of(design);
                     let materials = imported::Materials {
                         body,
                         exhaust: exhaust.clone(),
-                        tyres: treads[tyre::Tread::ALL
+                        tyres: tyres[tyre::Compound::ALL
                             .iter()
-                            .position(|&t| t == tread)
-                            .expect("every pattern has its material")]
+                            .position(|&c| c == compound)
+                            .expect("every compound has its material")]
                         .clone(),
                     };
                     (model, materials, pilot::PilotBlueprint::new(world, model))

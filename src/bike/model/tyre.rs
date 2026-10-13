@@ -2,9 +2,11 @@
 //! lumpy, low-poly rings (their outline wanders by a couple of centimetres
 //! and some have smudges of the bodywork's colours), so they are cut off the
 //! wheel ([`strip`]) and replaced by a true surface of revolution ([`mesh`])
-//! with the rounded profile of a racing tyre. Its tread pattern ([`Tread`])
-//! is painted at startup into a colour texture and a normal map that repeat
-//! round the tyre, so the grooves turn with the wheel.
+//! with the round profile of a MotoGP tyre. They are slicks, as MotoGP
+//! races on in the dry: no tread pattern at all, the rubber a little lighter
+//! where it is scrubbed, and the compound ([`Compound`]) marked by a band
+//! of colour round the sidewall, painted at startup into a texture that
+//! repeats round the tyre.
 
 use std::f32::consts::{PI, TAU};
 
@@ -23,7 +25,7 @@ use crate::world::generate_mipmaps;
 /// Segments round the tyre and round its cross-section.
 const SEGMENTS: usize = 96;
 const PROFILE: usize = 32;
-/// How many times the tread pattern repeats round the tyre.
+/// How many times the texture repeats round the tyre.
 const REPEATS: f32 = 18.0;
 /// Where the new tyre meets the rim, and where the old one is cut off, as
 /// fractions of the wheel's radius: the Meshy tyres are rings from about
@@ -37,136 +39,50 @@ const STRIP_REACH: f32 = 0.67;
 /// radius, and the new one is a little narrower than it.
 const WIDTH_FROM: f32 = 0.7;
 const WIDTH_SCALE: f32 = 0.95;
-/// The cross-section is made of two half superellipses: a little squarer
-/// than an ellipse on the crown, with full sidewalls, and squarer still
-/// towards the rim, where the tyre is as wide as the rim it covers.
-const SQUARENESS: f32 = 2.6;
+/// The cross-section is made of two half superellipses: an ellipse on the
+/// crown, round from one shoulder to the other as a MotoGP tyre is (it
+/// leans over 60 degrees on it), and squarer towards the rim, where the
+/// tyre is as wide as the rim it covers.
+const SQUARENESS: f32 = 2.0;
 const BEAD_SQUARENESS: f32 = 4.0;
 /// Half the angle of the cross-section covered by the tread, from the crown
-/// (rad); the sidewalls go on round to the rim.
-const TREAD_ANGLE: f32 = 75.0 * PI / 180.0;
+/// (rad): nearly all the way round to the sidewalls, which are short.
+const TREAD_ANGLE: f32 = 82.0 * PI / 180.0;
 /// Where the tread band lies across the texture (v), centred on 0.5.
 const TREAD_V: f32 = 0.3;
-/// Size of the tread textures (px): one repeat round, the whole width
+/// Size of the tyre's texture (px): one repeat round, the whole width
 /// across.
 const IMAGE: UVec2 = UVec2::new(128, 256);
-/// About how long one repeat is round a tyre, against half the width of
-/// its tread (both m): grooves are drawn in true proportions.
-const REPEAT_LENGTH: f32 = 0.105;
-const HALF_TREAD: f32 = 0.075;
 
-/// Tread patterns, each with the colour of the stripe round its sidewalls.
+/// The compound of a slick, marked as MotoGP marks it: a band round the
+/// sidewall, white on the soft, none on the medium, yellow on the hard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tread {
-    /// A racing slick: no grooves, a red stripe (the soft compound).
-    Slick,
-    /// A sports road tyre: a lightning-bolt groove on each half of the
-    /// tread, staggered from one side to the other.
-    Sport,
-    /// A touring tyre: a groove round the middle and chevrons out to the
-    /// shoulders.
-    Touring,
-    /// Long, thin sipes sweeping out from the middle to the shoulders.
-    Sipe,
+pub enum Compound {
+    Soft,
+    Medium,
+    Hard,
 }
 
-impl Tread {
-    pub const ALL: [Tread; 4] = [Tread::Slick, Tread::Sport, Tread::Touring, Tread::Sipe];
+impl Compound {
+    pub const ALL: [Compound; 3] = [Compound::Soft, Compound::Medium, Compound::Hard];
 
     /// The tyres each imported bike wears.
     pub fn of(design: Design) -> Self {
         match design {
-            Design::Kraken | Design::Stiletto => Tread::Slick,
-            Design::Shogun | Design::Falcon => Tread::Sport,
-            Design::Legend | Design::Cobra => Tread::Touring,
-            _ => Tread::Sipe,
+            Design::Kraken | Design::Stiletto | Design::Azura => Compound::Soft,
+            Design::Legend | Design::Cobra => Compound::Hard,
+            _ => Compound::Medium,
         }
     }
 
-    /// The colour of the stripe round the sidewalls (sRGB).
-    fn stripe(self) -> [f32; 3] {
+    /// The colour of the band round the sidewalls (sRGB), if it has one.
+    fn band(self) -> Option<[f32; 3]> {
         match self {
-            Tread::Slick => [0.82, 0.1, 0.08],
-            Tread::Sport => [0.95, 0.76, 0.1],
-            Tread::Touring => [0.15, 0.45, 0.9],
-            Tread::Sipe => [0.88, 0.88, 0.86],
+            Compound::Soft => Some([0.9, 0.9, 0.88]),
+            Compound::Medium => None,
+            Compound::Hard => Some([0.95, 0.78, 0.1]),
         }
     }
-
-    /// How deep the grooves are at `(u, t)`, from 0 (rubber) to 1 (the
-    /// bottom of a groove): `u` goes once round a repeat of the pattern
-    /// (it wraps), `t` across the tread from -1 to 1. `blur` is the size of
-    /// a pixel, in the units of `t`, for smooth edges.
-    fn groove(self, u: f32, t: f32, blur: f32) -> f32 {
-        // Distance from a point to a polyline in (u, t), in the units of t,
-        // with the pattern repeating round the tyre.
-        let to_polyline = |points: &[Vec2], offset: Vec2| {
-            let mut nearest = f32::MAX;
-            for wrap in [-1.0, 0.0, 1.0] {
-                let p = Vec2::new(u + wrap, t) - offset;
-                for pair in points.windows(2) {
-                    nearest = nearest.min(segment_distance(p, pair[0], pair[1]));
-                }
-            }
-            nearest
-        };
-        let groove = |distance: f32, half_width: f32| {
-            1.0 - smoothstep(half_width - blur, half_width + blur, distance)
-        };
-        let mirror = |points: &[Vec2]| {
-            points
-                .iter()
-                .map(|p| Vec2::new(p.x, -p.y))
-                .collect::<Vec<_>>()
-        };
-        match self {
-            Tread::Slick => 0.0,
-            Tread::Sport => {
-                const BOLT: [Vec2; 4] = [
-                    Vec2::new(0.0, 0.16),
-                    Vec2::new(0.3, 0.52),
-                    Vec2::new(0.37, 0.46),
-                    Vec2::new(0.68, 0.88),
-                ];
-                let right = to_polyline(&BOLT, Vec2::ZERO);
-                let left = to_polyline(&mirror(&BOLT), Vec2::new(0.5, 0.0));
-                groove(right.min(left), 0.05)
-            }
-            Tread::Touring => {
-                const CHEVRON: [Vec2; 2] = [Vec2::new(0.0, 0.14), Vec2::new(0.3, 0.9)];
-                let middle = groove(t.abs(), 0.045);
-                let chevrons = [0.0, 0.5]
-                    .into_iter()
-                    .map(|shift| {
-                        let offset = Vec2::new(shift, 0.0);
-                        to_polyline(&CHEVRON, offset).min(to_polyline(&mirror(&CHEVRON), offset))
-                    })
-                    .fold(f32::MAX, f32::min);
-                middle.max(groove(chevrons, 0.048))
-            }
-            Tread::Sipe => {
-                let sweep: Vec<Vec2> = (0..=8)
-                    .map(|k| {
-                        let along = 0.06 + 0.8 * k as f32 / 8.0;
-                        Vec2::new(0.42 * (along - 0.06).powf(1.6), along)
-                    })
-                    .collect();
-                let right = to_polyline(&sweep, Vec2::ZERO);
-                let left = to_polyline(&mirror(&sweep), Vec2::new(0.5, 0.0));
-                groove(right.min(left), 0.026)
-            }
-        }
-    }
-}
-
-/// Distance from `p` to the segment from `a` to `b`, with `u` stretched to
-/// metres in the same proportion as `t`.
-fn segment_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
-    let scale = Vec2::new(REPEAT_LENGTH / HALF_TREAD, 1.0);
-    let (p, a, b) = (p * scale, a * scale, b * scale);
-    let ab = b - a;
-    let along = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
-    p.distance(a + ab * along)
 }
 
 /// Cuts the tyre off a Meshy wheel `mesh`, in the bike's space, round
@@ -294,84 +210,56 @@ pub fn mesh(radius: f32, half_width: f32) -> Mesh {
 }
 
 /// The rubber's shades (sRGB): the tread, a little lighter where it is
-/// scrubbed in the middle, the sidewalls and the bottom of the grooves.
+/// scrubbed in the middle, and the sidewalls.
 const TREAD_RUBBER: f32 = 0.13;
-const SCRUBBED: f32 = 0.025;
+const SCRUBBED: f32 = 0.03;
 const SIDEWALL_RUBBER: f32 = 0.09;
-const GROOVE_RUBBER: f32 = 0.04;
-/// Where the stripe runs round the sidewalls (rad from the crown), and how
-/// steep the grooves' walls look in the normal map.
-const STRIPE: (f32, f32) = (1.95, 2.07);
-const GROOVE_RELIEF: f32 = 2.5;
+/// Where the band runs round the sidewalls (rad from the crown).
+const BAND: (f32, f32) = (2.0, 2.12);
 
-/// The colour texture and the normal map of a tread pattern.
-pub fn images(tread: Tread) -> (Image, Image) {
+/// The colour texture of a slick of `compound`: smooth rubber with its own
+/// grain, scrubbed on the tread, and the compound's band on the sidewalls.
+pub fn image_of(compound: Compound) -> Image {
     let (width, height) = (IMAGE.x as usize, IMAGE.y as usize);
-    // The size of a pixel across the tread, in the units of `t`.
-    let pixel = 1.0 / (height as f32 * TREAD_V);
-    let depth = |x: usize, y: usize| {
-        let u = (x as f32 + 0.5) / width as f32;
-        let v = (y as f32 + 0.5) / height as f32;
-        let t = (v - 0.5) / TREAD_V;
-        // Only on the tread, fading out at the shoulders.
-        let on_tread = 1.0 - smoothstep(0.9, 1.0, t.abs());
-        tread.groove(u, t, pixel) * on_tread
-    };
-    let grooves: Vec<f32> = (0..height)
-        .flat_map(|y| (0..width).map(move |x| (x, y)))
-        .map(|(x, y)| depth(x, y))
-        .collect();
-    let at = |x: isize, y: isize| {
-        let x = x.rem_euclid(width as isize) as usize;
-        let y = y.clamp(0, height as isize - 1) as usize;
-        grooves[y * width + x]
-    };
-    let stripe = tread.stripe();
+    let band = compound.band();
     let mut color = Vec::with_capacity(width * height * 4);
-    let mut normal = Vec::with_capacity(width * height * 4);
     for y in 0..height {
         let v = (y as f32 + 0.5) / height as f32;
         let alpha = alpha_of(v).abs();
         let t = (v - 0.5) / TREAD_V;
         for x in 0..width {
-            let groove = grooves[y * width + x];
-            // The rubber's own grain, so it does not look painted.
-            let grain = (value_noise(Vec2::new(x as f32, y as f32) * 0.35) - 0.5) * 0.02
-                + (random01((y * width + x) as u32) - 0.5) * 0.012;
+            // The rubber's own grain, so it does not look painted; the
+            // noise repeats round the tyre with the texture.
+            let point = Vec2::new(x as f32, y as f32) * 0.35;
+            let round = Vec2::new(width as f32 * 0.35, 0.0);
+            let along = x as f32 / width as f32;
+            let noise = value_noise(point).lerp(value_noise(point - round), along);
+            let grain = (noise - 0.5) * 0.02 + (random01((y * width + x) as u32) - 0.5) * 0.012;
             let rubber = if alpha <= TREAD_ANGLE {
-                TREAD_RUBBER + SCRUBBED * (1.0 - smoothstep(0.3, 0.8, t.abs()))
+                TREAD_RUBBER + SCRUBBED * (1.0 - smoothstep(0.3, 0.85, t.abs()))
             } else {
                 SIDEWALL_RUBBER.lerp(
                     TREAD_RUBBER,
                     1.0 - smoothstep(0.0, 0.2, alpha - TREAD_ANGLE),
                 )
             };
-            let shade = (rubber + grain).lerp(GROOVE_RUBBER, groove);
-            let band = smoothstep(STRIPE.0 - 0.02, STRIPE.0 + 0.02, alpha)
-                * (1.0 - smoothstep(STRIPE.1 - 0.02, STRIPE.1 + 0.02, alpha));
-            let rgb = stripe.map(|c| shade.lerp(c, band));
+            let shade = rubber + grain;
+            let rgb = match band {
+                Some(band) => {
+                    let on = smoothstep(BAND.0 - 0.02, BAND.0 + 0.02, alpha)
+                        * (1.0 - smoothstep(BAND.1 - 0.02, BAND.1 + 0.02, alpha));
+                    band.map(|c| shade.lerp(c, on))
+                }
+                None => [shade; 3],
+            };
             color.extend(rgb.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8));
             color.push(255);
-            // The grooves are dips: their walls lean the normal away.
-            let (x, y) = (x as isize, y as isize);
-            let du = (at(x + 1, y) - at(x - 1, y)) * GROOVE_RELIEF;
-            let dv = (at(x, y + 1) - at(x, y - 1)) * GROOVE_RELIEF;
-            let n = Vec3::new(du, dv, 1.0).normalize();
-            normal.extend(
-                (n * 0.5 + 0.5)
-                    .to_array()
-                    .map(|c| (c * 255.0).round() as u8),
-            );
-            normal.push(255);
         }
     }
-    (
-        image(color, TextureFormat::Rgba8UnormSrgb),
-        image(normal, TextureFormat::Rgba8Unorm),
-    )
+    image(color, TextureFormat::Rgba8UnormSrgb)
 }
 
-/// An image of the tread's size that repeats round the tyre, with mipmaps.
+/// An image of the texture's size that repeats round the tyre, with mipmaps.
 fn image(data: Vec<u8>, format: TextureFormat) -> Image {
     let mut image = Image::new(
         Extent3d {
@@ -397,13 +285,11 @@ fn image(data: Vec<u8>, format: TextureFormat) -> Image {
     image
 }
 
-/// The material of a tread pattern: rubber, a little glossy.
-pub fn material(tread: Tread, images: &mut Assets<Image>) -> StandardMaterial {
-    let (color, normal) = self::images(tread);
+/// The material of a slick of `compound`: rubber with a satin sheen.
+pub fn material(compound: Compound, images: &mut Assets<Image>) -> StandardMaterial {
     StandardMaterial {
-        base_color_texture: Some(images.add(color)),
-        normal_map_texture: Some(images.add(normal)),
-        perceptual_roughness: 0.72,
+        base_color_texture: Some(images.add(image_of(compound))),
+        perceptual_roughness: 0.62,
         reflectance: 0.3,
         ..default()
     }
@@ -495,35 +381,60 @@ mod tests {
     }
 
     #[test]
-    fn every_pattern_but_the_slick_has_grooves() {
-        for tread in Tread::ALL {
-            let (color, normal) = images(tread);
-            let color = color.data.unwrap();
-            let normal = normal.data.unwrap();
-            let grooved = (0..IMAGE.x * IMAGE.y)
-                .filter(|&i| color[i as usize * 4] < 15)
-                .count();
-            let tilted = normal.chunks(4).filter(|n| n[2] < 250).count();
-            if tread == Tread::Slick {
-                assert_eq!(grooved, 0, "{tread:?}");
-                assert_eq!(tilted, 0, "{tread:?}");
-            } else {
-                // Grooves cover a part of the tread, not all of it.
-                let share = grooved as f32 / (IMAGE.x * IMAGE.y) as f32;
-                assert!((0.01..0.3).contains(&share), "{tread:?}: {share}");
-                assert!(tilted > 0, "{tread:?}");
+    fn slicks_are_smooth_with_their_compound_on_the_sidewall() {
+        for compound in Compound::ALL {
+            let image = image_of(compound);
+            let data = image.data.unwrap();
+            let pixel = |x: u32, y: u32| {
+                let i = ((y * IMAGE.x + x) * 4) as usize;
+                [data[i], data[i + 1], data[i + 2]]
+            };
+            // No grooves: the tread is all rubber, none darker than it.
+            let tread = (IMAGE.y / 2 - 40..IMAGE.y / 2 + 40)
+                .flat_map(|y| (0..IMAGE.x).map(move |x| (x, y)))
+                .map(|(x, y)| pixel(x, y)[0])
+                .collect::<Vec<_>>();
+            let (low, high) = (tread.iter().min().unwrap(), tread.iter().max().unwrap());
+            assert!(high - low < 25, "{compound:?}: {low}..{high}");
+            // The band, where the compound has one: white or yellow.
+            let v = v_of((BAND.0 + BAND.1) / 2.0);
+            let band = pixel(10, (v * IMAGE.y as f32) as u32);
+            match compound {
+                Compound::Soft => assert!(band.iter().all(|&c| c > 200), "{band:?}"),
+                Compound::Hard => assert!(band[0] > 200 && band[2] < 80, "{band:?}"),
+                Compound::Medium => assert!(band.iter().all(|&c| c < 60), "{band:?}"),
             }
         }
     }
 
     #[test]
-    fn the_pattern_repeats_seamlessly_round_the_tyre() {
-        for tread in Tread::ALL {
-            for t in [-0.7, -0.3, 0.0, 0.4, 0.8] {
-                let a = tread.groove(0.0, t, 0.01);
-                let b = tread.groove(1.0, t, 0.01);
-                assert!((a - b).abs() < 1e-4, "{tread:?} at {t}");
-            }
+    fn the_crown_is_round_from_shoulder_to_shoulder() {
+        // Half way out to the shoulder the tread has dropped as much as on
+        // an ellipse: round, not flat-topped.
+        let half = Vec2::new(0.08, 0.06);
+        let (top, _) = section(0.0, half);
+        let (shoulder, normal) = section(PI / 4.0, half);
+        assert!((top.y - 1.0).abs() < 1e-5);
+        let ellipse = (1.0 - shoulder.x * shoulder.x).sqrt();
+        assert!((shoulder.y - ellipse).abs() < 1e-3, "{shoulder:?}");
+        // Leaning over 60 degrees, the bike is still on the tread.
+        let lean = normal.x.atan2(normal.y);
+        assert!(lean < TREAD_ANGLE);
+        let (edge, normal) = section(TREAD_ANGLE, half);
+        assert!(
+            normal.x.atan2(normal.y) > 60f32.to_radians(),
+            "{edge:?} {normal:?}"
+        );
+    }
+
+    #[test]
+    fn the_texture_repeats_seamlessly_round_the_tyre() {
+        let image = image_of(Compound::Medium);
+        let data = image.data.unwrap();
+        let shade = |x: u32, y: u32| data[((y * IMAGE.x + x) * 4) as usize] as i32;
+        for y in [40, 100, 128, 160, 220] {
+            let (first, last) = (shade(0, y), shade(IMAGE.x - 1, y));
+            assert!((first - last).abs() < 12, "{y}: {first} {last}");
         }
     }
 
@@ -555,14 +466,14 @@ mod tests {
     }
 
     #[test]
-    fn the_imported_bikes_wear_every_pattern() {
-        let worn: Vec<Tread> = Design::ALL
+    fn the_imported_bikes_wear_every_compound() {
+        let worn: Vec<Compound> = Design::ALL
             .into_iter()
             .filter(|design| design.model().is_some())
-            .map(Tread::of)
+            .map(Compound::of)
             .collect();
-        for tread in Tread::ALL {
-            assert!(worn.contains(&tread), "{tread:?}");
+        for compound in Compound::ALL {
+            assert!(worn.contains(&compound), "{compound:?}");
         }
     }
 }
