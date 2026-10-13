@@ -117,7 +117,6 @@ The scenery textures are CC0 (public domain) photos from [Poly Haven](https://po
 | `assets/textures/roof.jpg` | Tiled roofs |
 | `assets/textures/plaster.jpg` | Plastered and concrete surfaces: houses, hotels, walls and structures |
 | `assets/textures/sky.jpg` | Sky dome |
-| *(procedural)* `water` | Vivid Mediterranean ocean with gentle wave shimmer and highlights |
 | *(procedural)* `crowd` | Pixelated grandstand spectators with vibrant retro clothing |
 | *(procedural)* `checker` | Start/finish and tunnel checkerboard strip |
 | *(procedural)* `panels` | Concrete tunnel lining panels |

@@ -29,13 +29,6 @@ const FINE_MARGIN: f32 = 260.0;
 const EXTENT: f32 = 3500.0;
 /// Cuánto crece cada celda respecto a la anterior fuera de la zona fina.
 const COARSE_GROWTH: f32 = 1.15;
-/// The sea: what each repetition of its texture covers (m), how far it is
-/// turned (rad) and warped (m) to hide that it repeats, and over what
-/// distance the warp changes (m).
-const SEA_TILE: f32 = 110.0;
-const SEA_TURN: f32 = 0.37;
-const SEA_WARP: f32 = 140.0;
-const SEA_WARP_SCALE: f32 = 520.0;
 /// Tamaño (m) que cubre cada repetición de las texturas.
 pub const GRASS_TILE: f32 = 11.0;
 const SAND_TILE: f32 = 8.5;
@@ -307,13 +300,12 @@ impl Terrain {
     }
 }
 
-/// The ground, from its meshes ([`Terrain::meshes`]), and the sea, the same
-/// mesh for every circuit ([`sea_mesh`]).
+/// The ground, from its meshes ([`Terrain::meshes`]). The sea is apart
+/// ([`super::sea`]).
 pub fn spawn_terrain(
     world: &mut ChildSpawnerCommands,
     terrain: &Terrain,
     ground_meshes: [(Ground, Mesh); 3],
-    sea: &Handle<Mesh>,
     textures: &WorldTextures,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
@@ -335,86 +327,6 @@ pub fn spawn_terrain(
             })),
         ));
     }
-
-    // El mar: llega hasta el horizonte, con agua viva mediterránea y reflejos.
-    world.spawn((
-        Mesh3d(sea.clone()),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::WHITE,
-            base_color_texture: Some(textures.water.clone()),
-            perceptual_roughness: 0.22,
-            reflectance: 0.50,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, SEA_LEVEL, 0.0),
-    ));
-}
-
-/// The sea: a flat grid out to the horizon. Its texture would repeat in a
-/// regular pattern seen from afar, so it is laid a little askew and warped
-/// over hundreds of metres, and broad patches of the water are darker or
-/// more turquoise than others.
-pub fn sea_mesh() -> Mesh {
-    const CELLS: usize = 160;
-    let size = 4.0 * EXTENT;
-    let (turn_cos, turn_sin) = (SEA_TURN.cos(), SEA_TURN.sin());
-    let mut positions = Vec::with_capacity((CELLS + 1) * (CELLS + 1));
-    let mut uvs = Vec::with_capacity(positions.capacity());
-    let mut colors = Vec::with_capacity(positions.capacity());
-    for j in 0..=CELLS {
-        for i in 0..=CELLS {
-            let p = Vec2::new(
-                (i as f32 / CELLS as f32 - 0.5) * size,
-                (j as f32 / CELLS as f32 - 0.5) * size,
-            );
-            positions.push([p.x, 0.0, p.y]);
-            let warp = Vec2::new(
-                fbm(p / SEA_WARP_SCALE, 3) - 0.5,
-                fbm(p / SEA_WARP_SCALE + Vec2::new(31.7, -12.9), 3) - 0.5,
-            ) * SEA_WARP;
-            let q = p + warp;
-            let turned = Vec2::new(
-                q.x * turn_cos - q.y * turn_sin,
-                q.x * turn_sin + q.y * turn_cos,
-            );
-            uvs.push((turned / SEA_TILE).to_array());
-            let broad = fbm(p / 1100.0 + Vec2::new(-7.3, 4.1), 3);
-            let patches = fbm(p / 360.0, 3);
-            let shade = 0.84 + 0.3 * broad;
-            let teal = (patches - 0.5) * 0.24;
-            colors.push(
-                Color::srgb(shade * (1.0 - teal), shade * (1.0 + teal * 0.6), shade)
-                    .to_linear()
-                    .to_f32_array(),
-            );
-        }
-    }
-    let row = CELLS + 1;
-    let indices: Vec<u32> = (0..CELLS)
-        .flat_map(|j| (0..CELLS).map(move |i| (i, j)))
-        .flat_map(|(i, j)| {
-            let corner = |di: usize, dj: usize| ((j + dj) * row + i + di) as u32;
-            // Anticlockwise seen from above, facing up.
-            [
-                corner(0, 0),
-                corner(0, 1),
-                corner(1, 0),
-                corner(1, 0),
-                corner(0, 1),
-                corner(1, 1),
-            ]
-        })
-        .collect();
-    let normals = vec![[0.0, 1.0, 0.0]; positions.len()];
-    Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD,
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
-    .with_inserted_indices(Indices::U32(indices))
 }
 
 fn classify(height: f32, normal: Vec3) -> Ground {

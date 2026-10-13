@@ -8,11 +8,14 @@ mod props;
 mod quads;
 mod road;
 pub mod scenery;
+mod sea;
 mod sky;
 mod structures;
 mod terrain;
 mod textures;
 
+use bevy::asset::embedded_asset;
+use bevy::pbr::PbrPlugin;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use bevy::{light::CascadeShadowConfigBuilder, prelude::*, transform::TransformSystems};
 
@@ -26,6 +29,14 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
+        embedded_asset!(app, "sea.wgsl");
+        // Without the renderer (in the tests), the sea's material is only an
+        // asset.
+        if app.is_plugin_added::<PbrPlugin>() {
+            app.add_plugins(MaterialPlugin::<sea::SeaMaterial>::default());
+        } else {
+            app.init_asset::<sea::SeaMaterial>();
+        }
         let current = CurrentCircuit::default();
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
@@ -68,22 +79,20 @@ struct Sea(Handle<Mesh>);
 
 impl FromWorld for Sea {
     fn from_world(world: &mut World) -> Self {
-        Self(
-            world
-                .resource_mut::<Assets<Mesh>>()
-                .add(terrain::sea_mesh()),
-        )
+        Self(world.resource_mut::<Assets<Mesh>>().add(sea::sea_mesh()))
     }
 }
 
 /// What can be worked out for a circuit away from the main thread, which
-/// is most of the work: its track, its terrain, the terrain's meshes and its
-/// solid edge. The entities and assets are made on the main thread.
+/// is most of the work: its track, its terrain, the terrain's meshes, where
+/// its shore is and its solid edge. The entities and assets are made on the
+/// main thread.
 struct Prepared {
     index: usize,
     track: Track,
     terrain: terrain::Terrain,
     ground: [(terrain::Ground, Mesh); 3],
+    shore: sea::ShoreMap,
     edges: Vec<Vec<[f32; 2]>>,
 }
 
@@ -92,12 +101,14 @@ fn prepare(index: usize) -> Prepared {
     let track = Track::new(&circuit.layout);
     let terrain = terrain::Terrain::new(&track, &circuit.scenery);
     let ground = terrain.meshes();
+    let shore = sea::ShoreMap::new(&terrain, &track);
     let edges = terrain.track_edges(&track);
     Prepared {
         index,
         track,
         terrain,
         ground,
+        shore,
         edges,
     }
 }
@@ -231,6 +242,7 @@ fn build_world(
 struct Builder<'w> {
     textures: Res<'w, textures::WorldTextures>,
     sea: Res<'w, Sea>,
+    sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
     meshes: ResMut<'w, Assets<Mesh>>,
     materials: ResMut<'w, Assets<StandardMaterial>>,
     images: ResMut<'w, Assets<Image>>,
@@ -249,8 +261,12 @@ fn build(
         track,
         terrain,
         ground,
+        shore,
         edges,
     } = prepared;
+    let sea_material = builder
+        .sea_materials
+        .add(shore.material(&mut builder.images));
     let scenery = &CIRCUITS[index].scenery;
     let mut assets = Assets3d {
         textures: &builder.textures,
@@ -265,11 +281,15 @@ fn build(
                 world,
                 &terrain,
                 ground,
-                &builder.sea.0,
                 assets.textures,
                 assets.meshes,
                 assets.materials,
             );
+            world.spawn((
+                Mesh3d(builder.sea.0.clone()),
+                MeshMaterial3d(sea_material),
+                Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
+            ));
             road::spawn_road(world, &track, &terrain, scenery, &mut assets);
             structures::spawn_structures(world, &track, &terrain, scenery, &mut assets);
             props::spawn_props(world, &track, &terrain, scenery, &mut assets);
