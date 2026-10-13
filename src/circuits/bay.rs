@@ -211,6 +211,8 @@ pub const BAY: Circuit = Circuit {
         rings: &[],
         waterfalls: &[],
         sky: SkyStyle::Day,
+        water: Water::Sea,
+        pit: None,
         mine: None,
     },
 };

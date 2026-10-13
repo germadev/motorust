@@ -309,8 +309,10 @@ fn build(
         trees,
     } = prepared;
     let shore_image = builder.images.add(shore_image);
-    let sea_material = builder.sea_materials.add(shore.material(shore_image));
     let scenery = &CIRCUITS[index].scenery;
+    let sea_material = builder
+        .sea_materials
+        .add(shore.material(shore_image, scenery.water));
     let mut assets = Assets3d {
         textures: &builder.textures,
         meshes: &mut builder.meshes,

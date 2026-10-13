@@ -18,8 +18,10 @@
 //! 4. Out of the west mouth and round, past ore carts on their rails, to
 //!    the shore of a great lake.
 //! 5. The wooden bridge, straight across the lake for nearly half a
-//!    kilometre, with a crest in the middle where the bike takes off.
-//! 6. Up the mountain's north flank, 55 m, cut into its slope.
+//!    kilometre, 18 m over the red water at the bottom of an open pit, its
+//!    benches stepping down to the water all round, with a crest in the
+//!    middle where the bike takes off.
+//! 6. Up the mountain's north flank, 48 m, cut into its slope.
 //! 7. Over the top, past a headframe, across the road through the mountain
 //!    65 m beneath.
 //! 8. Down its south-east flank and back into town.
@@ -50,9 +52,9 @@ pub const GOLD_MINE: Circuit = Circuit {
     name: "Mina Dorada",
     name_en: "Gold Mine",
     description: "Inspirada en las minas de Mario Kart y Crash: vagonetas,\n\
-                  una montaña cruzada por dentro y por encima, y un gran lago",
+                  una montaña cruzada por dentro y por encima, y una corta inundada",
     description_en: "Inspired by the mines of Mario Kart and Crash: ore carts,\n\
-                     a mountain crossed through and over, and a great lake",
+                     a mountain crossed through and over, and a flooded open pit",
     // "Toll of the Iron Mile".
     song: Song {
         mp3: include_bytes!("../../assets/music/gold_mine.mp3"),
@@ -237,6 +239,14 @@ pub const GOLD_MINE: Circuit = Circuit {
         rings: &[],
         waterfalls: &[],
         sky: SkyStyle::Dusk,
+        // The great lake is the bottom of an open pit, flooded with red water.
+        water: Water::Iron,
+        pit: Some(Pit {
+            benches: 5,
+            step: 3.4,
+            tread: 9.0,
+            spoil: 45.0,
+        }),
         mine: Some(Mine {
             rails: &[
                 // Through town, on the right of the start straight.
@@ -447,7 +457,7 @@ const CONTROL_POINTS: [Vec2; 50] = [
 ];
 
 /// Up from town to the east mouth; through the mountain, down into the
-/// mine and up again; down to the lake and over it; up the mountain, 55 m,
+/// mine and up again; down to the lake and over it; up the mountain, 48 m,
 /// over its top and down again into town.
 const ELEVATION: [(f32, f32); 57] = [
     // Through town, over a crest where the bike flies.
@@ -457,47 +467,47 @@ const ELEVATION: [(f32, f32); 57] = [
     (225.0, 5.0),
     // Round the bend and up to the east mouth.
     (300.0, 2.6),
-    (450.0, 3.0),
-    (600.0, 4.5),
-    (750.0, 7.0),
-    (860.0, 9.5),
+    (450.0, 3.5),
+    (600.0, 6.5),
+    (750.0, 11.0),
+    (860.0, 15.0),
     // Through the mountain: down into the mine, under the road over the top,
     // and up again to the west mouth.
-    (905.0, 11.8),
-    (950.0, 11.4),
-    (1010.0, 9.0),
-    (1070.0, 6.6),
-    (1130.0, 4.4),
-    (1190.0, 2.8),
-    (1250.0, 2.2),
-    (1300.0, 2.6),
-    (1350.0, 4.0),
-    (1410.0, 6.6),
-    (1470.0, 9.6),
-    (1530.0, 12.6),
-    (1590.0, 15.4),
-    (1640.0, 17.2),
-    (1690.0, 18.0),
-    (1740.0, 17.6),
+    (905.0, 16.6),
+    (950.0, 16.2),
+    (1010.0, 13.2),
+    (1070.0, 10.0),
+    (1130.0, 6.8),
+    (1190.0, 4.0),
+    (1250.0, 2.6),
+    (1300.0, 3.0),
+    (1350.0, 4.4),
+    (1410.0, 7.2),
+    (1470.0, 10.3),
+    (1530.0, 13.4),
+    (1590.0, 16.4),
+    (1640.0, 18.6),
+    (1690.0, 19.6),
+    (1740.0, 19.4),
     // Down to the lake, and over it, with a crest in the middle of the bridge
     // where the bike takes off.
-    (1800.0, 16.6),
-    (1900.0, 14.8),
-    (2000.0, 13.4),
-    (2090.0, 12.6),
-    (2320.0, 12.4),
-    (2390.0, 16.6),
-    (2435.0, 15.2),
-    (2500.0, 13.0),
-    (2560.0, 12.4),
-    (2600.0, 12.4),
+    (1800.0, 19.2),
+    (1900.0, 18.6),
+    (2000.0, 18.1),
+    (2090.0, 17.8),
+    (2320.0, 17.6),
+    (2390.0, 21.8),
+    (2435.0, 20.4),
+    (2500.0, 18.2),
+    (2560.0, 17.6),
+    (2600.0, 17.6),
     // Up the mountain's north flank.
-    (2690.0, 14.0),
-    (2780.0, 18.5),
-    (2880.0, 25.0),
-    (2980.0, 31.5),
-    (3080.0, 38.0),
-    (3180.0, 45.0),
+    (2690.0, 19.0),
+    (2780.0, 23.0),
+    (2880.0, 28.5),
+    (2980.0, 34.0),
+    (3080.0, 39.5),
+    (3180.0, 45.5),
     (3280.0, 52.0),
     (3370.0, 58.0),
     (3450.0, 62.5),
@@ -689,7 +699,8 @@ const LOWER_GALLERY_RISE: [(f32, f32); 11] = [
     (269.2, 0.00),
 ];
 
-/// The great lake north-west of the mountain: its middle, its radius (m),
+/// The great lake north-west of the mountain, at the bottom of the open
+/// pit: its middle, its radius (m),
 /// and how far its shore wanders (m).
 const LAKE: Vec2 = Vec2::new(-1225.0, -626.0);
 const LAKE_RADIUS: f32 = 235.0;
@@ -830,9 +841,9 @@ mod tests {
         let middle = point(EXCAVATION.from + EXCAVATION.length(lap) / 2.0);
         let deep = middle.distance(MOUNTAIN.center);
         assert!(deep < 0.2 * MOUNTAIN.radius, "{deep} m from its middle");
-        // Then up it, 50 m and more, steadily, over the top, and down it,
+        // Then up it, 45 m and more, steadily, over the top, and down it,
         // 60 m and more, back into town.
-        assert!(height(CLIMB.to) - height(CLIMB.from) > 50.0);
+        assert!(height(CLIMB.to) - height(CLIMB.from) > 45.0);
         assert!(height(DESCENT.from) - height(0.0) > 60.0);
         let (first, last) = (track.index_at(CLIMB.from + 100.0), track.index_at(CLIMB.to));
         for index in first..last {

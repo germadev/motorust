@@ -10,7 +10,7 @@ use bevy::{
     asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
 };
 
-use super::scenery::{Coast, Scenery, Side, Soil, span};
+use super::scenery::{Coast, Pit, Scenery, Side, Soil, span};
 use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep, value_noise};
@@ -46,6 +46,10 @@ const BURIED: f32 = TUNNEL_SHELL - 2.0 * FINE_SPACING;
 /// How far past the flat ground beside a road on a mountain it climbs the
 /// ground reaches the mountainside (m).
 const SLOPE_REACH: f32 = 30.0;
+/// How far across each face of an open pit runs per metre up (m): steep.
+const PIT_FACE: f32 = 0.6;
+/// How far above the water the foot of an open pit is (m).
+const PIT_FOOT: f32 = 0.4;
 /// How far apart the points of a shore drawn as an outline are (m).
 const SHORE_SPACING: f32 = 4.0;
 /// How far above the road the earth must stand to stop a bike (m), and the
@@ -457,6 +461,15 @@ impl<'a> Shaper<'a> {
             .fold(0.0, f32::max)
     }
 
+    /// The ground at `point` of the open pit round the water, if there is
+    /// one, where it would otherwise be at `ground` (see [`pit_ground`]).
+    fn pit(&self, point: Vec2, ground: f32) -> f32 {
+        match &self.scenery.pit {
+            Some(pit) => pit_ground(pit, self.coast(point), ground),
+            None => ground,
+        }
+    }
+
     /// Altura de las paredes de roca junto a la carretera en un punto que
     /// está a `along` metros de la vuelta.
     fn cutting(&self, nearest: &Nearest, along: f32, point: Vec2) -> f32 {
@@ -479,7 +492,8 @@ impl<'a> Shaper<'a> {
     fn height_at(&self, point: Vec2, nearest: Option<&Nearest>) -> f32 {
         let mountains = (self.scenery.mountains)(point);
         let Some(nearest) = nearest else {
-            return self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
+            let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
+            return self.pit(point, wild);
         };
         let track = self.track;
         let along = track.along(nearest);
@@ -540,6 +554,10 @@ impl<'a> Shaper<'a> {
                 reach * smoothstep(FLAT, FLAT + 8.0, distance),
             );
         }
+        // An open pit round the water: its benches and the spoil round its
+        // rim, cut away just past the road's verges.
+        let pitted = self.pit(point, height);
+        height = height.lerp(pitted, smoothstep(FLAT, FLAT + 12.0, distance));
         // Bajo los puentes, el terreno sigue su forma natural (el mar de la
         // ría), siempre por debajo del tablero.
         let bridge = self
@@ -550,10 +568,33 @@ impl<'a> Shaper<'a> {
             .fold(0.0, f32::max);
         if bridge > 0.0 {
             let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
+            let wild = self.pit(point, wild);
             height = height.lerp(wild.min(road - 2.5), bridge);
         }
         height
     }
+}
+
+/// The ground of an open pit `land` metres from the water (see [`Pit`]),
+/// where it would otherwise be at `ground`: under the water as it was; then,
+/// from just above the water, bench above bench, each face steep, up to the
+/// rim; past it, the spoil heaped round the rim slopes down to the ground
+/// round about, or the pit is cut into higher ground.
+fn pit_ground(pit: &Pit, land: f32, ground: f32) -> f32 {
+    if land < 0.0 {
+        return ground;
+    }
+    let pitch = pit.tread + pit.step * PIT_FACE;
+    let width = pit.benches as f32 * pitch;
+    let foot = SEA_LEVEL + PIT_FOOT;
+    if land < width {
+        let bench = (land / pitch).floor();
+        let up = smoothstep(0.0, pit.step * PIT_FACE, land - bench * pitch);
+        return foot + (bench + up) * pit.step;
+    }
+    let rim = foot + pit.benches as f32 * pit.step;
+    rim.lerp(ground, smoothstep(width, width + pit.spoil, land))
+        .max(ground)
 }
 
 /// El valor en `along` de una función a trozos dada por pares (metros desde
@@ -1087,6 +1128,94 @@ mod tests {
         // carries the road above.
         assert!(tunnels.beneath(&track, point, BURIED).is_some());
         assert!((terrain.height(point) - low).abs() < 0.1);
+    }
+
+    #[test]
+    fn an_open_pit_steps_down_to_the_water_bench_by_bench() {
+        let pit = Pit {
+            benches: 4,
+            step: 3.0,
+            tread: 8.0,
+            spoil: 40.0,
+        };
+        let pitch = pit.tread + pit.step * PIT_FACE;
+        let foot = SEA_LEVEL + PIT_FOOT;
+        // Under the water, the ground is as it was.
+        assert_eq!(pit_ground(&pit, -5.0, -9.0), -9.0);
+        // Each bench is level, a step above the one below it, and the faces
+        // between them are steep.
+        for bench in 0..4 {
+            let middle = (bench as f32 + 0.5) * pitch + pit.step * PIT_FACE / 2.0;
+            let level = foot + (bench + 1) as f32 * pit.step;
+            for along in [middle - 2.0, middle, middle + 2.0] {
+                assert!((pit_ground(&pit, along, 0.0) - level).abs() < 1e-4);
+            }
+            let face = bench as f32 * pitch;
+            let rise =
+                pit_ground(&pit, face + pit.step * PIT_FACE, 0.0) - pit_ground(&pit, face, 0.0);
+            assert!((rise - pit.step).abs() < 1e-4);
+        }
+        // Past the rim, the spoil slopes down to the ground round about, or
+        // the pit is cut into higher ground.
+        let width = 4.0 * pitch;
+        let rim = foot + 4.0 * pit.step;
+        assert!((pit_ground(&pit, width + 1.0, 2.0) - rim).abs() < 0.1);
+        assert_eq!(pit_ground(&pit, width + pit.spoil + 1.0, 2.0), 2.0);
+        assert_eq!(pit_ground(&pit, width + 1.0, 30.0), 30.0);
+    }
+
+    #[test]
+    fn gold_mine_s_great_lake_is_the_bottom_of_an_open_pit() {
+        let circuit = &CIRCUITS[3];
+        let (Some(pit), &Coast::Function(water)) = (&circuit.scenery.pit, &circuit.scenery.coast)
+        else {
+            panic!("Gold Mine has an open pit round its lake");
+        };
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let lake = Vec2::new(-1225.0, -626.0);
+        assert!(water(lake) < 0.0 && terrain.height(lake) < SEA_LEVEL);
+        // Out from the middle of the lake, away from the roads, past the
+        // water the ground steps up bench by bench to the rim.
+        let pitch = pit.tread + pit.step * PIT_FACE;
+        let foot = SEA_LEVEL + PIT_FOOT;
+        let mut seen = 0;
+        for k in 0..24 {
+            let angle = k as f32 / 24.0 * std::f32::consts::TAU;
+            let out = Vec2::new(angle.cos(), angle.sin());
+            let Some(shore) = (0..600)
+                .map(|m| m as f32)
+                .find(|&m| water(lake + out * m) >= 0.0)
+            else {
+                continue;
+            };
+            let benches = shore..shore + pit.benches as f32 * pitch;
+            let clear = (0..=10).all(|i| {
+                let point =
+                    lake + out * (benches.start + (benches.end - benches.start) * i as f32 / 10.0);
+                track.nearest(point).distance > FLAT + 40.0
+            });
+            if !clear {
+                continue;
+            }
+            seen += 1;
+            for bench in 0..pit.benches {
+                // Where the ray crosses the middle of each bench: the shore
+                // wanders, and the benches with it.
+                let middle = (bench as f32 + 0.5) * pitch + pit.step * PIT_FACE / 2.0;
+                let along = (0..2400)
+                    .map(|q| shore + q as f32 * 0.25)
+                    .find(|&m| water(lake + out * m) >= middle)
+                    .expect("the ray crosses every bench");
+                let level = foot + (bench + 1) as f32 * pit.step;
+                let ground = terrain.height(lake + out * along);
+                assert!(
+                    (ground - level).abs() < 0.5 * pit.step,
+                    "{k} {bench}: {ground} {level}"
+                );
+            }
+        }
+        assert!(seen >= 8, "{seen} rays clear of the roads");
     }
 
     #[test]

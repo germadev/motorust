@@ -46,7 +46,8 @@ twice: first through it, by lantern-lit halls of sandstone, gold-veined slate
 and clay under roofs up to 34 m high, where the road splits three ways twice
 between pillars of rock, and then over it, 65 m above the galleries. On the
 way: a mining town, a trestle where an ore cart crosses over the road,
-headframes, and a wooden bridge nearly half a kilometre long over a great lake.
+headframes, and a wooden bridge nearly half a kilometre long over the red
+water of a flooded open pit, its benches stepping down to the water all round.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

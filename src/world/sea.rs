@@ -15,10 +15,11 @@ use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerD
 use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::{
-    AsBindGroup, Extent3d, PrimitiveTopology, TextureDimension, TextureFormat,
+    AsBindGroup, Extent3d, PrimitiveTopology, ShaderType, TextureDimension, TextureFormat,
 };
 use bevy::shader::ShaderRef;
 
+use super::scenery::Water;
 use super::terrain::{SEA_LEVEL, Terrain};
 use crate::track::Track;
 
@@ -54,6 +55,41 @@ pub struct SeaMaterial {
     /// xy: where the swell heads (m, x and z, length 1).
     #[uniform(3)]
     pub swell: Vec4,
+    #[uniform(4)]
+    pub colors: SeaColors,
+}
+
+/// The colours of the water (sRGB, see `sea.wgsl`): far out, at sea, by the
+/// shore, and of the foam.
+#[derive(ShaderType, Clone, Copy, Debug, PartialEq)]
+pub struct SeaColors {
+    pub deep: Vec4,
+    pub open: Vec4,
+    pub shallow: Vec4,
+    pub foam: Vec4,
+}
+
+impl SeaColors {
+    pub fn of(water: Water) -> Self {
+        let rgb = |r: f32, g: f32, b: f32| Vec4::new(r, g, b, 1.0);
+        match water {
+            // Saturated blues and white foam.
+            Water::Sea => Self {
+                deep: rgb(0.07, 0.29, 0.78),
+                open: rgb(0.12, 0.42, 0.88),
+                shallow: rgb(0.25, 0.72, 0.93),
+                foam: rgb(0.97, 0.99, 1.0),
+            },
+            // Wine red where it is deep, rust and orange ochre by the
+            // shore, and a pale yellow scum.
+            Water::Iron => Self {
+                deep: rgb(0.36, 0.07, 0.05),
+                open: rgb(0.52, 0.13, 0.06),
+                shallow: rgb(0.82, 0.38, 0.12),
+                foam: rgb(0.96, 0.86, 0.62),
+            },
+        }
+    }
 }
 
 impl Material for SeaMaterial {
@@ -212,13 +248,15 @@ impl ShoreMap {
         image
     }
 
-    /// The sea's material, with the map as an image (see [`Self::image`]).
-    pub fn material(&self, shore: Handle<Image>) -> SeaMaterial {
+    /// The sea's material, with the map as an image (see [`Self::image`]),
+    /// for water of that colour.
+    pub fn material(&self, shore: Handle<Image>, water: Water) -> SeaMaterial {
         let size = Vec2::new(self.width as f32, self.height as f32) * self.texel;
         SeaMaterial {
             shore_area: self.corner.extend(size.x).extend(size.y),
             shore,
             swell: self.swell.extend(0.0).extend(0.0),
+            colors: SeaColors::of(water),
         }
     }
 }
@@ -447,6 +485,25 @@ mod tests {
     fn with_no_land_the_whole_map_is_open_sea() {
         let map = ShoreMap::from_land(Vec2::ZERO, 2.0, 4, 3, &[false; 12], Vec2::ZERO);
         assert!(map.distance.iter().all(|&d| d > SHORE_FAR));
+    }
+
+    #[test]
+    fn the_sea_is_blue_and_the_water_of_a_mine_red() {
+        let sea = SeaColors::of(Water::Sea);
+        let iron = SeaColors::of(Water::Iron);
+        for color in [sea.deep, sea.open, sea.shallow] {
+            assert!(color.z > color.x && color.z > color.y);
+        }
+        for color in [iron.deep, iron.open, iron.shallow] {
+            assert!(color.x > 2.0 * color.y && color.x > 2.0 * color.z);
+        }
+        // The Gold Mine's lake and river are red, every other track's sea
+        // blue.
+        for circuit in &crate::circuits::CIRCUITS {
+            let red = circuit.scenery.mine.is_some();
+            let wanted = if red { Water::Iron } else { Water::Sea };
+            assert_eq!(circuit.scenery.water, wanted, "{}", circuit.name);
+        }
     }
 
     #[test]

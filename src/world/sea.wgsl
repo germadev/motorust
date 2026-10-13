@@ -26,11 +26,15 @@ const SHORE_NEAR: f32 = -10.0;
 const SHORE_FAR: f32 = 40.0;
 const WAVES_REACH: f32 = 400.0;
 
-// The colours (sRGB): the open sea, the sea by the coast, and the foam.
-const DEEP: vec3<f32> = vec3(0.07, 0.29, 0.78);
-const OPEN: vec3<f32> = vec3(0.12, 0.42, 0.88);
-const SHALLOW: vec3<f32> = vec3(0.25, 0.72, 0.93);
-const FOAM: vec3<f32> = vec3(0.97, 0.99, 1.0);
+// The colours (sRGB): far out, at sea, by the coast, and the foam (see
+// SeaColors in src/world/sea.rs).
+struct SeaColors {
+    deep: vec4<f32>,
+    open: vec4<f32>,
+    shallow: vec4<f32>,
+    foam: vec4<f32>,
+}
+@group(#{MATERIAL_BIND_GROUP}) @binding(4) var<uniform> colors: SeaColors;
 
 // The waves: one crest every WAVE_SPACING m, each taking WAVE_PERIOD s to
 // come in by one spacing, broken into pieces about WAVE_PIECE m long.
@@ -102,8 +106,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
 
     // Broad patches of deeper and lighter blue out at sea.
     let patches = noise(at / 260.0 + vec2(3.7, -1.9));
-    var color = mix(DEEP, OPEN, smoothstep(0.25, 0.75, patches));
-    color = mix(SHALLOW, color, smoothstep(2.0, 30.0, near));
+    var color = mix(colors.deep.rgb, colors.open.rgb, smoothstep(0.25, 0.75, patches));
+    color = mix(colors.shallow.rgb, color, smoothstep(2.0, 30.0, near));
 
     // White crests coming in, fading out with distance (they would shimmer).
     let distance = length(in.world_position.xyz - view.world_position.xyz);
@@ -120,7 +124,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     let pixel = fwidth(near);
     foam = max(foam, 1.0 - smoothstep(0.4, 1.6 + pixel, near));
 
-    let srgb = mix(color, FOAM, clamp(foam, 0.0, 1.0));
+    let srgb = mix(color, colors.foam.rgb, clamp(foam, 0.0, 1.0));
 
     // Fog and tone mapping like everything else, with no lighting.
     var pbr_input = pbr_types::pbr_input_new();

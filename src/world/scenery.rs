@@ -170,6 +170,28 @@ pub enum SkyStyle {
     Dusk,
 }
 
+/// The colour of the water: the blue sea, or the red water of a flooded pit
+/// rich in iron, as at Rio Tinto.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Water {
+    Sea,
+    Iron,
+}
+
+/// An open-pit mine round the water (see [`Scenery::pit`]): benches cut in
+/// steps from its rim down to the water, following the shore, and its spoil
+/// heaped round the rim.
+pub struct Pit {
+    /// How many benches, how high each face steps up (m) and how wide each
+    /// bench is (m).
+    pub benches: u32,
+    pub step: f32,
+    pub tread: f32,
+    /// How far past the rim the spoil heaped round it slopes down to the
+    /// ground (m).
+    pub spoil: f32,
+}
+
 /// How the bridges are built.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BridgeStyle {
@@ -298,6 +320,10 @@ pub struct Scenery {
     pub waterfalls: &'static [Waterfall],
     /// The light: day or dusk.
     pub sky: SkyStyle,
+    /// The colour of the sea, the lakes and the rivers.
+    pub water: Water,
+    /// An open pit round the water, if there is one.
+    pub pit: Option<Pit>,
     /// The works of a mine around the road, if there is one.
     pub mine: Option<Mine>,
 }
