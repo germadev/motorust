@@ -109,6 +109,28 @@ pub fn detect_controller_model(name: &str) -> ControllerModel {
     }
 }
 
+/// Zones of a DualSense trigger's travel, as GameController splits it.
+pub const TRIGGER_ZONES: usize = 10;
+/// Where along its travel (0 to 1) a trigger may start vibrating: well past
+/// where the throttle and brake begin to count
+/// ([`crate::bike::TRIGGER_REST`]).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub const VIBRATION_START: f32 = 0.3;
+const _: () = assert!(VIBRATION_START > crate::bike::TRIGGER_REST + 0.1);
+
+/// How strongly each zone of a trigger's travel vibrates, for a vibration
+/// of `amplitude` from `start` (0 to 1) on: nothing before it. A trigger
+/// that vibrates at rest moves by itself, and its own sensor reads that as
+/// being pressed: throttle or brake the player never asked for (and, leaning
+/// on another bike or a wall, the hit that makes it vibrate goes on and on).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn vibration_zones(start: f32, amplitude: f32) -> [f32; TRIGGER_ZONES] {
+    std::array::from_fn(|zone| {
+        let from = zone as f32 / TRIGGER_ZONES as f32;
+        if from >= start { amplitude } else { 0.0 }
+    })
+}
+
 /// Dispositivo o mando activo usado por el jugador principal.
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ActiveController {
@@ -550,6 +572,23 @@ fn handle_rumble_requests(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vibrating_trigger_is_still_until_pressed() {
+        // Nothing where the throttle and brake begin to count, or before.
+        let zones = vibration_zones(VIBRATION_START, 0.6);
+        for (zone, &amplitude) in zones.iter().enumerate() {
+            let from = zone as f32 / TRIGGER_ZONES as f32;
+            let to = (zone + 1) as f32 / TRIGGER_ZONES as f32;
+            if to <= VIBRATION_START {
+                assert_eq!(amplitude, 0.0, "zone {zone} vibrates at rest");
+            }
+            if from >= VIBRATION_START {
+                assert_eq!(amplitude, 0.6);
+            }
+        }
+        assert_eq!(vibration_zones(0.0, 0.5), [0.5; TRIGGER_ZONES]);
+    }
 
     #[test]
     fn claimed_pads_matches_specific_vendors_correctly() {

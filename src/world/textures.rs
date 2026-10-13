@@ -16,7 +16,6 @@ use bevy::{
 
 #[derive(Resource)]
 pub struct WorldTextures {
-    pub sky: Handle<Image>,
     pub grass: Handle<Image>,
     pub rock: Handle<Image>,
     pub sand: Handle<Image>,
@@ -28,8 +27,6 @@ pub struct WorldTextures {
     pub checker: Handle<Image>,
     /// Paneles de hormigón con juntas, para los túneles.
     pub panels: Handle<Image>,
-    /// Agua del mar con oleaje sutil y reflejos vivos mediterráneos.
-    pub water: Handle<Image>,
     /// Gradas de público con ropa de colores vivos como en los arcades de los 90.
     pub crowd: Handle<Image>,
     /// Two by two squares of brown checkerboard earth, as in Loop Island.
@@ -74,21 +71,13 @@ impl FromWorld for WorldTextures {
             include_bytes!("../../assets/textures/plaster.jpg"),
             TextureEnhance::None,
         );
-        // El cielo da la vuelta en horizontal pero no en vertical.
-        let sky = images.add(embedded(
-            include_bytes!("../../assets/textures/sky.jpg"),
-            ImageAddressMode::ClampToEdge,
-            TextureEnhance::None,
-        ));
         let checker = images.add(checker());
         let panels = images.add(panels());
-        let water = images.add(water());
         let crowd = images.add(crowd());
         let soil = images.add(soil());
         let falls = images.add(falls());
         let planks = images.add(planks());
         Self {
-            sky,
             grass,
             rock,
             sand,
@@ -98,7 +87,6 @@ impl FromWorld for WorldTextures {
             plaster,
             checker,
             panels,
-            water,
             crowd,
             soil,
             falls,
@@ -386,83 +374,6 @@ fn checker() -> Image {
                 15
             };
             [value, value, value, 255]
-        })
-        .collect();
-    let mut image = Image::new(
-        Extent3d {
-            width: SIZE,
-            height: SIZE,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    image.sampler = sampler(ImageAddressMode::Repeat);
-    generate_mipmaps(&mut image);
-    image
-}
-
-/// Textura de agua para el mar: azules y turquesas vivos mediterráneos con ondulaciones
-/// suaves de olas armónicas y periódicas, sin saltos ni altas frecuencias para eliminar el muaré.
-fn water() -> Image {
-    const SIZE: u32 = 512;
-    let inv_size = std::f32::consts::TAU / SIZE as f32;
-    // Componentes armónicos estrictamente periódicos (frecuencias enteras):
-    // garantizan continuidad matemática en los bordes de repetición (sin costuras)
-    // y un oleaje amplio que previene el aliasing y el efecto muaré a la distancia.
-    // The broadest swells are gentler than the rest: strong, they would
-    // show the texture repeating as a grid of blotches seen from afar.
-    let waves = [
-        (2.0, 1.0, 0.0f32, 0.24f32),
-        (-1.0, 2.0, 1.3, 0.2),
-        (3.0, -1.0, 2.6, 0.16),
-        (-2.0, 3.0, 0.9, 0.12),
-        (4.0, 2.0, 3.2, 0.09),
-        (1.0, -4.0, 1.8, 0.07),
-        (5.0, -3.0, 0.4, 0.06),
-        (-6.0, 1.0, 2.2, 0.05),
-        (3.0, 6.0, 1.1, 0.04),
-        (-7.0, -4.0, 2.9, 0.03),
-    ];
-    let deep_abyss = Color::srgb(0.015, 0.09, 0.28).to_srgba();
-    let ocean_blue = Color::srgb(0.03, 0.22, 0.44).to_srgba();
-    let turquoise = Color::srgb(0.06, 0.42, 0.56).to_srgba();
-    let wave_crest = Color::srgb(0.12, 0.58, 0.68).to_srgba();
-    let sun_foam = Color::srgb(0.24, 0.66, 0.74).to_srgba();
-
-    let data = (0..SIZE * SIZE)
-        .flat_map(|i| {
-            let (x, y) = ((i % SIZE) as f32, (i / SIZE) as f32);
-            let u = x * inv_size;
-            let v = y * inv_size;
-            let mut sum = 0.0;
-            for &(nx, ny, phase, weight) in &waves {
-                sum += weight * (nx * u + ny * v + phase).sin();
-            }
-            let ripple = (0.5 + 0.5 * sum).clamp(0.0, 1.0);
-            let shaped = ripple * ripple * (3.0 - 2.0 * ripple);
-
-            let c = if shaped < 0.35 {
-                let t = shaped / 0.35;
-                deep_abyss.mix(&ocean_blue, t)
-            } else if shaped < 0.70 {
-                let t = (shaped - 0.35) / 0.35;
-                ocean_blue.mix(&turquoise, t)
-            } else if shaped < 0.90 {
-                let t = (shaped - 0.70) / 0.20;
-                turquoise.mix(&wave_crest, t)
-            } else {
-                let t = (shaped - 0.90) / 0.10;
-                wave_crest.mix(&sun_foam, t)
-            };
-            [
-                (c.red * 255.0).round() as u8,
-                (c.green * 255.0).round() as u8,
-                (c.blue * 255.0).round() as u8,
-                255,
-            ]
         })
         .collect();
     let mut image = Image::new(

@@ -20,11 +20,13 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
+use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
+use crate::legend::{KeyPrompt, Keys, ScreenLegend, menu_prompts, show_screen_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::settings::Settings;
-use crate::ui::{MenuSound, spawn_title, text_font};
+use crate::ui::{InputDevice, MenuSound, UiIcons, current_active_device, spawn_title, text_font};
 
 pub struct LobbyPlugin;
 
@@ -34,7 +36,7 @@ impl Plugin for LobbyPlugin {
             .add_systems(OnEnter(GameState::Lobby), open_lobby)
             .add_systems(
                 Update,
-                (handle_lobby_input, update_lobby_ui)
+                (handle_lobby_input, update_lobby_ui, show_legend)
                     .chain()
                     .run_if(in_state(GameState::Lobby)),
             );
@@ -83,18 +85,18 @@ impl ControllerBinding {
             },
             ControllerBinding::Arrows => match lang {
                 Language::Spanish => {
-                    "↑: Acelerar   ·   ↓: Frenar\n←/→: Girar   ·   Ctrl / Shift: Caballito"
+                    "Arriba: Acelerar   ·   Abajo: Frenar\nIzquierda / Derecha: Girar   ·   Ctrl / Mayús der.: Caballito"
                 }
                 Language::English => {
-                    "↑: Throttle   ·   ↓: Brake\n←/→: Steer   ·   Ctrl / Shift: Wheelie"
+                    "Up: Throttle   ·   Down: Brake\nLeft / Right: Steer   ·   Right Ctrl / Shift: Wheelie"
                 }
             },
             ControllerBinding::Gamepad(_) => match lang {
                 Language::Spanish => {
-                    "Gatillo R / A: Acelerar   ·   Gatillo L / X: Frenar\nStick / Cruceta: Girar   ·   Gatillo R + A / Stick: Caballito"
+                    "Gatillo R / A: Acelerar   ·   Gatillo L / X: Frenar\nStick / Cruceta: Girar   ·   B: Caballito"
                 }
                 Language::English => {
-                    "R Trigger / A: Throttle   ·   L Trigger / X: Brake\nStick / D-Pad: Steer   ·   R Trigger + A / Stick: Wheelie"
+                    "R Trigger / A: Throttle   ·   L Trigger / X: Brake\nStick / D-Pad: Steer   ·   B: Wheelie"
                 }
             },
         }
@@ -176,7 +178,6 @@ enum LobbyText {
     P2Desc,
     P2Status,
     DetectedDevices,
-    Footer,
 }
 
 fn open_lobby(
@@ -367,19 +368,6 @@ fn open_lobby(
                 TextShadow::default(),
                 Node {
                     margin: UiRect::top(px(6)),
-                    ..default()
-                },
-            ));
-
-            // Leyenda / pie inferior
-            screen.spawn((
-                LobbyText::Footer,
-                Text::new(lang.lobby_hint_waiting()),
-                text_font(&font, 19.0),
-                TextColor(Color::WHITE),
-                TextShadow::default(),
-                Node {
-                    margin: UiRect::top(px(14)),
                     ..default()
                 },
             ));
@@ -643,18 +631,6 @@ fn update_lobby_ui(
         }
     };
 
-    let (footer_str, footer_color) = if config.is_ready() {
-        (
-            lang.lobby_hint_ready().to_string(),
-            TextColor(Color::srgb(1.0, 0.85, 0.25)),
-        )
-    } else {
-        (
-            lang.lobby_hint_waiting().to_string(),
-            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
-        )
-    };
-
     for (mut text, mut color, kind) in &mut texts {
         match kind {
             LobbyText::P1Device => {
@@ -698,16 +674,41 @@ fn update_lobby_ui(
                     text.0 = detected_str.clone();
                 }
             }
-            LobbyText::Footer => {
-                if text.0 != footer_str {
-                    text.0 = footer_str.clone();
-                }
-                if let Some(ref mut c) = color {
-                    **c = footer_color;
-                }
-            }
         }
     }
+}
+
+/// La leyenda de los controles: elegir lado, y continuar cuando están los
+/// dos jugadores.
+#[allow(clippy::too_many_arguments)]
+fn show_legend(
+    mut commands: Commands,
+    config: Res<LocalPlayersConfig>,
+    settings: Res<Settings>,
+    device: Res<InputDevice>,
+    active_controller: Option<Res<ActiveController>>,
+    font: Res<UiFont>,
+    icons: Res<UiIcons>,
+    shown: Query<Entity, With<ScreenLegend>>,
+    mut last: Local<Option<Vec<KeyPrompt>>>,
+) {
+    let lang = settings.language;
+    let active_dev = current_active_device(*device, active_controller.as_deref());
+    let mut hints = Vec::new();
+    if config.is_ready() {
+        hints.push((Keys::Confirm, lang.hint_continue()));
+    }
+    hints.push((Keys::Back, lang.back()));
+    show_screen_legend(
+        &mut commands,
+        &shown,
+        &mut last,
+        menu_prompts(active_dev, &hints),
+        active_dev,
+        &font,
+        &icons,
+        GameState::Lobby,
+    );
 }
 
 #[cfg(test)]

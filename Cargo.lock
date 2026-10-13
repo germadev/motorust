@@ -3473,6 +3473,7 @@ dependencies = [
  "rodio",
  "ron",
  "serde",
+ "swash",
  "sys-locale",
  "web-sys",
  "winit",

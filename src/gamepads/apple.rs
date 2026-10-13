@@ -21,7 +21,7 @@ use objc2_game_controller::{
     GCExtendedGamepad,
 };
 
-use super::{ActiveController, ClaimedPads};
+use super::{ActiveController, ClaimedPads, VIBRATION_START, vibration_zones};
 use crate::bike::{BikeInput, BikeState, CollisionImpact, LocalPlayer, Player};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::menu::GameState;
@@ -213,13 +213,17 @@ unsafe fn apply_effect(trigger: &GCDualSenseAdaptiveTrigger, effect: TriggerEffe
             }
         }
         TriggerEffect::Vibration {
-            start_position: _,
+            start_position,
             amplitude,
             frequency,
         } => unsafe {
+            // Only from `start_position` on: vibrating at rest, the trigger
+            // would read as pressed (see `vibration_zones`).
             let amp = amplitude.clamp(0.0, 1.0) as c_float;
             let freq = frequency.clamp(0.0, 1.0) as c_float;
-            let amplitudes = GCDualSenseAdaptiveTriggerPositionalAmplitudes { values: [amp; 10] };
+            let amplitudes = GCDualSenseAdaptiveTriggerPositionalAmplitudes {
+                values: vibration_zones(start_position, amp),
+            };
             trigger.setModeVibrationWithAmplitudes_frequency(amplitudes, freq);
         },
         TriggerEffect::Weapon {
@@ -462,7 +466,7 @@ pub fn compute_bike_trigger_effects(
     if let Some(imp) = impact.filter(|i| i.timer > 0.0) {
         let amplitude = (0.35 + 0.35 * imp.intensity).clamp(0.40, 0.75);
         let collision_vibe = TriggerEffect::Vibration {
-            start_position: 0.0,
+            start_position: VIBRATION_START,
             amplitude,
             frequency: 0.45,
         };
@@ -683,11 +687,21 @@ mod tests {
         let (left, right) = compute_bike_trigger_effects(&state, &input, Some(&impact));
         match (left, right) {
             (
-                TriggerEffect::Vibration { amplitude: a1, .. },
-                TriggerEffect::Vibration { amplitude: a2, .. },
+                TriggerEffect::Vibration {
+                    amplitude: a1,
+                    start_position: s1,
+                    ..
+                },
+                TriggerEffect::Vibration {
+                    amplitude: a2,
+                    start_position: s2,
+                    ..
+                },
             ) => {
                 assert!((0.40..=0.75).contains(&a1));
                 assert!((0.40..=0.75).contains(&a2));
+                // Never at rest: the trigger would read as pressed.
+                assert_eq!((s1, s2), (VIBRATION_START, VIBRATION_START));
             }
             _ => panic!("Expected soft vibration during collision impact"),
         }

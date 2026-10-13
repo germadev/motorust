@@ -1,11 +1,9 @@
-use bevy::asset::RenderAssetUsages;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::gamepads::{ActiveController, ClaimedPads, ControllerModel, Gamepads};
 use crate::hud::UiFont;
-use crate::locale::Language;
+use crate::legend::{GLYPHS, Glyph, draw_glyph};
 use crate::settings::fullscreen_keys;
 
 /// El naranja del óxido, para «RUST» en «MOTORUST».
@@ -77,41 +75,47 @@ fn update_input_device(
     mut device: ResMut<InputDevice>,
     mut active_controller: Option<ResMut<ActiveController>>,
 ) {
+    // Only written when something changes: the screens that show the
+    // controls are built again when these change.
     if keyboard.get_just_pressed().next().is_some() {
-        if *device != InputDevice::Keyboard {
-            *device = InputDevice::Keyboard;
+        device.set_if_neq(InputDevice::Keyboard);
+        if let Some(active) = active_controller.as_mut() {
+            let keyboard = ActiveController {
+                gamepad: None,
+                ..**active
+            };
+            active.set_if_neq(keyboard);
         }
-        if let Some(ref mut ac) = active_controller {
-            ac.gamepad = None;
+        return;
+    }
+    for (entity, gamepad) in &gamepads {
+        let has_button = gamepad.get_just_pressed().next().is_some();
+        let stick_x = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0).abs();
+        let stick_y = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0).abs();
+        if !(has_button || stick_x > 0.4 || stick_y > 0.4) {
+            continue;
         }
-    } else {
-        for (entity, gamepad) in &gamepads {
-            let has_button = gamepad.get_just_pressed().next().is_some();
-            let stick_x = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0).abs();
-            let stick_y = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0).abs();
-            if has_button || stick_x > 0.4 || stick_y > 0.4 {
-                if *device != InputDevice::Gamepad {
-                    *device = InputDevice::Gamepad;
-                }
-                if let Some(ref mut ac) = active_controller {
-                    ac.gamepad = Some(entity);
-                    let mut name = claimed.as_ref().and_then(|c| {
-                        c.0.iter()
-                            .find(|(e, _)| *e == entity)
-                            .map(|(_, n)| n.as_str())
-                    });
-                    if name.is_none()
-                        && let Some(ref pads) = gamepads_res
-                    {
-                        name = pads.pad_names.get(&entity).map(|s| s.as_str());
-                    }
-                    if let Some(n) = name {
-                        ac.model = crate::gamepads::detect_controller_model(n);
-                    }
-                }
-                break;
-            }
+        device.set_if_neq(InputDevice::Gamepad);
+        if let Some(active) = active_controller.as_mut() {
+            let name = claimed
+                .as_ref()
+                .and_then(|c| {
+                    c.0.iter()
+                        .find(|(e, _)| *e == entity)
+                        .map(|(_, n)| n.as_str())
+                })
+                .or_else(|| {
+                    gamepads_res
+                        .as_ref()
+                        .and_then(|pads| pads.pad_names.get(&entity).map(|s| s.as_str()))
+                });
+            let wanted = ActiveController {
+                gamepad: Some(entity),
+                model: name.map_or(active.model, crate::gamepads::detect_controller_model),
+            };
+            active.set_if_neq(wanted);
         }
+        break;
     }
 }
 
@@ -137,10 +141,9 @@ pub struct Request {
     pub start: bool,
     /// Esc o B.
     pub back: bool,
-    /// Tab o Select (opciones).
-    pub options: bool,
-    /// Gatillos superiores / bumpers (Q/LB es -1, E/RB es 1).
-    pub shoulder: i32,
+    /// Change of section: Tab (Shift + Tab goes back), Q and E, or the
+    /// shoulder buttons and triggers (left -1, right 1).
+    pub tab: i32,
 }
 
 /// El teclado y los mandos, para moverse por los menús: flechas, WASD,
@@ -166,10 +169,13 @@ impl MenuInput<'_, '_> {
                 && !fullscreen_keys(keyboard),
             back: keyboard.just_pressed(KeyCode::Escape),
             start: false,
-            options: keyboard.just_pressed(KeyCode::Tab),
-            shoulder: i32::from(keyboard.just_pressed(KeyCode::KeyE))
+            tab: i32::from(keyboard.just_pressed(KeyCode::KeyE))
                 - i32::from(keyboard.just_pressed(KeyCode::KeyQ)),
         };
+        if keyboard.just_pressed(KeyCode::Tab) {
+            let shift = keyboard.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+            request.tab += if shift { -1 } else { 1 };
+        }
         let mut dpad_down = false;
         let mut dpad_up = false;
         let mut dpad_right = false;
@@ -184,9 +190,12 @@ impl MenuInput<'_, '_> {
                 || gamepad.just_pressed(GamepadButton::Start);
             request.back |= gamepad.just_pressed(GamepadButton::East);
             request.start |= gamepad.just_pressed(GamepadButton::Start);
-            request.options |= gamepad.just_pressed(GamepadButton::Select);
-            request.shoulder += i32::from(gamepad.just_pressed(GamepadButton::RightTrigger))
-                - i32::from(gamepad.just_pressed(GamepadButton::LeftTrigger));
+            request.tab += i32::from(
+                gamepad
+                    .any_just_pressed([GamepadButton::RightTrigger, GamepadButton::RightTrigger2]),
+            ) - i32::from(
+                gamepad.any_just_pressed([GamepadButton::LeftTrigger, GamepadButton::LeftTrigger2]),
+            );
             let axis = |axis| gamepad.get(axis).unwrap_or(0.0);
             let (x, y) = (axis(GamepadAxis::LeftStickX), axis(GamepadAxis::LeftStickY));
             if x.abs() > stick.x.abs() {
@@ -207,6 +216,7 @@ impl MenuInput<'_, '_> {
         request.side += tilt(stick.x, horizontal);
         request.step = request.step.clamp(-1, 1);
         request.side = request.side.clamp(-1, 1);
+        request.tab = request.tab.clamp(-1, 1);
         request
     }
 }
@@ -223,11 +233,18 @@ fn tilt(value: f32, held: &mut bool) -> i32 {
     step
 }
 
+/// The red of "Exit game": its button in the start menu, and the option
+/// that confirms it.
+pub const EXIT_RED: Color = Color::srgb(1.0, 32.0 / 255.0, 32.0 / 255.0);
+
 /// Una opción de un menú: su texto y, si tiene, su valor, a la derecha.
 pub struct Row {
     pub label: String,
     pub value: Option<String>,
     pub disabled: bool,
+    /// Whether it does something that cannot be undone, like leaving the
+    /// game: chosen, it shows in red.
+    pub danger: bool,
 }
 
 impl Row {
@@ -236,22 +253,46 @@ impl Row {
             label: label.into(),
             value: None,
             disabled: false,
+            danger: false,
+        }
+    }
+
+    /// An option that cannot be undone, like leaving the game.
+    pub fn danger(label: impl Into<String>) -> Self {
+        Self {
+            danger: true,
+            ..Self::new(label)
         }
     }
 
     pub fn with_value(label: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            label: label.into(),
             value: Some(value.into()),
-            disabled: false,
+            ..Self::new(label)
         }
     }
 
     pub fn disabled(label: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            label: label.into(),
-            value: Some(value.into()),
             disabled: true,
+            ..Self::with_value(label, value)
+        }
+    }
+
+    /// Background and text colours of the option when it is chosen.
+    pub fn chosen_colors(&self) -> (Color, Color) {
+        if self.disabled {
+            (
+                Color::srgba(0.5, 0.5, 0.5, 0.25),
+                Color::srgba(0.85, 0.85, 0.85, 0.7),
+            )
+        } else if self.danger {
+            (EXIT_RED, Color::WHITE)
+        } else {
+            (
+                Color::srgba(1.0, 0.8, 0.2, 0.95),
+                Color::srgb(0.08, 0.06, 0.02),
+            )
         }
     }
 }
@@ -294,12 +335,9 @@ pub fn spawn_panel(
         .with_children(|panel| {
             for (index, row) in rows.iter().enumerate() {
                 let chosen = index == selected;
+                let (chosen_background, chosen_text) = row.chosen_colors();
                 let color = TextColor(if chosen {
-                    if row.disabled {
-                        Color::srgba(0.85, 0.85, 0.85, 0.7)
-                    } else {
-                        Color::srgb(0.08, 0.06, 0.02)
-                    }
+                    chosen_text
                 } else if row.disabled {
                     Color::srgba(1.0, 1.0, 1.0, 0.4)
                 } else {
@@ -319,11 +357,7 @@ pub fn spawn_panel(
                             ..default()
                         },
                         BackgroundColor(if chosen {
-                            if row.disabled {
-                                Color::srgba(0.5, 0.5, 0.5, 0.25)
-                            } else {
-                                Color::srgba(1.0, 0.8, 0.2, 0.95)
-                            }
+                            chosen_background
                         } else {
                             Color::NONE
                         }),
@@ -412,600 +446,32 @@ pub fn version_label(font: &UiFont) -> impl Bundle {
     )
 }
 
-/// Iconos gráficos del juego generados por procedimiento.
+/// The symbols of the controls legend ([`crate::legend`]), which the UI
+/// font cannot draw.
 #[derive(Resource, Clone)]
 pub struct UiIcons {
-    pub helmet: Handle<Image>,
-    pub card_blue: Handle<Image>,
-    pub card_dark: Handle<Image>,
-    pub banner_yellow: Handle<Image>,
-    pub banner_red: Handle<Image>,
+    glyphs: Vec<Handle<Image>>,
+}
+
+impl UiIcons {
+    pub fn glyph(&self, glyph: Glyph) -> Handle<Image> {
+        let index = GLYPHS
+            .iter()
+            .position(|&g| g == glyph)
+            .expect("every glyph is drawn");
+        self.glyphs[index].clone()
+    }
 }
 
 impl FromWorld for UiIcons {
     fn from_world(world: &mut World) -> Self {
         let mut images = world.resource_mut::<Assets<Image>>();
-        let helmet_img = load_png_bytes(include_bytes!("../assets/ui/helmet.png"));
-        let helmet = images.add(helmet_img);
-        let card_blue = images.add(draw_wavy_checker_card(
-            512,
-            256,
-            [0, 107, 251, 255],
-            [0, 85, 215, 255],
-        ));
-        let card_dark = images.add(draw_wavy_checker_card(
-            512,
-            256,
-            [28, 30, 36, 255],
-            [18, 19, 23, 255],
-        ));
-        let banner_yellow = images.add(draw_wavy_checker_card(
-            512,
-            128,
-            [252, 182, 0, 255],
-            [232, 158, 0, 255],
-        ));
-        let banner_red = images.add(draw_wavy_checker_card(
-            512,
-            128,
-            [232, 28, 36, 255],
-            [205, 18, 24, 255],
-        ));
-        Self {
-            helmet,
-            card_blue,
-            card_dark,
-            banner_yellow,
-            banner_red,
-        }
+        let glyphs = GLYPHS
+            .iter()
+            .map(|&glyph| images.add(draw_glyph(glyph)))
+            .collect();
+        Self { glyphs }
     }
-}
-
-fn load_png_bytes(bytes: &[u8]) -> Image {
-    let dyn_img = image::load_from_memory(bytes).expect("valid embedded png");
-    let rgba = dyn_img.to_rgba8();
-    let (width, height) = rgba.dimensions();
-    Image::new(
-        Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        rgba.into_raw(),
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    )
-}
-
-fn draw_wavy_checker_card(width: u32, height: u32, color_a: [u8; 4], color_b: [u8; 4]) -> Image {
-    paint_rgba_image(width, height, |u, v| {
-        let wave_x = (v * 10.0).sin() * 0.04;
-        let wave_y = (u * 8.0).sin() * 0.03;
-        let su = u + wave_x;
-        let sv = v + wave_y;
-
-        let check_x = ((su * 10.0).floor() as i32).rem_euclid(2);
-        let check_y = ((sv * 5.0).floor() as i32).rem_euclid(2);
-        let is_alt = (check_x ^ check_y) != 0;
-
-        if is_alt { color_b } else { color_a }
-    })
-}
-
-fn paint_rgba_image(width: u32, height: u32, f: impl Fn(f32, f32) -> [u8; 4]) -> Image {
-    let mut data = Vec::with_capacity((width * height * 4) as usize);
-    for y in 0..height {
-        let v = (y as f32 + 0.5) / height as f32;
-        for x in 0..width {
-            let u = (x as f32 + 0.5) / width as f32;
-            data.extend_from_slice(&f(u, v));
-        }
-    }
-    Image::new(
-        Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    )
-}
-
-/// Elemento de leyenda con tecla/botón adaptado al mando y su acción.
-#[derive(Clone, Debug)]
-pub struct KeyPrompt {
-    pub badge: &'static str,
-    pub badge_bg: Color,
-    pub badge_text: Color,
-    pub badge_border: Color,
-    pub is_round: bool,
-    pub action: String,
-}
-
-pub fn race_prompts(device: ActiveDevice, lang: Language) -> Vec<KeyPrompt> {
-    match device {
-        ActiveDevice::PlayStation => vec![
-            KeyPrompt {
-                badge: "R2",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.12, 0.14, 0.2),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: false,
-                action: lang.action_throttle().into(),
-            },
-            KeyPrompt {
-                badge: "L2",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.12, 0.14, 0.2),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Frenar".into(),
-                    Language::English => "Brake".into(),
-                },
-            },
-            KeyPrompt {
-                badge: "Stick L",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.12, 0.14, 0.2),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Girar".into(),
-                    Language::English => "Steer".into(),
-                },
-            },
-            KeyPrompt {
-                badge: "○",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.92, 0.18, 0.22),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: true,
-                action: lang.action_wheelie().into(),
-            },
-            KeyPrompt {
-                badge: "Share",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.12, 0.14, 0.2),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: false,
-                action: lang.restart().into(),
-            },
-            KeyPrompt {
-                badge: "Options",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.12, 0.14, 0.2),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: false,
-                action: lang.action_pause().into(),
-            },
-        ],
-        ActiveDevice::Xbox => vec![
-            KeyPrompt {
-                badge: "RT",
-                badge_bg: Color::srgb(0.16, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: lang.action_throttle().into(),
-            },
-            KeyPrompt {
-                badge: "LT",
-                badge_bg: Color::srgb(0.16, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Frenar".into(),
-                    Language::English => "Brake".into(),
-                },
-            },
-            KeyPrompt {
-                badge: "LS",
-                badge_bg: Color::srgb(0.16, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Girar".into(),
-                    Language::English => "Steer".into(),
-                },
-            },
-            KeyPrompt {
-                badge: "B",
-                badge_bg: Color::srgb(0.32, 0.08, 0.1),
-                badge_text: Color::srgb(0.95, 0.35, 0.35),
-                badge_border: Color::srgb(0.7, 0.15, 0.2),
-                is_round: true,
-                action: lang.action_wheelie().into(),
-            },
-            KeyPrompt {
-                badge: "View",
-                badge_bg: Color::srgb(0.16, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: lang.restart().into(),
-            },
-            KeyPrompt {
-                badge: "Menu",
-                badge_bg: Color::srgb(0.16, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: lang.action_pause().into(),
-            },
-        ],
-        ActiveDevice::Switch => vec![
-            KeyPrompt {
-                badge: "ZR",
-                badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: lang.action_throttle().into(),
-            },
-            KeyPrompt {
-                badge: "ZL",
-                badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Frenar".into(),
-                    Language::English => "Brake".into(),
-                },
-            },
-            KeyPrompt {
-                badge: "Stick L",
-                badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Girar".into(),
-                    Language::English => "Steer".into(),
-                },
-            },
-            KeyPrompt {
-                badge: "A",
-                badge_bg: Color::srgb(0.28, 0.12, 0.15),
-                badge_text: Color::srgb(0.95, 0.35, 0.35),
-                badge_border: Color::srgb(0.65, 0.18, 0.22),
-                is_round: true,
-                action: lang.action_wheelie().into(),
-            },
-            KeyPrompt {
-                badge: "-",
-                badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: lang.restart().into(),
-            },
-            KeyPrompt {
-                badge: "+",
-                badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: lang.action_pause().into(),
-            },
-        ],
-        ActiveDevice::Keyboard => vec![
-            KeyPrompt {
-                badge: "W / ↑",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: lang.action_throttle().into(),
-            },
-            KeyPrompt {
-                badge: "S / ↓",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Frenar".into(),
-                    Language::English => "Brake".into(),
-                },
-            },
-            KeyPrompt {
-                badge: "A / D",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Girar".into(),
-                    Language::English => "Steer".into(),
-                },
-            },
-            KeyPrompt {
-                badge: match lang {
-                    Language::Spanish => "Espacio",
-                    Language::English => "Space",
-                },
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: lang.action_wheelie().into(),
-            },
-            KeyPrompt {
-                badge: "R",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: lang.restart().into(),
-            },
-            KeyPrompt {
-                badge: "Esc",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: lang.action_pause().into(),
-            },
-            KeyPrompt {
-                badge: "M",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: match lang {
-                    Language::Spanish => "Sonido".into(),
-                    Language::English => "Sound".into(),
-                },
-            },
-        ],
-    }
-}
-
-pub fn menu_prompts(
-    device: ActiveDevice,
-    lang: Language,
-    has_side: bool,
-    confirm_action: &str,
-    back_action: Option<&str>,
-) -> Vec<KeyPrompt> {
-    let choose_text = match lang {
-        Language::Spanish => "Elegir",
-        Language::English => "Choose",
-    };
-    let change_text = match lang {
-        Language::Spanish => "Cambiar",
-        Language::English => "Change",
-    };
-
-    match device {
-        ActiveDevice::PlayStation => {
-            let mut list = vec![KeyPrompt {
-                badge: "Cruz / Stick",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.12, 0.14, 0.2),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: false,
-                action: choose_text.into(),
-            }];
-            if has_side {
-                list.push(KeyPrompt {
-                    badge: "← / →",
-                    badge_bg: Color::WHITE,
-                    badge_text: Color::srgb(0.12, 0.14, 0.2),
-                    badge_border: Color::srgb(0.82, 0.84, 0.88),
-                    is_round: false,
-                    action: change_text.into(),
-                });
-            }
-            list.push(KeyPrompt {
-                badge: "✕",
-                badge_bg: Color::WHITE,
-                badge_text: Color::srgb(0.2, 0.42, 0.95),
-                badge_border: Color::srgb(0.82, 0.84, 0.88),
-                is_round: true,
-                action: confirm_action.into(),
-            });
-            if let Some(back) = back_action {
-                list.push(KeyPrompt {
-                    badge: "○",
-                    badge_bg: Color::WHITE,
-                    badge_text: Color::srgb(0.92, 0.18, 0.22),
-                    badge_border: Color::srgb(0.82, 0.84, 0.88),
-                    is_round: true,
-                    action: back.into(),
-                });
-            }
-            list
-        }
-        ActiveDevice::Xbox => {
-            let mut list = vec![KeyPrompt {
-                badge: "D-Pad / Stick",
-                badge_bg: Color::srgb(0.16, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: choose_text.into(),
-            }];
-            if has_side {
-                list.push(KeyPrompt {
-                    badge: "← / →",
-                    badge_bg: Color::srgb(0.16, 0.18, 0.22),
-                    badge_text: Color::WHITE,
-                    badge_border: Color::srgb(0.35, 0.4, 0.48),
-                    is_round: false,
-                    action: change_text.into(),
-                });
-            }
-            list.push(KeyPrompt {
-                badge: "A",
-                badge_bg: Color::srgb(0.08, 0.28, 0.12),
-                badge_text: Color::srgb(0.35, 0.95, 0.45),
-                badge_border: Color::srgb(0.18, 0.65, 0.25),
-                is_round: true,
-                action: confirm_action.into(),
-            });
-            if let Some(back) = back_action {
-                list.push(KeyPrompt {
-                    badge: "B",
-                    badge_bg: Color::srgb(0.32, 0.08, 0.1),
-                    badge_text: Color::srgb(0.95, 0.35, 0.35),
-                    badge_border: Color::srgb(0.7, 0.15, 0.2),
-                    is_round: true,
-                    action: back.into(),
-                });
-            }
-            list
-        }
-        ActiveDevice::Switch => {
-            let mut list = vec![KeyPrompt {
-                badge: "Cruz / Stick",
-                badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: false,
-                action: choose_text.into(),
-            }];
-            if has_side {
-                list.push(KeyPrompt {
-                    badge: "← / →",
-                    badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                    badge_text: Color::WHITE,
-                    badge_border: Color::srgb(0.35, 0.4, 0.48),
-                    is_round: false,
-                    action: change_text.into(),
-                });
-            }
-            list.push(KeyPrompt {
-                badge: "B",
-                badge_bg: Color::srgb(0.15, 0.18, 0.22),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.48),
-                is_round: true,
-                action: confirm_action.into(),
-            });
-            if let Some(back) = back_action {
-                list.push(KeyPrompt {
-                    badge: "A",
-                    badge_bg: Color::srgb(0.28, 0.12, 0.15),
-                    badge_text: Color::srgb(0.95, 0.35, 0.35),
-                    badge_border: Color::srgb(0.65, 0.18, 0.22),
-                    is_round: true,
-                    action: back.into(),
-                });
-            }
-            list
-        }
-        ActiveDevice::Keyboard => {
-            let mut list = vec![KeyPrompt {
-                badge: "↑ / ↓",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: choose_text.into(),
-            }];
-            if has_side {
-                list.push(KeyPrompt {
-                    badge: "← / →",
-                    badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                    badge_text: Color::WHITE,
-                    badge_border: Color::srgb(0.35, 0.4, 0.52),
-                    is_round: false,
-                    action: change_text.into(),
-                });
-            }
-            list.push(KeyPrompt {
-                badge: "ENTER",
-                badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                badge_text: Color::WHITE,
-                badge_border: Color::srgb(0.35, 0.4, 0.52),
-                is_round: false,
-                action: confirm_action.into(),
-            });
-            if let Some(back) = back_action {
-                list.push(KeyPrompt {
-                    badge: "ESC",
-                    badge_bg: Color::srgb(0.18, 0.2, 0.26),
-                    badge_text: Color::WHITE,
-                    badge_border: Color::srgb(0.35, 0.4, 0.52),
-                    is_round: false,
-                    action: back.into(),
-                });
-            }
-            list
-        }
-    }
-}
-
-/// Spawns the bottom legend bar with key/button badges and action labels.
-pub fn spawn_legend_bar(parent: &mut ChildSpawnerCommands, font: &UiFont, prompts: &[KeyPrompt]) {
-    parent
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: px(14),
-                align_self: AlignSelf::Center,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: px(18),
-                padding: UiRect::axes(px(22), px(8)),
-                border_radius: BorderRadius::all(px(22)),
-                border: UiRect::all(px(1)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.02, 0.04, 0.09, 0.88)),
-            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.14)),
-            ZIndex(150),
-        ))
-        .with_children(|bar| {
-            for prompt in prompts {
-                bar.spawn((Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: px(7),
-                    ..default()
-                },))
-                    .with_children(|item| {
-                        item.spawn((
-                            Node {
-                                padding: UiRect::axes(px(8), px(3)),
-                                border_radius: BorderRadius::all(if prompt.is_round {
-                                    px(12)
-                                } else {
-                                    px(6)
-                                }),
-                                border: UiRect::all(px(1)),
-                                min_width: if prompt.is_round { px(24) } else { px(0) },
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                            BackgroundColor(prompt.badge_bg),
-                            BorderColor::all(prompt.badge_border),
-                        ))
-                        .with_child((
-                            Text::new(prompt.badge),
-                            text_font(font, 14.0),
-                            TextColor(prompt.badge_text),
-                        ));
-
-                        item.spawn((
-                            Text::new(&prompt.action),
-                            text_font(font, 15.0),
-                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
-                            TextShadow::default(),
-                        ));
-                    });
-            }
-        });
 }
 
 #[cfg(test)]

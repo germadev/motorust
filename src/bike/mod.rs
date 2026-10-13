@@ -1468,7 +1468,7 @@ impl AnalogSteer {
 /// its adaptive resistance engaged) never quite read zero, and the least
 /// throttle takes away the engine braking, so the bike would run on by
 /// itself.
-const TRIGGER_REST: f32 = 0.15;
+pub const TRIGGER_REST: f32 = 0.15;
 
 /// How much a gamepad's throttle or brake counts, from how far it reads
 /// pressed: nothing up to [`TRIGGER_REST`], and from there all the way to

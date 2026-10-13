@@ -6,18 +6,22 @@ use bevy::window::PrimaryWindow;
 
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
+use crate::legend::{Keys, menu_prompts, spawn_legend};
 use crate::locale::{LANGUAGES, Language};
 use crate::pause::DebugOptions;
 use crate::settings::{
     ACTIONS, Action, Controls, FPS_LIMITS, FULLSCREEN_KEYS, RESOLUTIONS, Settings, WEB, cycle,
 };
 use crate::ui::{
-    ActiveDevice, InputDevice, KeyPrompt, MenuInput, MenuSound, Row, current_active_device,
-    menu_prompts, spawn_legend_bar, text_font,
+    InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
 };
 
 /// Tiempo para pulsar la tecla o el botón nuevo antes de que se cancele (s).
 const CAPTURE_TIME: f32 = 8.0;
+/// Height of the panel (px): the tab with the most options (Control) fits.
+const PANEL_HEIGHT: f32 = 600.0;
+/// Room kept at the bottom of the screen for the legend (px).
+const LEGEND_SPACE: f32 = 56.0;
 
 pub struct OptionsPlugin;
 
@@ -26,13 +30,22 @@ impl Plugin for OptionsPlugin {
         app.init_resource::<OptionsMenu>().add_systems(
             Update,
             (
-                use_options_menu.run_if(|menu: Res<OptionsMenu>| menu.is_open),
+                use_options_menu
+                    .run_if(|menu: Res<OptionsMenu>| menu.is_open)
+                    .in_set(OptionsInput),
                 show_options_menu,
             )
                 .chain(),
         );
     }
 }
+
+/// The options read the keys before the screen under them (the start menu
+/// or the pause menu), which skips the frame the options close in: the key
+/// that closes them must not act there too. The screen opening them runs
+/// after, so the key that opens them does not act on them either.
+#[derive(SystemSet, Clone, PartialEq, Eq, Hash, Debug)]
+pub struct OptionsInput;
 
 /// A dónde vuelve el menú de opciones al cerrarse.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -246,42 +259,10 @@ fn use_options_menu(
         return;
     }
 
-    // Cambio de sección con L o R en gamepad o TAB en teclado (Shift+TAB retrocede)
-    let kb_tab_next = input.keyboard.just_pressed(KeyCode::Tab)
-        && !input.keyboard.pressed(KeyCode::ShiftLeft)
-        && !input.keyboard.pressed(KeyCode::ShiftRight);
-    let kb_tab_prev = input.keyboard.just_pressed(KeyCode::Tab)
-        && (input.keyboard.pressed(KeyCode::ShiftLeft)
-            || input.keyboard.pressed(KeyCode::ShiftRight));
-    let kb_shoulder = i32::from(input.keyboard.just_pressed(KeyCode::KeyE))
-        - i32::from(input.keyboard.just_pressed(KeyCode::KeyQ));
-
-    let mut pad_shoulder = 0;
-    for gamepad in &input.gamepads {
-        if gamepad.just_pressed(GamepadButton::LeftTrigger)
-            || gamepad.just_pressed(GamepadButton::LeftTrigger2)
-        {
-            pad_shoulder -= 1;
-        }
-        if gamepad.just_pressed(GamepadButton::RightTrigger)
-            || gamepad.just_pressed(GamepadButton::RightTrigger2)
-        {
-            pad_shoulder += 1;
-        }
-    }
-
-    let tab_step = if kb_tab_next {
-        1
-    } else if kb_tab_prev {
-        -1
-    } else if pad_shoulder != 0 {
-        pad_shoulder.clamp(-1, 1)
-    } else {
-        kb_shoulder
-    };
-
-    if tab_step != 0 {
-        options_menu.tab = options_menu.tab.next(tab_step);
+    // Change of section: Tab (Shift + Tab goes back), Q and E, or the
+    // shoulder buttons and triggers.
+    if request.tab != 0 {
+        options_menu.tab = options_menu.tab.next(request.tab);
         options_menu.selected = 0;
         sounds.write(MenuSound::Move);
         return;
@@ -425,32 +406,23 @@ fn show_options_menu(
     debug_options: Res<DebugOptions>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
-    window: Query<Ref<Window>, With<PrimaryWindow>>,
+    window: Query<&Window, With<PrimaryWindow>>,
     font: Res<UiFont>,
+    icons: Res<UiIcons>,
     shown: Query<Entity, With<OptionsModal>>,
     time: Res<Time<Real>>,
+    mut last: Local<Option<String>>,
 ) {
-    let window_ref = window.iter().next();
-    let window_changed = window_ref.as_ref().is_some_and(|w| w.is_changed());
-    if !options_menu.is_changed()
-        && !settings.is_changed()
-        && !debug_options.is_changed()
-        && !device.is_changed()
-        && !window_changed
-    {
-        return;
-    }
-
-    for entity in &shown {
-        commands.entity(entity).despawn();
-    }
-
     if !options_menu.is_open {
+        for entity in &shown {
+            commands.entity(entity).despawn();
+        }
+        *last = None;
         return;
     }
 
     let lang = settings.language;
-    let window_inner = window_ref.as_deref();
+    let window_inner = window.iter().next();
     let now = time.elapsed_secs();
 
     // Filas para la pestaña activa
@@ -502,7 +474,7 @@ fn show_options_menu(
                             Language::Spanish => "Pulsa una tecla o botón".into(),
                             Language::English => "Press key or button".into(),
                         },
-                        _ => settings.controls.describe(action),
+                        _ => settings.controls.describe(action, lang),
                     },
                 ),
                 ControlItem::ResetControls => Row::new(lang.reset_controls()),
@@ -519,8 +491,8 @@ fn show_options_menu(
                         Row::with_value(
                             lang.rescan_gamepads(),
                             match lang {
-                                Language::Spanish => "✓ Mandos actualizados",
-                                Language::English => "✓ Controllers updated",
+                                Language::Spanish => "Mandos actualizados",
+                                Language::English => "Controllers updated",
                             },
                         )
                     } else {
@@ -576,55 +548,36 @@ fn show_options_menu(
     };
 
     let active_dev = current_active_device(*device, active_controller.as_deref());
-    let mut prompts = menu_prompts(
-        active_dev,
+    // Built again only when something shown changes (the window, for
+    // example, changes with every move of the mouse).
+    let wanted = format!(
+        "{:?} {} {:?} {:?} {:?} {}",
+        options_menu.tab,
+        options_menu.selected,
         lang,
-        true,
-        match lang {
-            Language::Spanish => "Aceptar",
-            Language::English => "Select",
-        },
-        Some(lang.back()),
+        active_dev,
+        debug_options.show_legend,
+        rows.iter()
+            .map(|row| format!("{}={:?}", row.label, row.value))
+            .collect::<Vec<_>>()
+            .join("|"),
     );
-    // Indicación de cambio de pestaña con L / R o TAB
-    let (tab_badge, tab_bg, tab_text, tab_border) = match active_dev {
-        ActiveDevice::PlayStation => (
-            "L / R",
-            Color::WHITE,
-            Color::srgb(0.12, 0.14, 0.18),
-            Color::srgb(0.82, 0.84, 0.88),
-        ),
-        ActiveDevice::Xbox => (
-            "LB / RB",
-            Color::srgb(0.12, 0.16, 0.22),
-            Color::WHITE,
-            Color::srgb(0.3, 0.38, 0.5),
-        ),
-        ActiveDevice::Switch => (
-            "L / R",
-            Color::srgb(0.12, 0.16, 0.22),
-            Color::WHITE,
-            Color::srgb(0.3, 0.38, 0.5),
-        ),
-        ActiveDevice::Keyboard => (
-            "Tab",
-            Color::srgb(0.15, 0.18, 0.25),
-            Color::WHITE,
-            Color::srgb(0.35, 0.42, 0.55),
-        ),
-    };
-    prompts.push(KeyPrompt {
-        badge: tab_badge,
-        badge_bg: tab_bg,
-        badge_text: tab_text,
-        badge_border: tab_border,
-        is_round: false,
-        action: match lang {
-            Language::Spanish => "Sección".into(),
-            Language::English => "Section".into(),
-        },
-    });
+    if last.as_ref() == Some(&wanted) && !shown.is_empty() {
+        return;
+    }
+    *last = Some(wanted);
+    for entity in &shown {
+        commands.entity(entity).despawn();
+    }
 
+    let prompts = menu_prompts(
+        active_dev,
+        &[
+            (Keys::Confirm, lang.hint_accept()),
+            (Keys::Back, lang.back()),
+            (Keys::Tabs, lang.hint_section()),
+        ],
+    );
     commands
         .spawn((
             OptionsModal,
@@ -633,10 +586,11 @@ fn show_options_menu(
                 width: percent(100),
                 height: percent(100),
                 flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::FlexStart,
+                // Centred, above the legend. The panel is as tall on every
+                // tab, so the tabs stay where they are.
+                justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                padding: UiRect::top(px(44)),
-                row_gap: px(12),
+                padding: UiRect::bottom(px(LEGEND_SPACE)),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.02, 0.05, 0.78)),
@@ -651,7 +605,9 @@ fn show_options_menu(
                         align_items: AlignItems::Stretch,
                         width: px(780),
                         max_width: percent(94),
-                        min_height: px(450),
+                        height: px(PANEL_HEIGHT),
+                        max_height: percent(100),
+                        overflow: Overflow::clip(),
                         padding: UiRect::axes(px(24), px(20)),
                         border_radius: BorderRadius::all(px(18)),
                         border: UiRect::all(px(1)),
@@ -727,18 +683,15 @@ fn show_options_menu(
                         .spawn((Node {
                             flex_direction: FlexDirection::Column,
                             align_items: AlignItems::Stretch,
-                            row_gap: px(5),
+                            row_gap: px(3),
                             ..default()
                         },))
                         .with_children(|items_container| {
                             for (index, row) in rows.iter().enumerate() {
                                 let chosen = index == options_menu.selected;
+                                let (chosen_background, chosen_text) = row.chosen_colors();
                                 let color = TextColor(if chosen {
-                                    if row.disabled {
-                                        Color::srgba(0.85, 0.85, 0.85, 0.7)
-                                    } else {
-                                        Color::srgb(0.08, 0.06, 0.02)
-                                    }
+                                    chosen_text
                                 } else if row.disabled {
                                     Color::srgba(1.0, 1.0, 1.0, 0.4)
                                 } else {
@@ -755,16 +708,12 @@ fn show_options_menu(
                                             },
                                             align_items: AlignItems::Center,
                                             column_gap: px(30),
-                                            padding: UiRect::axes(px(20), px(7)),
+                                            padding: UiRect::axes(px(20), px(5)),
                                             border_radius: BorderRadius::all(px(8)),
                                             ..default()
                                         },
                                         BackgroundColor(if chosen {
-                                            if row.disabled {
-                                                Color::srgba(0.5, 0.5, 0.5, 0.25)
-                                            } else {
-                                                Color::srgba(1.0, 0.8, 0.2, 0.95)
-                                            }
+                                            chosen_background
                                         } else {
                                             Color::NONE
                                         }),
@@ -811,6 +760,6 @@ fn show_options_menu(
                 });
 
             // Leyenda de controles al pie
-            spawn_legend_bar(modal, &font, &prompts);
+            spawn_legend(modal, &font, &icons, active_dev, &prompts);
         });
 }

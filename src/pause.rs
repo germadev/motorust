@@ -6,13 +6,14 @@ use bevy::prelude::*;
 
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
+use crate::legend::{Keys, menu_prompts, spawn_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
-use crate::options::{OptionsMenu, OptionsReturn};
+use crate::options::{OptionsInput, OptionsMenu, OptionsReturn};
 use crate::settings::{Action as Control, Settings, WEB, cycle};
 use crate::ui::{
-    InputDevice, MenuInput, MenuSound, Row, current_active_device, menu_prompts, spawn_legend_bar,
-    spawn_panel, spawn_title,
+    InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, spawn_panel,
+    spawn_title,
 };
 
 pub struct PausePlugin;
@@ -25,7 +26,7 @@ impl Plugin for PausePlugin {
             .add_systems(OnExit(GameState::Race), close)
             .add_systems(
                 Update,
-                (use_pause_menu, show_pause_menu)
+                (use_pause_menu.after(OptionsInput), show_pause_menu)
                     .chain()
                     .run_if(in_state(GameState::Race)),
             );
@@ -116,11 +117,14 @@ pub enum ReturnRate {
 const RETURN_RATES: [ReturnRate; 3] = [ReturnRate::Slow, ReturnRate::Medium, ReturnRate::Fast];
 
 impl ReturnRate {
-    /// Factor que multiplica la rapidez de recuperación al soltar.
+    /// Factor que multiplica la rapidez de recuperación al soltar. Medium,
+    /// the default, is what slow used to be (straight again about 0.9 s
+    /// after letting go); slow is two thirds of it, as before (1.1 s), and
+    /// fast is the original (0.6 s).
     pub fn factor(self) -> f32 {
         match self {
-            ReturnRate::Slow => 0.5,
-            ReturnRate::Medium => 0.75,
+            ReturnRate::Slow => 1.0 / 3.0,
+            ReturnRate::Medium => 0.5,
             ReturnRate::Fast => 1.0,
         }
     }
@@ -291,7 +295,12 @@ fn use_pause_menu(
     mut exit: MessageWriter<AppExit>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
-    if options_menu.as_ref().is_some_and(|m| m.is_open) {
+    // While the options are open, and in the frame they close (the key that
+    // closed them must not also act here).
+    if options_menu
+        .as_ref()
+        .is_some_and(|m| m.is_open || m.is_changed())
+    {
         return;
     }
 
@@ -357,9 +366,13 @@ fn use_pause_menu(
         }
         Some(Action::CancelQuit) => {
             sounds.write(MenuSound::Move);
+            // Back on "Exit game".
             *pause = Pause {
                 page: Some(Page::Main),
-                selected: 3.min(items.len() - 1),
+                selected: self::items(Page::Main, settings.language)
+                    .iter()
+                    .position(|item| item.1 == Action::OpenQuitConfirm)
+                    .unwrap_or(0),
             };
         }
         Some(Action::ConfirmQuit) => {
@@ -388,6 +401,7 @@ fn show_pause_menu(
     device: Option<Res<InputDevice>>,
     active_controller: Option<Res<ActiveController>>,
     font: Res<UiFont>,
+    icons: Res<UiIcons>,
     shown: Query<Entity, With<PauseMenu>>,
 ) {
     if !pause.is_changed()
@@ -424,37 +438,24 @@ fn show_pause_menu(
     };
     let rows: Vec<Row> = items(page, lang)
         .into_iter()
-        .map(|(label, _)| Row::new(label))
+        .map(|(label, action)| {
+            // Leaving the game, and confirming it, show in red.
+            if matches!(action, Action::OpenQuitConfirm | Action::ConfirmQuit) {
+                Row::danger(label)
+            } else {
+                Row::new(label)
+            }
+        })
         .collect();
 
-    let prompts = match page {
-        Page::QuitConfirm => menu_prompts(
-            active_dev,
-            lang,
-            false,
-            match lang {
-                Language::Spanish => "Aceptar",
-                Language::English => "Select",
-            },
-            Some(match lang {
-                Language::Spanish => "Cancelar",
-                Language::English => "Cancel",
-            }),
-        ),
-        Page::Main => menu_prompts(
-            active_dev,
-            lang,
-            false,
-            match lang {
-                Language::Spanish => "Aceptar",
-                Language::English => "Select",
-            },
-            Some(match lang {
-                Language::Spanish => "Reanudar",
-                Language::English => "Resume",
-            }),
-        ),
+    let back = match page {
+        Page::QuitConfirm => lang.hint_cancel(),
+        Page::Main => lang.hint_resume(),
     };
+    let prompts = menu_prompts(
+        active_dev,
+        &[(Keys::Confirm, lang.hint_accept()), (Keys::Back, back)],
+    );
 
     commands
         .spawn((
@@ -477,13 +478,98 @@ fn show_pause_menu(
         .with_children(|menu| {
             spawn_title(menu, &font, title, 52.0);
             spawn_panel(menu, &font, &rows, pause.selected, false);
-            spawn_legend_bar(menu, &font, &prompts);
+            spawn_legend(menu, &font, &icons, active_dev, &prompts);
         });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A race with the pause menu, and the keyboard to drive it.
+    fn race() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::input::InputPlugin)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Font>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .init_resource::<Settings>()
+            .init_resource::<InputDevice>()
+            .init_resource::<UiFont>()
+            .init_resource::<UiIcons>()
+            .add_message::<MenuSound>()
+            .add_message::<AppExit>()
+            .add_plugins((
+                PausePlugin,
+                crate::options::OptionsPlugin,
+                crate::gamepads::GamepadsPlugin,
+            ));
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        app.update();
+        app
+    }
+
+    /// Presses and lets go of `key`, a frame each.
+    fn press(app: &mut App, key: KeyCode) {
+        use bevy::input::ButtonState;
+        use bevy::input::keyboard::{Key, KeyboardInput};
+        for state in [ButtonState::Pressed, ButtonState::Released] {
+            app.world_mut().write_message(KeyboardInput {
+                key_code: key,
+                logical_key: Key::Unidentified(bevy::input::keyboard::NativeKey::Unidentified),
+                state,
+                text: None,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            });
+            app.update();
+        }
+    }
+
+    fn page(app: &App) -> (Option<Page>, usize) {
+        let pause = app.world().resource::<Pause>();
+        (pause.page, pause.selected)
+    }
+
+    #[test]
+    fn leaving_the_game_from_the_pause_asks_first_and_cancelling_goes_back_to_it() {
+        let mut app = race();
+        press(&mut app, KeyCode::Escape);
+        assert_eq!(page(&app), (Some(Page::Main), 0));
+        // Up from the first option: the last one, "Exit game".
+        press(&mut app, KeyCode::ArrowUp);
+        let exit = items(Page::Main, Language::Spanish).len() - 1;
+        assert_eq!(page(&app), (Some(Page::Main), exit));
+        if WEB {
+            return;
+        }
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(page(&app), (Some(Page::QuitConfirm), 0));
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(page(&app), (Some(Page::Main), exit), "back on Exit game");
+    }
+
+    #[test]
+    fn the_key_that_closes_the_options_does_not_resume_the_race() {
+        let mut app = race();
+        press(&mut app, KeyCode::Escape);
+        press(&mut app, KeyCode::ArrowDown);
+        press(&mut app, KeyCode::Enter);
+        assert!(app.world().resource::<OptionsMenu>().is_open);
+        press(&mut app, KeyCode::Escape);
+        assert!(!app.world().resource::<OptionsMenu>().is_open);
+        assert_eq!(
+            page(&app),
+            (Some(Page::Main), 1),
+            "still paused, on Options"
+        );
+    }
 
     #[test]
     fn the_pause_menu_offers_what_was_asked() {

@@ -15,9 +15,10 @@ use crate::geometry::{approach, smoothstep, wrap_angle};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::menu::GameState;
 use crate::welcome::GameMode;
+// The fog is the colour of the sky at the horizon: far away, the land melts
+// into the sky.
+use crate::world::sky::HORIZON;
 
-/// Color del horizonte en la foto del cielo: el de la neblina de la distancia.
-const HORIZON: Color = Color::srgb(0.6, 0.66, 0.78);
 /// Hasta dónde se ve (m): más allá del cielo, que está a 4,5 km.
 const FAR: f32 = 6000.0;
 /// Distancia detrás de la moto: parada .. a toda velocidad.

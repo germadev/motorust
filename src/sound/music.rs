@@ -12,10 +12,11 @@ use std::io::Cursor;
 use bevy::audio::{AudioSinkPlayback, Decodable, Volume};
 use bevy::prelude::*;
 
-use super::{MASTER, SoundControls};
+use super::{MASTER, SoundControls, music_gain};
 use crate::circuits::{CIRCUITS, CurrentCircuit, Song};
 use crate::menu::GameState;
 use crate::pause::Pause;
+use crate::settings::{DEFAULT_VOLUME, Settings};
 
 /// Loudness every song plays at (LUFS), with the sound on. The player's
 /// engine with the wind, measured the same way, is about -11 LUFS flat out,
@@ -95,7 +96,7 @@ pub fn play_music(
     circuit: Res<CurrentCircuit>,
     pause: Res<Pause>,
     controls: Res<SoundControls>,
-    settings: Option<Res<crate::settings::Settings>>,
+    settings: Option<Res<Settings>>,
     mut songs: ResMut<Assets<SongSource>>,
     mut playing: Query<(Entity, &mut Music, Option<&mut AudioSink>)>,
 ) {
@@ -103,11 +104,15 @@ pub fn play_music(
     let racing = (*state.get() == GameState::Race).then_some(circuit.0);
     // M mutes the music too.
     let master = controls.0.master.get() / MASTER;
-    let (music_vol, music_enabled) = settings
+    let music_factor = settings
         .as_ref()
-        .map(|s| (s.music_volume as f32 / 100.0, s.music_enabled))
-        .unwrap_or((0.8, true));
-    let music_factor = if music_enabled { music_vol } else { 0.0 };
+        .map_or(music_gain(DEFAULT_VOLUME), |settings| {
+            if settings.music_enabled {
+                music_gain(settings.music_volume)
+            } else {
+                0.0
+            }
+        });
     let mut started = false;
     for (entity, mut music, sink) in &mut playing {
         let current = racing == Some(music.circuit);

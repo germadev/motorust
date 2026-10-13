@@ -13,12 +13,14 @@ use bevy::prelude::*;
 
 use crate::bike::{BikeAssets, BikeState, ROSTER};
 use crate::camera::{CameraGlide, CameraPlayer, right_stick};
+use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
+use crate::legend::{KeyPrompt, Keys, ScreenLegend, menu_prompts, show_screen_legend};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::locale::Language;
 use crate::settings::Settings;
 use crate::track::Track;
-use crate::ui::{InputDevice, MenuInput, MenuSound};
+use crate::ui::{InputDevice, MenuInput, MenuSound, UiIcons, current_active_device};
 use crate::welcome::GameMode;
 
 /// En qué pantalla está el juego.
@@ -88,7 +90,13 @@ impl Plugin for MenuPlugin {
             )
             .add_systems(
                 Update,
-                (choose, orbit_camera, show_choice, show_split_choices)
+                (
+                    choose,
+                    orbit_camera,
+                    show_choice,
+                    show_split_choices,
+                    show_legend,
+                )
                     .run_if(in_state(GameState::Select)),
             );
     }
@@ -108,7 +116,6 @@ struct Showcase(usize);
 enum SingleSelectRole {
     Name,
     Desc,
-    Hint,
 }
 
 #[derive(Component)]
@@ -428,19 +435,8 @@ fn spawn_menu(
                         ));
                     });
 
-                screen.spawn((
-                    Text::new(match lang {
-                        Language::Spanish => {
-                            "ESC o B: Volver a elegir pista  ·  Ambos jugadores confirman para correr"
-                        }
-                        Language::English => {
-                            "ESC or B: Back to track select  ·  Both players confirm to race"
-                        }
-                    }),
-                    text(14.0),
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
-                    shadow,
-                ));
+                // Going back is in the legend; each panel says how to get
+                // ready.
             });
     } else {
         commands
@@ -452,11 +448,12 @@ fn spawn_menu(
                     flex_direction: FlexDirection::Column,
                     justify_content: JustifyContent::SpaceBetween,
                     align_items: AlignItems::Center,
+                    // Abajo, sitio para la leyenda.
                     padding: UiRect {
                         left: px(24),
                         right: px(24),
                         top: px(20),
-                        bottom: px(40),
+                        bottom: px(64),
                     },
                     ..default()
                 },
@@ -524,12 +521,6 @@ fn spawn_menu(
                                 ));
                             }
                         });
-                        card.spawn((
-                            SingleSelectRole::Hint,
-                            Text::new(""),
-                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
-                            text(18.0),
-                        ));
                     });
             });
     }
@@ -800,7 +791,6 @@ fn orbit_camera(
 fn show_choice(
     choice: Res<Choice>,
     settings: Res<Settings>,
-    device: Res<InputDevice>,
     game_mode: Res<GameMode>,
     mut texts: Query<(&SingleSelectRole, &mut Text, &mut TextColor)>,
     mut dots: Query<(&Dot, &mut BackgroundColor)>,
@@ -810,21 +800,6 @@ fn show_choice(
     }
     let entry = &ROSTER[choice.0];
     let wanted_desc = entry.description(settings.language);
-
-    let (confirm, back) = match *device {
-        InputDevice::Keyboard => ("ENTER", "ESC"),
-        InputDevice::Gamepad => ("A o START", "B"),
-    };
-    let wanted_hint = match settings.language {
-        Language::Spanish => format!("< >  elegir   ·   {confirm}: correr   ·   {back}: volver"),
-        Language::English => {
-            let (confirm_en, back_en) = match *device {
-                InputDevice::Keyboard => ("ENTER", "ESC"),
-                InputDevice::Gamepad => ("A or START", "B"),
-            };
-            format!("< >  choose   ·   {confirm_en}: race   ·   {back_en}: back")
-        }
-    };
 
     for (role, mut text, mut color) in &mut texts {
         match role {
@@ -839,11 +814,6 @@ fn show_choice(
                     text.0 = wanted_desc.to_string();
                 }
             }
-            SingleSelectRole::Hint => {
-                if text.0 != wanted_hint {
-                    text.0 = wanted_hint.clone();
-                }
-            }
         }
     }
 
@@ -854,6 +824,39 @@ fn show_choice(
             color.0 = wanted;
         }
     }
+}
+
+/// La leyenda de los controles, con el teclado o el mando que se usa. With
+/// two players each panel says how to get ready.
+#[allow(clippy::too_many_arguments)]
+fn show_legend(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    game_mode: Res<GameMode>,
+    device: Res<InputDevice>,
+    active_controller: Option<Res<ActiveController>>,
+    font: Res<UiFont>,
+    icons: Res<UiIcons>,
+    shown: Query<Entity, With<ScreenLegend>>,
+    mut last: Local<Option<Vec<KeyPrompt>>>,
+) {
+    let lang = settings.language;
+    let active_dev = current_active_device(*device, active_controller.as_deref());
+    let hints = if *game_mode == GameMode::SinglePlayer {
+        vec![(Keys::Confirm, lang.hint_race()), (Keys::Back, lang.back())]
+    } else {
+        vec![(Keys::Back, lang.back())]
+    };
+    show_screen_legend(
+        &mut commands,
+        &shown,
+        &mut last,
+        menu_prompts(active_dev, &hints),
+        active_dev,
+        &font,
+        &icons,
+        GameState::Select,
+    );
 }
 
 /// Nombre, descripción, estado y puntos de cada moto en modo pantalla dividida.
@@ -875,16 +878,16 @@ fn show_split_choices(
     let p1_hint = if split_choices.p1_ready {
         (
             match lang {
-                Language::Spanish => "✓ LISTO (Pulsa atrás para cambiar)".to_string(),
-                Language::English => "✓ READY (Press back to change)".to_string(),
+                Language::Spanish => "LISTO (atrás para cambiar)".to_string(),
+                Language::English => "READY (back to change)".to_string(),
             },
             Color::srgb(0.3, 1.0, 0.4),
         )
     } else {
         let key_hint = match local_players.p1 {
-            Some(ControllerBinding::Wasd) => "Espacio o W",
-            Some(ControllerBinding::Arrows) => "Enter o ↑",
-            Some(ControllerBinding::Gamepad(_)) => "A o Start",
+            Some(ControllerBinding::Wasd) => "Espacio / W",
+            Some(ControllerBinding::Arrows) => "Enter",
+            Some(ControllerBinding::Gamepad(_)) => "A / Start",
             None => "Enter",
         };
         (
@@ -901,16 +904,16 @@ fn show_split_choices(
     let p2_hint = if split_choices.p2_ready {
         (
             match lang {
-                Language::Spanish => "✓ LISTO (Pulsa atrás para cambiar)".to_string(),
-                Language::English => "✓ READY (Press back to change)".to_string(),
+                Language::Spanish => "LISTO (atrás para cambiar)".to_string(),
+                Language::English => "READY (back to change)".to_string(),
             },
             Color::srgb(0.3, 1.0, 0.4),
         )
     } else {
         let key_hint = match local_players.p2 {
-            Some(ControllerBinding::Wasd) => "Espacio o W",
-            Some(ControllerBinding::Arrows) => "Enter o ↑",
-            Some(ControllerBinding::Gamepad(_)) => "A o Start",
+            Some(ControllerBinding::Wasd) => "Espacio / W",
+            Some(ControllerBinding::Arrows) => "Enter",
+            Some(ControllerBinding::Gamepad(_)) => "A / Start",
             None => "Enter",
         };
         (
@@ -1002,6 +1005,7 @@ mod tests {
                 p2: Some(ControllerBinding::Arrows),
             })
             .init_resource::<InputDevice>()
+            .init_resource::<UiIcons>()
             .init_resource::<CurrentCircuit>()
             .init_resource::<CameraGlide>()
             .add_plugins(crate::camera::ChaseCameraPlugin)

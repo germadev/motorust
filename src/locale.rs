@@ -115,13 +115,6 @@ impl Language {
         }
     }
 
-    pub fn welcome_hint(self) -> &'static str {
-        match self {
-            Language::Spanish => "< >  cambiar   ·   Enter o A: aceptar   ·   Esc o B: volver",
-            Language::English => "< >  change   ·   Enter or A: select   ·   Esc or B: back",
-        }
-    }
-
     pub fn controls_hint(self) -> &'static str {
         match self {
             Language::Spanish => "Pulsa una tecla o botón del mando (Esc para cancelar)",
@@ -224,15 +217,15 @@ impl Language {
 
     pub fn player_waiting_left(self) -> &'static str {
         match self {
-            Language::Spanish => "Pulsa A o ← para elegir este lado",
-            Language::English => "Press A or ← to choose this side",
+            Language::Spanish => "Pulsa A o Izquierda para elegir este lado",
+            Language::English => "Press A or Left to choose this side",
         }
     }
 
     pub fn player_waiting_right(self) -> &'static str {
         match self {
-            Language::Spanish => "Pulsa D o → para elegir este lado",
-            Language::English => "Press D or → to choose this side",
+            Language::Spanish => "Pulsa D o Derecha para elegir este lado",
+            Language::English => "Press D or Right to choose this side",
         }
     }
 
@@ -245,8 +238,8 @@ impl Language {
 
     pub fn player_ready(self) -> &'static str {
         match self {
-            Language::Spanish => "✓ ¡LISTO!",
-            Language::English => "✓ READY!",
+            Language::Spanish => "¡LISTO!",
+            Language::English => "READY!",
         }
     }
 
@@ -257,40 +250,11 @@ impl Language {
         }
     }
 
-    pub fn lobby_hint_waiting(self) -> &'static str {
-        match self {
-            Language::Spanish => "< >  Elige lado con tu control   ·   Esc o B: volver",
-            Language::English => "< >  Choose side with your control   ·   Esc or B: back",
-        }
-    }
-
-    pub fn lobby_hint_ready(self) -> &'static str {
-        match self {
-            Language::Spanish => "Enter, A o Start: continuar   ·   Esc o B: volver",
-            Language::English => "Enter, A or Start: continue   ·   Esc or B: back",
-        }
-    }
-
     // --- Pistas ---
     pub fn select_track(self) -> &'static str {
         match self {
             Language::Spanish => "ELIGE PISTA",
             Language::English => "SELECT TRACK",
-        }
-    }
-
-    pub fn track_hint(self, can_choose: bool) -> String {
-        let choose = if can_choose {
-            match self {
-                Language::Spanish => "< >  elegir   ·   ",
-                Language::English => "< >  choose   ·   ",
-            }
-        } else {
-            ""
-        };
-        match self {
-            Language::Spanish => format!("{choose}Enter o A: elegir moto   ·   Esc o B: volver"),
-            Language::English => format!("{choose}Enter or A: choose bike   ·   Esc or B: back"),
         }
     }
 
@@ -306,13 +270,6 @@ impl Language {
         match self {
             Language::Spanish => "ELIGE MOTO",
             Language::English => "SELECT BIKE",
-        }
-    }
-
-    pub fn bike_hint(self) -> &'static str {
-        match self {
-            Language::Spanish => "< >  elegir   ·   Enter o A: correr   ·   Esc o B: volver",
-            Language::English => "< >  choose   ·   Enter or A: race   ·   Esc or B: back",
         }
     }
 
@@ -427,13 +384,6 @@ impl Language {
         match self {
             Language::Spanish => "Menú principal",
             Language::English => "Main menu",
-        }
-    }
-
-    pub fn pause_hint(self) -> &'static str {
-        match self {
-            Language::Spanish => "Enter o A: elegir   ·   Esc, P o Start: seguir",
-            Language::English => "Enter or A: select   ·   Esc, P or Start: resume",
         }
     }
 
@@ -561,6 +511,85 @@ impl Language {
         match self {
             Language::Spanish => "Restablecer controles",
             Language::English => "Reset controls",
+        }
+    }
+
+    // --- Controls legend: the same words on every screen ---
+
+    pub fn hint_accept(self) -> &'static str {
+        match self {
+            Language::Spanish => "Aceptar",
+            Language::English => "Accept",
+        }
+    }
+
+    pub fn hint_section(self) -> &'static str {
+        match self {
+            Language::Spanish => "Sección",
+            Language::English => "Section",
+        }
+    }
+
+    pub fn hint_resume(self) -> &'static str {
+        match self {
+            Language::Spanish => "Continuar",
+            Language::English => "Resume",
+        }
+    }
+
+    pub fn hint_cancel(self) -> &'static str {
+        match self {
+            Language::Spanish => "Cancelar",
+            Language::English => "Cancel",
+        }
+    }
+
+    pub fn hint_exit(self) -> &'static str {
+        match self {
+            Language::Spanish => "Salir",
+            Language::English => "Exit",
+        }
+    }
+
+    pub fn hint_choose_bike(self) -> &'static str {
+        match self {
+            Language::Spanish => "Elegir moto",
+            Language::English => "Choose bike",
+        }
+    }
+
+    pub fn hint_race(self) -> &'static str {
+        match self {
+            Language::Spanish => "Correr",
+            Language::English => "Race",
+        }
+    }
+
+    pub fn hint_continue(self) -> &'static str {
+        match self {
+            Language::Spanish => "Continuar",
+            Language::English => "Continue",
+        }
+    }
+
+    pub fn hint_brake(self) -> &'static str {
+        match self {
+            Language::Spanish => "Frenar",
+            Language::English => "Brake",
+        }
+    }
+
+    pub fn hint_steer(self) -> &'static str {
+        match self {
+            Language::Spanish => "Girar",
+            Language::English => "Steer",
+        }
+    }
+
+    pub fn hint_sound(self) -> &'static str {
+        match self {
+            Language::Spanish => "Sonido",
+            Language::English => "Sound",
         }
     }
 }

@@ -18,10 +18,11 @@ use std::sync::Arc;
 use bevy::audio::AddAudioSource;
 use bevy::prelude::*;
 
-use crate::bike::{BikeInput, BikeState, Player};
+use crate::bike::{BikeInput, BikeState, LocalPlayer, Player};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
+use crate::settings::{DEFAULT_VOLUME, Settings};
 use crate::ui::MenuSound;
 pub use synth::Sound;
 use synth::{Controls, Mix, REDLINE, VOICES, pan};
@@ -90,14 +91,30 @@ impl Plugin for SoundPlugin {
 #[derive(Resource)]
 struct SoundControls(Arc<Controls>);
 
+/// How loud the effects and the music play at [`DEFAULT_VOLUME`]: the
+/// balance found by ear, with the effects at a fifth of the old scale and
+/// the music at nine tenths.
+const FX_AT_DEFAULT: f32 = 0.2;
+const MUSIC_AT_DEFAULT: f32 = 0.9;
+
+/// Gain of the sound effects at a volume of `level` %.
+pub fn fx_gain(level: u32) -> f32 {
+    level as f32 / DEFAULT_VOLUME as f32 * FX_AT_DEFAULT
+}
+
+/// Gain of the music at a volume of `level` %.
+pub fn music_gain(level: u32) -> f32 {
+    level as f32 / DEFAULT_VOLUME as f32 * MUSIC_AT_DEFAULT
+}
+
 fn start_mixer(
     mut commands: Commands,
     controls: Res<SoundControls>,
-    settings: Option<Res<crate::settings::Settings>>,
+    settings: Option<Res<Settings>>,
     mut mixes: ResMut<Assets<Mix>>,
 ) {
-    if let Some(s) = settings {
-        controls.0.fx.set(s.fx_volume as f32 / 100.0);
+    if let Some(settings) = settings {
+        controls.0.fx.set(fx_gain(settings.fx_volume));
     }
     let mix = mixes.add(Mix {
         controls: controls.0.clone(),
@@ -105,14 +122,11 @@ fn start_mixer(
     commands.spawn(AudioPlayer(mix));
 }
 
-fn sync_settings_sound(
-    settings: Option<Res<crate::settings::Settings>>,
-    controls: Res<SoundControls>,
-) {
-    if let Some(s) = settings
-        && s.is_changed()
+fn sync_settings_sound(settings: Option<Res<Settings>>, controls: Res<SoundControls>) {
+    if let Some(settings) = settings
+        && settings.is_changed()
     {
-        controls.0.fx.set(s.fx_volume as f32 / 100.0);
+        controls.0.fx.set(fx_gain(settings.fx_volume));
     }
 }
 
@@ -280,56 +294,66 @@ fn run_engines(
 }
 
 /// Coloca cada motor respecto a la cámara (volumen, oído y Doppler) y suelta
-/// los golpes y los aterrizajes.
+/// los golpes y los aterrizajes. With two players there is a camera each:
+/// every bike is heard from the nearer one, and both players' bikes sound
+/// as the player's (full volume, no Doppler).
+#[allow(clippy::type_complexity)]
 fn place_sounds(
     time: Res<Time>,
     controls: Res<SoundControls>,
-    cameras: Query<&GlobalTransform, With<Camera3d>>,
-    mut listener_motion: Local<(Option<Vec3>, Vec3)>,
+    cameras: Query<(Entity, &GlobalTransform), With<Camera3d>>,
+    mut listener_motion: Local<bevy::platform::collections::HashMap<Entity, (Vec3, Vec3)>>,
     mut bikes: Query<(
         Entity,
         &BikeState,
         &GlobalTransform,
         &mut Engine,
         Has<Player>,
+        Has<LocalPlayer>,
     )>,
 ) {
-    let Some(camera) = cameras.iter().next() else {
-        return;
-    };
     let dt = time.delta_secs().max(1e-4);
-    let listener = camera.translation();
-    // La velocidad de la cámara, suavizada: medida de un fotograma a otro
-    // tiembla, y ese temblor se oiría en el Doppler de todos los motores.
-    let (last, velocity) = &mut *listener_motion;
-    if let Some(last) = *last {
-        let measured = (listener - last) / dt;
+    // Each camera with its velocity, smoothed: measured from one frame to
+    // the next it shakes, and the shaking would be heard in the Doppler of
+    // every engine.
+    let mut listeners = Vec::new();
+    for (camera, transform) in &cameras {
+        let at = transform.translation();
+        let (last, velocity) = listener_motion.entry(camera).or_insert((at, Vec3::ZERO));
+        let measured = (at - *last) / dt;
         *velocity = velocity.lerp(measured, 1.0 - (-dt / LISTENER_SMOOTHING).exp());
+        *last = at;
+        listeners.push((at, *velocity, transform.right().as_vec3()));
     }
-    *last = Some(listener);
-    let listener_velocity = *velocity;
-    let right = camera.right();
+    listener_motion.retain(|camera, _| cameras.contains(*camera));
+    if listeners.is_empty() {
+        return;
+    }
 
     // Cada moto, siempre con la misma voz: por orden de creación, no de
     // distancia, que cambia cuando dos motos se cruzan.
     let mut voices: Vec<_> = bikes.iter_mut().collect();
     voices.sort_by_key(|voice| voice.0);
     for (index, params) in controls.0.engines.iter().enumerate() {
-        let Some((_, state, transform, engine, player)) = voices.get_mut(index) else {
+        let Some((_, state, transform, engine, player, other_player)) = voices.get_mut(index)
+        else {
             params.left.set(0.0);
             params.right.set(0.0);
             continue;
         };
-        let offset = transform.translation() - listener;
+        let player = *player || *other_player;
+        let at = transform.translation();
+        let (listener, listener_velocity, right) = *nearest_listener(&listeners, at);
+        let offset = at - listener;
         let distance = offset.length().max(0.1);
         let direction = offset / distance;
-        let volume = (NEAR / distance).min(1.0) * if *player { 1.0 } else { RIVAL_VOLUME };
-        let (left, right_gain) = pan(volume, direction.dot(*right));
+        let volume = (NEAR / distance).min(1.0) * if player { 1.0 } else { RIVAL_VOLUME };
+        let (left, right_gain) = pan(volume, direction.dot(right));
         params.left.set(left);
         params.right.set(right_gain);
         // Doppler: más agudo si se acerca, más grave si se aleja. La moto del
         // jugador va con la cámara: la suya no cambia.
-        let doppler = if *player {
+        let doppler = if player {
             1.0
         } else {
             let along = forward(state.heading) * state.speed;
@@ -345,7 +369,7 @@ fn place_sounds(
         // un golpe.
         let moved = state.position.distance(engine.last_position);
         let teleported = moved > engine.last_speed.abs() * dt * 2.0 + 1.0;
-        let (left, right) = pan(volume.max(0.15), direction.dot(*right));
+        let (left, right) = pan(volume.max(0.15), direction.dot(right));
         // Golpes: la moto pierde velocidad de repente.
         let lost = engine.last_speed.abs() - state.speed.abs();
         if lost / dt > IMPACT_DECEL && lost > 1.0 && !teleported {
@@ -366,7 +390,7 @@ fn place_sounds(
         remember(state, engine);
     }
     // Las motos sin voz también se apuntan lo último, por si la recuperan.
-    for (_, state, _, engine, _) in voices.iter_mut().skip(VOICES) {
+    for (_, state, _, engine, _, _) in voices.iter_mut().skip(VOICES) {
         remember(state, engine);
     }
 }
@@ -378,23 +402,33 @@ fn remember(state: &BikeState, engine: &mut Engine) {
     engine.last_climb = state.climb;
 }
 
-/// Viento, chirrido de neumáticos y hierba: los de la moto del jugador.
+/// The bikes the players ride: one, or two in split screen.
+type PlayerBikes = Or<(With<Player>, With<LocalPlayer>)>;
+
+/// Viento, chirrido de neumáticos y hierba: los de la moto del jugador, or
+/// of both players' bikes with two (whichever sounds louder).
 fn player_sounds(
     controls: Res<SoundControls>,
     tuning: Res<crate::bike::BikeTuning>,
-    player: Option<Single<(&BikeState, &BikeInput), With<Player>>>,
+    players: Query<(&BikeState, &BikeInput), PlayerBikes>,
 ) {
     let controls = &controls.0;
-    let Some(player) = player else {
-        controls.wind.set(0.0);
-        controls.skid.set(0.0);
-        controls.grass.set(0.0);
-        return;
-    };
-    let (state, input) = player.into_inner();
+    let [wind, skid, grass] = players
+        .iter()
+        .map(|(state, input)| rider_noise(state, input, tuning.max_speed))
+        .fold([0.0f32; 3], |loudest, noise| {
+            std::array::from_fn(|i| loudest[i].max(noise[i]))
+        });
+    controls.wind.set(wind);
+    controls.skid.set(skid);
+    controls.grass.set(grass);
+}
+
+/// How loud a player's wind, tyre squeal and grass are.
+fn rider_noise(state: &BikeState, input: &BikeInput, max_speed: f32) -> [f32; 3] {
     let speed = state.speed.abs();
-    let fast = speed / tuning.max_speed;
-    controls.wind.set(0.6 * fast * fast);
+    let fast = speed / max_speed;
+    let wind = 0.6 * fast * fast;
     // Chirría al apurar el agarre en las curvas o al frenar fuerte deprisa.
     let skid = if state.grounded {
         let cornering = smoothstep(0.8, 1.0, state.steer.abs()) * smoothstep(15.0, 30.0, speed);
@@ -403,11 +437,24 @@ fn player_sounds(
     } else {
         0.0
     };
-    controls.skid.set(0.25 * skid);
     let grass = (state.grass * 4.0).min(1.0) * (speed / 20.0).min(1.0);
-    controls
-        .grass
-        .set(if state.grounded { 0.35 * grass } else { 0.0 });
+    [
+        wind,
+        0.25 * skid,
+        if state.grounded { 0.35 * grass } else { 0.0 },
+    ]
+}
+
+/// The camera nearest to `at`, of those listening: their position,
+/// velocity and right.
+fn nearest_listener(listeners: &[(Vec3, Vec3, Vec3)], at: Vec3) -> &(Vec3, Vec3, Vec3) {
+    listeners
+        .iter()
+        .min_by(|a, b| {
+            a.0.distance_squared(at)
+                .total_cmp(&b.0.distance_squared(at))
+        })
+        .expect("there is at least one listener")
 }
 
 /// En pausa se apaga el ruido de la carrera, y moverse por el menú suena.
@@ -433,6 +480,70 @@ fn toggle_mute(keyboard: Res<ButtonInput<KeyCode>>, controls: Res<SoundControls>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_bike_is_heard_from_the_nearer_camera() {
+        let listeners = [
+            (Vec3::ZERO, Vec3::ZERO, Vec3::X),
+            (Vec3::new(100.0, 0.0, 0.0), Vec3::ZERO, Vec3::X),
+        ];
+        let near = |at: Vec3| nearest_listener(&listeners, at).0;
+        assert_eq!(near(Vec3::new(90.0, 0.0, 5.0)), listeners[1].0);
+        assert_eq!(near(Vec3::new(10.0, 0.0, -5.0)), listeners[0].0);
+    }
+
+    #[test]
+    fn with_two_players_both_bikes_sound_as_the_player() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.insert_resource(Time::<()>::default());
+        world.insert_resource(SoundControls(Arc::new(Controls::default())));
+        // A camera behind each player, far apart.
+        for x in [0.0, 400.0] {
+            world.spawn((
+                Camera3d::default(),
+                GlobalTransform::from(
+                    Transform::from_xyz(x, 2.0, 5.0).looking_at(Vec3::new(x, 0.0, 0.0), Vec3::Y),
+                ),
+            ));
+        }
+        let bike = |x: f32| {
+            (
+                BikeState::parked_at((Vec2::new(x, 0.0), 0.0)),
+                GlobalTransform::from(Transform::from_xyz(x, 0.0, 0.0)),
+                Engine::default(),
+            )
+        };
+        world.spawn((bike(0.0), Player));
+        world.spawn((bike(400.0), LocalPlayer(1)));
+        world.run_system_once(place_sounds).unwrap();
+        let controls = &world.resource::<SoundControls>().0;
+        let loudness = |voice: usize| {
+            let params = &controls.engines[voice];
+            params.left.get() + params.right.get()
+        };
+        // Player 2 is as loud as player 1, though 400 m from player 1's camera.
+        assert!(loudness(1) > 0.0);
+        assert!(
+            (loudness(1) - loudness(0)).abs() < 1e-3,
+            "{} {}",
+            loudness(0),
+            loudness(1)
+        );
+    }
+
+    #[test]
+    fn the_default_volume_is_the_balance_found_by_ear() {
+        // Effects at 20 % and music at 90 % of the old scale sounded right:
+        // that is now 80 % of both.
+        assert_eq!(fx_gain(DEFAULT_VOLUME), 0.2);
+        assert_eq!(music_gain(DEFAULT_VOLUME), 0.9);
+        assert_eq!(fx_gain(0), 0.0);
+        assert_eq!(music_gain(0), 0.0);
+        // Linear: each step of 10 % is an eighth of the default.
+        assert!((fx_gain(40) - 0.1).abs() < 1e-6);
+        assert!((music_gain(100) - 1.125).abs() < 1e-6);
+    }
 
     const DT: f32 = 1.0 / 60.0;
 

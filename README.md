@@ -3,17 +3,12 @@
 Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 [Bevy](https://bevy.org) 0.19.
 
-![The Motorust welcome screen, with the camera flying over the seafront of Turbo Bay](docs/images/welcome.jpg)
+![The Motorust main menu, with the camera flying over the seafront of Turbo Bay](docs/images/welcome.jpg)
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Three tracks.** Bahía is a Mediterranean coast road. Turbo Bay, inspired
-  by Moto Racer's Speed Bay, is a figure of eight on a hilly island: a
-  seafront, a tunnel that the track later passes over, a mountain road up to
-  a lighthouse cape, a forest and a bridge. Loop Island, inspired by Sonic the
-  Hedgehog, rolls round an island of checkerboard hills with sunflowers,
-  totems and waterfalls, and a branch off the lap goes round a loop you ride
-  upside down. All have steep slopes, crests and banked curves.
+- **Three tracks** with steep slopes, crests and banked curves (see
+  [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
 - **Arcade handling.** Lean into corners at full throttle, pop wheelies, take
@@ -22,11 +17,30 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 - **Synthesized sound and music.** Engines, gearbox, wind, tyres and impacts
   are all generated in real time, with Doppler on passing rivals. Each track
   has its own song, mixed well below the engine.
-- **Everything else.** A minimap, rebindable controls and gamepad support
-  (including the macOS GameController framework). It runs on Linux, Windows,
-  macOS and the web.
+- **Everything else.** Two-player split screen, a minimap, rebindable
+  controls and gamepad support (including the macOS GameController
+  framework). It runs on Linux, Windows, macOS and the web.
 
-![Two bikes riding round the checkerboard loop on Loop Island's branch, one upside down at the top](docs/images/loop-island-loop.jpg)
+## Tracks
+
+**Bahía** is a Mediterranean coast road between stone walls, rock cuttings,
+umbrella pines and cypresses.
+
+![The pack leaning through a curve on Bahía, between a stone wall and a rocky hill, towards the checkpoint arch](docs/images/track-bahia.jpg)
+
+**Turbo Bay**, inspired by Moto Racer's Speed Bay, is a figure of eight on a
+hilly island: a seafront, a tunnel that the track later passes over, a
+mountain road up to a lighthouse cape, a forest and a bridge.
+
+![Bikes leaning through a rock cutting on Turbo Bay, past the MOTORUST and RACING billboards, towards the checkpoint arch](docs/images/track-turbo-bay.jpg)
+
+**Loop Island**, inspired by Sonic the Hedgehog, rolls round an island of
+checkerboard hills with sunflowers, totems and waterfalls, and a branch off the
+lap goes round a loop you ride upside down.
+
+![Two bikes leaning between Loop Island's checkerboard hills, with a waterfall ahead](docs/images/track-loop-island.jpg)
+
+More about each one in [docs/tracks.md](docs/tracks.md).
 
 ## Quick start
 
@@ -55,8 +69,8 @@ The browser version is deployed to Cloudflare Pages (<https://motorust.germade.d
 | Mute | M | |
 | Fullscreen | Cmd+Enter (macOS), Alt+Enter (Windows, Linux) | |
 
-Keys and buttons can be changed in Options › Controls. The in-game menus are in
-Spanish.
+Keys and buttons can be changed in Options › Controls. The menus are in Spanish
+or English: the system's language at first, changed in Options.
 
 ## Documentation
 
