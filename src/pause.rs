@@ -436,7 +436,8 @@ fn show_pause_menu(
     let rows: Vec<Row> = items(page, lang)
         .into_iter()
         .map(|(label, action)| {
-            if action == Action::ConfirmQuit {
+            // Leaving the game, and confirming it, show in red.
+            if matches!(action, Action::OpenQuitConfirm | Action::ConfirmQuit) {
                 Row::danger(label)
             } else {
                 Row::new(label)
