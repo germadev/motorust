@@ -1,7 +1,8 @@
 //! The sea, drawn like the cartoon sea of Zelda: The Wind Waker by its own
-//! shader (`sea.wgsl`): flat saturated blues with no lighting, white wavy
-//! lines drifting across it, lighter water by the coast, and foam hugging
-//! the shore with rings of foam rolling out from it.
+//! shader (`sea.wgsl`): flat saturated blues with no lighting, white waves
+//! coming and going on it (short crests drifting with the wind), lighter
+//! water by the coast, and foam hugging the shore with rings of foam rolling
+//! out from it.
 //!
 //! The shader finds the shore in a map of each circuit: how far each point
 //! is from it ([`ShoreMap`]), worked out from the terrain along with the rest

@@ -108,7 +108,7 @@ Rivals keep to their own lane. They pull out to pass a bike they catch, or lift 
 |---|---|---|
 | Speedometer | Bottom right | Speed in km/h. |
 | FPS counter | Top right | Frames per second, smoothed so it can be read. |
-| Minimap | Bottom left | The layout seen from above (north up), with the finish line in yellow and one dot per bike in that bike's colour. Your dot is larger, with a white border. |
+| Minimap | Bottom left | The layout seen from above (north up), with the finish line in yellow and one dot per bike in that bike's colour. Your dot is larger, with a white border; with two players, each one's dot carries their number (1 or 2). |
 | Controls legend | Bottom centre | The keys or buttons currently bound to each action, on the device in use (see [Controls legend](#controls-legend)). It is hidden by default; turn it on in **Options > Control**. It gives way to the pause menu's own legend. |
 
 The chase camera sits low behind the bike, as in *Moto Racer*. Its field of view widens with speed. On a gamepad, the right stick turns the camera relative to the bike:
@@ -223,6 +223,7 @@ Every sound effect is synthesised in real time, with no recordings. The synthesi
   - pops and crackles when you lift off.
 - **Rivals.** Rival engines are louder the closer they are, panned left or right. They sound higher-pitched approaching than moving away (the Doppler effect), so you hear them come and go.
 - **Surroundings.** Wind that grows with speed; tyres when you push in corners or brake hard; grass; impacts against walls; landings.
+- **Two players.** Both players' bikes sound as yours: full volume, no Doppler. Every bike, rivals included, is heard from the nearer of the two cameras, and the wind, tyres and grass follow whichever player makes them louder.
 - **Menus.** Moving through menus clicks. On the bike select screen, the chosen bike idles and revs when you switch to it.
 - **Music.** Each track has its own song (`assets/music/`), which loops during the race (`src/sound/music.rs`). It plays well below the bike: every song is brought to the same loudness, about 13 dB under your engine flat out (and still under it off the throttle), so the revs, gear changes, tyres and impacts are always heard over it. It fades in when the race starts and out when you leave it.
 

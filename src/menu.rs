@@ -435,19 +435,8 @@ fn spawn_menu(
                         ));
                     });
 
-                screen.spawn((
-                    Text::new(match lang {
-                        Language::Spanish => {
-                            "ESC o B: Volver a elegir pista  ·  Ambos jugadores confirman para correr"
-                        }
-                        Language::English => {
-                            "ESC or B: Back to track select  ·  Both players confirm to race"
-                        }
-                    }),
-                    text(14.0),
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
-                    shadow,
-                ));
+                // Going back is in the legend; each panel says how to get
+                // ready.
             });
     } else {
         commands

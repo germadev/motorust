@@ -1,5 +1,5 @@
 // The sea, drawn like the cartoon sea of Zelda: The Wind Waker: flat,
-// saturated blues with no lighting, white wavy lines drifting across it,
+// saturated blues with no lighting, white waves coming and going on it,
 // lighter water by the coast, and white foam hugging the shore with rings
 // of foam rolling out from it (see src/world/sea.rs).
 
@@ -27,11 +27,13 @@ const OPEN: vec3<f32> = vec3(0.12, 0.42, 0.88);
 const SHALLOW: vec3<f32> = vec3(0.25, 0.72, 0.93);
 const FOAM: vec3<f32> = vec3(0.97, 0.99, 1.0);
 
-// Size of the cells of the wave lines (m), how thick the lines are (in cell
-// units) and how far away they fade out (m).
-const WAVE_CELL: f32 = 16.0;
-const WAVE_LINE: f32 = 0.055;
-const WAVE_FADE: vec2<f32> = vec2(180.0, 420.0);
+// Size of the cells the waves are scattered over (m), how thick a wave is in
+// the middle (in cell units), how long each one lives (s) and how far away
+// they fade out (m).
+const WAVE_CELL: f32 = 7.0;
+const WAVE_LINE: f32 = 0.045;
+const WAVE_LIFE: f32 = 5.0;
+const WAVE_FADE: vec2<f32> = vec2(160.0, 380.0);
 // The foam rings: how far they roll out from the shore (m), how long that
 // takes (s) and how thick they are (m).
 const RING_REACH: f32 = 13.0;
@@ -59,39 +61,50 @@ fn noise(p: vec2<f32>) -> f32 {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
-// How much of a white wave line covers this point: the borders between
-// drifting, wobbling cells, broken into separate squiggles.
-fn wave_lines(p: vec2<f32>, t: f32) -> f32 {
-    let drift = vec2(0.031, 0.019) * t;
-    let warp = vec2(noise(p * 0.35 + t * 0.05), noise(p * 0.35 + vec2(5.2, 1.3) - t * 0.05));
-    let q = p + drift + (warp - 0.5) * 0.9;
+// How much of a wave covers this point. Each cell of a jittered grid may
+// hold one wave: a short arc, like a crest (︵), thick in the middle and
+// thin at the ends, leaning a little its own way. Waves drift with the wind
+// and each one swells and fades away in turn, so they come and go.
+fn waves(p: vec2<f32>, t: f32) -> f32 {
+    let q = p + vec2(0.06, 0.035) * t;
     let cell = floor(q);
-    let f = fract(q);
-    var first = 8.0;
-    var second = 8.0;
-    var nearest = vec2(0.0);
+    var cover = 0.0;
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
-            let offset = vec2(f32(x), f32(y));
-            let h = hash2(cell + offset);
-            // Each point circles slowly around its place.
-            let point = offset + 0.5 + 0.38 * sin(t * 0.6 + 6.2831 * h) - f;
-            let distance = dot(point, point);
-            if distance < first {
-                second = first;
-                first = distance;
-                nearest = cell + offset;
-            } else if distance < second {
-                second = distance;
-            }
+            let id = cell + vec2(f32(x), f32(y));
+            let h = hash2(id);
+            let k = hash1(id + 17.3);
+            // About two cells in three have a wave. (No branching: the
+            // derivatives below need every pixel to run the same code.)
+            let present = step(0.35, k);
+            // Each wave lives WAVE_LIFE seconds, from nothing to full and back.
+            let life = fract(t / WAVE_LIFE + h.x);
+            let swell = sin(life * 3.14159);
+            let center = id + 0.5 + (h - 0.5) * 0.5;
+            let radius = (0.28 + 0.14 * h.y) * (0.75 + 0.25 * swell);
+            // Lean the wave a little either way.
+            let lean = (k - 0.675) * 0.9;
+            let d = rotate(q - center, lean);
+            // The top of a circle: an arc of `span` either side of straight up.
+            let span = 0.75 + 0.35 * swell;
+            let angle = atan2(d.x, -d.y);
+            let along = clamp(angle / span, -1.0, 1.0);
+            let ring = abs(length(d) - radius);
+            let past_end = max(abs(angle) - span, 0.0) * radius;
+            let distance = length(vec2(ring, past_end));
+            let thickness = WAVE_LINE * (1.0 - along * along) * swell * present;
+            let width = fwidth(distance) + 1e-4;
+            let line = 1.0 - smoothstep(thickness - width, thickness + width, distance);
+            cover = max(cover, line * present);
         }
     }
-    let edge = sqrt(second) - sqrt(first);
-    let width = fwidth(edge);
-    let line = 1.0 - smoothstep(WAVE_LINE - width, WAVE_LINE + width, edge);
-    // Only some cells draw their border, so the lines come in pieces.
-    let shown = step(0.45, hash1(nearest * 1.7 + 3.1));
-    return line * shown;
+    return cover;
+}
+
+fn rotate(v: vec2<f32>, angle: f32) -> vec2<f32> {
+    let c = cos(angle);
+    let s = sin(angle);
+    return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
 fn to_linear(srgb: vec3<f32>) -> vec3<f32> {
@@ -118,10 +131,10 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
     var color = mix(DEEP, OPEN, smoothstep(0.25, 0.75, patches));
     color = mix(SHALLOW, color, smoothstep(2.0, 30.0, near));
 
-    // White wave lines, fading out with distance (they would shimmer).
+    // White waves, fading out with distance (they would shimmer).
     let distance = length(in.world_position.xyz - view.world_position.xyz);
     let fade = 1.0 - smoothstep(WAVE_FADE.x, WAVE_FADE.y, distance);
-    var foam = wave_lines(at / WAVE_CELL, t) * 0.85 * fade;
+    var foam = waves(at / WAVE_CELL, t) * 0.9 * fade;
 
     // Foam along the shore, and rings of foam rolling out from it, fading
     // as they go.

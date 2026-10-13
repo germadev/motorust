@@ -12,8 +12,10 @@ use bevy::{
 
 use crate::bike::{BikeColor, BikeState, LocalPlayer, Player};
 use crate::circuits::CurrentCircuit;
+use crate::hud::UiFont;
 use crate::menu::GameState;
 use crate::track::Track;
+use crate::ui::text_font;
 use crate::welcome::GameMode;
 
 /// Lado del plano (píxeles) y margen alrededor del trazado.
@@ -49,6 +51,8 @@ const CHECKPOINT_STYLE: MarkerStyle = MarkerStyle {
 const HUD_SIZE: f32 = 190.0;
 const RIVAL_DOT: f32 = 9.0;
 const PLAYER_DOT: f32 = 14.0;
+/// With two players their dots carry their number, so they are bigger.
+const NUMBERED_DOT: f32 = 19.0;
 
 pub struct MinimapPlugin;
 
@@ -307,6 +311,7 @@ fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>, game_mode: Res<Game
 fn place_dots(
     mut commands: Commands,
     map: Res<TrackMap>,
+    font: Res<UiFont>,
     hud: Single<Entity, With<HudMap>>,
     bikes: Query<(
         Entity,
@@ -321,7 +326,13 @@ fn place_dots(
         dots.iter_mut().map(|(dot, node)| (dot.0, node)).collect();
     for (bike, state, color, player, local) in &bikes {
         let is_human = player || local.is_some();
-        let size = if is_human { PLAYER_DOT } else { RIVAL_DOT };
+        // With two players, each one's number (1 or 2) in the dot.
+        let number = local.map(|local| local.0 + 1);
+        let size = match (number, is_human) {
+            (Some(_), _) => NUMBERED_DOT,
+            (None, true) => PLAYER_DOT,
+            (None, false) => RIVAL_DOT,
+        };
         let at = map.projection.to_map(state.position) / MAP_SIZE as f32 * HUD_SIZE - size / 2.0;
         match placed.get_mut(&bike) {
             Some(node) => {
@@ -343,6 +354,8 @@ fn place_dots(
                             height: px(size),
                             border: UiRect::all(px(if is_human { 2.5 } else { 1.0 })),
                             border_radius: BorderRadius::MAX,
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
                             ..default()
                         },
                         BackgroundColor(color.0),
@@ -354,6 +367,17 @@ fn place_dots(
                         ZIndex(i32::from(is_human)),
                     ))
                     .id();
+                if let Some(number) = number {
+                    commands.entity(dot).with_child((
+                        Text::new(number.to_string()),
+                        text_font(&font, 12.0),
+                        TextColor(Color::WHITE),
+                        TextShadow {
+                            offset: Vec2::splat(1.0),
+                            color: Color::srgba(0.0, 0.0, 0.0, 0.9),
+                        },
+                    ));
+                }
                 commands.entity(*hud).add_child(dot);
             }
         }
