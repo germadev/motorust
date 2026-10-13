@@ -1,12 +1,14 @@
 //! The sea, drawn like the cartoon sea of Zelda: The Wind Waker by its own
-//! shader (`sea.wgsl`): flat saturated blues with no lighting, white waves
-//! coming and going on it (short crests drifting with the wind), lighter
-//! water by the coast, and foam hugging the shore with rings of foam rolling
-//! out from it.
+//! shader (`sea.wgsl`): flat saturated blues with no lighting, white crests
+//! rolling in towards the coast (few and short out at sea, more, longer and
+//! thicker near it, where they break), lighter water by the coast, and foam
+//! hugging the shore.
 //!
 //! The shader finds the shore in a map of each circuit: how far each point
 //! is from it ([`ShoreMap`]), worked out from the terrain along with the rest
-//! of the circuit, away from the main thread (see [`super::prepare`]).
+//! of the circuit, away from the main thread (see [`super::prepare`]). The
+//! crests run along the lines at the same distance from the shore, so they
+//! follow the coast and come in square to it.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
@@ -28,10 +30,12 @@ const SHORE_MARGIN: f32 = 700.0;
 /// smaller than this (m).
 const SHORE_TEXELS: f32 = 1024.0;
 const SHORE_TEXEL_MIN: f32 = 1.5;
-/// What the shore map holds: from SHORE_NEAR (inland) to SHORE_FAR (out at
-/// sea) metres from the shore. Must match `sea.wgsl`.
+/// What the shore map holds: in red, from SHORE_NEAR (inland) to SHORE_FAR
+/// (out at sea) metres from the shore, for the foam; in green, up to
+/// WAVES_REACH metres out, for the waves rolling in. Must match `sea.wgsl`.
 const SHORE_NEAR: f32 = -10.0;
 const SHORE_FAR: f32 = 40.0;
+const WAVES_REACH: f32 = 400.0;
 
 /// How the sea looks (see `sea.wgsl`).
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -122,14 +126,7 @@ impl ShoreMap {
 
     /// The map as the shader reads it: corner and size, and an image.
     pub fn material(&self, images: &mut Assets<Image>) -> SeaMaterial {
-        let data = self
-            .distance
-            .iter()
-            .map(|&d| {
-                let stored = (d - SHORE_NEAR) / (SHORE_FAR - SHORE_NEAR);
-                (stored.clamp(0.0, 1.0) * 255.0).round() as u8
-            })
-            .collect();
+        let data = self.distance.iter().flat_map(|&d| encode(d)).collect();
         let mut image = Image::new(
             Extent3d {
                 width: self.width,
@@ -138,7 +135,7 @@ impl ShoreMap {
             },
             TextureDimension::D2,
             data,
-            TextureFormat::R8Unorm,
+            TextureFormat::Rg8Unorm,
             RenderAssetUsages::RENDER_WORLD,
         );
         image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
@@ -154,6 +151,14 @@ impl ShoreMap {
             shore: images.add(image),
         }
     }
+}
+
+/// How the shore map stores a distance to the shore (m): close up, and how
+/// far out to sea.
+fn encode(distance: f32) -> [u8; 2] {
+    let near = (distance - SHORE_NEAR) / (SHORE_FAR - SHORE_NEAR);
+    let far = distance / WAVES_REACH;
+    [near, far].map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8)
 }
 
 /// How far each texel is from the nearest texel where `land` is `wanted`
@@ -266,6 +271,16 @@ mod tests {
         assert!(at(0, 0) > at(1, 1) && at(1, 1) > at(2, 2));
         // Straight out from the coast, one texel (2 m) at a time.
         assert_eq!(at(1, 4) - at(2, 4), 2.0);
+    }
+
+    #[test]
+    fn the_map_keeps_the_shore_close_up_and_the_distance_far_out() {
+        assert_eq!(encode(SHORE_NEAR), [0, 0]);
+        assert_eq!(encode(0.0)[1], 0);
+        assert_eq!(encode(SHORE_FAR), [255, 26]);
+        assert_eq!(encode(1000.0), [255, 255]);
+        // Close up, a tenth of a metre still shows.
+        assert_ne!(encode(1.0)[0], encode(1.2)[0]);
     }
 
     #[test]
