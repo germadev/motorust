@@ -133,6 +133,8 @@ pub enum WallStyle {
     Hedge,
     /// Blocks of brown checkerboard earth, as in Loop Island.
     Checkered,
+    /// A fence of heavy timber planks, as round a mine.
+    Timber,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -143,6 +145,17 @@ pub enum Soil {
     Rock,
     /// Brown checkerboard earth under a grass top, as in Loop Island.
     Checkered,
+    /// A desert canyon of red and ochre rock over dry, dusty earth; its
+    /// tunnels are mine galleries propped with timber and lit by lanterns.
+    Mine,
+}
+
+/// The light of a track: a summer day, or a low sun setting in a warm,
+/// hazy sky.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SkyStyle {
+    Day,
+    Dusk,
 }
 
 /// How the bridges are built.
@@ -271,6 +284,61 @@ pub struct Scenery {
     pub rings: &'static [Rings],
     /// Waterfalls pouring down the rock walls of the cuttings.
     pub waterfalls: &'static [Waterfall],
+    /// The light: day or dusk.
+    pub sky: SkyStyle,
+    /// The works of a mine around the road, if there is one.
+    pub mine: Option<Mine>,
+}
+
+/// The works of a mine: rails with ore carts rolling on them, timber
+/// trestles carrying a rail over the road, headframes over the shafts,
+/// lanterns on posts, and piles of crates, barrels and ore.
+pub struct Mine {
+    pub rails: &'static [Rails],
+    pub trestles: &'static [Trestle],
+    pub headframes: &'static [Headframe],
+    pub lanterns: &'static [Row],
+    pub piles: &'static [Pile],
+}
+
+/// A rail line beside the road over a span, `lateral` metres from its
+/// centre line, with `carts` ore carts rolling up and down it.
+pub struct Rails {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+    pub carts: u32,
+}
+
+/// A timber trestle carrying a rail across the road at `along`, from one
+/// rock wall to the other, with an ore cart going over and back.
+pub struct Trestle {
+    pub along: f32,
+}
+
+/// A headframe over a mine shaft: a timber tower with the winding wheels
+/// turning on top, beside the road.
+pub struct Headframe {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// What a pile beside the road is made of.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PileKind {
+    /// Crates, barrels and a box of dynamite.
+    Supplies,
+    /// A heap of ore with gold glinting in it.
+    Ore,
+}
+
+/// A pile of something beside the road.
+pub struct Pile {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub kind: PileKind,
 }
 
 /// A carved totem pole beside the road, facing it.

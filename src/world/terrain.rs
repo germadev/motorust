@@ -70,7 +70,15 @@ pub struct Terrain {
 }
 
 impl Terrain {
+    /// The terrain of a circuit, worked out on every core.
+    #[cfg(test)]
     pub fn new(track: &Track, scenery: &Scenery) -> Self {
+        let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+        Self::on_threads(track, scenery, cores)
+    }
+
+    /// The terrain of a circuit, worked out on at most `threads` threads.
+    pub fn on_threads(track: &Track, scenery: &Scenery, threads: usize) -> Self {
         let (min, max) = track.bounds();
         let center = (min + max) / 2.0;
         let xs = axis(min.x - FINE_MARGIN, max.x + FINE_MARGIN, center.x);
@@ -102,10 +110,9 @@ impl Terrain {
         // Lo más caro es buscar la carretera más cercana a cada punto: se
         // reparte entre los núcleos del procesador. En la web no hay hilos y
         // se hace todo en uno.
-        let heights = if cfg!(target_arch = "wasm32") {
+        let heights = if cfg!(target_arch = "wasm32") || threads <= 1 {
             heights_of(&points)
         } else {
-            let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
             let chunk = points.len().div_ceil(threads);
             std::thread::scope(|scope| {
                 let workers: Vec<_> = points
@@ -276,10 +283,10 @@ impl Terrain {
                                 Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
                             }
                         };
-                        let color = if self.soil == Soil::Checkered && ground_type == Ground::Rock {
-                            soil_vertex_color(p, normals[index])
-                        } else {
-                            ground_vertex_color(ground_type, p, normals[index])
+                        let color = match (self.soil, ground_type) {
+                            (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normals[index]),
+                            (Soil::Mine, _) => canyon_vertex_color(ground_type, p, normals[index]),
+                            _ => ground_vertex_color(ground_type, p, normals[index]),
                         };
                         builder.push(index, p, normals[index], uv, color);
                     }
@@ -292,7 +299,7 @@ impl Terrain {
             (
                 Ground::Rock,
                 rock.build(match self.soil {
-                    Soil::Rock => ROCK_TILE,
+                    Soil::Rock | Soil::Mine => ROCK_TILE,
                     Soil::Checkered => SOIL_TILE,
                 }),
             ),
@@ -312,9 +319,11 @@ pub fn spawn_terrain(
 ) {
     for (ground, mesh) in ground_meshes {
         let (texture, roughness, reflectance) = match (ground, terrain.soil) {
+            // In a desert canyon the flat ground is dry, dusty earth.
+            (Ground::Grass, Soil::Mine) => (&textures.sand, 0.95, 0.15),
             (Ground::Grass, _) => (&textures.grass, 0.90, 0.18),
             (Ground::Sand, _) => (&textures.sand, 0.88, 0.28),
-            (Ground::Rock, Soil::Rock) => (&textures.rock, 0.78, 0.42),
+            (Ground::Rock, Soil::Rock | Soil::Mine) => (&textures.rock, 0.78, 0.42),
             (Ground::Rock, Soil::Checkered) => (&textures.soil, 0.92, 0.2),
         };
         world.spawn((
@@ -705,6 +714,50 @@ pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
 
             let beach = dry_sand.mix(&dune_tint, (dune - 0.5) * 0.3);
             beach.mix(&wet_sand, (moisture * 1.1).clamp(0.0, 1.0))
+        }
+    };
+    color.to_linear().to_f32_array()
+}
+
+/// The colours of a desert canyon, over the textures: dry red-brown earth on
+/// the flat, and on the faces bands of red, rust and ochre rock, like the
+/// mesas of the American south-west, darker in the crevices.
+fn canyon_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+    let color = match ground {
+        Ground::Grass => {
+            let patch = fbm(Vec2::new(p.x * 0.015, p.z * 0.015), 3);
+            let grit = value_noise(Vec2::new(p.x * 0.06 + 11.0, p.z * 0.06 - 5.0));
+            let dust = Color::srgb(1.12, 0.78, 0.58);
+            let red_earth = Color::srgb(1.0, 0.62, 0.45);
+            let pale = Color::srgb(1.15, 0.9, 0.7);
+            let earth = red_earth.mix(&dust, patch);
+            earth.mix(
+                &pale,
+                ((grit - 0.5) * 0.6 + (1.0 - normal.y) * 1.5).clamp(0.0, 0.5),
+            )
+        }
+        Ground::Rock => {
+            // Horizontal strata, as in a canyon cut by a river, a little
+            // wavy.
+            let wave = fbm(Vec2::new(p.x * 0.01, p.z * 0.01), 2) * 6.0;
+            let band = ((p.y + wave) * 0.45).sin() * 0.5 + 0.5;
+            let thin = ((p.y + wave) * 1.7).sin() * 0.5 + 0.5;
+            let red = Color::srgb(1.05, 0.58, 0.42);
+            let rust = Color::srgb(0.88, 0.5, 0.36);
+            let ochre = Color::srgb(1.2, 0.86, 0.58);
+            let layered = if band > 0.5 {
+                red.mix(&ochre, (band - 0.5) * 1.6)
+            } else {
+                red.mix(&rust, (0.5 - band) * 1.6)
+            };
+            let streaked = layered.mix(&Color::srgb(1.1, 0.95, 0.8), thin.powi(6) * 0.35);
+            let ao = (0.55 + 0.45 * normal.y.max(0.0)).clamp(0.55, 1.0);
+            streaked.mix(&Color::srgb(0.5, 0.36, 0.34), (1.0 - ao) * 0.6)
+        }
+        // By the river: damp, darker sand.
+        Ground::Sand => {
+            let dune = value_noise(Vec2::new(p.x * 0.05, p.z * 0.05));
+            Color::srgb(0.95, 0.78, 0.62).mix(&Color::srgb(0.8, 0.66, 0.55), dune * 0.5)
         }
     };
     color.to_linear().to_f32_array()

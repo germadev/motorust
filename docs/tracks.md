@@ -1,18 +1,19 @@
 # Tracks
 
-Motorust has three tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All three are closed coastal roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners. Loop Island also has a branch: an alternative route off the lap that goes round a loop the bikes ride upside down.
+Motorust has four tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All four are closed roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners: three on the coast under a summer sky, and a desert canyon at dusk. Loop Island also has a branch: an alternative route off the lap that goes round a loop the bikes ride upside down.
 
 | Track | Length | In the game's words |
 |---|---|---|
-| [Bahía](#bahía) ("the Bay") | 1.6 km | "Una carretera junto al mar, con cuestas, peraltes y un salto en la recta de meta" (a seaside road with slopes, banking and a jump on the start straight) |
+| [Bahía GP](#bahía-gp) ("the Bay") | 1.6 km | "Una carretera junto al mar, con cuestas, peraltes y un salto en la recta de meta" (a seaside road with slopes, banking and a jump on the start straight) |
 | [Turbo Bay](#turbo-bay) | 3.1 km | "Inspirada en Moto Racer: paseo marítimo, túnel bajo la propia pista, puerto de montaña y puente rojo" (inspired by *Moto Racer*: seafront, a tunnel under the track itself, a mountain pass and red bridge) |
 | [Loop Island](#loop-island) | 2.1 km | "Inspirada en Sonic: un desvío con un rizo para dar la vuelta, tierra a cuadros y cascadas" (inspired by Sonic: a branch with a loop to ride, checkered hills and waterfalls) |
+| [Gold Mine](#gold-mine) ("Mina Dorada") | 2.2 km | "Inspirada en las minas de Mario Kart y Crash: vagonetas, galerías apuntaladas y un cañón rojo al atardecer" (inspired by the mines of *Mario Kart* and *Crash*: ore carts, timbered galleries and a red canyon at dusk) |
 
 Distances below are in metres from the finish line, as in the track data.
 
-## Bahía
+## Bahía GP
 
-Bahía is the first track: *Moto Racer*'s Speed Bay reimagined as a Mediterranean bay. It is a seaside road under a summer sky, with the sea to the west and south and mountains closing the horizon to the north-east. Its data is in `src/circuits/bay.rs`.
+Bahía GP is the first track: *Moto Racer*'s Speed Bay reimagined as a Mediterranean bay. It is a seaside road under a summer sky, with the sea to the west and south and mountains closing the horizon to the north-east. Its data is in `src/circuits/bay.rs`.
 
 - **Scenery.**
   - Stone walls line the whole lap, with street lamps along it.
@@ -21,7 +22,7 @@ Bahía is the first track: *Moto Racer*'s Speed Bay reimagined as a Mediterranea
   - Whitewashed houses and others in cream, ochre and pink.
   - Rocky outcrops inland and small islets offshore.
 - **Start.** A red arch with a chequered board spans the finish line. The curbs are red and white.
-- **Slopes.** About 200 m into the lap, the start straight crosses a crest where the bike jumps when you are flat out. The road then climbs to the high eastern side, about 18 m above the start, with rock on one side and a drop on the other. From there it runs back down to the finish.
+- **Slopes.** About 150 m into the lap, the start straight crosses a crest where the bike jumps when you are flat out; it lands on the straight, well before the first bend. The road then climbs to the high eastern side, about 18 m above the start, with rock on one side and a drop on the other. From there it runs back down to the finish.
 - **Banking.** Corners bank according to how tight they are. This track has no extra banked spans.
 
 ## Turbo Bay
@@ -74,17 +75,32 @@ Loop Island is inspired by Green Hill, the first zone of *Sonic the Hedgehog*: a
   3. **The tunnel** (770–870 m). The road climbs through a ridge of checkerboard earth in a tunnel lined with it, its highest point, 18 m above the start.
   4. **The waterfalls** (about 880–1230 m). Out of the tunnel, a waterfall pours down the rock wall on the left into a long right-hander banked like a velodrome. The road drops past a second waterfall, on the right.
   5. **The wooden bridge** (1230–1310 m). A deck of planks on log piers, with a wooden fence on each side, crosses an inlet where the sea runs in under the road.
-  6. **The S-bends** (about 1340–1650 m). A crest, the second "CHECKPOINT" arch (1420 m), totem poles and the giant loop, inland on the right.
-  7. **The south shore** (1660–1960 m). A beach road with palms on the sea side and sunflowers on the other, a last jump at about 1775 m, and a banked right-hander back to the start.
+  6. **The S-bends** (about 1340–1650 m). A long, gentle rise, the second "CHECKPOINT" arch (1420 m), totem poles and the giant loop, inland on the right.
+  7. **The south shore** (1660–1960 m). A beach road with palms on the sea side and sunflowers on the other, rolling gently, and a banked right-hander back to the start. The S-bends and the shore have no crests to fly off: in the air a bike neither turns nor leans, so a crest in a bend, or one landing in a bend, would straighten it up.
 - **The branch with the loop.** On the climb to the crest of the start straight (110 m), a narrower road forks off to the right. It peels away in a long, gentle right-hander (about 160 m radius), over the shoulder of the crest and gently down to the mouth of a loop of checkerboard earth with a 16 m radius, heading north-east with its walls closing in. The running surface is asphalt with yellow and blue curbs, between low walls of the same earth. The bikes ride round it, upside down at the top, and come out beside the mouth, as in Sonic's loops. The road back sweeps east in wide curves (200 m and 340 m radius), climbing gently (no steeper than 5 %), and joins the lap on the S-bends (637 m). It is about as long as the lap it leaves out, and two of the rivals always take it.
 
 ![Two bikes riding round the loop, one upside down at the top](images/loop-island-loop.jpg)
+
+## Gold Mine
+
+Gold Mine ("Mina Dorada") is a gold mine in a desert canyon at dusk, after Wario's Gold Mine in *Mario Kart 64* and Dragon Mines in *Crash Team Racing*: red and ochre rock, ore carts on rails, timber trestles and headframes, and a long gallery hewn through a mesa. Its data is in `src/circuits/gold_mine.rs`, and the works of the mine are drawn by `src/world/mine.rs`. Its song is "Toll of the Iron Mile". The curbs are rust red and cream, and timber fences line the road.
+
+- **The light.** A low orange sun in the west-north-west, in front on the start straight; a violet sky, rose above the horizon and orange at it, glowing round the sun; warm, slanting light, purple shade and peach clouds. The distance melts into an orange haze (`SkyStyle::Dusk`).
+- **The land.** Dry red earth on the flat; mesas and buttes with horizontal bands of red, rust and ochre rock, inside the lap and all round the horizon; a river that runs north up a gorge, under the road and into a lake inside the lap.
+- **A lap, in order:**
+  1. **The mining town** (start straight, 0–300 m, north). A gold "GOLD MINE" arch, a grandstand, wooden houses, lanterns on posts, piles of crates, barrels and dynamite, and a train of three ore carts rolling up and down rails on the right. A crest at about 200 m where the bike takes off.
+  2. **The climb to the mine** (about 300–560 m). A long right-hander climbing east, past a headframe whose winding wheels turn, and a heap of ore with gold glinting in it, to the mouth of the gallery.
+  3. **The gallery** (560–845 m, about 285 m). Hewn through a mesa, curving south: straight walls of rough rock under an irregular vault, propped every 8 m by a timber set the shape of the vault (posts, rafters and a cap), with lanterns hanging from the rafters of every other one, the rock warm and bright round them; planks along the foot of the walls, and an arched mouth framed in timber at each end.
+  4. **The canyon** (about 880–1200 m). South in S-bends between red rock walls 22–24 m high. At 1040 m a timber trestle carries a rail across the road, 7 m up, from one rock wall into the other, and an ore cart goes over and back.
+  5. **Down to the river** (about 1200–1700 m). Round the east side, past rock on the outside of the bend, a red "CHECKPOINT" arch (1240 m), a "DANGER TNT" sign and another heap of ore, and west along the bank, with ore carts on rails beside the road.
+  6. **The wooden bridge** (1700–1765 m). Planks on log piers over the river gorge.
+  7. **Back to town** (about 1765 m to the finish). A second "CHECKPOINT" arch (1900 m), the second headframe, rails, and a banked last corner into town.
 
 ## Editing or adding a track
 
 ### Where tracks live
 
-Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs` and `loop_island.rs`). A `Circuit` has five fields:
+Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs` and `gold_mine.rs`). A `Circuit` has five fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -187,10 +203,10 @@ Round the loop (`src/bike/loop_ride.rs`), a bike rides on the running surface: s
 | `terraces` | Flat circular platforms at a given height, to stand a large building on. |
 | `mountains` | A function for the distant mountains that close the horizon. |
 | `curbs` | The two curb stripe colours. |
-| `walls` | Wall style per span and side: `WallRun { span, side, style }`. `WallStyle` is `Stone` (the default everywhere else), `Concrete` (white barrier), `Railing` (green seafront railing), `Hedge` (hedge on a low wall) or `Checkered` (blocks of checkerboard earth). The first run that covers a point wins, so a run over `LAP` after the others sets the default. |
+| `walls` | Wall style per span and side: `WallRun { span, side, style }`. `WallStyle` is `Stone` (the default everywhere else), `Concrete` (white barrier), `Railing` (green seafront railing), `Hedge` (hedge on a low wall), `Checkered` (blocks of checkerboard earth) or `Timber` (a fence of heavy planks). The first run that covers a point wins, so a run over `LAP` after the others sets the default. |
 | `tunnels` | Spans that run through a tunnel. Another stretch of the track may pass over a tunnel (see [Layout](#layout)): there the ground stays down at the level of the tunnel, under its rock, and the rock carries the road above, just below its asphalt. Where the tunnel's top is gentle, grass grows on it unless the soil is checkerboard. |
 | `bridges` | Spans carried by a bridge, built as `bridge_style` says: `RedArches` (a concrete deck under two red arches, with concrete walls) or `Wooden` (planks on log piers, with a wooden fence instead of walls). |
-| `soil` | What cliffs, rock walls and the rock around tunnels are made of: `Soil::Rock` (natural rock with strata) or `Soil::Checkered` (Loop Island's checkerboard earth, which also lines the tunnels). |
+| `soil` | What cliffs, rock walls and the rock around tunnels are made of: `Soil::Rock` (natural rock with strata), `Soil::Checkered` (Loop Island's checkerboard earth, which also lines the tunnels) or `Soil::Mine` (a desert canyon: dry red earth and banded red rock; its tunnels are galleries under a rough vault, propped with timber sets and lit by lanterns). |
 | `gantries` | Arches over the road: `Gantry { along, color, text }`. Without text they carry a chequered board. |
 | `billboards` | Roadside signs: `Billboard { along, side, text, color, accent }`, where `accent` recolours the text from a given letter. |
 | `lamps`, `palms`, `hotels` | Rows along the road: `Row { span, side, lateral, every }`, at `lateral` metres from the centre line, one every `every` metres. Hotels are tall and colourful. Nothing in a row stands on a branch or right beside its walls. |
@@ -209,6 +225,8 @@ Round the loop (`src/bike/loop_ride.rs`), a bike rides on the running surface: s
 | `loops` | Giant loops on a block of checkerboard earth, to look at: `Loop { along, side, lateral, radius }`, with `lateral` the distance from the centre line to the middle of the loop. The loops the bikes ride belong to the branches of the layout. |
 | `rings` | Lines of golden rings spinning over the road: `Rings { along, count, lateral, height }`, one every 6 m from `along`, `lateral` metres to the left of the centre line and `height` metres above the road. No track has them now. |
 | `waterfalls` | Waterfalls with flowing water down the rock wall of a cutting: `Waterfall { along, side, width }`. Put a `Cutting` on that side first. |
+| `sky` | The light: `SkyStyle::Day` (a summer day) or `SkyStyle::Dusk` (a low sun in a warm, hazy sky, as in the Gold Mine). |
+| `mine` | The works of a mine, or `None`: `Mine { rails, trestles, headframes, lanterns, piles }`. `Rails { span, side, lateral, carts }` lays rails on the ground beside the road with a train of that many ore carts rolling up and down them; `Trestle { along }` carries a rail across the road from one rock wall into the other, with a cart going over and back (put a `Cutting` on both sides first); `Headframe { along, side, lateral }` is a timber tower over a shaft with its winding wheels turning; `lanterns` are rows of lanterns on posts; `Pile { along, side, lateral, kind }` is a pile of crates, barrels and dynamite (`PileKind::Supplies`) or a heap of ore with gold in it (`PileKind::Ore`). |
 
 ### What `cargo test` checks
 
@@ -223,7 +241,9 @@ Run `cargo test` (or `make test`, see [building.md](building.md)) after any chan
 - **A rival can do a lap.** An AI rival completes a lap within 90 seconds without leaving the road.
 - **A flat-out lap.** Full throttle, never braking and only steering towards the road ahead, completes a lap within 60 seconds without touching the walls and stays almost entirely on the asphalt.
 - **Landmarks.** No loop's block comes within 2 m of the walls, rings float over the asphalt within reach of a bike, and every waterfall pours down a rock wall more than 6 m high.
+- **Mines.** Rails lie on the ground beside the road, outside its walls and never steep, and every trestle runs into rock on both sides, above its deck, where its cart goes.
 - **Short jumps.** Each jump lasts under 0.75 s and rises less than 1.3 m, and flat out a rival does take off over the crests (at least twice in 70 seconds).
+- **Jumps on the straights.** Rivals on three lines never take off or land in a bend (tighter than 600 m), except on Turbo Bay, whose seafront drops over a crest into its corner on purpose, as in *Moto Racer*.
 - **Branches.** Each starts and ends on the lap's centre line, going its way, on the lap's surface; its roads go into and out of the loop straight, level and with the walls closed in; corners and slopes stay rideable; once apart from the lap it climbs and drops smoothly, with no ramp or dip sharper than the lap's crests, and its walls never meet the lap's again; a bike on it finds its road; and a rival that takes the branches goes round the loop and back onto the lap, and comes out of the loop at any speed without leaving the ground. On Loop Island, the branch forks more than 50 m before the crest of the start straight, and its road to the loop is never tighter than a 100 m radius.
 
-Some tests cover a single track: for example, that Bahía has sea to the west and mountains to the north-east; that Turbo Bay is an island with its bays and a river under the bridge, that its banked span banks more than its curvature alone would, and that it passes over its own tunnel, with each level found by the bikes on it and the ground kept down under the tunnel's rock; that Loop Island is an island of checkerboard cliffs with the sea under its wooden bridge, and that a pack of rivals races a lap of it (and of the Bay) with at most two falls, the two that take its branch going round the loop. The loop riding itself is tested on its own: going round, coming back down too slow, falling off, and going in at the mouth.
+Some tests cover a single track: for example, that Bahía GP has sea to the west and mountains to the north-east; that Turbo Bay is an island with its bays and a river under the bridge, that its banked span banks more than its curvature alone would, and that it passes over its own tunnel, with each level found by the bikes on it and the ground kept down under the tunnel's rock; that Loop Island is an island of checkerboard cliffs with the sea under its wooden bridge, and that a pack of rivals races a lap of it (and of the Bay) with at most two falls, the two that take its branch going round the loop. The loop riding itself is tested on its own: going round, coming back down too slow, falling off, and going in at the mouth.

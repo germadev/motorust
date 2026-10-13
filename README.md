@@ -23,7 +23,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 ## Tracks
 
-**Bahía** is a Mediterranean coast road between stone walls, rock cuttings,
+**Bahía GP** is a Mediterranean coast road between stone walls, rock cuttings,
 umbrella pines and cypresses.
 
 ![The pack leaning through a curve on Bahía, between a stone wall and a rocky hill, towards the checkpoint arch](docs/images/track-bahia.jpg)
@@ -39,6 +39,11 @@ checkerboard hills with sunflowers, totems and waterfalls, and a branch off the
 lap goes round a loop you ride upside down.
 
 ![Two bikes leaning between Loop Island's checkerboard hills, with a waterfall ahead](docs/images/track-loop-island.jpg)
+
+**Gold Mine** ("Mina Dorada"), after Wario's Gold Mine and Crash Team Racing's
+Dragon Mines, runs through a desert canyon at dusk: a mining town, a long
+gallery propped with timber, a trestle where an ore cart crosses over the road,
+headframes and a wooden bridge over the river.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 
@@ -75,7 +80,7 @@ or English: the system's language at first, changed in Options.
 ## Documentation
 
 - [Playing](docs/gameplay.md): handling, bikes, menus, options and sound.
-- [Tracks](docs/tracks.md): the three tracks, and how to edit one or add a new one.
+- [Tracks](docs/tracks.md): the four tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions.

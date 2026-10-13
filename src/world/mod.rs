@@ -4,6 +4,7 @@
 
 mod landmarks;
 mod lettering;
+mod mine;
 mod props;
 mod quads;
 mod road;
@@ -52,6 +53,8 @@ impl Plugin for WorldPlugin {
                     landmarks::spin,
                     landmarks::flow,
                     sky::drift_clouds,
+                    sky::light_the_sky,
+                    mine::roll_carts,
                     spawn_prepared_circuit.run_if(in_state(GameState::Tracks)),
                 ),
             )
@@ -94,23 +97,57 @@ struct Prepared {
     terrain: terrain::Terrain,
     ground: [(terrain::Ground, Mesh); 3],
     shore: sea::ShoreMap,
+    shore_image: Image,
     edges: Vec<Vec<[f32; 2]>>,
+    /// The meshes of the roads, tunnels and bridges, with their materials.
+    pieces: Vec<(Mesh, StandardMaterial)>,
+    trees: props::TreePlan,
 }
 
-fn prepare(index: usize) -> Prepared {
+/// How many threads a circuit's terrain is worked out on: all the cores
+/// when it is needed now, and few in the background, so the game and its
+/// menus keep their frame rate while the other circuits are prepared.
+#[derive(Clone, Copy)]
+enum Urgency {
+    Now,
+    Background,
+}
+
+impl Urgency {
+    fn threads(self) -> usize {
+        let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+        match self {
+            Urgency::Now => cores,
+            Urgency::Background => (cores / 2).saturating_sub(1).max(1),
+        }
+    }
+}
+
+fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -> Prepared {
     let circuit = &CIRCUITS[index];
+    let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
-    let terrain = terrain::Terrain::new(&track, &circuit.scenery);
+    let terrain = terrain::Terrain::on_threads(&track, scenery, urgency.threads());
     let ground = terrain.meshes();
     let shore = sea::ShoreMap::new(&terrain, &track);
+    let shore_image = shore.image();
     let edges = terrain.track_edges(&track);
+    let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
+    pieces.extend(structures::structure_pieces(
+        &track, &terrain, scenery, textures,
+    ));
+    let trees = props::plan_trees(&track, &terrain, scenery);
+    structures::draw_signs(scenery);
     Prepared {
         index,
         track,
         terrain,
         ground,
         shore,
+        shore_image,
         edges,
+        pieces,
+        trees,
     }
 }
 
@@ -123,14 +160,20 @@ struct Preparing(std::collections::HashMap<usize, Task<Prepared>>);
 /// instantáneo. The menu shows up at once: the work goes on in other
 /// threads, and each circuit is put in the world when it is ready
 /// ([`spawn_prepared_circuit`]).
-fn cache_all_circuits(roots: Query<&WorldRoot>, mut preparing: ResMut<Preparing>) {
+fn cache_all_circuits(
+    roots: Query<&WorldRoot>,
+    textures: Res<textures::WorldTextures>,
+    mut preparing: ResMut<Preparing>,
+) {
     let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
     let pool = AsyncComputeTaskPool::get();
     for index in 0..CIRCUITS.len() {
         if !built.contains(&index) && !preparing.0.contains_key(&index) {
-            preparing
-                .0
-                .insert(index, pool.spawn(async move { prepare(index) }));
+            let textures = textures.clone();
+            preparing.0.insert(
+                index,
+                pool.spawn(async move { prepare(index, &textures, Urgency::Background) }),
+            );
         }
     }
 }
@@ -210,7 +253,7 @@ fn rebuild_world(
         // for, so it is done here.
         let prepared = match preparing.0.remove(&current.0) {
             Some(task) if !WEB => block_on(task),
-            _ => prepare(current.0),
+            _ => prepare(current.0, &builder.textures, Urgency::Now),
         };
         let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
         edges.0.insert(current.0, built);
@@ -228,12 +271,8 @@ fn build_world(
     mut builder: Builder,
     mut edges: ResMut<TrackEdges>,
 ) {
-    let built = build(
-        &mut commands,
-        prepare(current.0),
-        &mut builder,
-        Visibility::Inherited,
-    );
+    let prepared = prepare(current.0, &builder.textures, Urgency::Now);
+    let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
     track.set_edges(built.clone());
     edges.0.insert(current.0, built);
 }
@@ -263,11 +302,13 @@ fn build(
         terrain,
         ground,
         shore,
+        shore_image,
         edges,
+        pieces,
+        trees,
     } = prepared;
-    let sea_material = builder
-        .sea_materials
-        .add(shore.material(&mut builder.images));
+    let shore_image = builder.images.add(shore_image);
+    let sea_material = builder.sea_materials.add(shore.material(shore_image));
     let scenery = &CIRCUITS[index].scenery;
     let mut assets = Assets3d {
         textures: &builder.textures,
@@ -291,9 +332,15 @@ fn build(
                 MeshMaterial3d(sea_material),
                 Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
             ));
-            road::spawn_road(world, &track, &terrain, scenery, &mut assets);
-            structures::spawn_structures(world, &track, &terrain, scenery, &mut assets);
-            props::spawn_props(world, &track, &terrain, scenery, &mut assets);
+            for (mesh, material) in pieces {
+                world.spawn((
+                    Mesh3d(assets.meshes.add(mesh)),
+                    MeshMaterial3d(assets.materials.add(material)),
+                ));
+            }
+            road::spawn_gantries(world, &track, scenery, &mut assets);
+            structures::spawn_signs(world, &track, &terrain, scenery, &mut assets);
+            props::spawn_props(world, &track, &terrain, scenery, &trees, &mut assets);
         });
     edges
 }
@@ -313,12 +360,14 @@ fn spawn_sun(mut commands: Commands) {
         brightness: 700.0,
         ..default()
     });
+    let sun = sky::Palette::of(scenery::SkyStyle::Day).sun_direction();
     commands.spawn((
+        sky::Sunlight,
         DirectionalLight {
             shadow_maps_enabled: true,
             ..default()
         },
-        Transform::default().looking_to(-sky::sun_direction(), Vec3::Y),
+        Transform::default().looking_to(-sun, Vec3::Y),
         // Las sombras solo hacen falta cerca de la cámara; así tienen más resolución.
         CascadeShadowConfigBuilder {
             first_cascade_far_bound: 25.0,

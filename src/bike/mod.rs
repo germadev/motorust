@@ -2313,6 +2313,7 @@ mod tests {
             position,
             heading,
             speed: 40.0,
+            elevation: track.road_height(position),
             ..parked()
         };
         (track, state)
@@ -2799,6 +2800,7 @@ mod tests {
             heading,
             speed: 30.0,
             lean: 0.0,
+            elevation: track.road_height(wall_side),
             ..parked()
         };
         let mut pusher = BikeState {

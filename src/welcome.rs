@@ -75,7 +75,7 @@ const BUTTONS: [Button; 4] = [
     },
     Button {
         size: Vec2::new(684.0, 342.0),
-        lit: Color::srgb(20.0 / 255.0, 178.0 / 255.0, 75.0 / 255.0),
+        lit: Color::srgb(128.0 / 255.0, 48.0 / 255.0, 224.0 / 255.0),
         flow: Vec2::new(-180.0, 0.0),
     },
     Button {

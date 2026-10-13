@@ -21,6 +21,7 @@ mod imported;
 mod livery;
 mod pilot;
 mod rider;
+mod tyre;
 
 use std::f32::consts::{FRAC_PI_2, TAU};
 
@@ -303,6 +304,16 @@ impl FromWorld for BikeBlueprint {
         let exhaust = world
             .resource_mut::<Assets<StandardMaterial>>()
             .add(exhaust);
+        // The tread patterns, shared by every bike that wears them.
+        let treads: Vec<Handle<StandardMaterial>> = tyre::Tread::ALL
+            .into_iter()
+            .map(|tread| {
+                let material = tyre::material(tread, &mut world.resource_mut::<Assets<Image>>());
+                world
+                    .resource_mut::<Assets<StandardMaterial>>()
+                    .add(material)
+            })
+            .collect();
         let mut imports: Vec<_> = Design::ALL
             .into_iter()
             .map(|design| {
@@ -310,9 +321,15 @@ impl FromWorld for BikeBlueprint {
                     let body =
                         imported::material(model, &mut world.resource_mut::<Assets<Image>>());
                     let body = world.resource_mut::<Assets<StandardMaterial>>().add(body);
+                    let tread = tyre::Tread::of(design);
                     let materials = imported::Materials {
                         body,
                         exhaust: exhaust.clone(),
+                        tyres: treads[tyre::Tread::ALL
+                            .iter()
+                            .position(|&t| t == tread)
+                            .expect("every pattern has its material")]
+                        .clone(),
                     };
                     (model, materials, pilot::PilotBlueprint::new(world, model))
                 })
@@ -679,6 +696,7 @@ struct Wheel {
     bike: Entity,
     angle: f32,
     radius: f32,
+    front: bool,
 }
 
 #[derive(Component)]
@@ -738,22 +756,23 @@ pub fn spawn(
     if bodywork.steers {
         commands.entity(steering).insert(Steering { bike });
     }
-    let wheel = |radius| Wheel {
+    let wheel = |radius, front| Wheel {
         bike,
         angle: 0.0,
         radius,
+        front,
     };
     let front_wheel = pivot(
         commands,
         steering,
         geometry.front_axle - geometry.steering_head,
-        wheel(geometry.front_radius),
+        wheel(geometry.front_radius, true),
     );
     let rear_wheel = pivot(
         commands,
         body,
         geometry.rear_axle,
-        wheel(geometry.rear_radius),
+        wheel(geometry.rear_radius, false),
     );
     commands.entity(bike).insert((
         geometry,
@@ -1010,15 +1029,20 @@ fn brake_light(
 
 fn spin_wheels(
     time: Res<Time>,
-    bikes: Query<&BikeState>,
+    bikes: Query<(&BikeState, Option<&CrashState>)>,
     mut wheels: Query<(&mut Wheel, &mut Transform)>,
 ) {
     for (mut wheel, mut transform) in &mut wheels {
-        let Ok(state) = bikes.get(wheel.bike) else {
+        let Ok((state, crash)) = bikes.get(wheel.bike) else {
             continue;
         };
+        // Down, the wheels spin on by themselves, slowing down.
+        let speed = match crash.filter(|crash| crash.is_down()) {
+            Some(crash) => crash.wheels[if wheel.front { 0 } else { 1 }],
+            None => state.speed,
+        };
         // Hacia delante (-Z), la parte de arriba de la rueda avanza: giro negativo en X.
-        wheel.angle = (wheel.angle - state.speed * time.delta_secs() / wheel.radius) % TAU;
+        wheel.angle = (wheel.angle - speed * time.delta_secs() / wheel.radius) % TAU;
         transform.rotation = Quat::from_rotation_x(wheel.angle);
     }
 }

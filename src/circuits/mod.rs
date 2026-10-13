@@ -2,6 +2,7 @@
 //! está usando.
 
 mod bay;
+mod gold_mine;
 mod loop_island;
 mod turbo_bay;
 
@@ -59,7 +60,12 @@ impl Circuit {
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista.
-pub static CIRCUITS: [Circuit; 3] = [bay::BAY, turbo_bay::TURBO_BAY, loop_island::LOOP_ISLAND];
+pub static CIRCUITS: [Circuit; 4] = [
+    bay::BAY,
+    turbo_bay::TURBO_BAY,
+    loop_island::LOOP_ISLAND,
+    gold_mine::GOLD_MINE,
+];
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
 /// vuelve a construir ([`crate::world`]).

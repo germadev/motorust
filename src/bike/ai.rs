@@ -814,4 +814,42 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn crests_only_throw_the_bikes_into_the_air_on_the_straights() {
+        // Flying, a bike neither turns nor leans: a crest in a bend, or one
+        // that lands in a bend, would straighten it up. Turbo Bay's seafront
+        // drops into its corner over a crest on purpose, as in Moto Racer.
+        for circuit in crate::circuits::CIRCUITS
+            .iter()
+            .filter(|circuit| circuit.name != "Turbo Bay")
+        {
+            let track = Track::new(&circuit.layout);
+            let tuning = BikeTuning::default();
+            for (skill, lane) in [(0.9, 4.0), (0.95, 2.0), (1.0, -3.0)] {
+                let rival = Rival {
+                    skill,
+                    lane,
+                    loops: false,
+                };
+                let mut state = BikeState::parked_on(&track, track.grid_pose(0, lane));
+                let dt = 1.0 / 120.0;
+                for _ in 0..(70.0 / dt) as usize {
+                    let input = decide(&rival, lane, f32::INFINITY, &state, &track, &tuning);
+                    let before = state;
+                    state = advance(&state, &input, &track, &tuning, dt);
+                    if before.grounded != state.grounded {
+                        let index = track.nearest_index_at(state.position, state.elevation);
+                        let radius = 1.0 / track.smoothed_curvature(index, 6).abs().max(1e-6);
+                        assert!(
+                            radius > 600.0,
+                            "{} takes off or lands in a bend of {radius:.0} m at {:.0} m",
+                            circuit.name,
+                            index as f32 * track.step_length()
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

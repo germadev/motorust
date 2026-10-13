@@ -1,6 +1,6 @@
 //! Menú de pausa: Esc o Start paran la carrera y abren un menú para seguir,
-//! volver a la pantalla de inicio, salir del juego o cambiar opciones de
-//! depuración.
+//! go back to the bike selection, change the options or go back to the
+//! main menu.
 
 use bevy::prelude::*;
 
@@ -10,7 +10,7 @@ use crate::legend::{Keys, menu_prompts, spawn_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::options::{OptionsInput, OptionsMenu, OptionsReturn};
-use crate::settings::{Action as Control, Settings, WEB, cycle};
+use crate::settings::{Action as Control, Settings, cycle};
 use crate::ui::{
     InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, spawn_panel,
     spawn_title,
@@ -224,61 +224,49 @@ pub fn running(pause: Res<Pause>) -> bool {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
     Main,
-    QuitConfirm,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Action {
     Resume,
+    /// Back to the screen before the race: choosing the bike.
+    Back,
     OpenOptions,
     MainMenu,
-    OpenQuitConfirm,
-    CancelQuit,
-    ConfirmQuit,
 }
 
 /// Las opciones de cada página: su texto y lo que hacen.
 pub fn items(page: Page, lang: Language) -> Vec<(String, Action)> {
     match page {
-        Page::Main => {
-            let mut items = vec![
-                (
-                    match lang {
-                        Language::Spanish => "Continuar".into(),
-                        Language::English => "Resume".into(),
-                    },
-                    Action::Resume,
-                ),
-                (
-                    match lang {
-                        Language::Spanish => "Opciones".into(),
-                        Language::English => "Options".into(),
-                    },
-                    Action::OpenOptions,
-                ),
-                (
-                    match lang {
-                        Language::Spanish => "Volver al menú principal".into(),
-                        Language::English => "Return to main menu".into(),
-                    },
-                    Action::MainMenu,
-                ),
-            ];
-            // En la web se sale cerrando la pestaña.
-            if !WEB {
-                items.push((lang.exit_game().into(), Action::OpenQuitConfirm));
-            }
-            items
-        }
-        Page::QuitConfirm => vec![
+        Page::Main => vec![
             (
                 match lang {
-                    Language::Spanish => "Cancelar".into(),
-                    Language::English => "Cancel".into(),
+                    Language::Spanish => "Continuar".into(),
+                    Language::English => "Resume".into(),
                 },
-                Action::CancelQuit,
+                Action::Resume,
             ),
-            (lang.exit_game().into(), Action::ConfirmQuit),
+            (
+                match lang {
+                    Language::Spanish => "Volver".into(),
+                    Language::English => "Back".into(),
+                },
+                Action::Back,
+            ),
+            (
+                match lang {
+                    Language::Spanish => "Opciones".into(),
+                    Language::English => "Options".into(),
+                },
+                Action::OpenOptions,
+            ),
+            (
+                match lang {
+                    Language::Spanish => "Volver al menú principal".into(),
+                    Language::English => "Return to main menu".into(),
+                },
+                Action::MainMenu,
+            ),
         ],
     }
 }
@@ -292,7 +280,6 @@ fn use_pause_menu(
     mut options_menu: Option<ResMut<OptionsMenu>>,
     mut time: ResMut<Time<Virtual>>,
     mut next: ResMut<NextState<GameState>>,
-    mut exit: MessageWriter<AppExit>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
     // While the options are open, and in the frame they close (the key that
@@ -329,10 +316,7 @@ fn use_pause_menu(
     }
 
     let action = if toggle || request.back {
-        Some(match page {
-            Page::QuitConfirm => Action::CancelQuit,
-            Page::Main => Action::Resume,
-        })
+        Some(Action::Resume)
     } else if request.confirm {
         Some(items[pause.selected].1)
     } else {
@@ -345,6 +329,12 @@ fn use_pause_menu(
             *pause = Pause::default();
             time.unpause();
         }
+        Some(Action::Back) => {
+            sounds.write(MenuSound::Confirm);
+            *pause = Pause::default();
+            time.unpause();
+            next.set(GameState::Select);
+        }
         Some(Action::OpenOptions) => {
             sounds.write(MenuSound::Confirm);
             if let Some(ref mut menu) = options_menu {
@@ -356,27 +346,6 @@ fn use_pause_menu(
             *pause = Pause::default();
             time.unpause();
             next.set(GameState::Welcome);
-        }
-        Some(Action::OpenQuitConfirm) => {
-            sounds.write(MenuSound::Move);
-            *pause = Pause {
-                page: Some(Page::QuitConfirm),
-                selected: 0,
-            };
-        }
-        Some(Action::CancelQuit) => {
-            sounds.write(MenuSound::Move);
-            // Back on "Exit game".
-            *pause = Pause {
-                page: Some(Page::Main),
-                selected: self::items(Page::Main, settings.language)
-                    .iter()
-                    .position(|item| item.1 == Action::OpenQuitConfirm)
-                    .unwrap_or(0),
-            };
-        }
-        Some(Action::ConfirmQuit) => {
-            exit.write(AppExit::Success);
         }
         None => {}
     }
@@ -426,32 +395,15 @@ fn show_pause_menu(
         device.as_deref().copied().unwrap_or_default(),
         active_controller.as_deref(),
     );
-    let title = match page {
-        Page::Main => match lang {
-            Language::Spanish => "PAUSA",
-            Language::English => "PAUSE",
-        },
-        Page::QuitConfirm => match lang {
-            Language::Spanish => "¿SALIR DEL JUEGO?",
-            Language::English => "EXIT GAME?",
-        },
+    let title = match lang {
+        Language::Spanish => "PAUSA",
+        Language::English => "PAUSE",
     };
     let rows: Vec<Row> = items(page, lang)
         .into_iter()
-        .map(|(label, action)| {
-            // Leaving the game, and confirming it, show in red.
-            if matches!(action, Action::OpenQuitConfirm | Action::ConfirmQuit) {
-                Row::danger(label)
-            } else {
-                Row::new(label)
-            }
-        })
+        .map(|(label, _)| Row::new(label))
         .collect();
-
-    let back = match page {
-        Page::QuitConfirm => lang.hint_cancel(),
-        Page::Main => lang.hint_resume(),
-    };
+    let back = lang.hint_resume();
     let prompts = menu_prompts(
         active_dev,
         &[(Keys::Confirm, lang.hint_accept()), (Keys::Back, back)],
@@ -538,21 +490,19 @@ mod tests {
     }
 
     #[test]
-    fn leaving_the_game_from_the_pause_asks_first_and_cancelling_goes_back_to_it() {
+    fn back_from_the_pause_goes_to_the_bike_selection() {
         let mut app = race();
         press(&mut app, KeyCode::Escape);
         assert_eq!(page(&app), (Some(Page::Main), 0));
-        // Up from the first option: the last one, "Exit game".
-        press(&mut app, KeyCode::ArrowUp);
-        let exit = items(Page::Main, Language::Spanish).len() - 1;
-        assert_eq!(page(&app), (Some(Page::Main), exit));
-        if WEB {
-            return;
-        }
+        press(&mut app, KeyCode::ArrowDown);
+        assert_eq!(page(&app), (Some(Page::Main), 1));
         press(&mut app, KeyCode::Enter);
-        assert_eq!(page(&app), (Some(Page::QuitConfirm), 0));
-        press(&mut app, KeyCode::Enter);
-        assert_eq!(page(&app), (Some(Page::Main), exit), "back on Exit game");
+        app.update();
+        assert_eq!(
+            *app.world().resource::<State<GameState>>().get(),
+            GameState::Select
+        );
+        assert_eq!(page(&app), (None, 0), "the pause is over");
     }
 
     #[test]
@@ -560,13 +510,14 @@ mod tests {
         let mut app = race();
         press(&mut app, KeyCode::Escape);
         press(&mut app, KeyCode::ArrowDown);
+        press(&mut app, KeyCode::ArrowDown);
         press(&mut app, KeyCode::Enter);
         assert!(app.world().resource::<OptionsMenu>().is_open);
         press(&mut app, KeyCode::Escape);
         assert!(!app.world().resource::<OptionsMenu>().is_open);
         assert_eq!(
             page(&app),
-            (Some(Page::Main), 1),
+            (Some(Page::Main), 2),
             "still paused, on Options"
         );
     }
@@ -581,26 +532,32 @@ mod tests {
             main,
             [
                 Action::Resume,
+                Action::Back,
                 Action::OpenOptions,
                 Action::MainMenu,
-                Action::OpenQuitConfirm,
             ]
         );
-        let quit_confirm: Vec<Action> = items(Page::QuitConfirm, Language::Spanish)
+        let main_es: Vec<String> = items(Page::Main, Language::Spanish)
             .into_iter()
-            .map(|i| i.1)
+            .map(|i| i.0)
             .collect();
-        assert_eq!(quit_confirm, [Action::CancelQuit, Action::ConfirmQuit]);
-
-        // English items verification
+        assert_eq!(
+            main_es,
+            [
+                "Continuar",
+                "Volver",
+                "Opciones",
+                "Volver al menú principal"
+            ]
+        );
         let main_en: Vec<String> = items(Page::Main, Language::English)
             .into_iter()
             .map(|i| i.0)
             .collect();
-        assert_eq!(main_en[0], "Resume");
-        assert_eq!(main_en[1], "Options");
-        assert_eq!(main_en[2], "Return to main menu");
-        assert_eq!(main_en[3], "Exit game");
+        assert_eq!(
+            main_en,
+            ["Resume", "Back", "Options", "Return to main menu"]
+        );
 
         // Rates and limits behavior
         assert_eq!(TurnLimit::Off.next(-1), TurnLimit::High);

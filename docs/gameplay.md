@@ -8,12 +8,12 @@ The game's menus are in Spanish or English: it starts in the system's language a
 
 The game moves through four screens. Between them the camera glides from one place to the next instead of cutting.
 
-1. **Welcome.** The game title, while the camera tours the track, over the start menu, which is exactly as wide as the title: two cards side by side, "1P" (one helmet) and "2P" (two helmets facing each other), and two full-width banners below, "OPTIONS" and "EXIT GAME". They are translucent black; the chosen one lights up in its colour (blue, green, yellow or red) with a faint chequered flag sliding across it: to the right on 1P, to the left on 2P, up on Options and down on Exit. Arrows move around the menu; up or down from the banners comes back to the card last chosen. Esc or B asks whether to quit, with "Exit game" in red. There is no Exit in the browser: close the tab instead.
+1. **Welcome.** The game title, while the camera tours the track, over the start menu, which is exactly as wide as the title: two cards side by side, "1P" (one helmet) and "2P" (two helmets facing each other), and two full-width banners below, "OPTIONS" and "EXIT GAME". They are translucent black; the chosen one lights up in its colour (blue, purple, yellow or red) with a faint chequered flag sliding across it: to the right on 1P, to the left on 2P, up on Options and down on Exit. Arrows move around the menu; up or down from the banners comes back to the card last chosen. Esc or B asks whether to quit, with "Exit game" in red. There is no Exit in the browser: close the tab instead.
 2. **Track select** ("SELECT TRACK"). The track is seen from above, slowly turning, with its name, a short description, its length and a map of the layout with the finish line marked. Left and right switch tracks. Enter, Space, A or Start go on to bike select. The screen shows up at once: the other tracks are built in the background meanwhile, so switching to them is instant once they are ready (a track chosen before it is ready is finished on the spot).
 3. **Bike select** ("SELECT BIKE"). The bikes wait on the starting grid, three per row and staggered like a Grand Prix grid. The camera circles the chosen bike, and its name and colours are shown on screen. Left and right change bike. The right stick turns the view around the bike. Enter, Space, A or Start begin the race. The chosen bike idles here and revs each time you switch to it.
 4. **Race.** Your bike starts last, so there is always someone to overtake. The other seven bikes are your rivals. They wait on the grid until you first open the throttle.
 
-**Esc** or **B** goes back one screen: from bike select to track select, and from track select to the welcome screen. During the race, Esc pauses (see [Pause menu](#pause-menu)), and the pause menu can take you back to the welcome screen.
+**Esc** or **B** goes back one screen: from bike select to track select, and from track select to the welcome screen. During the race, Esc pauses (see [Pause menu](#pause-menu)), and the pause menu can take you back to the bike selection or to the welcome screen.
 
 Menus always work the same way, whatever controls you have set:
 
@@ -73,7 +73,7 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 - **Other bikes.** Contacts between bikes follow real momentum: both bikes weigh the same with their riders, the hit is mostly plastic (fairings and bodies do not bounce) and the fairings rub with some friction.
   - Rubbing fairings side by side pushes both bikes apart; the tyres scrub the sideways shove off in a fraction of a second and you keep riding. A nudge from behind slows the one behind and pushes the one in front on.
   - A rider only goes down when the tyres cannot take the hit: a big sideways jolt (a T-bone, a hard swipe at speed), a hit that spins the bike, or hitting another bike with the front wheel much faster than it goes. Contacts at walking pace never bring anyone down.
-  - When a rider goes down, bike and rider separate. The bike drops onto its side and slides with the velocity it had after the hit. The rider keeps the momentum they had before it, so they are thrown on past the bike, land, tumble and slide on their back until friction stops them. Their arms and legs move as in real racing crashes: thrown, the arms let go loosely out to the sides and the legs come apart; tumbling, they go limp and bent (face down, knees to the ground and feet up); sliding on the back, feet first, the legs stay together and loosely bent and the hands are held up over the chest, off the asphalt, while the legs drag behind; once still, the arms rest by the sides. Off the bike the hands hang relaxed from the forearms instead of gripping. Hands and feet hang loosely from that pose, like on damped springs (the legs looser than the arms, each knee swaying on its own): they lag behind when the body is stopped, flop when it lands and fling out when it spins, without shaking, and never go under the asphalt (riders slide on asphalt with a drag factor of about 0.6, a bike on its side about 0.45, more on grass). Walls stop both.
+  - When a rider goes down, bike and rider separate. The bike drops onto its side and slides with the velocity it had after the hit. The harder the hit and the faster it was going, the harder it rolls over: a fall at low speed just lays it on its side, while at 200 km/h or more it barrel-rolls once or several times over its handlebars, footpegs and screen, bouncing up when it lands on its side hard, before it settles on one side. Stopped head on (into a wall, or into a bike much slower), it is thrown up and flips once end over end over its front wheel. Its wheels keep spinning, slowing down little by little. The rider keeps the momentum they had before it, so they are thrown on past the bike, land, tumble and slide on their back until friction stops them. Their arms and legs move as in real racing crashes: thrown, the arms let go loosely out to the sides and the legs come apart; tumbling, they go limp and bent (face down, knees to the ground and feet up); sliding on the back, feet first, the legs stay together and loosely bent and the hands are held up over the chest, off the asphalt, while the legs drag behind; once still, the arms rest by the sides. Off the bike the hands hang relaxed from the forearms instead of gripping. Hands and feet hang loosely from that pose, like on damped springs (the legs looser than the arms, each knee swaying on its own): they lag behind when the body is stopped, flop when it lands and fling out when it spins, without shaking, and never go under the asphalt (riders slide on asphalt with a drag factor of about 0.6, a bike on its side about 0.45, more on grass). Walls stop both.
   - Once bike and rider are still (4 s at most), the bike is put back on the track at once, upright and stopped, next to where it ended up, facing along the track and clear of other bikes.
 
 ### Jumps, wheelies and suspension
@@ -190,12 +190,12 @@ They are read at startup. If the file is missing or cannot be parsed, the game u
 
 Esc or Start (or whatever you bound to Pause) stops the race and muffles its sound. The "PAUSE" menu offers:
 
-- "Resume".
+- "Resume" ("Continuar").
+- "Back" ("Volver"): leaves the race for the bike selection, the screen before it.
 - "Options": the same [Options](#options) as on the welcome screen; closing them comes back here.
 - "Return to main menu": returns to the welcome screen.
-- "Exit game", which asks first, with "Exit game" in red. This item is not shown in the browser.
 
-Up and down select, Enter or A accept, and Esc or B go back. From the main page, going back resumes the race.
+Up and down select, Enter or A accept, and Esc or B resume the race. To quit the game, go back to the main menu and choose "Exit game" there.
 
 ## Gamepads
 

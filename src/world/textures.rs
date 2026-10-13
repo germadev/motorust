@@ -14,7 +14,8 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
-#[derive(Resource)]
+/// Cloned (handles only) for the threads that prepare the circuits.
+#[derive(Resource, Clone)]
 pub struct WorldTextures {
     pub grass: Handle<Image>,
     pub rock: Handle<Image>,

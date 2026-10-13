@@ -175,7 +175,10 @@ impl ShoreMap {
     }
 
     /// The map as the shader reads it: corner and size, and an image.
-    pub fn material(&self, images: &mut Assets<Image>) -> SeaMaterial {
+    /// The map as an image: distance to the shore and the way to it, texel
+    /// by texel (made away from the main thread with the rest of the
+    /// circuit).
+    pub fn image(&self) -> Image {
         let data = self
             .distance
             .iter()
@@ -206,10 +209,15 @@ impl ShoreMap {
             min_filter: ImageFilterMode::Linear,
             ..default()
         });
+        image
+    }
+
+    /// The sea's material, with the map as an image (see [`Self::image`]).
+    pub fn material(&self, shore: Handle<Image>) -> SeaMaterial {
         let size = Vec2::new(self.width as f32, self.height as f32) * self.texel;
         SeaMaterial {
             shore_area: self.corner.extend(size.x).extend(size.y),
-            shore: images.add(image),
+            shore,
             swell: self.swell.extend(0.0).extend(0.0),
         }
     }

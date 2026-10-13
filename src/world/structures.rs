@@ -10,6 +10,7 @@ use super::scenery::{
     Billboard, BrakeMarker, BridgeStyle, ChevronDirection, ChevronSign, Scenery, Soil, Span,
 };
 use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, Terrain, ground_vertex_color};
+use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
 
@@ -29,6 +30,36 @@ const OTHER_STRETCH: usize = 60;
 const DECK_FLAT: f32 = WALL_DISTANCE + 1.5;
 const DECK_SLOPE: f32 = 12.0;
 const DECK_DROP: f32 = 0.3;
+/// A mine's gallery is hewn through the rock: straight walls up to the
+/// springing of a vault (m above the road), the vault's crown, how many
+/// pieces it is made of, and how far its rock bulges out, irregular (m).
+const MINE_SPRING: f32 = 4.5;
+const MINE_CROWN: f32 = 9.5;
+const VAULT_STEPS: usize = 14;
+const VAULT_ROUGH: f32 = 1.2;
+/// How far from the middle the lanterns hang in a mine's gallery (m).
+const LANTERN_OUT: f32 = 6.0;
+/// The lantern light in a mine's gallery falls off over this distance
+/// along it (m), from a set with lanterns.
+const LANTERN_REACH: f32 = 6.0;
+
+/// The beams of a timber set in a mine's gallery whose walls are `inner`
+/// from the middle, in order: (lateral, height above the road) from the
+/// foot of the left post, up it, along the left rafter and the cap, and
+/// down the right rafter and post.
+fn timber_set(inner: f32) -> [Vec2; 6] {
+    let post = inner - 0.3;
+    let cap = MINE_CROWN - 0.9;
+    let cap_end = 4.0;
+    [
+        Vec2::new(-post, -0.3),
+        Vec2::new(-post, MINE_SPRING),
+        Vec2::new(-cap_end, cap),
+        Vec2::new(cap_end, cap),
+        Vec2::new(post, MINE_SPRING),
+        Vec2::new(post, -0.3),
+    ]
+}
 /// Franja de tablero de ajedrez al pie de las paredes del túnel (m).
 const TUNNEL_CHECKER: f32 = 0.7;
 /// Una luz del techo y una costilla cada tantos puntos del trazado.
@@ -53,13 +84,16 @@ const FENCE_HEIGHT: f32 = 1.2;
 const POST_WOOD: Color = Color::srgb(0.34, 0.2, 0.09);
 const RAIL_WOOD: Color = Color::srgb(0.52, 0.33, 0.15);
 
-pub fn spawn_structures(
-    world: &mut ChildSpawnerCommands,
+/// The meshes of the tunnels and the bridges, with their materials: worked
+/// out away from the main thread, with the rest of the circuit (see
+/// [`super::prepare`]).
+pub fn structure_pieces(
     track: &Track,
     terrain: &Terrain,
     scenery: &Scenery,
-    assets: &mut Assets3d,
-) {
+    textures: &WorldTextures,
+) -> Vec<(Mesh, StandardMaterial)> {
+    let mut pieces = Vec::new();
     let lap = track.lap_length();
     for tunnel in scenery.tunnels {
         let indices = indices(track, *tunnel, lap);
@@ -67,12 +101,18 @@ pub fn spawn_structures(
         let rock = match scenery.soil {
             Soil::Rock => StandardMaterial {
                 base_color: Color::srgb(0.85, 0.75, 0.6),
-                base_color_texture: Some(assets.textures.rock.clone()),
+                base_color_texture: Some(textures.rock.clone()),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
+            Soil::Mine => StandardMaterial {
+                base_color: Color::srgb(0.95, 0.62, 0.46),
+                base_color_texture: Some(textures.rock.clone()),
                 perceptual_roughness: 0.9,
                 ..default()
             },
             Soil::Checkered => StandardMaterial {
-                base_color_texture: Some(assets.textures.soil.clone()),
+                base_color_texture: Some(textures.soil.clone()),
                 perceptual_roughness: 0.9,
                 ..default()
             },
@@ -82,36 +122,66 @@ pub fn spawn_structures(
         let lining = match scenery.soil {
             Soil::Rock => StandardMaterial {
                 base_color: Color::srgb(0.95, 0.78, 0.52),
-                base_color_texture: Some(assets.textures.panels.clone()),
+                base_color_texture: Some(textures.panels.clone()),
                 emissive: LinearRgba::rgb(0.12, 0.08, 0.035),
                 perceptual_roughness: 0.85,
                 ..default()
             },
             Soil::Checkered => StandardMaterial {
-                base_color_texture: Some(assets.textures.soil.clone()),
+                base_color_texture: Some(textures.soil.clone()),
                 emissive: LinearRgba::rgb(0.1, 0.06, 0.02),
                 perceptual_roughness: 0.9,
+                ..default()
+            },
+            // A gallery hewn through the rock, warm in the lanterns' light.
+            Soil::Mine => StandardMaterial {
+                base_color: Color::srgb(0.95, 0.66, 0.5),
+                base_color_texture: Some(textures.rock.clone()),
+                emissive: LinearRgba::rgb(0.05, 0.025, 0.01),
+                perceptual_roughness: 0.95,
                 ..default()
             },
         };
         let concrete = StandardMaterial {
             base_color: Color::srgb(0.75, 0.73, 0.7),
-            base_color_texture: Some(assets.textures.plaster.clone()),
+            base_color_texture: Some(textures.plaster.clone()),
             perceptual_roughness: 0.9,
             ..default()
         };
-        let lights = StandardMaterial {
-            base_color: Color::srgb(1.0, 0.9, 0.6),
-            emissive: LinearRgba::rgb(6.0, 4.6, 2.2),
+        // In a mine, the mouths are framed and the galleries propped with
+        // timber, and planks are laid beside the road.
+        let timber = StandardMaterial {
+            base_color: Color::srgb(0.72, 0.56, 0.42),
+            base_color_texture: Some(textures.planks.clone()),
+            perceptual_roughness: 0.9,
             ..default()
         };
+        let (portal, sidewalk) = if scenery.soil == Soil::Mine {
+            (timber.clone(), timber.clone())
+        } else {
+            (concrete.clone(), concrete)
+        };
+        let lights = if scenery.soil == Soil::Mine {
+            // Oil lanterns: orange.
+            StandardMaterial {
+                base_color: Color::srgb(1.0, 0.75, 0.4),
+                emissive: LinearRgba::rgb(9.0, 4.5, 1.2),
+                ..default()
+            }
+        } else {
+            StandardMaterial {
+                base_color: Color::srgb(1.0, 0.9, 0.6),
+                emissive: LinearRgba::rgb(6.0, 4.6, 2.2),
+                ..default()
+            }
+        };
         let checker = StandardMaterial {
-            base_color_texture: Some(assets.textures.checker.clone()),
+            base_color_texture: Some(textures.checker.clone()),
             perceptual_roughness: 0.7,
             ..default()
         };
         let grass = StandardMaterial {
-            base_color_texture: Some(assets.textures.grass.clone()),
+            base_color_texture: Some(textures.grass.clone()),
             perceptual_roughness: 0.9,
             reflectance: 0.18,
             ..default()
@@ -120,61 +190,70 @@ pub fn spawn_structures(
             (parts.rock, rock),
             (parts.grass, grass),
             (parts.lining, lining),
-            (parts.portals, concrete.clone()),
-            (parts.sidewalks, concrete),
+            (parts.portals, portal),
+            (parts.sidewalks, sidewalk),
             (parts.lights, lights),
             (parts.checker, checker),
+            (parts.timbers, timber),
         ] {
             // Through checkerboard earth, no grass grows on the top.
             if mesh.count_vertices() == 0 {
                 continue;
             }
-            world.spawn((
-                Mesh3d(assets.meshes.add(mesh)),
-                MeshMaterial3d(assets.materials.add(material)),
-            ));
+            pieces.push((mesh, material));
         }
     }
     for bridge in scenery.bridges {
         let indices = indices(track, *bridge, lap);
         if scenery.bridge_style == BridgeStyle::Wooden {
             let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices);
-            world.spawn((
-                Mesh3d(assets.meshes.add(planks)),
-                MeshMaterial3d(assets.materials.add(StandardMaterial {
-                    base_color_texture: Some(assets.textures.planks.clone()),
+            pieces.push((
+                planks,
+                StandardMaterial {
+                    base_color_texture: Some(textures.planks.clone()),
                     perceptual_roughness: 0.85,
                     ..default()
-                })),
+                },
             ));
-            world.spawn((
-                Mesh3d(assets.meshes.add(logs)),
-                MeshMaterial3d(assets.materials.add(StandardMaterial {
+            pieces.push((
+                logs,
+                StandardMaterial {
                     perceptual_roughness: 0.9,
                     ..default()
-                })),
+                },
             ));
             continue;
         }
         let (deck, arches) = bridge_meshes(track, terrain, &indices);
-        world.spawn((
-            Mesh3d(assets.meshes.add(deck)),
-            MeshMaterial3d(assets.materials.add(StandardMaterial {
+        pieces.push((
+            deck,
+            StandardMaterial {
                 base_color: Color::srgb(0.7, 0.7, 0.68),
-                base_color_texture: Some(assets.textures.plaster.clone()),
+                base_color_texture: Some(textures.plaster.clone()),
                 perceptual_roughness: 0.9,
                 ..default()
-            })),
+            },
         ));
-        world.spawn((
-            Mesh3d(assets.meshes.add(arches)),
-            MeshMaterial3d(assets.materials.add(StandardMaterial {
+        pieces.push((
+            arches,
+            StandardMaterial {
                 perceptual_roughness: 0.45,
                 metallic: 0.2,
                 ..default()
-            })),
+            },
         ));
     }
+    pieces
+}
+
+/// The signs along the road: billboards, curve chevrons and brake markers.
+pub fn spawn_signs(
+    world: &mut ChildSpawnerCommands,
+    track: &Track,
+    terrain: &Terrain,
+    scenery: &Scenery,
+    assets: &mut Assets3d,
+) {
     for billboard in scenery.billboards {
         spawn_billboard(world, track, terrain, billboard, assets);
     }
@@ -264,6 +343,8 @@ struct TunnelParts {
     lights: Mesh,
     /// Tablero de ajedrez al pie de las paredes.
     checker: Mesh,
+    /// In a mine, the timber sets that prop the gallery.
+    timbers: Mesh,
 }
 
 /// Un túnel recto por dentro, con el techo plano, luces cálidas y las
@@ -277,6 +358,8 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
     let mut sidewalks = MeshBuilder::default();
     let mut lights = MeshBuilder::default();
     let mut checker = MeshBuilder::default();
+    let mut timbers = MeshBuilder::default();
+    let mine = soil == Soil::Mine;
     let step = track.step_length();
     let road = |i: usize| track.surface_point(i, 0.0).y + SURFACE_Y;
     // Un punto a `lateral` de la línea central y `height` sobre la carretera.
@@ -289,7 +372,12 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
     // por el medio, algo abombada e irregular.
     let edge = |i: usize, side: f32| {
         let beyond = track.offset_point(i, side * (TUNNEL_SHELL + 1.0));
-        (terrain.height(beyond) - road(i)).max(TUNNEL_HEIGHT + 3.0)
+        let roof = if mine {
+            MINE_CROWN + VAULT_ROUGH + 2.0
+        } else {
+            TUNNEL_HEIGHT + 3.0
+        };
+        (terrain.height(beyond) - road(i)).max(roof)
     };
     // Where another stretch of the road passes over the tunnel, the rock
     // carries it: just below its asphalt, and sloping down to the rest of
@@ -316,6 +404,48 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
     };
     let inner = WALL_DISTANCE;
     let sidewalk_from = track.half_width();
+    // A mine's gallery at point `i`: its cross-section from the foot of the
+    // left wall over the vault to the foot of the right one, as (lateral,
+    // height above the road), the rock bulging out irregularly above the
+    // height of a bike.
+    let vault = |i: usize| -> Vec<Vec2> {
+        let mut profile = vec![
+            Vec2::new(-inner, -1.5),
+            Vec2::new(-inner, 1.0),
+            Vec2::new(-inner, MINE_SPRING),
+        ];
+        let rise = MINE_CROWN - MINE_SPRING;
+        for k in 1..VAULT_STEPS {
+            let angle = std::f32::consts::PI * (1.0 - k as f32 / VAULT_STEPS as f32);
+            profile.push(Vec2::new(
+                inner * angle.cos(),
+                MINE_SPRING + rise * angle.sin(),
+            ));
+        }
+        profile.extend([
+            Vec2::new(inner, MINE_SPRING),
+            Vec2::new(inner, 1.0),
+            Vec2::new(inner, -1.5),
+        ]);
+        let along = i as f32 * step;
+        profile
+            .iter()
+            .enumerate()
+            .map(|(k, &point)| {
+                let out = if point.y <= MINE_SPRING {
+                    Vec2::new(point.x.signum(), 0.0)
+                } else {
+                    Vec2::new(
+                        point.x / (inner * inner),
+                        (point.y - MINE_SPRING) / (rise * rise),
+                    )
+                    .normalize()
+                };
+                let rough = fbm(Vec2::new(along * 0.11 + k as f32 * 0.83, k as f32 * 1.7), 3);
+                point + out * VAULT_ROUGH * rough * smoothstep(1.0, 3.0, point.y)
+            })
+            .collect()
+    };
     for pair in indices.windows(2) {
         let (i, j) = (pair[0], pair[1]);
         let (vi, vj) = ((i as f32 * step) / 4.0, (i as f32 * step + step) / 4.0);
@@ -325,27 +455,33 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         };
         for side in [1.0, -1.0] {
             let wall = side * inner;
-            // Pared: el tablero abajo y el revestimiento hasta el techo.
-            checker.quad(
-                [
-                    (at(i, wall, -1.5), Vec2::new(vi * 4.0, 2.0)),
-                    (at(j, wall, -1.5), Vec2::new(vj * 4.0, 2.0)),
-                    (at(j, wall, TUNNEL_CHECKER), Vec2::new(vj * 4.0, 0.0)),
-                    (at(i, wall, TUNNEL_CHECKER), Vec2::new(vi * 4.0, 0.0)),
-                ],
-                inward(wall),
-                Color::WHITE,
-            );
-            lining.quad(
-                [
-                    (at(i, wall, TUNNEL_CHECKER), Vec2::new(vi, 1.5)),
-                    (at(j, wall, TUNNEL_CHECKER), Vec2::new(vj, 1.5)),
-                    (at(j, wall, TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
-                    (at(i, wall, TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
-                ],
-                inward(wall),
-                Color::WHITE,
-            );
+            // Pared: el tablero abajo y el revestimiento hasta el techo. In
+            // a mine, bare rock all the way down.
+            let foot = if mine { -1.5 } else { TUNNEL_CHECKER };
+            if !mine {
+                checker.quad(
+                    [
+                        (at(i, wall, -1.5), Vec2::new(vi * 4.0, 2.0)),
+                        (at(j, wall, -1.5), Vec2::new(vj * 4.0, 2.0)),
+                        (at(j, wall, TUNNEL_CHECKER), Vec2::new(vj * 4.0, 0.0)),
+                        (at(i, wall, TUNNEL_CHECKER), Vec2::new(vi * 4.0, 0.0)),
+                    ],
+                    inward(wall),
+                    Color::WHITE,
+                );
+            }
+            if !mine {
+                lining.quad(
+                    [
+                        (at(i, wall, foot), Vec2::new(vi, 1.5)),
+                        (at(j, wall, foot), Vec2::new(vj, 1.5)),
+                        (at(j, wall, TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
+                        (at(i, wall, TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
+                    ],
+                    inward(wall),
+                    Color::WHITE,
+                );
+            }
             // Aceras.
             let walk = side * sidewalk_from;
             // Siguen el peralte, como el arcén que tapan.
@@ -363,7 +499,7 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 Color::WHITE,
             );
             // Lámparas en las paredes, a media altura.
-            if i % TUNNEL_LIGHT_EVERY == 0 {
+            if i % TUNNEL_LIGHT_EVERY == 0 && !mine {
                 let lamp = wall - side * 0.05;
                 lights.quad(
                     [
@@ -389,19 +525,94 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 Color::WHITE,
             );
         }
-        // El techo, por dentro, con dos filas de luces.
-        lining.quad(
-            [
-                (at(i, -inner, TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
-                (at(j, -inner, TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
-                (at(j, inner, TUNNEL_HEIGHT), Vec2::new(vj, inner / 2.0)),
-                (at(i, inner, TUNNEL_HEIGHT), Vec2::new(vi, inner / 2.0)),
-            ],
-            Vec3::NEG_Y,
-            Color::WHITE,
-        );
+        // El techo, por dentro, con dos filas de luces. In a mine, the
+        // walls and the vault of rock.
+        if mine {
+            let (here, there) = (vault(i), vault(j));
+            let mut around = 0.0;
+            for k in 0..here.len() - 1 {
+                let piece = here[k].distance(here[k + 1]);
+                let (u0, u1) = (around / 4.0, (around + piece) / 4.0);
+                around += piece;
+                let corners = [
+                    (at(i, here[k].x, here[k].y), Vec2::new(u0, vi)),
+                    (at(j, there[k].x, there[k].y), Vec2::new(u0, vj)),
+                    (at(j, there[k + 1].x, there[k + 1].y), Vec2::new(u1, vj)),
+                    (at(i, here[k + 1].x, here[k + 1].y), Vec2::new(u1, vi)),
+                ];
+                let middle = corners.iter().map(|(p, _)| *p).sum::<Vec3>() / 4.0;
+                let facing = at(i, 0.0, MINE_SPRING * 0.6) - middle;
+                // Lit by the lanterns: warm and bright by each set that has
+                // them, dimmer between, and darker up in the vault, with
+                // patches of the rock's own colour.
+                let along = i as f32 * step;
+                let lanterns = 2.0 * TUNNEL_RIB_EVERY as f32 * step;
+                let from_lantern = along
+                    .rem_euclid(lanterns)
+                    .min(lanterns - along.rem_euclid(lanterns));
+                let glow = (-(from_lantern / LANTERN_REACH).powi(2)).exp();
+                let height = (here[k].y + here[k + 1].y) / 2.0;
+                let up = smoothstep(0.0, MINE_CROWN, height);
+                let patch = fbm(Vec2::new(along * 0.07, k as f32 * 0.6), 2);
+                let light = (0.4 + 0.75 * glow) * (1.0 - 0.45 * up) * (0.75 + 0.5 * patch);
+                lining.quad(
+                    corners,
+                    facing,
+                    Color::srgb(light, light * 0.82, light * 0.64),
+                );
+            }
+        } else {
+            lining.quad(
+                [
+                    (at(i, -inner, TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
+                    (at(j, -inner, TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
+                    (at(j, inner, TUNNEL_HEIGHT), Vec2::new(vj, inner / 2.0)),
+                    (at(i, inner, TUNNEL_HEIGHT), Vec2::new(vi, inner / 2.0)),
+                ],
+                Vec3::NEG_Y,
+                Color::WHITE,
+            );
+        }
+        // A mine's timber sets, the shape of the vault: a post against each
+        // wall up to where it springs, a rafter leaning in from each, and a
+        // cap across under the crown, with a lantern hanging from the
+        // rafters of every other one.
+        if mine && i % TUNNEL_RIB_EVERY == 0 {
+            let points = timber_set(inner);
+            for pair in points.windows(2) {
+                timbers.beam(
+                    at(i, pair[0].x, pair[0].y),
+                    at(i, pair[1].x, pair[1].y),
+                    0.42,
+                    0.42,
+                    Color::WHITE,
+                );
+            }
+            if i % (2 * TUNNEL_RIB_EVERY) == 0 {
+                for side in [-1.0, 1.0] {
+                    let (from, to) = (points[1], points[2]);
+                    let lateral = side * LANTERN_OUT;
+                    let along = (lateral.abs() - from.x.abs()) / (to.x.abs() - from.x.abs());
+                    let rafter = from.y.lerp(to.y, along) - 0.25;
+                    timbers.beam(
+                        at(i, lateral, rafter - 0.6),
+                        at(i, lateral, rafter),
+                        0.04,
+                        0.04,
+                        Color::srgb(0.2, 0.2, 0.2),
+                    );
+                    lights.beam(
+                        at(i, lateral, rafter - 1.0),
+                        at(i, lateral, rafter - 0.6),
+                        0.3,
+                        0.3,
+                        Color::WHITE,
+                    );
+                }
+            }
+        }
         // Costillas de lado a lado bajo el techo, que le dan relieve.
-        if i % TUNNEL_RIB_EVERY == 0 {
+        if i % TUNNEL_RIB_EVERY == 0 && !mine {
             let rib = TUNNEL_HEIGHT - 0.3;
             lining.beam(
                 at(i, -inner, rib),
@@ -411,7 +622,7 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 Color::srgb(0.8, 0.8, 0.8),
             );
         }
-        if i % TUNNEL_LIGHT_EVERY == 0 {
+        if i % TUNNEL_LIGHT_EVERY == 0 && !mine {
             for lateral in [-3.5, 3.5] {
                 lights.quad(
                     [
@@ -464,6 +675,49 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         let ahead = crate::geometry::forward(heading);
         let facing = Vec3::new(ahead.x, 0.0, ahead.y) * outward;
         let top = |lateral: f32| rock_top(end, lateral);
+        if mine {
+            // The rock face round the arched mouth: each piece of the vault
+            // out to the side of the rock or up to its top, and below the
+            // feet of the walls.
+            let profile = vault(end);
+            let outer = |point: Vec2| {
+                if point.y <= MINE_SPRING {
+                    Vec2::new(point.x.signum() * TUNNEL_SHELL, point.y)
+                } else {
+                    let lateral = point.x / inner * TUNNEL_SHELL;
+                    Vec2::new(lateral, top(lateral).max(point.y + 1.0))
+                }
+            };
+            for pair in profile.windows(2) {
+                let (a, b) = (pair[0], pair[1]);
+                let corners = [a, b, outer(b), outer(a)]
+                    .map(|p| (at(end, p.x, p.y), Vec2::new(p.x, -p.y) / 4.0));
+                rock.quad(corners, facing, Color::WHITE);
+            }
+            for side in [-1.0, 1.0] {
+                let corners = [
+                    Vec2::new(side * inner, -6.0),
+                    Vec2::new(side * TUNNEL_SHELL, -6.0),
+                    Vec2::new(side * TUNNEL_SHELL, -1.5),
+                    Vec2::new(side * inner, -1.5),
+                ]
+                .map(|p| (at(end, p.x, p.y), Vec2::new(p.x, -p.y) / 4.0));
+                rock.quad(corners, facing, Color::WHITE);
+            }
+            // A heavy timber set in the mouth, standing a little out of the
+            // rock.
+            let push = facing * 0.6;
+            for pair in timber_set(inner).windows(2) {
+                timbers.beam(
+                    at(end, pair[0].x, pair[0].y) + push,
+                    at(end, pair[1].x, pair[1].y) + push,
+                    0.8,
+                    0.8,
+                    Color::WHITE,
+                );
+            }
+            continue;
+        }
         let framed = inner + FRAME;
         let lintel = TUNNEL_HEIGHT + FRAME;
         // La roca: a los lados del marco y por encima.
@@ -510,6 +764,7 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         sidewalks: sidewalks.build(),
         lights: lights.build(),
         checker: checker.build(),
+        timbers: timbers.build(),
     }
 }
 
@@ -691,6 +946,73 @@ fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> 
 
 /// Un cartel con un rótulo, sobre dos postes detrás del muro, mirando a los
 /// que llegan.
+/// The size of the billboards, chevron signs and brake markers (m).
+const BILLBOARD: Vec2 = Vec2::new(12.0, 3.0);
+const CHEVRON: Vec2 = Vec2::new(4.8, 1.6);
+const BRAKE_MARKER: Vec2 = Vec2::new(2.2, 1.8);
+
+/// What a billboard says, on white with a border of its colour.
+fn billboard_image(billboard: &Billboard) -> Image {
+    sign_image(
+        billboard.text,
+        billboard.color,
+        billboard.accent,
+        Color::WHITE,
+        Some(billboard.color),
+        BILLBOARD.x / BILLBOARD.y,
+    )
+}
+
+/// The arrows of a curve sign: black on yellow.
+fn chevron_image(chevron: &ChevronSign) -> Image {
+    let text = match chevron.direction {
+        ChevronDirection::Left => "<<<",
+        ChevronDirection::Right => ">>>",
+    };
+    let yellow = Color::srgb(0.98, 0.84, 0.05);
+    let black = Color::srgb(0.08, 0.08, 0.1);
+    sign_image(
+        text,
+        black,
+        None,
+        yellow,
+        Some(black),
+        CHEVRON.x / CHEVRON.y,
+    )
+}
+
+/// The distance on a brake marker: black on white.
+fn brake_marker_image(marker: &BrakeMarker) -> Image {
+    let text = if marker.distance >= 100 { "100" } else { "50" };
+    let white = Color::srgb(0.96, 0.96, 0.96);
+    let black = Color::srgb(0.08, 0.08, 0.1);
+    sign_image(
+        text,
+        black,
+        None,
+        white,
+        Some(black),
+        BRAKE_MARKER.x / BRAKE_MARKER.y,
+    )
+}
+
+/// Draws the signs of `scenery` ahead (see [`sign_image`]): on the
+/// threads that prepare the circuits, so the main thread only copies them.
+pub fn draw_signs(scenery: &Scenery) {
+    for gantry in scenery.gantries {
+        super::road::gantry_image(gantry);
+    }
+    for billboard in scenery.billboards {
+        billboard_image(billboard);
+    }
+    for chevron in scenery.chevrons {
+        chevron_image(chevron);
+    }
+    for marker in scenery.brake_markers {
+        brake_marker_image(marker);
+    }
+}
+
 fn spawn_billboard(
     world: &mut ChildSpawnerCommands,
     track: &Track,
@@ -698,8 +1020,8 @@ fn spawn_billboard(
     billboard: &Billboard,
     assets: &mut Assets3d,
 ) {
-    const WIDTH: f32 = 12.0;
-    const HEIGHT: f32 = 3.0;
+    const WIDTH: f32 = BILLBOARD.x;
+    const HEIGHT: f32 = BILLBOARD.y;
     const LIFT: f32 = 1.4;
     let index = track.index_at(billboard.along);
     let lateral = billboard.side.sign() * (WALL_DISTANCE + 3.0);
@@ -708,14 +1030,7 @@ fn spawn_billboard(
     let (_, heading) = track.pose_at(index);
     // Girado hacia la carretera para que se lea al llegar.
     let turn = billboard.side.sign() * 0.5;
-    let image = sign_image(
-        billboard.text,
-        billboard.color,
-        billboard.accent,
-        Color::WHITE,
-        Some(billboard.color),
-        WIDTH / HEIGHT,
-    );
+    let image = billboard_image(billboard);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [
@@ -779,8 +1094,8 @@ fn spawn_chevron(
     chevron: &ChevronSign,
     assets: &mut Assets3d,
 ) {
-    const WIDTH: f32 = 4.8;
-    const HEIGHT: f32 = 1.6;
+    const WIDTH: f32 = CHEVRON.x;
+    const HEIGHT: f32 = CHEVRON.y;
     const LIFT: f32 = 1.0;
     let index = track.index_at(chevron.along);
     let lateral = chevron.side.sign() * (WALL_DISTANCE + 2.4);
@@ -788,13 +1103,7 @@ fn spawn_chevron(
     let base = terrain.height(point);
     let (_, heading) = track.pose_at(index);
     let turn = chevron.side.sign() * 0.4;
-    let text = match chevron.direction {
-        ChevronDirection::Left => "<<<",
-        ChevronDirection::Right => ">>>",
-    };
-    let yellow = Color::srgb(0.98, 0.84, 0.05);
-    let black = Color::srgb(0.08, 0.08, 0.1);
-    let image = sign_image(text, black, None, yellow, Some(black), WIDTH / HEIGHT);
+    let image = chevron_image(chevron);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [
@@ -851,8 +1160,8 @@ fn spawn_brake_marker(
     marker: &BrakeMarker,
     assets: &mut Assets3d,
 ) {
-    const WIDTH: f32 = 2.2;
-    const HEIGHT: f32 = 1.8;
+    const WIDTH: f32 = BRAKE_MARKER.x;
+    const HEIGHT: f32 = BRAKE_MARKER.y;
     const LIFT: f32 = 0.9;
     let index = track.index_at(marker.along);
     let lateral = marker.side.sign() * (WALL_DISTANCE + 2.0);
@@ -860,10 +1169,7 @@ fn spawn_brake_marker(
     let base = terrain.height(point);
     let (_, heading) = track.pose_at(index);
     let turn = marker.side.sign() * 0.35;
-    let text = if marker.distance >= 100 { "100" } else { "50" };
-    let white = Color::srgb(0.96, 0.96, 0.96);
-    let black = Color::srgb(0.08, 0.08, 0.1);
-    let image = sign_image(text, black, None, white, Some(black), WIDTH / HEIGHT);
+    let image = brake_marker_image(marker);
     let mut panel = MeshBuilder::default();
     panel.quad(
         [

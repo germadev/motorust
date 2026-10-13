@@ -43,20 +43,18 @@ const GANTRY_BEAM: f32 = 1.6;
 /// Tamaño de cada casilla del tablero del arco y de la línea de meta (m).
 const CHECKER_TILE: f32 = 1.0;
 
-pub fn spawn_road(
-    world: &mut ChildSpawnerCommands,
+/// The meshes of the roads and what lines them (asphalt, paint, kerbs,
+/// walls, the finish line, the grid and skid marks), with their materials:
+/// worked out away from the main thread, with the rest of the circuit (see
+/// [`super::prepare`]).
+pub fn road_pieces(
     track: &Track,
     terrain: &Terrain,
     scenery: &Scenery,
-    assets: &mut Assets3d,
-) {
-    let textures = assets.textures;
-    let mut spawn = |mesh: Mesh, material: StandardMaterial| {
-        world.spawn((
-            Mesh3d(assets.meshes.add(mesh)),
-            MeshMaterial3d(assets.materials.add(material)),
-        ));
-    };
+    textures: &WorldTextures,
+) -> Vec<(Mesh, StandardMaterial)> {
+    let mut pieces = Vec::new();
+    let mut spawn = |mesh: Mesh, material: StandardMaterial| pieces.push((mesh, material));
 
     // The lap, and the roads off it.
     for number in 0..=track.side_roads().len() {
@@ -93,7 +91,16 @@ pub fn spawn_road(
             },
         );
     }
+    pieces
+}
 
+/// The arches over the road.
+pub fn spawn_gantries(
+    world: &mut ChildSpawnerCommands,
+    track: &Track,
+    scenery: &Scenery,
+    assets: &mut Assets3d,
+) {
     for gantry in scenery.gantries {
         spawn_gantry(world, track, gantry, assets);
     }
@@ -274,6 +281,16 @@ fn spawn_surface(
             WALL_HEIGHT,
             StandardMaterial {
                 base_color_texture: Some(textures.soil.clone()),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
+        ),
+        (
+            WallStyle::Timber,
+            WALL_HEIGHT,
+            StandardMaterial {
+                base_color: Color::srgb(0.8, 0.68, 0.56),
+                base_color_texture: Some(textures.planks.clone()),
                 perceptual_roughness: 0.9,
                 ..default()
             },
@@ -561,6 +578,21 @@ fn finish_line(track: &Track) -> Mesh {
 
 /// Arco sobre la carretera, con un tablero de ajedrez o un rótulo por
 /// delante y por detrás.
+/// The sign on a gantry with text: white letters on its colour.
+pub fn gantry_image(gantry: &Gantry) -> Option<Image> {
+    let span = WALL_DISTANCE + 1.2;
+    gantry.text.map(|text| {
+        sign_image(
+            text,
+            Color::WHITE,
+            None,
+            gantry.color,
+            None,
+            2.0 * span / GANTRY_BEAM,
+        )
+    })
+}
+
 fn spawn_gantry(
     world: &mut ChildSpawnerCommands,
     track: &Track,
@@ -597,15 +629,8 @@ fn spawn_gantry(
                 GANTRY_BEAM / CHECKER_TILE / 2.0,
             ),
         ),
-        Some(text) => {
-            let image = sign_image(
-                text,
-                Color::WHITE,
-                None,
-                gantry.color,
-                None,
-                2.0 * span / GANTRY_BEAM,
-            );
+        Some(_) => {
+            let image = gantry_image(gantry).expect("a gantry with text has a sign");
             (
                 StandardMaterial {
                     base_color_texture: Some(assets.images.add(image)),

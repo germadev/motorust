@@ -3,6 +3,7 @@
 //! mar, según el escenario de cada pista ([`Scenery`]). Todo se coloca al
 //! azar, pero siempre igual, con [`random01`].
 
+use bevy::mesh::Indices;
 use bevy::prelude::*;
 
 use super::Assets3d;
@@ -37,6 +38,7 @@ pub fn spawn_props(
     track: &Track,
     terrain: &Terrain,
     scenery: &Scenery,
+    trees: &TreePlan,
     assets: &mut Assets3d,
 ) {
     let mut occupied: Vec<Footprint> = Vec::new();
@@ -95,9 +97,12 @@ pub fn spawn_props(
         scenery.sunflowers,
         assets,
     ));
+    occupied.extend(super::mine::spawn_mine(
+        world, track, terrain, scenery, assets,
+    ));
     landmarks::spawn_rings(world, track, scenery.rings, assets);
     landmarks::spawn_waterfalls(world, track, terrain, scenery.waterfalls, assets);
-    spawn_trees(world, track, terrain, scenery, &occupied, assets);
+    spawn_trees(world, trees, &occupied, assets);
     spawn_buoys(world, scenery.buoys, assets);
     for lighthouse in scenery.lighthouses {
         spawn_lighthouse(world, terrain, lighthouse, assets);
@@ -736,45 +741,71 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
     variants
 }
 
-/// Árboles sueltos alrededor del circuito, más juntos cerca de la
-/// carretera, y los bosques: árboles altos muy juntos a los dos lados.
-fn spawn_trees(
-    world: &mut ChildSpawnerCommands,
-    track: &Track,
-    terrain: &Terrain,
-    scenery: &Scenery,
-    occupied: &[Footprint],
-    assets: &mut Assets3d,
-) {
-    const VARIANTS: u32 = 3;
-    let bark = assets.materials.add(StandardMaterial {
-        base_color: Color::srgb(0.32, 0.22, 0.15),
-        perceptual_roughness: 0.95,
-        ..default()
-    });
-    let leaves = assets.materials.add(StandardMaterial {
-        perceptual_roughness: 0.95,
-        ..default()
-    });
-    // Shared meshes: model variants per species
-    let mut species: Vec<Species> = scenery.trees.to_vec();
-    if !scenery.forests.is_empty() && !species.contains(&Species::Tall) {
-        species.push(Species::Tall);
+/// A tree to plant: its species, where, the height of the ground there, and
+/// the seed of its variant, size and turn.
+struct PlannedTree {
+    kind: Species,
+    position: Vec2,
+    height: f32,
+    seed: u32,
+}
+
+/// Where the trees of a circuit go, in the order they are planted: the
+/// scattered ones and those of the forests. Worked out away from the main
+/// thread with the rest of the circuit (see [`super::prepare`]): finding
+/// the road from tens of thousands of candidate spots takes a while. The
+/// ones in the way of a building or a landmark are left out when they are
+/// planted ([`spawn_trees`]).
+pub struct TreePlan {
+    scattered: Vec<PlannedTree>,
+    forests: Vec<PlannedTree>,
+    /// The variants of each species, each one mesh (see [`merged_variant`]).
+    models: Vec<(Species, Vec<Mesh>)>,
+}
+
+/// The colour of the bark (sRGB).
+const BARK: Color = Color::srgb(0.32, 0.22, 0.15);
+
+/// A tree variant as one mesh: its wood painted the colour of bark and its
+/// crowns, so each tree is one entity to draw, not one per branch and
+/// crown.
+fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
+    let bark = BARK.to_linear().to_f32_array();
+    let mut merged: Option<Mesh> = None;
+    for (parts, wood) in [(&variant.wood, true), (&variant.crowns, false)] {
+        for (handle, transform) in parts {
+            let mut part = meshes
+                .get(handle)
+                .expect("the parts of a variant are in its assets")
+                .clone()
+                .transformed_by(*transform);
+            part.remove_attribute(Mesh::ATTRIBUTE_UV_0);
+            part.remove_attribute(Mesh::ATTRIBUTE_TANGENT);
+            if wood {
+                let count = part.count_vertices();
+                part.insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![bark; count]);
+            }
+            if let Some(Indices::U16(indices)) = part.indices() {
+                let wide: Vec<u32> = indices.iter().map(|&i| u32::from(i)).collect();
+                part.insert_indices(Indices::U32(wide));
+            }
+            match &mut merged {
+                None => merged = Some(part),
+                Some(mesh) => mesh
+                    .merge(&part)
+                    .expect("the parts of a tree have the same attributes"),
+            }
+        }
     }
-    let models: Vec<(Species, Vec<TreeVariant>)> = species
-        .iter()
-        .map(|&kind| (kind, build_tree_variants(kind, assets.meshes)))
-        .collect();
-    let model = |kind: Species| {
-        &models
-            .iter()
-            .find(|(k, _)| *k == kind)
-            .expect("hay modelo para cada especie")
-            .1
-    };
+    merged.expect("a tree has wood and a crown")
+}
+
+/// Plans the trees of a circuit (see [`TreePlan`]).
+pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePlan {
     let lap = track.lap_length();
     // Si se puede plantar un árbol en un punto: hierba, no muy empinada, por
-    // encima del mar, fuera de los edificios y lejos de las bocas de los túneles.
+    // encima del mar y lejos de las bocas de los túneles (the buildings are
+    // checked when planting).
     let near_tunnel = |position: Vec2| {
         let along = track.along(&track.nearest(position));
         scenery
@@ -786,44 +817,20 @@ fn spawn_trees(
         terrain.height(position) >= SEA_LEVEL + 1.8
             && terrain.ground(position) == Ground::Grass
             && terrain.normal(position).y >= 0.88
-            && !occupied
-                .iter()
-                .any(|&(at, radius)| at.distance(position) < radius)
             && !(distance < 35.0 && !scenery.tunnels.is_empty() && near_tunnel(position))
     };
-    let plant = |world: &mut ChildSpawnerCommands, kind: Species, position: Vec2, seed: u32| {
-        let random = |k: u32| random01(seed * 8 + k);
-        let variants = model(kind);
-        let variant = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
-        let scale = 0.75 + 0.60 * random(5);
-        let mut entity = world.spawn((
-            Transform::from_xyz(position.x, terrain.height(position), position.y)
-                .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
-                .with_scale(Vec3::splat(scale)),
-            Visibility::default(),
-        ));
-        entity.with_children(|parent| {
-            for (mesh, transform) in &variant.wood {
-                parent.spawn((
-                    Mesh3d(mesh.clone()),
-                    MeshMaterial3d(bark.clone()),
-                    *transform,
-                ));
-            }
-            for (mesh, transform) in &variant.crowns {
-                parent.spawn((
-                    Mesh3d(mesh.clone()),
-                    MeshMaterial3d(leaves.clone()),
-                    *transform,
-                ));
-            }
-        });
+    let planned = |kind: Species, position: Vec2, seed: u32| PlannedTree {
+        kind,
+        position,
+        height: terrain.height(position),
+        seed,
     };
 
+    // Some spare ones, for those that end up in the way of a building.
+    let mut scattered = Vec::new();
     let (min, max) = track.bounds();
-    let mut planted = 0;
     for seed in 0..TREE_CANDIDATES {
-        if planted >= MAX_TREES || scenery.trees.is_empty() {
+        if scattered.len() >= 2 * MAX_TREES || scenery.trees.is_empty() {
             break;
         }
         let random = |k: u32| random01(seed * 8 + k);
@@ -839,11 +846,11 @@ fn spawn_trees(
         }
         let kind =
             scenery.trees[(random(3) * scenery.trees.len() as f32) as usize % scenery.trees.len()];
-        plant(world, kind, position, seed);
-        planted += 1;
+        scattered.push(planned(kind, position, seed));
     }
 
     // Los bosques.
+    let mut forests = Vec::new();
     let mut seed = 50_000;
     for forest in scenery.forests {
         let count = (forest.length(lap) / FOREST_EVERY) as usize;
@@ -859,10 +866,92 @@ fn spawn_trees(
                     if distance < WALL_DISTANCE + 3.0 || !fits(position, distance) {
                         continue;
                     }
-                    plant(world, Species::Tall, position, seed);
+                    forests.push(planned(Species::Tall, position, seed));
                 }
             }
         }
+    }
+    // The models of the species planted, built here too.
+    let mut species: Vec<Species> = scenery.trees.to_vec();
+    if !scenery.forests.is_empty() && !species.contains(&Species::Tall) {
+        species.push(Species::Tall);
+    }
+    let mut scratch = Assets::<Mesh>::default();
+    let models = species
+        .into_iter()
+        .map(|kind| {
+            let variants = build_tree_variants(kind, &mut scratch);
+            let merged = variants
+                .iter()
+                .map(|variant| merged_variant(&scratch, variant))
+                .collect();
+            (kind, merged)
+        })
+        .collect();
+    TreePlan {
+        scattered,
+        forests,
+        models,
+    }
+}
+
+/// Plants the trees planned for a circuit, except those in the way of what
+/// is `occupied`: up to [`MAX_TREES`] scattered ones, and the forests.
+fn spawn_trees(
+    world: &mut ChildSpawnerCommands,
+    plan: &TreePlan,
+    occupied: &[Footprint],
+    assets: &mut Assets3d,
+) {
+    const VARIANTS: u32 = 3;
+    // Bark and leaves are in the colours of the meshes.
+    let material = assets.materials.add(StandardMaterial {
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+    let models: Vec<(Species, Vec<Handle<Mesh>>)> = plan
+        .models
+        .iter()
+        .map(|(kind, variants)| {
+            (
+                *kind,
+                variants
+                    .iter()
+                    .map(|mesh| assets.meshes.add(mesh.clone()))
+                    .collect(),
+            )
+        })
+        .collect();
+    let model = |kind: Species| {
+        &models
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .expect("hay modelo para cada especie")
+            .1
+    };
+    let free = |tree: &&PlannedTree| {
+        !occupied
+            .iter()
+            .any(|&(at, radius)| at.distance(tree.position) < radius)
+    };
+    let plant = |world: &mut ChildSpawnerCommands, tree: &PlannedTree| {
+        let random = |k: u32| random01(tree.seed * 8 + k);
+        let variants = model(tree.kind);
+        let variant = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
+        let scale = 0.75 + 0.60 * random(5);
+        world.spawn((
+            Mesh3d(variant.clone()),
+            MeshMaterial3d(material.clone()),
+            Transform::from_xyz(tree.position.x, tree.height, tree.position.y)
+                .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
+                .with_scale(Vec3::splat(scale)),
+        ));
+    };
+    for tree in plan.scattered.iter().filter(free).take(MAX_TREES) {
+        plant(world, tree);
+    }
+    for tree in plan.forests.iter().filter(free) {
+        plant(world, tree);
     }
 }
 

@@ -95,7 +95,7 @@ This is not WasmFS: WasmFS is Emscripten's file system for programs built with E
 
 ### Size
 
-Without the music, the `.wasm` file is about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. The tracks' music (`assets/music/`, three 192 kbps MP3s) adds about **12.4 MB**, which compression does not shrink: about **96 MB**, or **45 MB gzipped**, in all. The JavaScript glue is about 120 KB.
+Without the music, the `.wasm` file is about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. The tracks' music (`assets/music/`, four 192 kbps MP3s) adds about **16.7 MB**, which compression does not shrink: about **101 MB**, or **50 MB gzipped**, in all. The JavaScript glue is about 120 KB.
 
 ## Continuous integration
 

@@ -13,7 +13,7 @@
 //! 4. Down past a second waterfall, a wooden bridge crosses an inlet where
 //!    the sea runs in under the road.
 //! 5. Rolling S-bends with totem poles lead down to the south shore: a
-//!    beach road with palms and a jump, back to the start.
+//!    beach road with palms, back to the start.
 
 use bevy::prelude::*;
 
@@ -374,6 +374,8 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 width: 14.0,
             },
         ],
+        sky: SkyStyle::Day,
+        mine: None,
     },
 };
 
@@ -415,10 +417,10 @@ const CONTROL_POINTS: [Vec2; 30] = [
     Vec2::new(3.0, 50.0),
 ];
 
-/// Ups and downs all the way round: crests where the bike takes off on the
-/// start straight, after the bridge and on the shore, and the high ground of
-/// the tunnel.
-const ELEVATION: [(f32, f32); 32] = [
+/// Ups and downs all the way round: a crest where the bike takes off on the
+/// start straight, gentle rises over the S-bends and along the shore (none
+/// to fly off in a bend), and the high ground of the tunnel.
+const ELEVATION: [(f32, f32); 31] = [
     (0.0, 0.0),
     (100.0, 0.5),
     (160.0, 4.5),
@@ -440,15 +442,17 @@ const ELEVATION: [(f32, f32); 32] = [
     (1140.0, 6.0),
     (1200.0, 5.0),
     (1300.0, 5.0),
-    (1360.0, 7.5),
-    (1410.0, 10.0),
-    (1450.0, 7.5),
-    (1520.0, 4.0),
+    // A long, gentle rise over the S-bends: no crest to fly off in them.
+    (1360.0, 6.8),
+    (1420.0, 8.0),
+    (1480.0, 6.6),
+    (1540.0, 4.0),
     (1600.0, 3.0),
-    (1680.0, 4.5),
-    (1740.0, 7.0),
-    (1775.0, 8.5),
-    (1815.0, 5.5),
+    // The shore road rolls gently: its bends come too close together to
+    // land a jump between them.
+    (1680.0, 4.3),
+    (1760.0, 6.4),
+    (1840.0, 4.4),
     (1880.0, 3.0),
     (1960.0, 2.0),
     (2040.0, 0.8),

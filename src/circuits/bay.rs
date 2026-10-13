@@ -11,8 +11,8 @@ use crate::track::{Layout, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 pub const BAY: Circuit = Circuit {
-    name: "Bahía",
-    name_en: "Bay",
+    name: "Bahía GP",
+    name_en: "Bahía GP",
     description: "Una carretera junto al mar, con cuestas, peraltes\n\
                   y un salto en la recta de meta",
     description_en: "A seaside road with slopes, banked turns\n\
@@ -210,6 +210,8 @@ pub const BAY: Circuit = Circuit {
         loops: &[],
         rings: &[],
         waterfalls: &[],
+        sky: SkyStyle::Day,
+        mine: None,
     },
 };
 
@@ -234,13 +236,15 @@ const CONTROL_POINTS: [Vec2; 16] = [
 
 /// Hay un cambio de rasante en la recta de meta, subida hasta lo alto de la
 /// zona este y bajada hacia la meta.
-const ELEVATION: [(f32, f32); 19] = [
+const ELEVATION: [(f32, f32); 20] = [
     (0.0, 0.0),
-    (90.0, 1.0),
-    (170.0, 6.5),
-    // Cambio de rasante: a toda velocidad, la moto vuela.
-    (205.0, 8.5),
-    (240.0, 5.0),
+    (50.0, 0.6),
+    (120.0, 5.4),
+    // Cambio de rasante: a toda velocidad, la moto vuela, and lands on the
+    // straight, well before the first bend.
+    (155.0, 7.2),
+    (190.0, 4.2),
+    (250.0, 2.0),
     (300.0, 2.0),
     (382.0, 2.5),
     (476.0, 4.0),

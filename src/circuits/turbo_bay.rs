@@ -327,6 +327,8 @@ pub const TURBO_BAY: Circuit = Circuit {
         loops: &[],
         rings: &[],
         waterfalls: &[],
+        sky: SkyStyle::Day,
+        mine: None,
     },
 };
 
