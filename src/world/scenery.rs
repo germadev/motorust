@@ -77,6 +77,9 @@ pub struct Massif {
     pub center: Vec2,
     pub radius: f32,
     pub height: f32,
+    /// Whether the road climbs it: its smooth slopes are the ground the road
+    /// is cut into, rather than rock standing up behind the walls.
+    pub climbed: bool,
 }
 
 pub const fn massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
@@ -84,6 +87,15 @@ pub const fn massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
         center: Vec2::new(x, z),
         radius,
         height,
+        climbed: false,
+    }
+}
+
+/// A mountain the road climbs (see [`Massif::climbed`]).
+pub const fn climbed_massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
+    Massif {
+        climbed: true,
+        ..massif(x, z, radius, height)
     }
 }
 

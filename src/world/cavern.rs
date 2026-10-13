@@ -54,6 +54,15 @@ const HALL_FADE: f32 = 14.0;
 const SHELL: f32 = TUNNEL_SHELL;
 /// The outside of the rock stands at least this far above the roof (m).
 const ROOF_ABOVE: f32 = 3.0;
+/// Where another stretch of the lap passes over the excavation, the rock
+/// carries it level with its road this far from its centre line, as flat as
+/// the ground beside a road (m), and comes back to its own shape this much
+/// further away (m).
+const OVER_FLAT: f32 = WALL_DISTANCE + 1.5;
+const OVER_BLEND: f32 = 20.0;
+/// How far from the lap through the excavation other stretches of it are
+/// looked for to pass over it (m): past the rock over the roads off it.
+const OVER_REACH: f32 = 120.0;
 /// The floor beside the roads, above the ground (m): under the asphalt.
 const FLOOR_LIFT: f32 = 0.02;
 /// The lanterns in the halls: on a post by a wall every this many points of
@@ -316,6 +325,10 @@ struct Cave<'a> {
     count: usize,
     /// The roads off the lap that run through it (see [`Nearest::road`]).
     branches: Vec<usize>,
+    /// The other stretches of the lap that come near it, any of which may
+    /// pass over it: runs of segments of its centre line, the first and how
+    /// many.
+    others: Vec<(usize, usize)>,
 }
 
 /// Half a section of an arch from the springing (0) to the crown (1), `u`
@@ -338,6 +351,24 @@ impl<'a> Cave<'a> {
                 (0..line.sample_count()).any(|i| span.contains(line.lap_along_at(i), lap))
             })
             .collect();
+        let n = track.sample_count();
+        let near = |index: usize| {
+            let point = track.centerline()[index];
+            (0..=count)
+                .step_by(4)
+                .any(|k| track.centerline()[(first + k) % n].distance(point) < OVER_REACH)
+        };
+        let mut others: Vec<(usize, usize)> = Vec::new();
+        for k in count + 1..n {
+            let index = (first + k) % n;
+            if !near(index) {
+                continue;
+            }
+            match others.last_mut() {
+                Some((from, length)) if (*from + *length) % n == index => *length += 1,
+                _ => others.push((index, 1)),
+            }
+        }
         Self {
             track,
             span,
@@ -346,7 +377,22 @@ impl<'a> Cave<'a> {
             first,
             count,
             branches,
+            others,
         }
+    }
+
+    /// Where another stretch of the lap passes over the excavation near
+    /// `point`, high over its roof: how far `point` is from its centre line
+    /// (m) and the height of its road there.
+    fn passing_over(&self, point: Vec2) -> Option<(f32, f32)> {
+        let over = self
+            .others
+            .iter()
+            .map(|&(from, count)| self.track.nearest_among(point, from, count))
+            .min_by(|a, b| a.distance.total_cmp(&b.distance))?;
+        let height = self.track.height_beside(&over);
+        (over.distance < OVER_FLAT + OVER_BLEND && height > self.ceiling(point) + ROOF_ABOVE + 2.0)
+            .then_some((over.distance, height))
     }
 
     /// The point of the roads through it nearest to `point`, as
@@ -1029,13 +1075,24 @@ impl<'a> Cave<'a> {
             let beyond = |lateral: f32| terrain.height(track.offset_point(index, lateral));
             let t = (lateral - low) / (high - low);
             let ground = track.offset_point(index, lateral);
-            let hump = 6.0 * (1.0 - (2.0 * t - 1.0).powi(2)) * (0.5 + fbm(ground / 19.0, 3));
+            // Where a road passes over, the rock carries it: level with it,
+            // just under its verge, and with no hump through it.
+            let over = self.passing_over(ground);
+            let clear = over.map_or(1.0, |(distance, _)| {
+                smoothstep(OVER_FLAT, OVER_FLAT + OVER_BLEND, distance)
+            });
+            let hump =
+                6.0 * (1.0 - (2.0 * t - 1.0).powi(2)) * (0.5 + fbm(ground / 19.0, 3)) * clear;
             let rock = beyond(low - 1.0).lerp(beyond(high + 1.0), t) + hump;
             let roof = [Vec2::ZERO, Vec2::X, -Vec2::X, Vec2::Y, -Vec2::Y]
                 .iter()
                 .map(|&d| self.ceiling(ground + d * 4.0))
                 .fold(f32::NEG_INFINITY, f32::max);
-            rock.max(roof + ROOF_ABOVE)
+            let top = rock.max(roof + ROOF_ABOVE);
+            match over {
+                Some((_, height)) => (height - 0.15).lerp(top, clear),
+                None => top,
+            }
         };
         let lateral = |k: usize, s: usize| {
             let (low, high) = reach[k];
@@ -1275,7 +1332,7 @@ mod tests {
         let (track, scenery) = gold_mine();
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.mine.as_ref().unwrap().halls);
-        assert_eq!(cave.branches.len(), 2);
+        assert_eq!(cave.branches.len(), 4);
         for fork in track.forks() {
             let line = track.road(fork.road);
             let middle = line.centerline()[line.sample_count() / 2];
@@ -1290,6 +1347,37 @@ mod tests {
                 assert!(cave.roof(point, &spot) > 15.0);
             }
         }
+    }
+
+    #[test]
+    fn the_rock_over_the_excavation_carries_the_road_over_the_top() {
+        let (track, scenery) = gold_mine();
+        let span = scenery.tunnels[0];
+        let cave = Cave::new(&track, span, scenery.mine.as_ref().unwrap().halls);
+        // The road over the top of the mountain crosses the excavation.
+        let (gap, over, under) = cave
+            .others
+            .iter()
+            .flat_map(|&(from, count)| from..from + count)
+            .flat_map(|over| (cave.first..cave.first + cave.count).map(move |under| (over, under)))
+            .map(|(over, under)| {
+                let n = track.sample_count();
+                let (over, under) = (over % n, under % n);
+                let gap = track.centerline()[over].distance(track.centerline()[under]);
+                (gap, over, under)
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .expect("other stretches come near");
+        assert!(gap < 2.0, "{gap} m");
+        let point = track.centerline()[under];
+        let (distance, height) = cave.passing_over(point).expect("a road passes over");
+        assert!(distance < 2.0);
+        assert!((height - track.elevations()[over]).abs() < 0.5);
+        // High over the roof, which the rock carries it on.
+        assert!(height - cave.ceiling(point) > 40.0);
+        // Elsewhere nothing passes over.
+        let away = track.centerline()[track.index_at(span.from + 60.0)];
+        assert!(cave.passing_over(away).is_none());
     }
 
     #[test]

@@ -43,6 +43,9 @@ const BEACH_HEIGHT: f32 = SEA_LEVEL + 1.6;
 /// this far from its centre line (m): short of the edge of its rock, so the
 /// slope up to the road above is under it too.
 const BURIED: f32 = TUNNEL_SHELL - 2.0 * FINE_SPACING;
+/// How far past the flat ground beside a road on a mountain it climbs the
+/// ground reaches the mountainside (m).
+const SLOPE_REACH: f32 = 30.0;
 /// How far apart the points of a shore drawn as an outline are (m).
 const SHORE_SPACING: f32 = 4.0;
 /// How far above the road the earth must stand to stop a bike (m), and the
@@ -428,10 +431,27 @@ impl<'a> Shaper<'a> {
         self.scenery
             .massifs
             .iter()
+            .filter(|massif| !massif.climbed)
             .map(|massif| {
                 let reach = point.distance(massif.center) / massif.radius;
                 let shape = 1.0 - smoothstep(0.45, 1.0, reach);
                 let rugged = 0.65 + 0.7 * fbm(point / 23.0 + massif.center / 100.0, 3);
+                massif.height * shape * rugged
+            })
+            .fold(0.0, f32::max)
+    }
+
+    /// The slopes of the mountains the road climbs (see
+    /// [`Massif::climbed`]): smooth, with broad tops, a little rough.
+    fn slopes(&self, point: Vec2) -> f32 {
+        self.scenery
+            .massifs
+            .iter()
+            .filter(|massif| massif.climbed)
+            .map(|massif| {
+                let reach = point.distance(massif.center) / massif.radius;
+                let shape = 1.0 - smoothstep(0.45, 1.0, reach);
+                let rugged = 0.88 + 0.24 * fbm(point / 47.0 + massif.center / 100.0, 3);
                 massif.height * shape * rugged
             })
             .fold(0.0, f32::max)
@@ -459,7 +479,7 @@ impl<'a> Shaper<'a> {
     fn height_at(&self, point: Vec2, nearest: Option<&Nearest>) -> f32 {
         let mountains = (self.scenery.mountains)(point);
         let Some(nearest) = nearest else {
-            return self.natural(point) + self.rocks(point) + mountains;
+            return self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
         };
         let track = self.track;
         let along = track.along(nearest);
@@ -477,7 +497,7 @@ impl<'a> Shaper<'a> {
             let to_sea = smoothstep(35.0, 0.0, self.coast(point));
             blend = blend.max(to_sea * smoothstep(FLAT, FLAT + 6.0, distance));
         }
-        let land = around_road.lerp(self.natural(point), blend);
+        let mut land = around_road.lerp(self.natural(point), blend);
         // La roca sube a pico justo detrás de los muros. En los túneles,
         // algo más lejos: la rejilla del terreno es más gruesa que el hueco
         // entre la pared y la roca, y sus triángulos asomarían dentro.
@@ -496,6 +516,16 @@ impl<'a> Shaper<'a> {
             .fold(0.0, f32::max);
         let rise = smoothstep(FLAT, FLAT + 4.0, distance)
             .lerp(smoothstep(FLAT + 4.0, FLAT + 8.0, distance), tunnel);
+        // On a mountain the road climbs, the ground beside it is cut into
+        // the mountainside or built up to the road a little way past the
+        // walls; round a tunnel through it, as steeply as the rock.
+        let slopes = self.slopes(point);
+        if slopes > 0.0 {
+            let from = FLAT + 4.0 * tunnel;
+            let to = (FLAT + SLOPE_REACH).lerp(FLAT + 8.0, tunnel);
+            let side = road.lerp(self.natural(point) + slopes, smoothstep(from, to, distance));
+            land = land.lerp(side, smoothstep(0.0, 10.0, slopes));
+        }
         let mut height = land + rock * rise + mountains;
         // Explanadas para los edificios grandes, más allá de los muros.
         for terrace in self.scenery.terraces {
@@ -519,7 +549,7 @@ impl<'a> Shaper<'a> {
             .map(|span| span.weight(along, self.lap, 15.0))
             .fold(0.0, f32::max);
         if bridge > 0.0 {
-            let wild = self.natural(point) + self.rocks(point) + mountains;
+            let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
             height = height.lerp(wild.min(road - 2.5), bridge);
         }
         height
@@ -986,6 +1016,75 @@ mod tests {
         assert!((track.road_height_at(point, high) - high).abs() < 0.5);
         // The ground stays down at the tunnel, under the rock that carries
         // the road above.
+        assert!(tunnels.beneath(&track, point, BURIED).is_some());
+        assert!((terrain.height(point) - low).abs() < 0.1);
+    }
+
+    #[test]
+    fn gold_mine_climbs_its_mountain_and_passes_over_its_galleries() {
+        let circuit = &CIRCUITS[3];
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let tunnels = Tunnels::new(&track, &circuit.scenery);
+        let lap = track.lap_length();
+        let step = track.step_length();
+        let tunnel = circuit.scenery.tunnels[0];
+        // Up and down the mountain the road is cut into its side, not sunk
+        // in a canyon: past the flat ground beside it, the mountainside never
+        // towers over it on both sides, and often falls away on one. (Where
+        // it passes over the excavation, the rock of the excavation carries
+        // it.)
+        let on_mountain: Vec<usize> = (0..track.sample_count())
+            .step_by(25)
+            .filter(|&i| {
+                let (point, road) = (track.centerline()[i], track.elevations()[i]);
+                road > 30.0
+                    && !tunnel.contains(i as f32 * step, lap)
+                    && tunnels.beneath(&track, point, BURIED + FLAT).is_none()
+            })
+            .collect();
+        assert!(on_mountain.len() > 20, "{} points", on_mountain.len());
+        let mut falls = 0;
+        for &index in &on_mountain {
+            let road = |lateral: f32| {
+                let wall = lateral.clamp(-WALL_DISTANCE, WALL_DISTANCE);
+                track.surface_point(index, wall).y
+            };
+            let beside =
+                |lateral: f32| terrain.height(track.offset_point(index, lateral)) - road(lateral);
+            for lateral in [FLAT - 1.0, 1.0 - FLAT] {
+                assert!(beside(lateral).abs() < 0.3, "{index}: {}", beside(lateral));
+            }
+            let (left, right) = (beside(FLAT + 45.0), beside(-FLAT - 45.0));
+            assert!(
+                left.min(right) < 15.0,
+                "a canyon at {index}: {left} {right}"
+            );
+            if left.min(right) < -4.0 {
+                falls += 1;
+            }
+        }
+        assert!(falls * 3 > on_mountain.len(), "falls away at {falls}");
+        // Over the top it crosses the road through the mountain, high above
+        // it.
+        let (below, above) = (0..track.sample_count())
+            .filter(|&i| tunnel.contains(i as f32 * step, lap))
+            .flat_map(|i| (0..track.sample_count()).map(move |j| (i, j)))
+            .filter(|&(_, j)| !tunnel.contains(j as f32 * step, lap))
+            .min_by(|&(a, b), &(c, d)| {
+                let gap =
+                    |i: usize, j: usize| track.centerline()[i].distance(track.centerline()[j]);
+                gap(a, b).total_cmp(&gap(c, d))
+            })
+            .expect("the track crosses the excavation");
+        let point = track.centerline()[below];
+        assert!(point.distance(track.centerline()[above]) < 2.0);
+        let (low, high) = (track.elevations()[below], track.elevations()[above]);
+        assert!(high - low > 50.0, "{low} m under {high} m");
+        assert_eq!(track.nearest_index_at(point, low), below);
+        assert_eq!(track.nearest_index_at(point, high), above);
+        // The ground stays down in the excavation, under the rock that
+        // carries the road above.
         assert!(tunnels.beneath(&track, point, BURIED).is_some());
         assert!((terrain.height(point) - low).abs() < 0.1);
     }

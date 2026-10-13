@@ -583,6 +583,67 @@ mod tests {
     }
 
     #[test]
+    fn no_way_through_a_split_is_clearly_the_quickest() {
+        // Where the road splits three ways, a rival on each way (the one to
+        // the left, the lap, the one to the right) takes about as long from
+        // before the split to after it.
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let forks = track.forks();
+            let step = track.step_length();
+            let tuning = BikeTuning::default();
+            let dt = 1.0 / 120.0;
+            for left in forks.iter().filter(|fork| fork.side > 0.0) {
+                let Some(right) = forks
+                    .iter()
+                    .find(|fork| fork.side < 0.0 && fork.fork.abs_diff(left.fork) < 20)
+                else {
+                    continue;
+                };
+                let from = left.fork.min(right.fork) as f32 * step - 60.0;
+                let to = left.join.max(right.join) as f32 * step + 50.0;
+                let times: Vec<f32> = [3.0, 0.0, -3.0]
+                    .into_iter()
+                    .map(|lane| {
+                        let rival = Rival {
+                            skill: 1.0,
+                            lane,
+                            loops: false,
+                        };
+                        let start = track.index_at(from - 150.0);
+                        let mut state = BikeState::parked_on(&track, track.pose_at(start));
+                        let (mut time, mut started) = (0.0, None);
+                        for _ in 0..(40.0 / dt) as usize {
+                            let input =
+                                decide(&rival, lane, f32::INFINITY, &state, &track, &tuning);
+                            state = advance(&state, &input, &track, &tuning, dt);
+                            time += dt;
+                            let nearest = track.nearest_at(state.position, state.elevation);
+                            let along = track.along(&nearest);
+                            if started.is_none() && (from..from + 50.0).contains(&along) {
+                                started = Some(time);
+                            }
+                            if let Some(start) = started
+                                && (to..to + 50.0).contains(&along)
+                            {
+                                return time - start;
+                            }
+                        }
+                        panic!("{}: lane {lane} never got through", circuit.name)
+                    })
+                    .collect();
+                let quickest = times.iter().copied().fold(f32::MAX, f32::min);
+                let slowest = times.iter().copied().fold(0.0, f32::max);
+                assert!(
+                    slowest < 1.05 * quickest,
+                    "{}: {times:?} s through the split at {from} m",
+                    circuit.name
+                );
+            }
+        }
+    }
+
+    #[test]
     fn out_of_a_loop_the_road_back_keeps_the_wheels_on_the_ground() {
         for circuit in &crate::circuits::CIRCUITS {
             let track = Track::new(&circuit.layout);

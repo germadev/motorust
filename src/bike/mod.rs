@@ -2704,7 +2704,8 @@ mod tests {
         let here = |state: &BikeState| track.nearest_index_at(state.position, state.elevation);
         let (mut progress, mut last) = (0i64, here(&state) as i64);
         let mut on_grass = 0;
-        let steps = (60.0 / DT) as usize;
+        // Long enough for a lap of the longest track.
+        let steps = (80.0 / DT) as usize;
         for _ in 0..steps {
             // Mira 18 m por delante de la línea central y gira hacia allí.
             let ahead = track.offset_point(here(&state) + 9, 0.0);
