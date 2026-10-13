@@ -22,6 +22,7 @@ use crate::bike::{BikeInput, BikeState, Player};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
+use crate::settings::{DEFAULT_VOLUME, Settings};
 use crate::ui::MenuSound;
 pub use synth::Sound;
 use synth::{Controls, Mix, REDLINE, VOICES, pan};
@@ -90,14 +91,30 @@ impl Plugin for SoundPlugin {
 #[derive(Resource)]
 struct SoundControls(Arc<Controls>);
 
+/// How loud the effects and the music play at [`DEFAULT_VOLUME`]: the
+/// balance found by ear, with the effects at a fifth of the old scale and
+/// the music at nine tenths.
+const FX_AT_DEFAULT: f32 = 0.2;
+const MUSIC_AT_DEFAULT: f32 = 0.9;
+
+/// Gain of the sound effects at a volume of `level` %.
+pub fn fx_gain(level: u32) -> f32 {
+    level as f32 / DEFAULT_VOLUME as f32 * FX_AT_DEFAULT
+}
+
+/// Gain of the music at a volume of `level` %.
+pub fn music_gain(level: u32) -> f32 {
+    level as f32 / DEFAULT_VOLUME as f32 * MUSIC_AT_DEFAULT
+}
+
 fn start_mixer(
     mut commands: Commands,
     controls: Res<SoundControls>,
-    settings: Option<Res<crate::settings::Settings>>,
+    settings: Option<Res<Settings>>,
     mut mixes: ResMut<Assets<Mix>>,
 ) {
-    if let Some(s) = settings {
-        controls.0.fx.set(s.fx_volume as f32 / 100.0);
+    if let Some(settings) = settings {
+        controls.0.fx.set(fx_gain(settings.fx_volume));
     }
     let mix = mixes.add(Mix {
         controls: controls.0.clone(),
@@ -105,14 +122,11 @@ fn start_mixer(
     commands.spawn(AudioPlayer(mix));
 }
 
-fn sync_settings_sound(
-    settings: Option<Res<crate::settings::Settings>>,
-    controls: Res<SoundControls>,
-) {
-    if let Some(s) = settings
-        && s.is_changed()
+fn sync_settings_sound(settings: Option<Res<Settings>>, controls: Res<SoundControls>) {
+    if let Some(settings) = settings
+        && settings.is_changed()
     {
-        controls.0.fx.set(s.fx_volume as f32 / 100.0);
+        controls.0.fx.set(fx_gain(settings.fx_volume));
     }
 }
 
@@ -433,6 +447,19 @@ fn toggle_mute(keyboard: Res<ButtonInput<KeyCode>>, controls: Res<SoundControls>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_volume_is_the_balance_found_by_ear() {
+        // Effects at 20 % and music at 90 % of the old scale sounded right:
+        // that is now 80 % of both.
+        assert_eq!(fx_gain(DEFAULT_VOLUME), 0.2);
+        assert_eq!(music_gain(DEFAULT_VOLUME), 0.9);
+        assert_eq!(fx_gain(0), 0.0);
+        assert_eq!(music_gain(0), 0.0);
+        // Linear: each step of 10 % is an eighth of the default.
+        assert!((fx_gain(40) - 0.1).abs() < 1e-6);
+        assert!((music_gain(100) - 1.125).abs() < 1e-6);
+    }
 
     const DT: f32 = 1.0 / 60.0;
 

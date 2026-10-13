@@ -1,21 +1,34 @@
 //! Pantalla de bienvenida: el título del juego mientras la cámara recorre la
 //! pista, con opciones de 1 jugador, 2 jugadores, Opciones y Salir.
 //! En la web no se sale del juego (se cierra la pestaña).
+//!
+//! The menu follows the menu design: two cards side by side (one helmet for
+//! 1 player, two facing each other for 2 players) and two full-width
+//! banners, translucent black; the chosen one lights up in its colour with a
+//! faint chequered flag sliding across it ([`CardMaterial`]). The menu is as
+//! wide as the title of the game.
 
+use bevy::asset::embedded_asset;
 use bevy::prelude::*;
+use bevy::render::render_resource::AsBindGroup;
+use bevy::shader::ShaderRef;
+use bevy::ui::UiSystems;
+use bevy::window::PrimaryWindow;
 
 use crate::camera::CameraGlide;
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
+use crate::legend::{Keys, menu_prompts, spawn_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
-use crate::options::{OptionsMenu, OptionsReturn};
+use crate::options::{OptionsInput, OptionsMenu, OptionsReturn};
 use crate::settings::{Settings, WEB};
 use crate::track::Track;
 use crate::ui::{
-    InputDevice, MenuInput, MenuSound, UiIcons, current_active_device, menu_prompts,
-    spawn_legend_bar, spawn_logo, spawn_title, text_font, version_label,
+    ActiveDevice, EXIT_RED, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
+    spawn_logo, spawn_panel, spawn_title, version_label,
 };
+use crate::vector_art::{Art, VectorArt, advance};
 
 /// La cámara recorre la pista a esta velocidad (m/s), a un lado del centro
 /// de la carretera (m, positivo a la izquierda) y a esta altura sobre ella;
@@ -28,21 +41,108 @@ const FLYBY_AHEAD: f32 = 45.0;
 const FLYBY_LOOK_HEIGHT: f32 = 1.5;
 const FLYBY_FOV: f32 = 0.9;
 
+/// Size of the title of the game (px). The menu is exactly as wide.
+const TITLE_SIZE: f32 = 110.0;
+
+/// The menu design is 1417 units wide; everything below is in its units.
+const DESIGN_WIDTH: f32 = 1417.0;
+/// Space between the row of cards and the first banner, and between banners.
+const ROW_GAPS: [f32; 2] = [40.0, 36.0];
+const CORNER_RADIUS: f32 = 18.0;
+/// Fill of the buttons that are not chosen: black, 60 % opaque in the
+/// design. The design mixes it with what is behind in sRGB, which darkens
+/// more than mixing in linear light as Bevy does: 87 % opaque here looks the
+/// same (1 - 0.4^2.2).
+const IDLE: Color = Color::srgba(0.0, 0.0, 0.0, 0.867);
+/// Seconds a button takes to light up or go dark.
+const FADE: f32 = 0.15;
+
+/// The buttons of the menu, in order: 1 player, 2 players, Options, Exit.
+struct Button {
+    size: Vec2,
+    /// Colour when chosen.
+    lit: Color,
+    /// Where the chequered flag slides in one period (units): sideways for
+    /// the cards, along the slant of the squares for the banners.
+    flow: Vec2,
+}
+
+const BUTTONS: [Button; 4] = [
+    Button {
+        size: Vec2::new(683.0, 342.0),
+        lit: Color::srgb(10.0 / 255.0, 100.0 / 255.0, 1.0),
+        flow: Vec2::new(180.0, 0.0),
+    },
+    Button {
+        size: Vec2::new(684.0, 342.0),
+        lit: Color::srgb(20.0 / 255.0, 178.0 / 255.0, 75.0 / 255.0),
+        flow: Vec2::new(-180.0, 0.0),
+    },
+    Button {
+        size: Vec2::new(1417.0, 146.0),
+        lit: Color::srgb(251.0 / 255.0, 191.0 / 255.0, 0.0),
+        flow: Vec2::new(51.615, -180.0),
+    },
+    Button {
+        size: Vec2::new(1417.0, 146.0),
+        lit: EXIT_RED,
+        flow: Vec2::new(-51.615, 180.0),
+    },
+];
+
+/// Where the helmets go on the cards (units, from the top left corner of
+/// the card): left, top, width and height.
+const HELMET_1P: Rect = rect(46.6, 53.78, 261.88, 269.62);
+const HELMETS_2P: [Rect; 2] = [
+    rect(26.77, 76.6, 217.36, 223.78),
+    rect(439.88, 76.6, 217.36, 223.78),
+];
+
+const fn rect(left: f32, top: f32, width: f32, height: f32) -> Rect {
+    Rect {
+        min: Vec2::new(left, top),
+        max: Vec2::new(left + width, top + height),
+    }
+}
+/// Where the lettering of each button is centred (units) and how tall its
+/// capitals are.
+const LETTERS: [(Vec2, f32); 4] = [
+    (Vec2::new(484.52, 187.0), 160.0),
+    (Vec2::new(350.06, 181.0), 98.0),
+    (Vec2::new(712.29, 74.03), 72.13),
+    (Vec2::new(708.2, 73.6), 66.88),
+];
+
 pub struct WelcomePlugin;
 
 impl Plugin for WelcomePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Welcome>()
+        embedded_asset!(app, "menu_card.wgsl");
+        app.add_plugins(UiMaterialPlugin::<CardMaterial>::default())
+            .init_resource::<Welcome>()
             .init_resource::<GameMode>()
+            .init_resource::<MenuWidth>()
+            .init_resource::<VectorArt>()
+            .init_resource::<MenuCards>()
             .add_systems(OnEnter(GameState::Welcome), open)
             .add_systems(
                 Update,
                 (
-                    (use_welcome, show_welcome, animate_welcome_cards)
+                    (
+                        use_welcome.after(OptionsInput),
+                        (show_welcome, light_cards).chain(),
+                    )
+                        .chain()
                         .run_if(in_state(GameState::Welcome)),
                     fly_over_track
                         .run_if(in_state(GameState::Welcome).or_else(in_state(GameState::Lobby))),
                 ),
+            )
+            .add_systems(
+                PostUpdate,
+                fit_menu_to_title
+                    .after(UiSystems::Layout)
+                    .run_if(in_state(GameState::Welcome)),
             );
     }
 }
@@ -60,6 +160,9 @@ pub enum GameMode {
 pub struct Welcome {
     pub page: Page,
     pub selected: usize,
+    /// The card of the top row last chosen (0 or 1), to go back to it from
+    /// the banners.
+    pub column: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -97,6 +200,25 @@ pub fn items(page: Page) -> Vec<Item> {
     }
 }
 
+/// The option chosen after moving `step` (up -1, down 1) and `side` (left -1,
+/// right 1) from `selected`, on a menu of `count` options whose first two
+/// are side by side; and the card of the top row to remember.
+fn navigate(selected: usize, column: usize, step: i32, side: i32, count: usize) -> (usize, usize) {
+    // Rows: the two cards, then one banner per row.
+    let row = selected.saturating_sub(1);
+    let rows = count - 1;
+    let mut selected = selected;
+    if step != 0 {
+        let row = (row as i32 + step).rem_euclid(rows as i32) as usize;
+        selected = if row == 0 { column } else { row + 1 };
+    }
+    if side != 0 && selected < 2 {
+        selected = if side > 0 { 1 } else { 0 };
+    }
+    let column = if selected < 2 { selected } else { column };
+    (selected, column)
+}
+
 fn open(mut welcome: ResMut<Welcome>, mut options_menu: ResMut<OptionsMenu>) {
     *welcome = Welcome::default();
     options_menu.close();
@@ -112,126 +234,138 @@ fn use_welcome(
     mut exit: MessageWriter<AppExit>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
-    if options_menu.is_open {
+    // While the options are open, and in the frame they close (the key that
+    // closed them must not also act here).
+    if options_menu.is_open || options_menu.is_changed() {
         return;
     }
 
     let request = input.read();
+    let items = items(welcome.page);
 
     // Esc o B:
     if request.back {
         match welcome.page {
-            Page::Main => {
-                if !WEB {
-                    welcome.page = Page::QuitConfirm;
-                    welcome.selected = 0;
-                    sounds.write(MenuSound::Move);
-                }
+            Page::Main if !WEB => {
+                welcome.page = Page::QuitConfirm;
+                welcome.selected = 0;
+                sounds.write(MenuSound::Move);
             }
+            Page::Main => {}
             Page::QuitConfirm => {
                 welcome.page = Page::Main;
-                welcome.selected = 0;
+                welcome.selected = self::items(Page::Main).len() - 1;
                 sounds.write(MenuSound::Move);
             }
         }
         return;
     }
 
-    // Navegación en la pantalla principal
-    if welcome.page == Page::Main {
-        if request.step != 0 {
-            let max_idx = if WEB { 2 } else { 3 };
-            welcome.selected = match welcome.selected {
-                0 | 1 => {
-                    if request.step > 0 {
-                        2
-                    } else {
-                        max_idx
-                    }
-                }
-                2 => {
-                    if request.step > 0 {
-                        if WEB { 0 } else { 3 }
-                    } else {
-                        0
-                    }
-                }
-                3 => {
-                    if request.step > 0 {
-                        0
-                    } else {
-                        2
-                    }
-                }
-                _ => 0,
-            };
-            sounds.write(MenuSound::Move);
-        }
-
-        if request.side != 0 {
-            if welcome.selected == 0 && request.side > 0 {
-                welcome.selected = 1;
-                sounds.write(MenuSound::Move);
-            } else if welcome.selected == 1 && request.side < 0 {
-                welcome.selected = 0;
+    match welcome.page {
+        Page::Main => {
+            let (selected, column) = navigate(
+                welcome.selected,
+                welcome.column,
+                request.step,
+                request.side,
+                items.len(),
+            );
+            if selected != welcome.selected {
+                welcome.selected = selected;
                 sounds.write(MenuSound::Move);
             }
+            welcome.column = column;
         }
-
-        if request.confirm || request.start {
-            match welcome.selected {
-                0 => {
-                    sounds.write(MenuSound::Confirm);
-                    *game_mode = GameMode::SinglePlayer;
-                    next.set(GameState::Tracks);
-                }
-                1 => {
-                    sounds.write(MenuSound::Confirm);
-                    *game_mode = GameMode::SplitScreen;
-                    next.set(GameState::Lobby);
-                }
-                2 => {
-                    sounds.write(MenuSound::Confirm);
-                    options_menu.open(OptionsReturn::Welcome);
-                }
-                3 => {
-                    sounds.write(MenuSound::Move);
-                    welcome.page = Page::QuitConfirm;
-                    welcome.selected = 0;
-                }
-                _ => {}
-            }
-        }
-        return;
-    }
-
-    // Navegación en confirmación de salida
-    if welcome.page == Page::QuitConfirm {
-        let items = items(Page::QuitConfirm);
-        if request.step != 0 || request.side != 0 {
+        Page::QuitConfirm => {
             let delta = if request.step != 0 {
                 request.step
             } else {
                 request.side
             };
-            welcome.selected =
-                (welcome.selected as i32 + delta).rem_euclid(items.len() as i32) as usize;
-            sounds.write(MenuSound::Move);
-        }
-
-        if request.confirm {
-            match items[welcome.selected] {
-                Item::CancelQuit => {
-                    sounds.write(MenuSound::Move);
-                    welcome.page = Page::Main;
-                    welcome.selected = 0;
-                }
-                Item::ConfirmQuit => {
-                    exit.write(AppExit::Success);
-                }
-                _ => {}
+            if delta != 0 {
+                welcome.selected =
+                    (welcome.selected as i32 + delta).rem_euclid(items.len() as i32) as usize;
+                sounds.write(MenuSound::Move);
             }
         }
+    }
+
+    if !(request.confirm || request.start) {
+        return;
+    }
+    match items[welcome.selected.min(items.len() - 1)] {
+        Item::SinglePlayer => {
+            sounds.write(MenuSound::Confirm);
+            *game_mode = GameMode::SinglePlayer;
+            next.set(GameState::Tracks);
+        }
+        Item::SplitScreen => {
+            sounds.write(MenuSound::Confirm);
+            *game_mode = GameMode::SplitScreen;
+            next.set(GameState::Lobby);
+        }
+        Item::Options => {
+            sounds.write(MenuSound::Confirm);
+            options_menu.open(OptionsReturn::Welcome);
+        }
+        Item::Quit => {
+            sounds.write(MenuSound::Move);
+            welcome.page = Page::QuitConfirm;
+            welcome.selected = 0;
+        }
+        Item::CancelQuit => {
+            sounds.write(MenuSound::Move);
+            welcome.page = Page::Main;
+            welcome.selected = self::items(Page::Main).len() - 1;
+        }
+        Item::ConfirmQuit => {
+            exit.write(AppExit::Success);
+        }
+    }
+}
+
+/// How wide the menu is (px): as wide as the title, measured once it is laid
+/// out. It starts with the width the font gives.
+#[derive(Resource)]
+struct MenuWidth(f32);
+
+impl Default for MenuWidth {
+    fn default() -> Self {
+        Self(advance("MOTORUST", TITLE_SIZE).round())
+    }
+}
+
+/// The menu buttons look like this (see `menu_card.wgsl`).
+#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
+pub struct CardMaterial {
+    /// Fill colour (sRGB, with alpha).
+    #[uniform(0)]
+    color: Vec4,
+    /// xy: where the flag slides in one period (units); z: width of the
+    /// button (units); w: how much the flag shows (0 to 1).
+    #[uniform(1)]
+    flow: Vec4,
+}
+
+impl UiMaterial for CardMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "embedded://motorust/menu_card.wgsl".into()
+    }
+}
+
+/// The look of each button, kept between visits so that they do not flash.
+#[derive(Resource)]
+struct MenuCards([Handle<CardMaterial>; 4]);
+
+impl FromWorld for MenuCards {
+    fn from_world(world: &mut World) -> Self {
+        let mut materials = world.resource_mut::<Assets<CardMaterial>>();
+        Self(BUTTONS.each_ref().map(|button| {
+            materials.add(CardMaterial {
+                color: Srgba::from(IDLE).to_vec4(),
+                flow: button.flow.extend(button.size.x).extend(0.0),
+            })
+        }))
     }
 }
 
@@ -239,8 +373,21 @@ fn use_welcome(
 struct WelcomeScreen;
 
 #[derive(Component)]
-struct WelcomeCard {
-    index: usize,
+struct WelcomeTitle;
+
+/// What the screen shows: when it changes, the screen is built again.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Shown {
+    page: Page,
+    /// The chosen option, on the pages that show it as text.
+    selected: Option<usize>,
+    options_open: bool,
+    language: Language,
+    device: ActiveDevice,
+    width: f32,
+    /// Physical pixels per logical pixel: the art is drawn at its size on
+    /// the screen.
+    scale_factor: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -251,17 +398,33 @@ fn show_welcome(
     settings: Res<Settings>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
+    width: Res<MenuWidth>,
+    window: Query<&Window, With<PrimaryWindow>>,
     icons: Res<UiIcons>,
+    cards: Res<MenuCards>,
+    mut art: ResMut<VectorArt>,
+    mut images: ResMut<Assets<Image>>,
     font: Res<UiFont>,
     shown: Query<Entity, With<WelcomeScreen>>,
+    mut last: Local<Option<Shown>>,
 ) {
-    if !welcome.is_changed()
-        && !options_menu.is_changed()
-        && !settings.is_changed()
-        && !device.is_changed()
-    {
+    let lang = settings.language;
+    let active_dev = current_active_device(*device, active_controller.as_deref());
+    let now = Shown {
+        page: welcome.page,
+        selected: (welcome.page == Page::QuitConfirm).then_some(welcome.selected),
+        options_open: options_menu.is_open,
+        language: lang,
+        device: active_dev,
+        width: width.0,
+        scale_factor: window.iter().next().map_or(1.0, Window::scale_factor),
+    };
+    // Built already (the screen goes when leaving the state, and is hidden
+    // while the options are open).
+    if *last == Some(now) && (options_menu.is_open || !shown.is_empty()) {
         return;
     }
+    *last = Some(now);
 
     for entity in &shown {
         commands.entity(entity).despawn();
@@ -272,8 +435,38 @@ fn show_welcome(
         return;
     }
 
-    let lang = settings.language;
-    let active_dev = current_active_device(*device, active_controller.as_deref());
+    // The art, drawn at its size on the screen (physical pixels per design
+    // unit), and the lettering in the language of the game.
+    let pixels = width.0 / DESIGN_WIDTH * now.scale_factor;
+    let mut draw =
+        |piece: Art, units: f32| art.get(piece, (units * pixels).round() as u32, &mut images);
+    let helmets = [
+        draw(Art::Helmet, HELMET_1P.height()),
+        draw(Art::Helmet, HELMETS_2P[0].height()),
+    ];
+    let texts = [
+        "1P".to_string(),
+        "2P".to_string(),
+        lang.options().to_uppercase(),
+        lang.exit_game().to_uppercase(),
+    ];
+    let labels: [_; 4] = std::array::from_fn(|index| {
+        let (_, height) = LETTERS[index];
+        let text = Art::Text(texts[index].clone());
+        let label = draw(text.clone(), height);
+        // As tall as in the design, unless that makes it too wide.
+        let widest = BUTTONS[index].size.x * 0.9 * pixels;
+        if label.1.x as f32 > widest {
+            draw(text, height * widest / label.1.x as f32)
+        } else {
+            label
+        }
+    });
+    let menu_art = MenuArt {
+        pixels,
+        helmets,
+        labels,
+    };
 
     commands
         .spawn((
@@ -285,7 +478,6 @@ fn show_welcome(
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                row_gap: px(12),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.02, 0.06, 0.3)),
@@ -293,248 +485,23 @@ fn show_welcome(
         .with_children(|screen| {
             match welcome.page {
                 Page::Main => {
-                    spawn_logo(screen, &font, 110.0);
-
-                    // Contenedor principal de tarjetas según el diseño de referencia
                     screen
-                        .spawn((Node {
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
-                            row_gap: px(16),
-                            margin: UiRect::top(px(14)),
+                        .spawn(Node {
+                            margin: UiRect::bottom(px(8)),
                             ..default()
-                        },))
-                        .with_children(|menu_box| {
-                            // Fila superior: [ 1P ][ 2P ]
-                            menu_box
-                                .spawn((Node {
-                                    flex_direction: FlexDirection::Row,
-                                    column_gap: px(20),
-                                    ..default()
-                                },))
-                                .with_children(|row| {
-                                    // 1P Card: Casco a la izquierda mirando a la derecha, 1P a la derecha
-                                    let is_1p = welcome.selected == 0;
-                                    row.spawn((
-                                        WelcomeCard { index: 0 },
-                                        Node {
-                                            width: px(360),
-                                            height: px(180),
-                                            padding: UiRect::axes(px(24), px(16)),
-                                            border_radius: BorderRadius::all(px(16)),
-                                            border: UiRect::all(if is_1p {
-                                                px(3.0)
-                                            } else {
-                                                px(1.5)
-                                            }),
-                                            flex_direction: FlexDirection::Row,
-                                            align_items: AlignItems::Center,
-                                            justify_content: JustifyContent::SpaceEvenly,
-                                            overflow: Overflow::clip(),
-                                            ..default()
-                                        },
-                                        ImageNode::new(if is_1p {
-                                            icons.card_blue.clone()
-                                        } else {
-                                            icons.card_dark.clone()
-                                        }),
-                                        BorderColor::all(if is_1p {
-                                            Color::WHITE
-                                        } else {
-                                            Color::srgba(1.0, 1.0, 1.0, 0.22)
-                                        }),
-                                    ))
-                                    .with_children(|card| {
-                                        card.spawn((
-                                            ImageNode::new(icons.helmet.clone()),
-                                            Node {
-                                                width: px(122),
-                                                height: px(122),
-                                                ..default()
-                                            },
-                                        ));
-                                        card.spawn((
-                                            Text::new("1P"),
-                                            text_font(&font, 70.0),
-                                            TextColor(Color::WHITE),
-                                            TextShadow {
-                                                offset: Vec2::splat(2.5),
-                                                color: Color::srgba(0.0, 0.0, 0.0, 0.7),
-                                            },
-                                        ));
-                                    });
+                        })
+                        .with_children(|title| {
+                            spawn_logo(title, &font, TITLE_SIZE);
+                        })
+                        .insert(WelcomeTitle);
+                    spawn_menu(screen, width.0, &cards, &menu_art);
 
-                                    // 2P Card: Casco izquierda, 2P centro, Casco invertido derecha
-                                    let is_2p = welcome.selected == 1;
-                                    row.spawn((
-                                        WelcomeCard { index: 1 },
-                                        Node {
-                                            width: px(360),
-                                            height: px(180),
-                                            padding: UiRect::axes(px(16), px(16)),
-                                            border_radius: BorderRadius::all(px(16)),
-                                            border: UiRect::all(if is_2p {
-                                                px(3.0)
-                                            } else {
-                                                px(1.5)
-                                            }),
-                                            flex_direction: FlexDirection::Row,
-                                            align_items: AlignItems::Center,
-                                            justify_content: JustifyContent::SpaceBetween,
-                                            overflow: Overflow::clip(),
-                                            ..default()
-                                        },
-                                        ImageNode::new(if is_2p {
-                                            icons.card_blue.clone()
-                                        } else {
-                                            icons.card_dark.clone()
-                                        }),
-                                        BorderColor::all(if is_2p {
-                                            Color::WHITE
-                                        } else {
-                                            Color::srgba(1.0, 1.0, 1.0, 0.22)
-                                        }),
-                                    ))
-                                    .with_children(|card| {
-                                        card.spawn((
-                                            ImageNode::new(icons.helmet.clone()),
-                                            Node {
-                                                width: px(96),
-                                                height: px(96),
-                                                ..default()
-                                            },
-                                        ));
-                                        card.spawn((
-                                            Text::new("2P"),
-                                            text_font(&font, 62.0),
-                                            TextColor(Color::WHITE),
-                                            TextShadow {
-                                                offset: Vec2::splat(2.5),
-                                                color: Color::srgba(0.0, 0.0, 0.0, 0.7),
-                                            },
-                                        ));
-                                        card.spawn((
-                                            ImageNode {
-                                                image: icons.helmet.clone(),
-                                                flip_x: true,
-                                                ..default()
-                                            },
-                                            Node {
-                                                width: px(96),
-                                                height: px(96),
-                                                ..default()
-                                            },
-                                        ));
-                                    });
-                                });
-
-                            // Fila Opciones: Banner horizontal con fondo amarillo/dorado
-                            let is_opt = welcome.selected == 2;
-                            menu_box
-                                .spawn((
-                                    WelcomeCard { index: 2 },
-                                    Node {
-                                        width: px(740),
-                                        height: px(68),
-                                        padding: UiRect::axes(px(24), px(12)),
-                                        border_radius: BorderRadius::all(px(14)),
-                                        border: UiRect::all(if is_opt { px(3.0) } else { px(1.5) }),
-                                        flex_direction: FlexDirection::Row,
-                                        align_items: AlignItems::Center,
-                                        justify_content: JustifyContent::Center,
-                                        overflow: Overflow::clip(),
-                                        ..default()
-                                    },
-                                    ImageNode {
-                                        image: icons.banner_yellow.clone(),
-                                        color: if is_opt {
-                                            Color::WHITE
-                                        } else {
-                                            Color::srgba(0.85, 0.85, 0.85, 0.82)
-                                        },
-                                        ..default()
-                                    },
-                                    BorderColor::all(if is_opt {
-                                        Color::WHITE
-                                    } else {
-                                        Color::srgba(1.0, 1.0, 1.0, 0.22)
-                                    }),
-                                ))
-                                .with_children(|btn| {
-                                    btn.spawn((
-                                        Text::new(lang.options().to_uppercase()),
-                                        text_font(&font, 32.0),
-                                        TextColor(Color::WHITE),
-                                        TextShadow {
-                                            offset: Vec2::splat(2.0),
-                                            color: Color::srgba(0.0, 0.0, 0.0, 0.6),
-                                        },
-                                    ));
-                                });
-
-                            // Fila Salir del juego: Banner horizontal con fondo rojo
-                            if !WEB {
-                                let is_quit = welcome.selected == 3;
-                                menu_box
-                                    .spawn((
-                                        WelcomeCard { index: 3 },
-                                        Node {
-                                            width: px(740),
-                                            height: px(68),
-                                            padding: UiRect::axes(px(24), px(12)),
-                                            border_radius: BorderRadius::all(px(14)),
-                                            border: UiRect::all(if is_quit {
-                                                px(3.0)
-                                            } else {
-                                                px(1.5)
-                                            }),
-                                            flex_direction: FlexDirection::Row,
-                                            align_items: AlignItems::Center,
-                                            justify_content: JustifyContent::Center,
-                                            overflow: Overflow::clip(),
-                                            ..default()
-                                        },
-                                        ImageNode {
-                                            image: icons.banner_red.clone(),
-                                            color: if is_quit {
-                                                Color::WHITE
-                                            } else {
-                                                Color::srgba(0.85, 0.85, 0.85, 0.82)
-                                            },
-                                            ..default()
-                                        },
-                                        BorderColor::all(if is_quit {
-                                            Color::WHITE
-                                        } else {
-                                            Color::srgba(1.0, 1.0, 1.0, 0.22)
-                                        }),
-                                    ))
-                                    .with_children(|btn| {
-                                        btn.spawn((
-                                            Text::new(lang.exit_game().to_uppercase()),
-                                            text_font(&font, 32.0),
-                                            TextColor(Color::WHITE),
-                                            TextShadow {
-                                                offset: Vec2::splat(2.0),
-                                                color: Color::srgba(0.0, 0.0, 0.0, 0.6),
-                                            },
-                                        ));
-                                    });
-                            }
-                        });
-
-                    // Leyenda de control en la parte inferior de la pantalla
-                    let prompts = menu_prompts(
-                        active_dev,
-                        lang,
-                        welcome.selected < 2,
-                        match lang {
-                            Language::Spanish => "Jugar / Aceptar",
-                            Language::English => "Play / Select",
-                        },
-                        if !WEB { Some(lang.exit_game()) } else { None },
-                    );
-                    spawn_legend_bar(screen, &font, &prompts);
+                    let mut hints = vec![(Keys::Confirm, lang.hint_accept())];
+                    if !WEB {
+                        hints.push((Keys::Back, lang.hint_exit()));
+                    }
+                    let prompts = menu_prompts(active_dev, &hints);
+                    spawn_legend(screen, &font, &icons, active_dev, &prompts);
                 }
                 Page::QuitConfirm => {
                     spawn_title(
@@ -547,75 +514,18 @@ fn show_welcome(
                         48.0,
                     );
 
-                    screen
-                        .spawn((
-                            Node {
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                row_gap: px(12),
-                                min_width: px(380),
-                                padding: UiRect::all(px(16)),
-                                border_radius: BorderRadius::all(px(16)),
-                                border: UiRect::all(px(1)),
-                                ..default()
-                            },
-                            BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.88)),
-                            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.16)),
-                        ))
-                        .with_children(|panel| {
-                            let items = [
-                                match lang {
-                                    Language::Spanish => "Cancelar",
-                                    Language::English => "Cancel",
-                                },
-                                match lang {
-                                    Language::Spanish => "Salir del juego",
-                                    Language::English => "Exit game",
-                                },
-                            ];
-                            for (index, label) in items.iter().enumerate() {
-                                let chosen = index == welcome.selected;
-                                panel
-                                    .spawn((
-                                        Node {
-                                            width: percent(100),
-                                            justify_content: JustifyContent::Center,
-                                            padding: UiRect::axes(px(24), px(10)),
-                                            border_radius: BorderRadius::all(px(10)),
-                                            ..default()
-                                        },
-                                        BackgroundColor(if chosen {
-                                            Color::srgba(1.0, 0.8, 0.2, 0.95)
-                                        } else {
-                                            Color::NONE
-                                        }),
-                                    ))
-                                    .with_child((
-                                        Text::new(*label),
-                                        text_font(&font, 22.0),
-                                        TextColor(if chosen {
-                                            Color::srgb(0.08, 0.06, 0.02)
-                                        } else {
-                                            Color::WHITE
-                                        }),
-                                    ));
-                            }
-                        });
+                    // The same panel as the pause menu's, with leaving in red.
+                    let rows = [Row::new(lang.hint_cancel()), Row::danger(lang.exit_game())];
+                    spawn_panel(screen, &font, &rows, welcome.selected, false);
 
                     let prompts = menu_prompts(
                         active_dev,
-                        lang,
-                        false,
-                        match lang {
-                            Language::Spanish => "Aceptar",
-                            Language::English => "Select",
-                        },
-                        Some(match lang {
-                            Language::Spanish => "Cancelar",
-                            Language::English => "Cancel",
-                        }),
+                        &[
+                            (Keys::Confirm, lang.hint_accept()),
+                            (Keys::Back, lang.hint_cancel()),
+                        ],
                     );
-                    spawn_legend_bar(screen, &font, &prompts);
+                    spawn_legend(screen, &font, &icons, active_dev, &prompts);
                 }
             }
 
@@ -623,22 +533,166 @@ fn show_welcome(
         });
 }
 
-/// Animación de respiración y realce de escala para la opción seleccionada.
-fn animate_welcome_cards(
-    time: Res<Time>,
-    welcome: Res<Welcome>,
-    mut query: Query<(&WelcomeCard, &mut Transform)>,
-) {
-    if welcome.page != Page::Main {
-        return;
+/// The images of the menu, and their size, in physical pixels.
+struct MenuArt {
+    /// Physical pixels per design unit.
+    pixels: f32,
+    /// The helmet of the 1 player card and of the 2 players card.
+    helmets: [(Handle<Image>, UVec2); 2],
+    /// The lettering of each button.
+    labels: [(Handle<Image>, UVec2); 4],
+}
+
+/// The buttons, `width` px wide, as in the menu design.
+fn spawn_menu(screen: &mut ChildSpawnerCommands, width: f32, cards: &MenuCards, art: &MenuArt) {
+    let scale = width / DESIGN_WIDTH;
+    let button = |index: usize| ButtonLook {
+        index,
+        scale,
+        pixels: art.pixels,
+        material: cards.0[index].clone(),
+        label: art.labels[index].clone(),
+    };
+    screen
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            width: px(width),
+            ..default()
+        })
+        .with_children(|menu| {
+            menu.spawn(Node {
+                justify_content: JustifyContent::SpaceBetween,
+                width: percent(100),
+                ..default()
+            })
+            .with_children(|row| {
+                spawn_button(row, button(0)).with_children(|card| {
+                    card.spawn((
+                        ImageNode::new(art.helmets[0].0.clone()),
+                        place(HELMET_1P, scale),
+                    ));
+                });
+                spawn_button(row, button(1)).with_children(|card| {
+                    for (helmet, flip_x) in HELMETS_2P.into_iter().zip([false, true]) {
+                        card.spawn((
+                            ImageNode {
+                                image: art.helmets[1].0.clone(),
+                                flip_x,
+                                ..default()
+                            },
+                            place(helmet, scale),
+                        ));
+                    }
+                });
+            });
+            for (index, gap) in (2..items(Page::Main).len()).zip(ROW_GAPS) {
+                menu.spawn(Node {
+                    height: px(gap * scale),
+                    ..default()
+                });
+                spawn_button(menu, button(index));
+            }
+        });
+}
+
+/// What a button needs to be built.
+struct ButtonLook {
+    index: usize,
+    /// Logical pixels per design unit.
+    scale: f32,
+    /// Physical pixels per design unit.
+    pixels: f32,
+    material: Handle<CardMaterial>,
+    /// The image of its lettering and its size (physical px).
+    label: (Handle<Image>, UVec2),
+}
+
+/// A button with its lettering; the helmets go in after.
+fn spawn_button<'a>(parent: &'a mut ChildSpawnerCommands, look: ButtonLook) -> EntityCommands<'a> {
+    let ButtonLook {
+        index,
+        scale,
+        pixels,
+        material,
+        label: (image, image_size),
+    } = look;
+    let size = BUTTONS[index].size;
+    // Centred where the design has it, one image pixel per screen pixel.
+    let (center, _) = LETTERS[index];
+    let letters = Rect::from_center_size(center, image_size.as_vec2() / pixels);
+    let mut button = parent.spawn((
+        Node {
+            width: px(size.x * scale),
+            height: px(size.y * scale),
+            border_radius: BorderRadius::all(px(CORNER_RADIUS * scale)),
+            ..default()
+        },
+        MaterialNode(material),
+    ));
+    button.with_child((ImageNode::new(image), place(letters, scale)));
+    button
+}
+
+/// A node over its card at `rect` (design units).
+fn place(rect: Rect, scale: f32) -> Node {
+    Node {
+        position_type: PositionType::Absolute,
+        left: px(rect.min.x * scale),
+        top: px(rect.min.y * scale),
+        width: px(rect.width() * scale),
+        height: px(rect.height() * scale),
+        ..default()
     }
-    for (card, mut transform) in &mut query {
-        if card.index == welcome.selected {
-            let pulse = 1.0 + 0.016 * (time.elapsed_secs() * 5.0).sin();
-            transform.scale = Vec3::splat(pulse);
+}
+
+/// The chosen button lights up and the rest go dark, little by little.
+fn light_cards(
+    time: Res<Time<Real>>,
+    welcome: Res<Welcome>,
+    cards: Res<MenuCards>,
+    mut materials: ResMut<Assets<CardMaterial>>,
+) {
+    let step = (time.delta_secs() / FADE).min(1.0);
+    for (index, handle) in cards.0.iter().enumerate() {
+        let chosen = welcome.page == Page::Main && welcome.selected == index;
+        let (color, flag) = if chosen {
+            (Srgba::from(BUTTONS[index].lit).to_vec4(), 1.0)
         } else {
-            transform.scale = Vec3::ONE;
+            (Srgba::from(IDLE).to_vec4(), 0.0)
+        };
+        let Some(material) = materials.get(handle) else {
+            continue;
+        };
+        if material.color == color && material.flow.w == flag {
+            continue;
         }
+        let Some(mut material) = materials.get_mut(handle) else {
+            continue;
+        };
+        material.color = approach(material.color, color, step);
+        material.flow.w = approach(Vec4::splat(material.flow.w), Vec4::splat(flag), step).x;
+    }
+}
+
+/// `from` moved a fraction `step` of the way to `to`, and all the way when
+/// it is close.
+fn approach(from: Vec4, to: Vec4, step: f32) -> Vec4 {
+    let next = from.lerp(to, step);
+    if next.distance(to) < 0.004 { to } else { next }
+}
+
+/// The menu is as wide as the title: once the title is laid out, its width
+/// is the menu's (and the screen is built again if it was not).
+fn fit_menu_to_title(
+    title: Query<&ComputedNode, With<WelcomeTitle>>,
+    mut width: ResMut<MenuWidth>,
+) {
+    let Some(node) = title.iter().next() else {
+        return;
+    };
+    let measured = (node.size().x * node.inverse_scale_factor).round();
+    if measured > 0.0 && measured != width.0 {
+        width.0 = measured;
     }
 }
 
@@ -701,5 +755,50 @@ mod tests {
         let version = concat!("v", env!("CARGO_PKG_VERSION"));
         assert!(version.starts_with('v'));
         assert_eq!(version, format!("v{}", env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn the_menu_is_walked_like_the_design() {
+        // 1P, 2P side by side; Options and Exit below.
+        let go = |from: (usize, usize), step, side| navigate(from.0, from.1, step, side, 4);
+        assert_eq!(go((0, 0), 0, 1), (1, 1));
+        assert_eq!(go((1, 1), 0, -1), (0, 0));
+        assert_eq!(go((1, 1), 1, 0), (2, 1));
+        assert_eq!(go((2, 1), 1, 0), (3, 1));
+        assert_eq!(go((3, 1), 1, 0), (1, 1), "back to the card last chosen");
+        assert_eq!(go((2, 1), -1, 0), (1, 1));
+        assert_eq!(go((0, 0), -1, 0), (3, 0), "up from the top wraps around");
+        assert_eq!(
+            go((2, 0), 0, 1),
+            (2, 0),
+            "the banners ignore left and right"
+        );
+        // On the web there is no Exit.
+        assert_eq!(navigate(2, 0, 1, 0, 3), (0, 0));
+        assert_eq!(navigate(0, 0, -1, 0, 3), (2, 0));
+    }
+
+    #[test]
+    fn the_menu_keeps_the_proportions_of_the_design() {
+        let cards = BUTTONS[0].size.x + BUTTONS[1].size.x;
+        // The cards and the space between them make up the banners' width.
+        assert_eq!(cards + 50.0, BUTTONS[2].size.x);
+        assert_eq!(BUTTONS[2].size.x, DESIGN_WIDTH);
+        // Everything inside its button.
+        let inside = |rect: Rect, size: Vec2| {
+            rect.min.x >= 0.0 && rect.min.y >= 0.0 && rect.max.x <= size.x && rect.max.y <= size.y
+        };
+        assert!(inside(HELMET_1P, BUTTONS[0].size));
+        assert!(HELMETS_2P.iter().all(|&h| inside(h, BUTTONS[1].size)));
+        for (index, (center, height)) in LETTERS.into_iter().enumerate() {
+            let rect = Rect::from_center_size(center, Vec2::new(10.0, height));
+            assert!(inside(rect, BUTTONS[index].size), "{index}");
+        }
+    }
+
+    #[test]
+    fn the_menu_starts_as_wide_as_the_title() {
+        let width = MenuWidth::default().0;
+        assert!((400.0..900.0).contains(&width), "{width}");
     }
 }

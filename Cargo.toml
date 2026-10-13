@@ -19,7 +19,9 @@ sys-locale = "0.3"
 # straight from the bytes built into the game (see src/sound/music.rs).
 rodio = { version = "0.22", default-features = false, features = ["mp3"] }
 
-image = { version = "0.25", default-features = false, features = ["png"] }
+# The same version Bevy uses, to draw the vector art of the start menu: the
+# slanted lettering and the helmet's SVG curves (see src/vector_art.rs).
+swash = "0.2"
 
 # En macOS, los mandos que conoce el sistema se leen con GameController, el
 # framework de Apple (ver src/gamepads/apple.rs).
@@ -30,6 +32,7 @@ objc2-game-controller = "0.3"
 # En escritorio (Windows, Linux, macOS), cargamos y aplicamos el icono de la ventana.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 winit = { version = "0.30", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # En la web, los ajustes se guardan en el almacenamiento del navegador y se
 # avisa a la página cuando el juego ya se ve (la misma versión que ya usa

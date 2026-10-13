@@ -38,10 +38,20 @@ pub struct Settings {
     pub fps: FpsLimit,
     pub language: Language,
     pub controls: Controls,
+    /// Volume of the sound effects and of the music (0 to 100 %), see
+    /// [`crate::sound::fx_gain`] and [`crate::sound::music_gain`]. They are
+    /// saved under new names: the scale changed, and the levels saved with
+    /// the old one would now sound different, so they start again from
+    /// [`DEFAULT_VOLUME`].
+    #[serde(rename = "fx_level")]
     pub fx_volume: u32,
+    #[serde(rename = "music_level")]
     pub music_volume: u32,
     pub music_enabled: bool,
 }
+
+/// Volume the effects and the music start at (%).
+pub const DEFAULT_VOLUME: u32 = 80;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -51,8 +61,8 @@ impl Default for Settings {
             fps: FpsLimit::default(),
             language: Language::default(),
             controls: Controls::default(),
-            fx_volume: 80,
-            music_volume: 80,
+            fx_volume: DEFAULT_VOLUME,
+            music_volume: DEFAULT_VOLUME,
             music_enabled: true,
         }
     }
@@ -340,17 +350,8 @@ impl Controls {
             })
     }
 
-    /// La primera tecla de la acción, para las ayudas en pantalla.
-    #[allow(dead_code)]
-    pub fn first_key(&self, action: Action) -> String {
-        self.get(action)
-            .keys
-            .first()
-            .map_or("—".into(), |&key| key_name(key))
-    }
-
     /// Las teclas y los botones de la acción, para la tabla de controles.
-    pub fn describe(&self, action: Action) -> String {
+    pub fn describe(&self, action: Action, lang: Language) -> String {
         let binding = self.get(action);
         let list = |names: Vec<String>| {
             if names.is_empty() {
@@ -362,11 +363,17 @@ impl Controls {
         let buttons = if action == Action::Wheelie && binding.buttons.is_empty() {
             "RT + A".to_string()
         } else {
-            list(binding.buttons.iter().map(|&b| button_name(b)).collect())
+            list(
+                binding
+                    .buttons
+                    .iter()
+                    .map(|&b| button_name(b, lang))
+                    .collect(),
+            )
         };
         format!(
             "{}   ·   {}",
-            list(binding.keys.iter().map(|&k| key_name(k)).collect()),
+            list(binding.keys.iter().map(|&k| key_name(k, lang)).collect()),
             buttons
         )
     }
@@ -375,28 +382,119 @@ impl Controls {
 /// Cómo se llama una tecla en pantalla (la fuente no tiene flechas). Los
 /// signos son los de la tecla en un teclado estadounidense: el juego conoce
 /// el sitio de cada tecla, no lo que pone en ella.
-pub fn key_name(key: KeyCode) -> String {
+pub fn key_name(key: KeyCode, lang: Language) -> String {
     use KeyCode as K;
+    let english = lang == Language::English;
     let name = match key {
-        K::ArrowUp => "Arriba",
-        K::ArrowDown => "Abajo",
-        K::ArrowLeft => "Izquierda",
-        K::ArrowRight => "Derecha",
-        K::Space => "Espacio",
+        K::ArrowUp => {
+            if english {
+                "Up"
+            } else {
+                "Arriba"
+            }
+        }
+        K::ArrowDown => {
+            if english {
+                "Down"
+            } else {
+                "Abajo"
+            }
+        }
+        K::ArrowLeft => {
+            if english {
+                "Left"
+            } else {
+                "Izquierda"
+            }
+        }
+        K::ArrowRight => {
+            if english {
+                "Right"
+            } else {
+                "Derecha"
+            }
+        }
+        K::Space => {
+            if english {
+                "Space"
+            } else {
+                "Espacio"
+            }
+        }
         K::Enter => "Enter",
         K::NumpadEnter => "Enter (num.)",
         K::Escape => "Esc",
         K::Tab => "Tab",
-        K::Backspace => "Borrar",
-        K::CapsLock => "Bloq Mayús",
-        K::ShiftLeft => "Mayús izq.",
-        K::ShiftRight => "Mayús der.",
-        K::ControlLeft => "Ctrl izq.",
-        K::ControlRight => "Ctrl der.",
-        K::AltLeft => "Alt izq.",
-        K::AltRight => "Alt der.",
-        K::SuperLeft if cfg!(target_os = "macos") => "Cmd izq.",
-        K::SuperRight if cfg!(target_os = "macos") => "Cmd der.",
+        K::Backspace => {
+            if english {
+                "Backspace"
+            } else {
+                "Borrar"
+            }
+        }
+        K::CapsLock => {
+            if english {
+                "Caps Lock"
+            } else {
+                "Bloq Mayús"
+            }
+        }
+        K::ShiftLeft => {
+            if english {
+                "Left Shift"
+            } else {
+                "Mayús izq."
+            }
+        }
+        K::ShiftRight => {
+            if english {
+                "Right Shift"
+            } else {
+                "Mayús der."
+            }
+        }
+        K::ControlLeft => {
+            if english {
+                "Left Ctrl"
+            } else {
+                "Ctrl izq."
+            }
+        }
+        K::ControlRight => {
+            if english {
+                "Right Ctrl"
+            } else {
+                "Ctrl der."
+            }
+        }
+        K::AltLeft => {
+            if english {
+                "Left Alt"
+            } else {
+                "Alt izq."
+            }
+        }
+        K::AltRight => {
+            if english {
+                "Right Alt"
+            } else {
+                "Alt der."
+            }
+        }
+        K::SuperLeft if cfg!(target_os = "macos") => {
+            if english {
+                "Left Cmd"
+            } else {
+                "Cmd izq."
+            }
+        }
+        K::SuperRight if cfg!(target_os = "macos") => {
+            if english {
+                "Right Cmd"
+            } else {
+                "Cmd der."
+            }
+        }
         K::Comma => ",",
         K::Period => ".",
         K::Minus => "-",
@@ -424,8 +522,9 @@ pub fn key_name(key: KeyCode) -> String {
 }
 
 /// Cómo se llama un botón del mando en pantalla: como en los de Xbox.
-pub fn button_name(button: GamepadButton) -> String {
+pub fn button_name(button: GamepadButton, lang: Language) -> String {
     use GamepadButton as B;
+    let english = lang == Language::English;
     let name = match button {
         B::South => "A",
         B::East => "B",
@@ -440,10 +539,34 @@ pub fn button_name(button: GamepadButton) -> String {
         B::Mode => "Home",
         B::LeftThumb => "L3",
         B::RightThumb => "R3",
-        B::DPadUp => "Cruceta arriba",
-        B::DPadDown => "Cruceta abajo",
-        B::DPadLeft => "Cruceta izq.",
-        B::DPadRight => "Cruceta der.",
+        B::DPadUp => {
+            if english {
+                "D-pad up"
+            } else {
+                "Cruceta arriba"
+            }
+        }
+        B::DPadDown => {
+            if english {
+                "D-pad down"
+            } else {
+                "Cruceta abajo"
+            }
+        }
+        B::DPadLeft => {
+            if english {
+                "D-pad left"
+            } else {
+                "Cruceta izq."
+            }
+        }
+        B::DPadRight => {
+            if english {
+                "D-pad right"
+            } else {
+                "Cruceta der."
+            }
+        }
         other => return format!("{other:?}"),
     };
     name.into()
@@ -734,6 +857,17 @@ mod tests {
     }
 
     #[test]
+    fn volumes_saved_with_the_old_scale_start_again_from_the_default() {
+        // The old scale: effects at 20 % and music at 90 % is the balance
+        // that the new scale calls 80 %.
+        let old: Settings = ron::from_str("(fx_volume: 20, music_volume: 90)").unwrap();
+        assert_eq!(old.fx_volume, DEFAULT_VOLUME);
+        assert_eq!(old.music_volume, DEFAULT_VOLUME);
+        let new: Settings = ron::from_str("(fx_level: 50, music_level: 100)").unwrap();
+        assert_eq!((new.fx_volume, new.music_volume), (50, 100));
+    }
+
+    #[test]
     fn a_key_does_only_one_thing() {
         let mut controls = Controls::default();
         // W pasa a frenar: deja de acelerar, que se queda con la flecha.
@@ -828,19 +962,31 @@ mod tests {
 
     #[test]
     fn keys_and_buttons_have_readable_names() {
-        assert_eq!(key_name(KeyCode::KeyW), "W");
-        assert_eq!(key_name(KeyCode::Digit3), "3");
-        assert_eq!(key_name(KeyCode::Numpad3), "3 (num.)");
-        assert_eq!(key_name(KeyCode::ArrowUp), "Arriba");
-        assert_eq!(key_name(KeyCode::F5), "F5");
-        assert_eq!(button_name(GamepadButton::RightTrigger2), "RT");
-        let controls = Controls::default();
-        assert_eq!(controls.describe(Action::Throttle), "W, Arriba   ·   RT, A");
+        let es = Language::Spanish;
+        assert_eq!(key_name(KeyCode::KeyW, es), "W");
+        assert_eq!(key_name(KeyCode::Digit3, es), "3");
+        assert_eq!(key_name(KeyCode::Numpad3, es), "3 (num.)");
+        assert_eq!(key_name(KeyCode::ArrowUp, es), "Arriba");
+        assert_eq!(key_name(KeyCode::ArrowUp, Language::English), "Up");
+        assert_eq!(key_name(KeyCode::F5, es), "F5");
+        assert_eq!(button_name(GamepadButton::RightTrigger2, es), "RT");
         assert_eq!(
-            controls.describe(Action::Wheelie),
+            button_name(GamepadButton::DPadLeft, Language::English),
+            "D-pad left"
+        );
+        let controls = Controls::default();
+        assert_eq!(
+            controls.describe(Action::Throttle, es),
+            "W, Arriba   ·   RT, A"
+        );
+        assert_eq!(
+            controls.describe(Action::Throttle, Language::English),
+            "W, Up   ·   RT, A"
+        );
+        assert_eq!(
+            controls.describe(Action::Wheelie, es),
             "Espacio, Mayús izq.   ·   B"
         );
-        assert_eq!(controls.first_key(Action::Pause), "Esc");
     }
 
     #[test]

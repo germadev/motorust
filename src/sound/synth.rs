@@ -434,7 +434,8 @@ pub struct Mixer {
 
 impl Mixer {
     pub fn new(controls: Arc<Controls>) -> Self {
-        let init_fx = controls.fx.get();
+        // From the start at the chosen volume, even silent.
+        let fx = controls.fx.get();
         Self {
             controls,
             engines: Default::default(),
@@ -448,7 +449,7 @@ impl Mixer {
             skid: (0.0, BandPass::tuned(1150.0, 9.0), 0.0),
             grass: (0.0, 0.0),
             ambient: 1.0,
-            fx: if init_fx > 0.0 { init_fx } else { 1.0 },
+            fx,
             master: 0.0,
             right: None,
         }

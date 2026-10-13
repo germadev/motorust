@@ -2,15 +2,15 @@
 
 Motorust is an arcade motorcycle racer inspired by *Moto Racer*. You pick a track and a bike and race seven rivals on a coastal road lined with walls. This page covers the screens, the bikes, how the bike handles, the controls, the options and the sound. The tracks are described in [tracks.md](tracks.md); building and running the game is in [building.md](building.md).
 
-The game's menus are in Spanish. This page quotes on-screen text as it appears in the game, with an English gloss the first time.
+The game's menus are in Spanish or English: it starts in the system's language and can be changed in [Options](#options). This page quotes on-screen text in English.
 
 ## Screens
 
 The game moves through four screens. Between them the camera glides from one place to the next instead of cutting.
 
-1. **Welcome.** The game title, while the camera tours the track. It offers "Comenzar" (Start), "Opciones" (Options) and "Salir" (Quit). There is no Quit in the browser: close the tab instead.
-2. **Track select** ("ELIGE PISTA", Choose a track). The track is seen from above, slowly turning, with its name, a short description, its length and a map of the layout with the finish line marked. Left and right switch tracks, and the world is rebuilt for the new one. Enter, Space, A or Start go on to bike select.
-3. **Bike select** ("ELIGE TU MOTO", Choose your bike). The bikes wait on the starting grid, three per row and staggered like a Grand Prix grid. The camera circles the chosen bike, and its name and colours are shown on screen. Left and right change bike. The right stick turns the view around the bike. Enter, Space, A or Start begin the race. The chosen bike idles here and revs each time you switch to it.
+1. **Welcome.** The game title, while the camera tours the track, over the start menu, which is exactly as wide as the title: two cards side by side, "1P" (one helmet) and "2P" (two helmets facing each other), and two full-width banners below, "OPTIONS" and "EXIT GAME". They are translucent black; the chosen one lights up in its colour (blue, green, yellow or red) with a faint chequered flag sliding across it: to the right on 1P, to the left on 2P, up on Options and down on Exit. Arrows move around the menu; up or down from the banners comes back to the card last chosen. Esc or B asks whether to quit, with "Exit game" in red. There is no Exit in the browser: close the tab instead.
+2. **Track select** ("SELECT TRACK"). The track is seen from above, slowly turning, with its name, a short description, its length and a map of the layout with the finish line marked. Left and right switch tracks. Enter, Space, A or Start go on to bike select. The screen shows up at once: the other tracks are built in the background meanwhile, so switching to them is instant once they are ready (a track chosen before it is ready is finished on the spot).
+3. **Bike select** ("SELECT BIKE"). The bikes wait on the starting grid, three per row and staggered like a Grand Prix grid. The camera circles the chosen bike, and its name and colours are shown on screen. Left and right change bike. The right stick turns the view around the bike. Enter, Space, A or Start begin the race. The chosen bike idles here and revs each time you switch to it.
 4. **Race.** Your bike starts last, so there is always someone to overtake. The other seven bikes are your rivals. They wait on the grid until you first open the throttle.
 
 **Esc** or **B** goes back one screen: from bike select to track select, and from track select to the welcome screen. During the race, Esc pauses (see [Pause menu](#pause-menu)), and the pause menu can take you back to the welcome screen.
@@ -21,8 +21,11 @@ Menus always work the same way, whatever controls you have set:
 - Left and right change a value.
 - Enter, Space or A accept.
 - Esc or B go back.
+- In Options, Tab (Shift + Tab backwards), Q and E, or the shoulder buttons and triggers change section.
 
-On the menu screens, the bottom-right corner shows which gamepad the game sees (see [Gamepads](#gamepads)).
+### Controls legend
+
+Every screen has the same legend at the bottom, with no panel behind it: each key or button, as it looks on the device you are using, and what it does there. It follows the last thing you touched: keyboard keycaps, or the buttons of an Xbox, PlayStation (white, with the symbols in their classic colours) or Switch controller, told apart by the controller's name. Moving around a menu goes without saying, so the legend only shows accepting, going back and, in Options, changing section. The symbols the UI font lacks (arrows and the PlayStation symbols) are drawn as icons.
 
 ## Bikes
 
@@ -49,11 +52,11 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 
 - **Progressive.** Steering eases in and out with no jerks. On a gamepad, the left stick is progressive: near the centre it turns only a little, for fine corrections, and fully deflected it turns all the way.
 - **Keyboard and D-pad.** These are on/off inputs, so the game shapes them:
-  - The turn starts the moment you press, already quickly, and builds faster the longer you hold. A tap corrects your line. In about 0.4 s the bike turns as much as it can at that speed (0.3 s with the fast turn rate, see [Debug options](#debug-options)).
+  - The turn starts the moment you press, already quickly, and builds faster the longer you hold. A tap corrects your line. In about 0.4 s the bike turns as much as it can at that speed (0.3 s with the fast turn rate, see [Options](#options)).
   - The bike leans almost at once, because keyboard steering goes in directly, without the spring that smooths the stick.
   - On release, the steering returns to centre more gently: slowly at first, then faster. The bike is straight again in about 0.7 s (0.6 s with the fast return rate).
   - With nothing pressed, the bike does not turn. Switching from one side to the other passes through the centre.
-- **Speed-dependent turn limit.** The keyboard and D-pad respond equally fast at any speed, but the faster you go, the less they turn when held. At low speed they turn fully. At top speed they stop at 80 % of full lock, just short of the point where the bike starts to scrub speed. By default both the stick and the keyboard use two thirds of that limit. Both can be changed under [Debug options](#debug-options).
+- **Speed-dependent turn limit.** The keyboard and D-pad respond equally fast at any speed, but the faster you go, the less they turn when held. At low speed they turn fully. At top speed they stop at 80 % of full lock, just short of the point where the bike starts to scrub speed. By default both the stick and the keyboard use two thirds of that limit. Both can be changed under [Options](#options).
 - **Physical limits.** Turning is limited by a minimum turning radius at low speed and by lateral grip at high speed. A stopped bike cannot turn.
 
 ### Leaning and cornering
@@ -106,7 +109,7 @@ Rivals keep to their own lane. They pull out to pass a bike they catch, or lift 
 | Speedometer | Bottom right | Speed in km/h. |
 | FPS counter | Top right | Frames per second, smoothed so it can be read. |
 | Minimap | Bottom left | The layout seen from above (north up), with the finish line in yellow and one dot per bike in that bike's colour. Your dot is larger, with a white border. |
-| Controls legend | Top left | The keys currently bound to each action. It is hidden by default; turn it on in [Debug options](#debug-options). |
+| Controls legend | Bottom centre | The keys or buttons currently bound to each action, on the device in use (see [Controls legend](#controls-legend)). It is hidden by default; turn it on in **Options > Control**. It gives way to the pause menu's own legend. |
 
 The chase camera sits low behind the bike, as in *Moto Racer*. Its field of view widens with speed. On a gamepad, the right stick turns the camera relative to the bike:
 
@@ -136,23 +139,28 @@ The triggers are analogue: throttle and brake follow how far you squeeze them. T
 
 ## Options
 
-The welcome screen's "Opciones" (Options) page has three entries. Changes apply immediately.
+"Options", on the welcome screen and in the pause menu, has four sections. Changes apply immediately. The panel is centred above the legend and is as tall in every section, so the section tabs do not move.
 
-- **"Resolución" (Resolution).** "Dinámica" (dynamic window adapting to the window and screen pixels; the default), a fixed 1280 × 720 window, 1600 × 900, 1920 × 1080, 2560 × 1440, or "Pantalla completa" (fullscreen). Sizes are in points, so on a Retina display the window has twice as many pixels. At any time, Cmd+Enter on macOS or Alt+Enter on Windows and Linux switches to fullscreen and back to the previous window. The change is saved as if you had picked it here. In the browser the choices are "Toda la página" (whole page) and fullscreen.
-- **"Límite de FPS" (FPS limit).** "Los de la pantalla" (the screen's rate, synchronised with it; the default), 30, 60, 120, or "Sin límite" (unlimited). With a fixed number, the game waits out the rest of each frame and stays synchronised with the screen so the image does not tear. If the screen is slower than the limit, the screen wins. This option is not available in the browser, which paces the frames itself.
-- **"Controles: teclado y mando" (Controls: keyboard and gamepad).** See below.
+- **Game.** The language (Spanish or English) and the steering variants:
+
+  | Option | Values | Default |
+  |---|---|---|
+  | "Stick: turn limit with speed" | off, low, medium, high | medium |
+  | "Keyboard: turn limit with speed" | off, low, medium, high | medium |
+  | "Keyboard: sustained turn rate" | slow, medium, fast | medium |
+  | "Keyboard: return rate released" | slow, medium, fast | medium |
+
+  The turn-limit levels apply a share of the speed-dependent limit described under [Steering](#steering): off is no limit, low a third, medium two thirds and high the whole limit (at top speed, holding the input gives 80 % of full lock). The two rates scale how fast keyboard and D-pad steering builds up while a key is held, and how fast it returns to centre once released: slow is half as fast as fast, medium three quarters.
+- **Control.** One row per action (see [Rebinding](#rebinding)), "Reset controls", the race's "Controls legend" (shown or hidden, hidden by default) and "Rescan gamepads".
+- **Sound.** "FX Volume" and "Music Volume", from 0 to 100 % in steps of 10 (80 % by default), and the music on or off. 80 % is the balance found by ear: the effects at a fifth and the music at nine tenths of the scale the game used before. Volumes saved with that older scale are not carried over: they start again at 80 %.
+- **Graphics.**
+  - **Fullscreen.** At any time, Cmd+Enter on macOS or Alt+Enter on Windows and Linux switches to fullscreen and back. The change is saved as if you had picked it here.
+  - **Resolution.** "Dynamic" (the window adapts to the window and screen pixels; the default), a fixed 1280 × 720 window, 1600 × 900, 1920 × 1080 or 2560 × 1440. Sizes are in points, so on a Retina display the window has twice as many pixels. In the browser the game fills the page.
+  - **FPS.** The screen's rate (synchronised with it; the default), 30, 60, 120, 144, 240 or unlimited. With a fixed number, the game waits out the rest of each frame and stays synchronised with the screen so the image does not tear. If the screen is slower than the limit, the screen wins. This option is not available in the browser, which paces the frames itself.
 
 ### Rebinding
 
-The controls page has one row per action, each listing its keys and buttons:
-
-- "Acelerar" (Throttle)
-- "Frenar" (Brake)
-- "Girar a la izquierda" (Steer left)
-- "Girar a la derecha" (Steer right)
-- "Caballito" (Wheelie)
-- "Reiniciar" (Restart)
-- "Pausa" (Pause)
+The Control section has one row per action, each listing its keys and buttons: Throttle, Brake / Reverse, Steer Left, Steer Right, Wheelie, Restart and Pause.
 
 To rebind an action:
 
@@ -161,13 +169,13 @@ To rebind an action:
    - A key replaces the action's keys; a button replaces its buttons. The other kind is left as it was.
    - The new key or button stops doing any other action.
 
-Esc cancels, and so does waiting eight seconds without pressing anything. M cannot be bound, because it always toggles sound. "Restablecer los controles" (Reset controls) restores the defaults.
+Esc cancels, and so does waiting eight seconds without pressing anything. M cannot be bound, because it always toggles sound. "Reset controls" restores the defaults.
 
 Some controls cannot be changed: the left stick (steering), the right stick (look around), M (sound) and the menu navigation. Pulling the left stick back does nothing: it used to pop a wheelie, which was easy to do by mistake while steering. Controls saved without a wheelie button get B, unless B already does something else. The race's controls legend always shows the keys you have chosen.
 
 ### Where settings are saved
 
-Settings (resolution, FPS limit and controls) are saved each time they change, in `ajustes.ron` ("settings") inside the system's settings folder:
+Settings (language, fullscreen, resolution, FPS limit, controls and volumes) are saved each time they change, in `ajustes.ron` ("settings") inside the system's settings folder:
 
 | System | File |
 |---|---|
@@ -176,42 +184,18 @@ Settings (resolution, FPS limit and controls) are saved each time they change, i
 | Windows | `%APPDATA%\motorust\ajustes.ron` |
 | Browser | `localStorage`, under the key `motorust.ajustes` |
 
-They are read at startup. If the file is missing or cannot be parsed, the game uses the defaults and prints the reason in the terminal. The debug options are not saved: they go back to their defaults each time the game starts.
+They are read at startup. If the file is missing or cannot be parsed, the game uses the defaults and prints the reason in the terminal. The steering variants and the race legend are not saved: they go back to their defaults each time the game starts.
 
 ## Pause menu
 
-Esc or Start (or whatever you bound to Pause) stops the race and muffles its sound. The "PAUSA" (Pause) menu offers:
+Esc or Start (or whatever you bound to Pause) stops the race and muffles its sound. The "PAUSE" menu offers:
 
-- "Continuar" (Resume).
-- "Volver al menú principal" (Back to the main menu): returns to the welcome screen.
-- "Depuración" (Debug): see below.
-- "Salir del juego" (Quit the game). This item is not shown in the browser.
+- "Resume".
+- "Options": the same [Options](#options) as on the welcome screen; closing them comes back here.
+- "Return to main menu": returns to the welcome screen.
+- "Exit game", which asks first, with "Exit game" in red. This item is not shown in the browser.
 
 Up and down select, Enter or A accept, and Esc or B go back. From the main page, going back resumes the race.
-
-### Debug options
-
-The "DEPURACIÓN" (Debug) page lets you try handling variants:
-
-| Option | Values | Default |
-|---|---|---|
-| "Stick: limitar el giro con la velocidad" (Stick: limit turning with speed) | "no", "bajo", "medio", "alto" (off, low, medium, high) | medium |
-| "Teclado y cruceta: limitar el giro con la velocidad" (Keyboard and D-pad: limit turning with speed) | off, low, medium, high | medium |
-| "Teclado y cruceta: cuánto gira al dejar pulsado" (Keyboard and D-pad: turn rate when held) | "lento", "medio", "alto" (slow, medium, fast) | medium |
-| "Teclado y cruceta: al soltar la tecla de girar" (Keyboard and D-pad: return rate when released) | "lenta", "media", "rápida" (slow, medium, fast) | medium |
-| "Leyenda de los controles" (Controls legend) | "oculta" / "se ve" (hidden / shown) | hidden |
-| "Volver a buscar mandos" (Search for gamepads again) | action | |
-
-The turn-limit levels apply a share of the speed-dependent limit described under [Steering](#steering):
-
-- **Off:** no limit.
-- **Low:** a third of the limit.
-- **Medium:** two thirds.
-- **High:** the whole limit. At top speed, holding the input gives 80 % of full lock.
-
-The two rates scale how fast keyboard and D-pad steering builds up while a key is held, and how fast it returns to centre once released: slow is half as fast as fast, medium three quarters. Fast is how the game handled before these options existed.
-
-Enter or A cycles to the next level; left and right step down or up. "Volver" (Back) returns to the pause menu.
 
 ## Gamepads
 

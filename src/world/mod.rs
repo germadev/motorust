@@ -13,10 +13,12 @@ mod structures;
 mod terrain;
 mod textures;
 
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use bevy::{light::CascadeShadowConfigBuilder, prelude::*, transform::TransformSystems};
 
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
+use crate::settings::WEB;
 use crate::track::Track;
 pub use textures::generate_mipmaps;
 
@@ -28,10 +30,19 @@ impl Plugin for WorldPlugin {
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
             .init_resource::<TrackEdges>()
+            .init_resource::<Preparing>()
             .init_resource::<textures::WorldTextures>()
+            .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
-            .add_systems(Update, (landmarks::spin, landmarks::flow))
+            .add_systems(
+                Update,
+                (
+                    landmarks::spin,
+                    landmarks::flow,
+                    spawn_prepared_circuit.run_if(in_state(GameState::Tracks)),
+                ),
+            )
             .add_systems(OnEnter(GameState::Tracks), cache_all_circuits)
             .add_systems(OnExit(GameState::Tracks), unload_unused_circuits)
             .add_systems(
@@ -51,42 +62,111 @@ struct TrackEdges(std::collections::HashMap<usize, Vec<Vec<[f32; 2]>>>);
 #[derive(Component, Debug, PartialEq, Eq)]
 pub struct WorldRoot(pub usize);
 
-/// Al entrar al menú de elección de pistas, precalcula en segundo plano las
-/// pistas que falten por cargar para que alternar entre ellas sea instantáneo.
-fn cache_all_circuits(
-    mut commands: Commands,
-    roots: Query<&WorldRoot>,
-    current: Res<CurrentCircuit>,
-    mut builder: Builder,
-    mut edges: ResMut<TrackEdges>,
-) {
+/// The mesh of the sea, the same for every circuit.
+#[derive(Resource)]
+struct Sea(Handle<Mesh>);
+
+impl FromWorld for Sea {
+    fn from_world(world: &mut World) -> Self {
+        Self(
+            world
+                .resource_mut::<Assets<Mesh>>()
+                .add(terrain::sea_mesh()),
+        )
+    }
+}
+
+/// What can be worked out for a circuit away from the main thread, which
+/// is most of the work: its track, its terrain, the terrain's meshes and its
+/// solid edge. The entities and assets are made on the main thread.
+struct Prepared {
+    index: usize,
+    track: Track,
+    terrain: terrain::Terrain,
+    ground: [(terrain::Ground, Mesh); 3],
+    edges: Vec<Vec<[f32; 2]>>,
+}
+
+fn prepare(index: usize) -> Prepared {
+    let circuit = &CIRCUITS[index];
+    let track = Track::new(&circuit.layout);
+    let terrain = terrain::Terrain::new(&track, &circuit.scenery);
+    let ground = terrain.meshes();
+    let edges = terrain.track_edges(&track);
+    Prepared {
+        index,
+        track,
+        terrain,
+        ground,
+        edges,
+    }
+}
+
+/// The circuits being prepared in the background, by index in [`CIRCUITS`].
+#[derive(Resource, Default)]
+struct Preparing(std::collections::HashMap<usize, Task<Prepared>>);
+
+/// Al entrar al menú de elección de pistas, prepara en segundo plano las
+/// pistas que falten por cargar para que alternar entre ellas sea
+/// instantáneo. The menu shows up at once: the work goes on in other
+/// threads, and each circuit is put in the world when it is ready
+/// ([`spawn_prepared_circuit`]).
+fn cache_all_circuits(roots: Query<&WorldRoot>, mut preparing: ResMut<Preparing>) {
     let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
-    for (index, circuit) in CIRCUITS.iter().enumerate() {
-        if !built.contains(&index) {
-            let track = Track::new(&circuit.layout);
-            let visibility = if index == current.0 {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            };
-            let built = build(&mut commands, index, &track, &mut builder, visibility);
-            edges.0.insert(index, built);
+    let pool = AsyncComputeTaskPool::get();
+    for index in 0..CIRCUITS.len() {
+        if !built.contains(&index) && !preparing.0.contains_key(&index) {
+            preparing
+                .0
+                .insert(index, pool.spawn(async move { prepare(index) }));
         }
     }
 }
 
+/// Puts in the world, hidden, a circuit prepared in the background (one
+/// per frame: making its entities and meshes takes a little while too).
+fn spawn_prepared_circuit(
+    mut commands: Commands,
+    current: Res<CurrentCircuit>,
+    mut preparing: ResMut<Preparing>,
+    mut builder: Builder,
+    mut edges: ResMut<TrackEdges>,
+) {
+    let mut ready = None;
+    for (index, task) in &mut preparing.0 {
+        if let Some(prepared) = block_on(poll_once(task)) {
+            ready = Some((*index, prepared));
+            break;
+        }
+    }
+    let Some((index, prepared)) = ready else {
+        return;
+    };
+    preparing.0.remove(&index);
+    let visibility = if index == current.0 {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    let built = build(&mut commands, prepared, &mut builder, visibility);
+    edges.0.insert(index, built);
+}
+
 /// Al salir del menú de pistas (hacia elegir moto o volver a bienvenida),
-/// se descargan los circuitos en caché que no se estén usando para liberar memoria.
+/// se descargan los circuitos en caché que no se estén usando para liberar
+/// memoria, and the ones still being prepared are let go.
 fn unload_unused_circuits(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
     roots: Query<(Entity, &WorldRoot)>,
+    mut preparing: ResMut<Preparing>,
 ) {
     for (entity, root) in &roots {
         if root.0 != current.0 {
             commands.entity(entity).despawn();
         }
     }
+    preparing.0.clear();
 }
 
 /// Al cambiar de pista: actualiza el trazado y conmuta la visibilidad entre
@@ -98,13 +178,10 @@ fn rebuild_world(
     mut track: ResMut<Track>,
     mut builder: Builder,
     mut edges: ResMut<TrackEdges>,
+    mut preparing: ResMut<Preparing>,
 ) {
     if !current.is_changed() || current.is_added() {
         return;
-    }
-    *track = Track::new(&current.get().layout);
-    if let Some(built) = edges.0.get(&current.0) {
-        track.set_edges(built.clone());
     }
     let mut found = false;
     for (_entity, root, mut visibility) in &mut roots {
@@ -116,15 +193,19 @@ fn rebuild_world(
         }
     }
     if !found {
-        let built = build(
-            &mut commands,
-            current.0,
-            &track,
-            &mut builder,
-            Visibility::Inherited,
-        );
-        track.set_edges(built.clone());
+        // Needed now: wait for it if it is being prepared. On the web the
+        // background work runs on this same thread and cannot be waited
+        // for, so it is done here.
+        let prepared = match preparing.0.remove(&current.0) {
+            Some(task) if !WEB => block_on(task),
+            _ => prepare(current.0),
+        };
+        let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
         edges.0.insert(current.0, built);
+    }
+    *track = Track::new(&current.get().layout);
+    if let Some(built) = edges.0.get(&current.0) {
+        track.set_edges(built.clone());
     }
 }
 
@@ -137,8 +218,7 @@ fn build_world(
 ) {
     let built = build(
         &mut commands,
-        current.0,
-        &track,
+        prepare(current.0),
         &mut builder,
         Visibility::Inherited,
     );
@@ -150,23 +230,28 @@ fn build_world(
 #[derive(bevy::ecs::system::SystemParam)]
 struct Builder<'w> {
     textures: Res<'w, textures::WorldTextures>,
+    sea: Res<'w, Sea>,
     meshes: ResMut<'w, Assets<Mesh>>,
     materials: ResMut<'w, Assets<StandardMaterial>>,
     images: ResMut<'w, Assets<Image>>,
 }
 
-/// Builds a circuit's world, and returns where its solid edge is (see
-/// [`Track::set_edges`]).
+/// Builds a prepared circuit's world, and returns where its solid edge is
+/// (see [`Track::set_edges`]).
 fn build(
     commands: &mut Commands,
-    circuit_index: usize,
-    track: &Track,
+    prepared: Prepared,
     builder: &mut Builder,
     visibility: Visibility,
 ) -> Vec<Vec<[f32; 2]>> {
-    let circuit = &CIRCUITS[circuit_index];
-    let scenery = &circuit.scenery;
-    let terrain = terrain::Terrain::new(track, scenery);
+    let Prepared {
+        index,
+        track,
+        terrain,
+        ground,
+        edges,
+    } = prepared;
+    let scenery = &CIRCUITS[index].scenery;
     let mut assets = Assets3d {
         textures: &builder.textures,
         meshes: &mut builder.meshes,
@@ -174,20 +259,22 @@ fn build(
         images: &mut builder.images,
     };
     commands
-        .spawn((WorldRoot(circuit_index), Transform::default(), visibility))
+        .spawn((WorldRoot(index), Transform::default(), visibility))
         .with_children(|world| {
             terrain::spawn_terrain(
                 world,
                 &terrain,
+                ground,
+                &builder.sea.0,
                 assets.textures,
                 assets.meshes,
                 assets.materials,
             );
-            road::spawn_road(world, track, &terrain, scenery, &mut assets);
-            structures::spawn_structures(world, track, &terrain, scenery, &mut assets);
-            props::spawn_props(world, track, &terrain, scenery, &mut assets);
+            road::spawn_road(world, &track, &terrain, scenery, &mut assets);
+            structures::spawn_structures(world, &track, &terrain, scenery, &mut assets);
+            props::spawn_props(world, &track, &terrain, scenery, &mut assets);
         });
-    terrain.track_edges(track)
+    edges
 }
 
 /// Dónde guardar las mallas, los materiales y las imágenes del mundo.
@@ -246,14 +333,29 @@ mod tests {
         assert_eq!(roots[0].0.0, 0);
         assert_eq!(*roots[0].1, Visibility::Inherited);
 
-        // Entramos al menú de elección de pista: se deben cachear todas las pistas.
+        // Entramos al menú de elección de pista: the menu does not wait for
+        // the other circuits, which are prepared in the background...
         app.world_mut()
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Tracks);
         app.update();
+        assert_eq!(roots_query.iter(app.world()).count(), 1);
+        assert_eq!(
+            app.world().resource::<Preparing>().0.len(),
+            CIRCUITS.len() - 1
+        );
 
+        // ...and arrive, hidden, as they are ready.
+        let started = std::time::Instant::now();
+        while roots_query.iter(app.world()).count() < CIRCUITS.len() {
+            assert!(
+                started.elapsed().as_secs() < 120,
+                "the circuits never arrive"
+            );
+            app.update();
+        }
+        assert!(app.world().resource::<Preparing>().0.is_empty());
         let roots: Vec<_> = roots_query.iter(app.world()).collect();
-        assert_eq!(roots.len(), CIRCUITS.len());
         for (root, vis) in &roots {
             if root.0 == 0 {
                 assert_eq!(*vis, Visibility::Inherited);
@@ -287,5 +389,38 @@ mod tests {
         assert_eq!(roots.len(), 1);
         assert_eq!(roots[0].0.0, 1);
         assert_eq!(*roots[0].1, Visibility::Inherited);
+    }
+
+    #[test]
+    fn a_circuit_chosen_before_it_is_ready_is_built_at_once() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Mesh>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .add_plugins(WorldPlugin);
+        app.update();
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Tracks);
+        app.update();
+
+        // Straight to the last circuit: it is there, with its edges, in
+        // the next frame.
+        let last = CIRCUITS.len() - 1;
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
+        app.update();
+        let mut roots = app.world_mut().query::<(&WorldRoot, &Visibility)>();
+        let shown: Vec<usize> = roots
+            .iter(app.world())
+            .filter(|(_, vis)| **vis == Visibility::Inherited)
+            .map(|(root, _)| root.0)
+            .collect();
+        assert_eq!(shown, [last]);
+        assert!(app.world().resource::<TrackEdges>().0.contains_key(&last));
+        assert!(!app.world().resource::<Preparing>().0.contains_key(&last));
     }
 }

@@ -1,20 +1,25 @@
 //! Elegir pista: la pista se ve desde lo alto, girando despacio, con su
 //! nombre, una descripción, su longitud y un plano del trazado. Izquierda y
 //! derecha cambian de pista (y el mundo se vuelve a construir), Enter o A
-//! pasan a elegir moto, y Esc o B vuelven a la bienvenida.
+//! pasan a elegir moto, y Esc o B vuelven a la bienvenida, como dice la
+//! leyenda de abajo ([`crate::legend`]).
 
 use bevy::prelude::*;
 
 use crate::bike::ROSTER;
 use crate::camera::CameraGlide;
 use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
+use crate::legend::{KeyPrompt, Keys, ScreenLegend, menu_prompts, show_screen_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::minimap::TrackMap;
 use crate::settings::Settings;
 use crate::track::Track;
-use crate::ui::{InputDevice, MenuInput, MenuSound, spawn_title, text_font};
+use crate::ui::{
+    InputDevice, MenuInput, MenuSound, UiIcons, current_active_device, spawn_title, text_font,
+};
 use crate::welcome::GameMode;
 
 /// La cámara gira alrededor de la pista a esta velocidad (rad/s), a esta
@@ -32,7 +37,8 @@ impl Plugin for TrackSelectPlugin {
         app.add_systems(OnEnter(GameState::Tracks), spawn_screen)
             .add_systems(
                 Update,
-                (choose_track, show_track, aerial_camera).run_if(in_state(GameState::Tracks)),
+                (choose_track, show_track, show_legend, aerial_camera)
+                    .run_if(in_state(GameState::Tracks)),
             );
     }
 }
@@ -46,33 +52,21 @@ struct TrackDescription;
 #[derive(Component)]
 struct TrackLength;
 
-#[derive(Component)]
-struct TrackHint;
-
 /// Filtros para tocar los textos a la vez.
 type NameFilter = (
     With<TrackName>,
     Without<TrackDescription>,
     Without<TrackLength>,
-    Without<TrackHint>,
 );
 type DescriptionFilter = (
     With<TrackDescription>,
     Without<TrackName>,
     Without<TrackLength>,
-    Without<TrackHint>,
 );
 type LengthFilter = (
     With<TrackLength>,
     Without<TrackName>,
     Without<TrackDescription>,
-    Without<TrackHint>,
-);
-type HintFilter = (
-    With<TrackHint>,
-    Without<TrackName>,
-    Without<TrackDescription>,
-    Without<TrackLength>,
 );
 
 /// Punto que marca qué pista se está viendo.
@@ -85,7 +79,6 @@ fn spawn_screen(
     map: Res<TrackMap>,
     settings: Res<Settings>,
 ) {
-    let soft = TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8));
     let lang = settings.language;
     commands
         .spawn((
@@ -96,12 +89,12 @@ fn spawn_screen(
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::SpaceBetween,
                 align_items: AlignItems::Center,
-                // Abajo, sitio para el aviso del mando.
+                // Abajo, sitio para la leyenda.
                 padding: UiRect {
                     left: px(24),
                     right: px(24),
                     top: px(20),
-                    bottom: px(40),
+                    bottom: px(64),
                 },
                 ..default()
             },
@@ -186,7 +179,6 @@ fn spawn_screen(
                                 ));
                             }
                         });
-                        text.spawn((TrackHint, Text::new(""), text_font(&font, 18.0), soft));
                     });
                 });
         });
@@ -219,17 +211,14 @@ fn choose_track(
     }
 }
 
-/// Nombre, descripción, longitud, pista elegida y leyenda de controles.
-#[allow(clippy::too_many_arguments)]
+/// Nombre, descripción, longitud y pista elegida.
 fn show_track(
     choice: Res<CurrentCircuit>,
     track: Res<Track>,
     settings: Res<Settings>,
-    device: Res<InputDevice>,
     mut name: Single<&mut Text, NameFilter>,
     mut description: Single<&mut Text, DescriptionFilter>,
     mut length: Single<&mut Text, LengthFilter>,
-    mut hint: Single<&mut Text, HintFilter>,
     mut dots: Query<(&Dot, &mut BackgroundColor)>,
 ) {
     let lang = settings.language;
@@ -251,33 +240,6 @@ fn show_track(
     if length.0 != label {
         length.0 = label;
     }
-    let (confirm, back) = match *device {
-        InputDevice::Keyboard => ("ENTER", "ESC"),
-        InputDevice::Gamepad => ("A o START", "B"),
-    };
-    let choose = if CIRCUITS.len() > 1 {
-        "< >  elegir   ·   "
-    } else {
-        ""
-    };
-    let wanted_hint = match lang {
-        Language::Spanish => format!("{choose}{confirm}: elegir moto   ·   {back}: volver"),
-        Language::English => {
-            let (confirm_en, back_en) = match *device {
-                InputDevice::Keyboard => ("ENTER", "ESC"),
-                InputDevice::Gamepad => ("A or START", "B"),
-            };
-            let choose_en = if CIRCUITS.len() > 1 {
-                "< >  choose   ·   "
-            } else {
-                ""
-            };
-            format!("{choose_en}{confirm_en}: choose bike   ·   {back_en}: back")
-        }
-    };
-    if hint.0 != wanted_hint {
-        hint.0 = wanted_hint;
-    }
     for (dot, mut color) in &mut dots {
         let alpha = if dot.0 == choice.0 { 1.0 } else { 0.3 };
         let wanted = Color::srgba(1.0, 1.0, 1.0, alpha);
@@ -285,6 +247,36 @@ fn show_track(
             color.0 = wanted;
         }
     }
+}
+
+/// La leyenda de los controles, con el teclado o el mando que se usa.
+#[allow(clippy::too_many_arguments)]
+fn show_legend(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    device: Res<InputDevice>,
+    active_controller: Option<Res<ActiveController>>,
+    font: Res<UiFont>,
+    icons: Res<UiIcons>,
+    shown: Query<Entity, With<ScreenLegend>>,
+    mut last: Local<Option<Vec<KeyPrompt>>>,
+) {
+    let lang = settings.language;
+    let active_dev = current_active_device(*device, active_controller.as_deref());
+    let hints = [
+        (Keys::Confirm, lang.hint_choose_bike()),
+        (Keys::Back, lang.back()),
+    ];
+    show_screen_legend(
+        &mut commands,
+        &shown,
+        &mut last,
+        menu_prompts(active_dev, &hints),
+        active_dev,
+        &font,
+        &icons,
+        GameState::Tracks,
+    );
 }
 
 /// La cámara gira despacio alrededor de la pista, desde lo alto.
@@ -334,6 +326,7 @@ mod tests {
             .init_resource::<InputDevice>()
             .init_resource::<CurrentCircuit>()
             .init_resource::<CameraGlide>()
+            .init_resource::<UiIcons>()
             .add_plugins(TrackSelectPlugin);
 
         let track = Track::new(&CIRCUITS[0].layout);

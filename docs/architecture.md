@@ -4,9 +4,9 @@ How the code is organised and why. To build and run it see [building.md](buildin
 
 ## Overview
 
-motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. `src/main.rs` loads the saved settings (they decide how the window opens), adds Bevy's `DefaultPlugins` without its gilrs plugin (gamepads are read by `src/gamepads.rs`), fixes the simulation rate and adds the game's plugins: world, bike, chase camera, gamepads, HUD, menu, minimap, welcome screen, track selection, pause, settings, sound and UI, plus the web plugin when compiled for `wasm32`.
+motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. `src/main.rs` loads the saved settings (they decide how the window opens), adds Bevy's `DefaultPlugins` without its gilrs plugin (gamepads are read by `src/gamepads.rs`), fixes the simulation rate and adds the game's plugins: world, bike, chase camera, gamepads, HUD, menu, minimap, welcome screen, track selection, pause, options, settings, sound and UI, plus the web plugin when compiled for `wasm32`.
 
-- **Screens.** `GameState` (`src/menu.rs`) goes Welcome → Tracks (choose a track) → Select (choose a bike and rider) → Race. Changing track rebuilds the world; moving between screens slides the camera instead of cutting.
+- **Screens.** `GameState` (`src/menu.rs`) goes Welcome → Tracks (choose a track) → Select (choose a bike and rider) → Race, with a Lobby before Tracks for two players. Each track is built once and kept while choosing: entering Tracks prepares the others on background threads (track, terrain and its meshes), then adds them to the world hidden, one per frame, and leaving Tracks drops the ones not chosen. Moving between screens slides the camera instead of cutting.
 - **Fixed-step physics, interpolated rendering.** Physics runs in `FixedUpdate` at **120 Hz**: `ai::drive_rivals` → `simulate_bikes` → `separate_bikes`, chained. Before the fixed loop the player's input is read; after it, `interpolate_bikes` places each bike between its previous and current state for the frame being drawn.
 - **Pure, tested logic.** The parts that decide how the game behaves are plain functions with no window, renderer or ECS dependency, so `cargo test` exercises them headless: `bike::step` (one physics step), `bike::hit_walls` (walls), `bike::crash` (contacts between bikes, falls and rejoining the track), `bike::chassis` (wheelie and suspension springs), `bike::loop_ride` (riding round a loop), `Track` (the circuit and its queries), `ai::decide` (a rival's controls) and `pilot::pose` (the rider's race pose from its skeleton).
 - **Units and axes.** Everything is in metres. The ground plane is Bevy's XZ plane with Y up; ground positions are `Vec2(x, z)` and a heading of 0 faces -Z, with positive values turning left (`src/geometry.rs`). Bike-local space is X right, Y up, -Z forward, with the origin on the ground between the wheels.
@@ -44,14 +44,17 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/bike/model/livery.rs` | Liveries for the code-built bikes (colours, fairing graphics, suit and helmet), painted into textures at startup. |
 | `src/shapes.rs` | Procedural meshes: smooth and faceted lofts, tubes, prisms and skinned sweeps. |
 | `src/camera.rs` | Chase camera with fog and a field of view that widens with speed, right-stick look-around, turning over with the bike round a loop, and the camera slide between menu screens. |
-| `src/hud.rs` | Speedometer, controls legend, frames per second and the font used for labels. |
+| `src/hud.rs` | Speedometer, the race's controls legend, frames per second and the font used for labels. |
 | `src/minimap.rs` | Track map drawn from the centreline and the branches, used on the track selection screen and as the race minimap (one dot per bike in its colour). |
 | `src/menu.rs` | The game screens (`GameState`) and the bike and rider selection screen. |
-| `src/welcome.rs` | Welcome screen, with the options for resolution, FPS limit and controls. |
+| `src/welcome.rs` | Welcome screen: the start menu as in its design, as wide as the title, with its buttons drawn by `src/menu_card.wgsl` (rounded cards and the sliding chequered flag). |
+| `src/options.rs` | The Options menu (Game, Control, Sound and Graphics), from the welcome screen or the pause menu. |
+| `src/legend.rs` | The controls legend shown at the bottom of every screen, as the keys and buttons look on the device in use. |
+| `src/vector_art.rs` | Vector art of the start menu drawn at its size on screen: the slanted lettering (the UI font) and the helmet (`assets/ui/helmet.svg`). |
 | `src/track_select.rs` | Track selection, with the map drawn from the layout. |
 | `src/settings.rs` | Settings kept between sessions (resolution, FPS limit, keys and buttons for each action), the fullscreen shortcut and the frame limiter. Saved to `ajustes.ron` on the desktop and to `localStorage` on the web. |
 | `src/ui.rs` | Shared menu code: navigation with keyboard or gamepad, the options panel and the gamepad status notice. |
-| `src/pause.rs` | Pause menu and the "Depuración" (Debug) options. |
+| `src/pause.rs` | Pause menu, and the steering variants set in Options (`DebugOptions`). |
 | `src/gamepads.rs` | Gamepad input with gilrs, connected to Bevy's input, retrying the search while no gamepad is found and logging what each one sends. |
 | `src/gamepads/apple.rs` | On macOS, the gamepads the system knows (DualSense, DualShock 4, Xbox, Switch Pro, MFi) are read with Apple's GameController framework instead of gilrs. |
 | `src/sound/mod.rs` | Decides what sounds, how loud and where (engines with their gearboxes, wind, tyres, grass, impacts, landings, menu), panned from the camera and with Doppler for rivals. |

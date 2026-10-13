@@ -9,6 +9,7 @@ mod circuits;
 mod gamepads;
 mod geometry;
 mod hud;
+mod legend;
 mod lobby;
 pub mod locale;
 mod menu;
@@ -21,6 +22,7 @@ mod sound;
 mod track;
 mod track_select;
 mod ui;
+mod vector_art;
 #[cfg(target_arch = "wasm32")]
 mod web;
 mod welcome;

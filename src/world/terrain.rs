@@ -203,7 +203,9 @@ impl Terrain {
     }
 
     /// Mallas del terreno, una por tipo de suelo.
-    fn meshes(&self) -> [(Ground, Mesh); 3] {
+    /// The ground's meshes, by kind of ground. Pure data: they can be worked
+    /// out away from the main thread.
+    pub fn meshes(&self) -> [(Ground, Mesh); 3] {
         let (width, depth) = (self.xs.len(), self.zs.len());
         let position =
             |i: usize, j: usize| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
@@ -305,14 +307,18 @@ impl Terrain {
     }
 }
 
+/// The ground, from its meshes ([`Terrain::meshes`]), and the sea, the same
+/// mesh for every circuit ([`sea_mesh`]).
 pub fn spawn_terrain(
     world: &mut ChildSpawnerCommands,
     terrain: &Terrain,
+    ground_meshes: [(Ground, Mesh); 3],
+    sea: &Handle<Mesh>,
     textures: &WorldTextures,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
-    for (ground, mesh) in terrain.meshes() {
+    for (ground, mesh) in ground_meshes {
         let (texture, roughness, reflectance) = match (ground, terrain.soil) {
             (Ground::Grass, _) => (&textures.grass, 0.90, 0.18),
             (Ground::Sand, _) => (&textures.sand, 0.88, 0.28),
@@ -332,7 +338,7 @@ pub fn spawn_terrain(
 
     // El mar: llega hasta el horizonte, con agua viva mediterránea y reflejos.
     world.spawn((
-        Mesh3d(meshes.add(sea_mesh())),
+        Mesh3d(sea.clone()),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::WHITE,
             base_color_texture: Some(textures.water.clone()),
@@ -348,7 +354,7 @@ pub fn spawn_terrain(
 /// regular pattern seen from afar, so it is laid a little askew and warped
 /// over hundreds of metres, and broad patches of the water are darker or
 /// more turquoise than others.
-fn sea_mesh() -> Mesh {
+pub fn sea_mesh() -> Mesh {
     const CELLS: usize = 160;
     let size = 4.0 * EXTENT;
     let (turn_cos, turn_sin) = (SEA_TURN.cos(), SEA_TURN.sin());
