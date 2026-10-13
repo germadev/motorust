@@ -42,6 +42,8 @@ const HANGER_EVERY: usize = 2;
 const BRIDGE_RED: Color = Color::srgb(0.72, 0.1, 0.07);
 /// Grosor del tablero del puente (m).
 const DECK_DEPTH: f32 = 1.6;
+/// What each repetition of the concrete texture covers on the deck (m).
+const DECK_TILE: f32 = 4.0;
 /// Wooden bridges: what each repetition of the planks covers (m), how far
 /// above the asphalt they lie (over its paint), how tall the fence is (m)
 /// and the colours of the wood.
@@ -513,14 +515,35 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
 
 /// El tablero de un puente (de hormigón, por debajo de la carretera) y sus
 /// dos arcos rojos, uno a cada lado, con los tirantes que cuelgan de ellos.
+/// The deck's top runs out from under the asphalt to past the walls: off
+/// the bridge the ground does that, but under a bridge it drops away.
 fn bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, Mesh) {
     let mut deck = MeshBuilder::default();
     let mut arches = MeshBuilder::default();
     let edge = WALL_DISTANCE + 0.8;
+    // Tucked a little under the asphalt, so no crack shows between them.
+    let inner = track.half_width() - 0.3;
     let road = |i: usize, lateral: f32| track.surface_point(i, lateral);
     for (k, pair) in indices.windows(2).enumerate() {
         let (i, j) = (pair[0], pair[1]);
         let down = Vec3::Y * DECK_DEPTH;
+        // The top, beside the asphalt, on each side.
+        let (across, along) = (
+            (edge - inner) / DECK_TILE,
+            road(i, 0.0).distance(road(j, 0.0)) / DECK_TILE,
+        );
+        for side in [-1.0, 1.0] {
+            deck.quad(
+                [
+                    (road(i, side * inner), Vec2::ZERO),
+                    (road(j, side * inner), Vec2::new(0.0, along)),
+                    (road(j, side * edge), Vec2::new(across, along)),
+                    (road(i, side * edge), Vec2::new(across, 0.0)),
+                ],
+                Vec3::Y,
+                Color::WHITE,
+            );
+        }
         // Por debajo y a los lados del tablero.
         deck.quad(
             [
@@ -887,4 +910,71 @@ fn spawn_brake_marker(
             ),
         ],
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::circuits::CIRCUITS;
+    use bevy::mesh::VertexAttributeValues;
+
+    /// The height of the highest upward-facing triangle of `mesh` over
+    /// `point` (x and z), if any.
+    fn top_at(mesh: &Mesh, point: Vec2) -> Option<f32> {
+        let Some(VertexAttributeValues::Float32x3(positions)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            return None;
+        };
+        let indices: Vec<usize> = mesh.indices()?.iter().collect();
+        indices
+            .chunks(3)
+            .filter_map(|triangle| {
+                let [a, b, c] = [0, 1, 2].map(|n| Vec3::from(positions[triangle[n]]));
+                let normal = (b - a).cross(c - a).normalize_or_zero();
+                if normal.y < 0.5 {
+                    return None;
+                }
+                // Barycentric coordinates of the point in the triangle, seen
+                // from above.
+                let flat = |v: Vec3| Vec2::new(v.x, v.z);
+                let (a2, b2, c2) = (flat(a), flat(b), flat(c));
+                let area = (b2 - a2).perp_dot(c2 - a2);
+                let u = (b2 - point).perp_dot(c2 - point) / area;
+                let v = (c2 - point).perp_dot(a2 - point) / area;
+                let w = 1.0 - u - v;
+                (u >= 0.0 && v >= 0.0 && w >= 0.0).then(|| a.y * u + b.y * v + c.y * w)
+            })
+            .reduce(f32::max)
+    }
+
+    #[test]
+    fn red_bridges_have_a_deck_out_to_the_walls() {
+        let mut checked = 0;
+        for circuit in &CIRCUITS {
+            let scenery = &circuit.scenery;
+            if scenery.bridge_style != BridgeStyle::RedArches {
+                continue;
+            }
+            let track = Track::new(&circuit.layout);
+            let terrain = Terrain::new(&track, scenery);
+            let lap = track.lap_length();
+            for bridge in scenery.bridges {
+                let indices = indices(&track, *bridge, lap);
+                let (deck, _) = bridge_meshes(&track, &terrain, &indices);
+                let middle = indices[indices.len() / 2];
+                let beside = track.half_width() + 0.5;
+                let by_the_wall = WALL_DISTANCE - 0.3;
+                for lateral in [-by_the_wall, -beside, beside, by_the_wall] {
+                    let road = track.surface_point(middle, lateral);
+                    let top = top_at(&deck, Vec2::new(road.x, road.z)).unwrap_or_else(|| {
+                        panic!("{}: a hole {lateral} m from the centre", circuit.name)
+                    });
+                    assert!((top - road.y).abs() < 0.1, "{top} {}", road.y);
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 0, "some circuit has a red bridge");
+    }
 }
