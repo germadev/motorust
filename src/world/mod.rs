@@ -3,6 +3,7 @@
 //! un cielo de verano. Al cambiar de pista se vuelve a construir.
 
 mod cavern;
+mod desert;
 mod landmarks;
 mod lettering;
 mod mine;
@@ -56,6 +57,8 @@ impl Plugin for WorldPlugin {
                     sky::drift_clouds,
                     sky::light_the_sky,
                     mine::roll_carts,
+                    desert::pump,
+                    desert::tumble,
                     spawn_prepared_circuit.run_if(in_state(GameState::Tracks)),
                 ),
             )

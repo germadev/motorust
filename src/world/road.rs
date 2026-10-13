@@ -186,11 +186,22 @@ fn spawn_surface(
 ) {
     let line = road.line();
     let half = line.half_width();
+    // On a wooden bridge the planks are the road (see `structures`): no
+    // asphalt or paint under them, which would show past a fence narrower
+    // than the road.
+    let lap = road.track.lap_length();
+    let planked = |index: usize| {
+        road.number == 0
+            && scenery.bridges.iter().any(|bridge| {
+                bridge.style == BridgeStyle::Wooden
+                    && bridge.span.contains(index as f32 * line.step_length(), lap)
+            })
+    };
     // The asphalt, except where it lies under the lap's.
     let covered = |corners: [Vec2; 4]| corners.iter().all(|&p| road.on_other_asphalt(p));
     spawn(
-        ribbon(road, -half, half, 0.0, ASPHALT_TILE, |_, corners| {
-            (road.number == 0 || !covered(corners)).then_some(Color::WHITE)
+        ribbon(road, -half, half, 0.0, ASPHALT_TILE, |index, corners| {
+            ((road.number == 0 || !covered(corners)) && !planked(index)).then_some(Color::WHITE)
         }),
         StandardMaterial {
             base_color_texture: Some(textures.asphalt.clone()),
@@ -212,7 +223,7 @@ fn spawn_surface(
         let middle = corners.iter().sum::<Vec2>() / 4.0;
         !road.on_other_asphalt(middle)
     };
-    let white = |_, corners| clear(corners).then_some(Color::WHITE);
+    let white = |index, corners| (clear(corners) && !planked(index)).then_some(Color::WHITE);
     let edge = half - EDGE_LINE_INSET;
     spawn(
         ribbon(road, edge - LINE_WIDTH, edge, PAINT_LIFT, 1.0, white),
@@ -223,7 +234,8 @@ fn spawn_surface(
         painted(),
     );
     let dashes = |index: usize, corners| {
-        (index % (DASH.0 + DASH.1) < DASH.0 && clear(corners)).then_some(Color::WHITE)
+        (index % (DASH.0 + DASH.1) < DASH.0 && clear(corners) && !planked(index))
+            .then_some(Color::WHITE)
     };
     let center = LINE_WIDTH / 2.0;
     spawn(
@@ -232,7 +244,8 @@ fn spawn_surface(
     );
     let curbs = |index: usize, corners| {
         let curved = line.smoothed_curvature(index, 4) > 1.0 / CURB_RADIUS;
-        ((curved || road.at_a_loop(index)) && clear(corners)).then_some(scenery.curbs[index % 2])
+        ((curved || road.at_a_loop(index)) && clear(corners) && !planked(index))
+            .then_some(scenery.curbs[index % 2])
     };
     spawn(
         ribbon(road, half, half + CURB_WIDTH, 0.0, 1.0, curbs),
@@ -322,10 +335,14 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
     if scenery.tunnels.iter().any(|span| span.contains(along, lap)) {
         return None;
     }
-    if scenery.bridges.iter().any(|span| span.contains(along, lap)) {
+    if let Some(bridge) = scenery
+        .bridges
+        .iter()
+        .find(|bridge| bridge.span.contains(along, lap))
+    {
         // Wooden bridges have their own fence (see `structures`).
-        return match scenery.bridge_style {
-            BridgeStyle::RedArches => Some(WallStyle::Concrete),
+        return match bridge.style {
+            BridgeStyle::RedArches | BridgeStyle::Truss => Some(WallStyle::Concrete),
             BridgeStyle::Wooden => None,
         };
     }
@@ -836,14 +853,17 @@ mod tests {
             let scenery = &circuit.scenery;
             let lap = Track::new(&circuit.layout).lap_length();
             for bridge in scenery.bridges {
-                let middle = bridge.from + bridge.length(lap) / 2.0;
+                let span = bridge.span;
+                let middle = span.from + span.length(lap) / 2.0;
                 let wall = wall_style(scenery, lap, middle, Side::Left);
-                match scenery.bridge_style {
-                    BridgeStyle::RedArches => assert_eq!(wall, Some(WallStyle::Concrete)),
+                match bridge.style {
+                    BridgeStyle::RedArches | BridgeStyle::Truss => {
+                        assert_eq!(wall, Some(WallStyle::Concrete))
+                    }
                     BridgeStyle::Wooden => assert_eq!(wall, None, "{}", circuit.name),
                 }
                 // Off the bridge, the walls are back.
-                let off = wall_style(scenery, lap, bridge.to + 20.0, Side::Left);
+                let off = wall_style(scenery, lap, span.to + 20.0, Side::Left);
                 assert!(off.is_some(), "{}", circuit.name);
             }
         }

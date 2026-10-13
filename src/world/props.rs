@@ -10,7 +10,8 @@ use super::Assets3d;
 use super::landmarks;
 use super::quads::MeshBuilder;
 use super::scenery::{
-    Boat, BoatKind, Grandstand, Houses, Lighthouse, ParasolCluster, Row, Scenery, Species, span,
+    Boat, BoatKind, Grandstand, HouseStyle, Houses, Lighthouse, ParasolCluster, Row, Scenery,
+    Species, span,
 };
 use super::terrain::{Ground, SEA_LEVEL, Terrain};
 use super::textures::WorldTextures;
@@ -56,11 +57,15 @@ pub fn spawn_props(
     for row in scenery.hotels {
         occupied.extend(spawn_hotels(world, track, terrain, row, assets));
     }
+    occupied.extend(super::desert::spawn_desert(
+        world, track, terrain, scenery, assets,
+    ));
     let houses = place_houses(track, terrain, &scenery.houses, &occupied);
     for house in &houses {
         spawn_house(
             world,
             house,
+            scenery.houses.style,
             assets.textures,
             assets.meshes,
             assets.materials,
@@ -301,6 +306,7 @@ fn place_houses(
 fn spawn_house(
     world: &mut ChildSpawnerCommands,
     house: &House,
+    style: HouseStyle,
     textures: &WorldTextures,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
@@ -339,7 +345,7 @@ fn spawn_house(
         ));
         let (slopes, gables) = gable_roof(w, d, walls_height);
         parent.spawn((Mesh3d(meshes.add(slopes)), MeshMaterial3d(roof)));
-        parent.spawn((Mesh3d(meshes.add(gables)), MeshMaterial3d(plaster)));
+        parent.spawn((Mesh3d(meshes.add(gables)), MeshMaterial3d(plaster.clone())));
 
         // Ventanas con contraventanas en la fachada y en la parte de atrás, y
         // una puerta en la fachada (la cara -Z, que mira a la carretera).
@@ -363,11 +369,47 @@ fn spawn_house(
             }
         }
         let door_x = -w / 2.0 + w * ((columns / 2) as f32 + 0.5) / columns as f32;
+        let wood = materials.add(Color::srgb(0.35, 0.2, 0.1));
         parent.spawn((
             Mesh3d(meshes.add(Cuboid::new(1.3, 2.3, 0.12))),
-            MeshMaterial3d(materials.add(Color::srgb(0.35, 0.2, 0.1))),
+            MeshMaterial3d(wood.clone()),
             Transform::from_xyz(door_x, 1.15, -d / 2.0 - 0.05),
         ));
+        if style == HouseStyle::FalseFront {
+            // The false front, standing up over the roof from the eaves,
+            // with a cornice along its top, and a porch along the front
+            // on posts (a balcony, with two floors).
+            let rise = d * 0.32;
+            let top = walls_height + rise + 1.4;
+            let front = -d / 2.0 - 0.2;
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(w + 0.4, top - walls_height + 0.6, 0.3))),
+                MeshMaterial3d(plaster.clone()),
+                Transform::from_xyz(0.0, (walls_height - 0.6 + top) / 2.0, front),
+            ));
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(w + 1.0, 0.4, 0.7))),
+                MeshMaterial3d(wood.clone()),
+                Transform::from_xyz(0.0, top + 0.2, front - 0.1),
+            ));
+            const PORCH: f32 = 2.6;
+            const PORCH_HEIGHT: f32 = 3.0;
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(w + 0.4, 0.18, PORCH))),
+                MeshMaterial3d(wood.clone()),
+                Transform::from_xyz(0.0, PORCH_HEIGHT, -d / 2.0 - PORCH / 2.0),
+            ));
+            let post = meshes.add(Cuboid::new(0.2, PORCH_HEIGHT + FOOTING, 0.2));
+            let posts = ((w / 3.0) as u32).max(2);
+            for k in 0..=posts {
+                let x = -w / 2.0 + w * k as f32 / posts as f32;
+                parent.spawn((
+                    Mesh3d(post.clone()),
+                    MeshMaterial3d(wood.clone()),
+                    Transform::from_xyz(x, (PORCH_HEIGHT - FOOTING) / 2.0, -d / 2.0 - PORCH + 0.15),
+                ));
+            }
+        }
     });
 }
 

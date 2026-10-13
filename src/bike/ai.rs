@@ -174,10 +174,11 @@ impl Waypoint {
         }
     }
 
-    /// Half the width of the asphalt here (m).
+    /// Half the width of the asphalt here (m), short of the walls where they
+    /// close in on it.
     fn half_width(self, track: &Track) -> f32 {
         match self {
-            Waypoint::Road(road, _) => track.road(road).half_width(),
+            Waypoint::Road(road, index) => track.road(road).half_width_at(index),
             Waypoint::Into(looped, _) => track.road(track.loops()[looped].approach).half_width(),
         }
     }
@@ -856,7 +857,8 @@ mod tests {
             .collect();
         let mut progress = vec![0; pack.len()];
         let mut falls = 0;
-        for _ in 0..(90.0 / dt) as usize {
+        // Long enough for a lap of the longest track.
+        for _ in 0..(100.0 / dt) as usize {
             let traffic: Vec<Traffic> = pack
                 .iter()
                 .map(|racer| Traffic {

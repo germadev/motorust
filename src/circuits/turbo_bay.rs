@@ -62,6 +62,7 @@ pub const TURBO_BAY: Circuit = Circuit {
             to: 470.0,
             factor: 2.5,
         }],
+        narrows: &[],
         branches: &[],
     },
     scenery: Scenery {
@@ -113,7 +114,10 @@ pub const TURBO_BAY: Circuit = Circuit {
             },
         ],
         tunnels: &[TUNNEL],
-        bridges: &[BRIDGE],
+        bridges: &[Bridge {
+            span: BRIDGE,
+            style: BridgeStyle::RedArches,
+        }],
         gantries: &[
             Gantry {
                 along: 0.0,
@@ -178,6 +182,7 @@ pub const TURBO_BAY: Circuit = Circuit {
                 Color::srgb(0.93, 0.75, 0.52),
             ],
             spans: &[TOWN, ROCK_PASS],
+            style: HouseStyle::Cottage,
         },
         palms: &[
             Row {
@@ -321,7 +326,6 @@ pub const TURBO_BAY: Circuit = Circuit {
             },
         ],
         soil: Soil::Rock,
-        bridge_style: BridgeStyle::RedArches,
         sunflowers: &[],
         totems: &[],
         loops: &[],
@@ -331,6 +335,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         water: Water::Sea,
         pit: None,
         mine: None,
+        desert: None,
     },
 };
 

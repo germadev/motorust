@@ -1,47 +1,59 @@
 //! Gold Mine: a lap through a gold mine in a desert at dusk, after Wario's
-//! Gold Mine (Mario Kart) and Dragon Mines (Crash Team Racing): ore carts
-//! on rails, timber trestles and headframes, red rock and a low orange sun.
-//! It crosses the mountain twice, in a figure of eight: first through it,
-//! by the galleries of the mine, and then over it.
+//! Gold Mine (Mario Kart) and Dragon Mines (Crash Team Racing), with the
+//! roads of West Way (Moto Racer) round it: ore carts on rails, timber
+//! trestles and headframes, red rock, dunes and a low orange sun. It
+//! crosses the mountain twice, in a figure of eight: first through it, by
+//! the galleries of the mine, and then over it.
 //!
 //! 1. The start straight runs north through the mining town, past its
 //!    wooden houses, lanterns and a train of ore carts, over a crest where
 //!    the bike takes off.
-//! 2. Round the bend at the end of town and up to the east mouth of the
-//!    excavation, under a trestle where a cart crosses over the road.
-//! 3. Through the mountain (825 m), east to west: a timbered gallery, halls
+//! 2. Into the dunes: up and down over them, past a gas station on a blind
+//!    crest where the bike takes off, and round their far end.
+//! 3. South down a narrow red canyon in esses, between sheer walls, to the
+//!    east mouth of the excavation, under a trestle where a cart crosses.
+//! 4. Through the mountain (900 m), east to west: a timbered gallery, halls
 //!    of sandstone, slate and clay, down into the mine and up again, and
-//!    twice the road splits three ways, each way with its own climb or
-//!    drop: a high road and a deep one, an upper gallery and a lower one,
-//!    and the lap snaking between them. None is clearly the quickest.
-//!    Between the splits, a timbered neck runs under the road over the top.
-//! 4. Out of the west mouth and round, past ore carts on their rails, to
-//!    the shore of a great lake.
-//! 5. The wooden bridge, straight across the lake for nearly half a
-//!    kilometre, 18 m over the red water at the bottom of an open pit, its
-//!    benches stepping down to the water all round, with a crest in the
-//!    middle where the bike takes off.
-//! 6. Up the mountain's north flank, 48 m, cut into its slope.
-//! 7. Over the top, past a headframe, across the road through the mountain
-//!    65 m beneath.
-//! 8. Down its south-east flank and back into town.
+//!    twice the road splits three ways, far apart, each way with its own
+//!    climb or drop: a high road and a deep one, an upper gallery and a
+//!    lower one, and the lap snaking between them. None is clearly the
+//!    quickest. Between the splits, a timbered neck runs under the road over
+//!    the top.
+//! 5. Out of the west mouth and along the rim of a great open pit.
+//! 6. The wooden bridge, straight across the lake at the bottom of the pit
+//!    for nearly half a kilometre, 18 m over the red water, with a crest in
+//!    the middle where the bike takes off.
+//! 7. Up the switchbacks of the mountain's north flank, round two hairpins,
+//!    and a long sweep onto the top, 55 m up.
+//! 8. Over the top, past a headframe, across the road through the mountain
+//!    70 m beneath.
+//! 9. Down its south-east flank in esses and back into town.
 
 use bevy::prelude::*;
 
 use super::{Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
-use crate::track::{Banking, Branch, Layout, WALL_DISTANCE};
+use crate::track::{Banking, Branch, Layout, Narrowing, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 /// Where things are, in metres from the finish line.
-const TOWN: Span = span(4560.0, 300.0);
-const APPROACH: Span = span(300.0, 860.0);
-const EXCAVATION: Span = span(875.0, 1700.0);
-const EXIT: Span = span(1700.0, 2100.0);
-const BRIDGE: Span = span(2105.0, 2600.0);
-const CLIMB: Span = span(2620.0, 3530.0);
-const SUMMIT: Span = span(3530.0, 3880.0);
-const DESCENT: Span = span(3880.0, 4560.0);
+const TOWN: Span = span(5780.0, 300.0);
+const DUNES: Span = span(300.0, 990.0);
+const CANYON: Span = span(990.0, 1655.0);
+const EXCAVATION: Span = span(1655.0, 2555.0);
+const CLIFF: Span = span(2555.0, 2905.0);
+const BRIDGE: Span = span(2905.0, 3425.0);
+/// How far from the centre line the fences of the wooden bridge stand (m):
+/// the bridge is narrower than the asphalt of the road.
+const BRIDGE_WALL: f32 = 6.0;
+const CLIMB: Span = span(3425.0, 4580.0);
+const HAIRPINS: Span = span(3600.0, 4200.0);
+const GULLY: Span = span(4200.0, 4390.0);
+const SUMMIT: Span = span(4580.0, 5000.0);
+const DESCENT: Span = span(5000.0, 5780.0);
+/// Where the road splits three ways under the mountain.
+const FIRST_SPLIT: (f32, f32) = (1706.0, 2056.0);
+const SECOND_SPLIT: (f32, f32) = (2156.0, 2504.0);
 
 /// The mine's colours: weathered gold, rust red and cream.
 const GOLD: Color = Color::srgb(0.85, 0.62, 0.12);
@@ -64,11 +76,26 @@ pub const GOLD_MINE: Circuit = Circuit {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         // Hardly banked under the mountain, where the road snakes through
-        // its splits.
-        banking: &[Banking {
-            from: 875.0,
-            to: 1700.0,
-            factor: 0.25,
+        // its splits, and less than their curves would have it round the
+        // hairpins, cut into the mountainside.
+        banking: &[
+            Banking {
+                from: EXCAVATION.from,
+                to: EXCAVATION.to,
+                factor: 0.25,
+            },
+            Banking {
+                from: HAIRPINS.from,
+                to: HAIRPINS.to,
+                factor: 0.6,
+            },
+        ],
+        // The wooden bridge is narrower than the road: its fences close in
+        // on it.
+        narrows: &[Narrowing {
+            from: BRIDGE.from,
+            to: BRIDGE.to,
+            wall: BRIDGE_WALL,
         }],
         // Under the mountain the road splits three ways, twice: a way to the
         // left of the lap and one to its right, past pillars of rock, one
@@ -76,8 +103,8 @@ pub const GOLD_MINE: Circuit = Circuit {
         branches: &[
             // The high road, to the left, over a hump.
             Branch {
-                from: 932.0,
-                to: 1224.0,
+                from: FIRST_SPLIT.0,
+                to: FIRST_SPLIT.1,
                 approach: &HIGH_ROAD,
                 vertical_loop: None,
                 exit: &[],
@@ -85,8 +112,8 @@ pub const GOLD_MINE: Circuit = Circuit {
             },
             // The deep road, to the right, through a dip.
             Branch {
-                from: 932.0,
-                to: 1224.0,
+                from: FIRST_SPLIT.0,
+                to: FIRST_SPLIT.1,
                 approach: &DEEP_ROAD,
                 vertical_loop: None,
                 exit: &[],
@@ -94,8 +121,8 @@ pub const GOLD_MINE: Circuit = Circuit {
             },
             // The upper gallery, to the left, over a hump.
             Branch {
-                from: 1334.0,
-                to: 1648.0,
+                from: SECOND_SPLIT.0,
+                to: SECOND_SPLIT.1,
                 approach: &UPPER_GALLERY,
                 vertical_loop: None,
                 exit: &[],
@@ -103,8 +130,8 @@ pub const GOLD_MINE: Circuit = Circuit {
             },
             // The lower gallery, to the right, through a dip.
             Branch {
-                from: 1334.0,
-                to: 1648.0,
+                from: SECOND_SPLIT.0,
+                to: SECOND_SPLIT.1,
                 approach: &LOWER_GALLERY,
                 vertical_loop: None,
                 exit: &[],
@@ -120,7 +147,29 @@ pub const GOLD_MINE: Circuit = Circuit {
         terraces: &[],
         mountains,
         curbs: [RUST, CREAM],
+        // Stone parapets along the rim of the pit and up the switchbacks,
+        // timber fences everywhere else.
         walls: &[
+            WallRun {
+                span: CLIFF,
+                side: Side::Left,
+                style: WallStyle::Stone,
+            },
+            WallRun {
+                span: CLIFF,
+                side: Side::Right,
+                style: WallStyle::Stone,
+            },
+            WallRun {
+                span: CLIMB,
+                side: Side::Left,
+                style: WallStyle::Stone,
+            },
+            WallRun {
+                span: CLIMB,
+                side: Side::Right,
+                style: WallStyle::Stone,
+            },
             WallRun {
                 span: LAP,
                 side: Side::Left,
@@ -133,7 +182,18 @@ pub const GOLD_MINE: Circuit = Circuit {
             },
         ],
         tunnels: &[EXCAVATION],
-        bridges: &[BRIDGE],
+        // Planks on log piers across the lake, and a steel truss over the
+        // gully between the shoulder of the mountain and its flank.
+        bridges: &[
+            Bridge {
+                span: BRIDGE,
+                style: BridgeStyle::Wooden,
+            },
+            Bridge {
+                span: GULLY,
+                style: BridgeStyle::Truss,
+            },
+        ],
         gantries: &[
             Gantry {
                 along: 0.0,
@@ -141,12 +201,12 @@ pub const GOLD_MINE: Circuit = Circuit {
                 text: Some("GOLD MINE"),
             },
             Gantry {
-                along: 1780.0,
+                along: 2640.0,
                 color: RUST,
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 3720.0,
+                along: 4440.0,
                 color: RUST,
                 text: Some("CHECKPOINT"),
             },
@@ -167,14 +227,14 @@ pub const GOLD_MINE: Circuit = Circuit {
                 accent: Some((4, crate::ui::RUST_ORANGE)),
             },
             Billboard {
-                along: 1880.0,
+                along: 2720.0,
                 side: Side::Left,
                 text: "DANGER TNT",
                 color: Color::srgb(0.75, 0.1, 0.07),
                 accent: None,
             },
             Billboard {
-                along: 4420.0,
+                along: 5680.0,
                 side: Side::Left,
                 text: "MINE 49",
                 color: Color::srgb(0.25, 0.18, 0.12),
@@ -184,7 +244,7 @@ pub const GOLD_MINE: Circuit = Circuit {
         lamps: &[],
         trees: &[],
         forests: &[],
-        // The mining town: weathered wood.
+        // The mining town: weathered wood, false fronts and porches.
         houses: Houses {
             max: 10,
             paints: &[
@@ -194,6 +254,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 Color::srgb(0.8, 0.66, 0.48),
             ],
             spans: &[TOWN],
+            style: HouseStyle::FalseFront,
         },
         palms: &[],
         hotels: &[],
@@ -201,28 +262,7 @@ pub const GOLD_MINE: Circuit = Circuit {
         buoys: &[],
         lighthouses: &[],
         boats: &[],
-        chevrons: &[
-            ChevronSign {
-                along: 420.0,
-                side: Side::Right,
-                direction: ChevronDirection::Left,
-            },
-            ChevronSign {
-                along: 815.0,
-                side: Side::Left,
-                direction: ChevronDirection::Right,
-            },
-            ChevronSign {
-                along: 3380.0,
-                side: Side::Left,
-                direction: ChevronDirection::Right,
-            },
-            ChevronSign {
-                along: 4680.0,
-                side: Side::Right,
-                direction: ChevronDirection::Left,
-            },
-        ],
+        chevrons: &[],
         grandstands: &[Grandstand {
             along: 60.0,
             side: Side::Left,
@@ -232,7 +272,6 @@ pub const GOLD_MINE: Circuit = Circuit {
         beach_parasols: &[],
         brake_markers: &[],
         soil: Soil::Mine,
-        bridge_style: BridgeStyle::Wooden,
         sunflowers: &[],
         totems: &[],
         loops: &[],
@@ -247,6 +286,68 @@ pub const GOLD_MINE: Circuit = Circuit {
             tread: 9.0,
             spoil: 45.0,
         }),
+        // The roadside of West Way (Moto Racer).
+        desert: Some(Desert {
+            // On the right of the blind crest in the dunes.
+            gas_stations: &[GasStation {
+                along: 600.0,
+                side: Side::Right,
+                lateral: 32.0,
+            }],
+            pumpjacks: &PUMPJACKS,
+            // High over the red canyon, from one wall to the other.
+            overpasses: &[Overpass {
+                along: 1300.0,
+                height: 14.0,
+            }],
+            // On the outside of the bend at the foot of the pueblo's easing.
+            pueblos: &[Pueblo {
+                along: 5450.0,
+                side: Side::Left,
+                lateral: 34.0,
+            }],
+            curve_signs: &CURVE_SIGNS,
+            cacti: Cacti {
+                count: 90,
+                spans: &[TOWN, DUNES, CLIFF, CLIMB, SUMMIT, DESCENT],
+            },
+            // Blown across the road in town, in the dunes, along the rim of
+            // the pit, over the top and on the way down.
+            tumbleweeds: &[
+                Tumbleweed {
+                    along: 230.0,
+                    reach: 35.0,
+                },
+                Tumbleweed {
+                    along: 530.0,
+                    reach: 40.0,
+                },
+                Tumbleweed {
+                    along: 930.0,
+                    reach: 35.0,
+                },
+                Tumbleweed {
+                    along: 2700.0,
+                    reach: 30.0,
+                },
+                Tumbleweed {
+                    along: 4930.0,
+                    reach: 35.0,
+                },
+                Tumbleweed {
+                    along: 5250.0,
+                    reach: 35.0,
+                },
+                Tumbleweed {
+                    along: 5620.0,
+                    reach: 35.0,
+                },
+                Tumbleweed {
+                    along: 5860.0,
+                    reach: 30.0,
+                },
+            ],
+        }),
         mine: Some(Mine {
             rails: &[
                 // Through town, on the right of the start straight.
@@ -256,26 +357,27 @@ pub const GOLD_MINE: Circuit = Circuit {
                     lateral: WALL_DISTANCE + 6.0,
                     carts: 3,
                 },
-                // Out of the west mouth, round towards the lake.
+                // Out of the west mouth, along the rim of the pit.
                 Rails {
-                    span: span(1760.0, 1960.0),
+                    span: span(2600.0, 2800.0),
                     side: Side::Left,
                     lateral: WALL_DISTANCE + 6.0,
                     carts: 2,
                 },
             ],
-            trestles: &[Trestle { along: 865.0 }],
+            // In the canyon, just before the east mouth.
+            trestles: &[Trestle { along: 1625.0 }],
             headframes: &[
                 // Over a shaft on the top of the mountain.
                 Headframe {
-                    along: 3770.0,
+                    along: 4890.0,
                     side: Side::Left,
                     lateral: 48.0,
                 },
-                // By the road down from the west mouth.
+                // By the road along the rim of the pit.
                 Headframe {
-                    along: 1960.0,
-                    side: Side::Right,
+                    along: 2770.0,
+                    side: Side::Left,
                     lateral: 46.0,
                 },
             ],
@@ -293,13 +395,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                     every: 28.0,
                 },
                 Row {
-                    span: APPROACH,
-                    side: Side::Left,
-                    lateral: WALL_DISTANCE + 1.2,
-                    every: 35.0,
-                },
-                Row {
-                    span: EXIT,
+                    span: CLIFF,
                     side: Side::Left,
                     lateral: WALL_DISTANCE + 1.2,
                     every: 40.0,
@@ -313,7 +409,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 // Over the top, once past the road through the mountain
                 // beneath.
                 Row {
-                    span: span(3660.0, SUMMIT.to),
+                    span: span(4830.0, SUMMIT.to),
                     side: Side::Right,
                     lateral: WALL_DISTANCE + 1.2,
                     every: 40.0,
@@ -332,22 +428,22 @@ pub const GOLD_MINE: Circuit = Circuit {
             // part, one of sandstone again, and timber to the way out.
             halls: &[
                 Hall {
-                    span: span(940.0, 1085.0),
+                    span: span(1712.0, 1880.0),
                     stone: Stone::Sandstone,
                     crown: 28.0,
                 },
                 Hall {
-                    span: span(1085.0, 1222.0),
+                    span: span(1880.0, 2050.0),
                     stone: Stone::Slate,
                     crown: 34.0,
                 },
                 Hall {
-                    span: span(1340.0, 1490.0),
+                    span: span(2162.0, 2330.0),
                     stone: Stone::Clay,
                     crown: 24.0,
                 },
                 Hall {
-                    span: span(1490.0, 1650.0),
+                    span: span(2330.0, 2500.0),
                     stone: Stone::Sandstone,
                     crown: 31.0,
                 },
@@ -360,31 +456,31 @@ pub const GOLD_MINE: Circuit = Circuit {
                     kind: PileKind::Supplies,
                 },
                 Pile {
-                    along: 640.0,
+                    along: 840.0,
                     side: Side::Left,
                     lateral: WALL_DISTANCE + 10.0,
                     kind: PileKind::Ore,
                 },
                 Pile {
-                    along: 1830.0,
+                    along: 2700.0,
                     side: Side::Left,
                     lateral: WALL_DISTANCE + 14.0,
                     kind: PileKind::Ore,
                 },
                 Pile {
-                    along: 2070.0,
+                    along: 2900.0,
                     side: Side::Left,
                     lateral: WALL_DISTANCE + 9.0,
                     kind: PileKind::Supplies,
                 },
                 Pile {
-                    along: 3520.0,
+                    along: 4660.0,
                     side: Side::Right,
                     lateral: WALL_DISTANCE + 12.0,
                     kind: PileKind::Ore,
                 },
                 Pile {
-                    along: 4380.0,
+                    along: 5620.0,
                     side: Side::Left,
                     lateral: WALL_DISTANCE + 9.0,
                     kind: PileKind::Supplies,
@@ -394,309 +490,519 @@ pub const GOLD_MINE: Circuit = Circuit {
     },
 };
 
-const CONTROL_POINTS: [Vec2; 50] = [
+/// Diamond warning signs before the bends, on the outside of each: green
+/// for a bend, yellow for a sharp one, red for a hairpin.
+const CURVE_SIGNS: [CurveSign; 11] = [
+    // Round the far end of the dunes.
+    curve_sign(720.0, ChevronDirection::Left, SignColor::Red),
+    // The esses of the canyon.
+    curve_sign(1100.0, ChevronDirection::Left, SignColor::Green),
+    curve_sign(1215.0, ChevronDirection::Right, SignColor::Green),
+    curve_sign(1495.0, ChevronDirection::Right, SignColor::Yellow),
+    // Along the rim of the pit, before the bend onto the bridge.
+    curve_sign(2810.0, ChevronDirection::Right, SignColor::Green),
+    // The hairpins.
+    curve_sign(3670.0, ChevronDirection::Right, SignColor::Red),
+    curve_sign(3940.0, ChevronDirection::Left, SignColor::Red),
+    // Down the esses into town.
+    curve_sign(5065.0, ChevronDirection::Left, SignColor::Yellow),
+    curve_sign(5150.0, ChevronDirection::Right, SignColor::Yellow),
+    curve_sign(5315.0, ChevronDirection::Left, SignColor::Green),
+    curve_sign(5405.0, ChevronDirection::Right, SignColor::Yellow),
+];
+
+const fn curve_sign(along: f32, direction: ChevronDirection, color: SignColor) -> CurveSign {
+    CurveSign {
+        along,
+        direction,
+        color,
+    }
+}
+
+/// Oil pumpjacks nodding on the tops of the dunes.
+const PUMPJACKS: [Pumpjack; 6] = [
+    Pumpjack {
+        position: Vec2::new(-30.0, -560.0),
+        heading: 1.0,
+    },
+    Pumpjack {
+        position: Vec2::new(-40.0, -612.0),
+        heading: 1.3,
+    },
+    Pumpjack {
+        position: Vec2::new(-45.0, -505.0),
+        heading: 0.8,
+    },
+    Pumpjack {
+        position: Vec2::new(215.0, -610.0),
+        heading: -0.6,
+    },
+    Pumpjack {
+        position: Vec2::new(195.0, -660.0),
+        heading: -0.3,
+    },
+    Pumpjack {
+        position: Vec2::new(30.0, -965.0),
+        heading: 2.0,
+    },
+];
+
+const CONTROL_POINTS: [Vec2; 95] = [
     // 1. The start straight, north (-Z) through town.
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -140.0),
     Vec2::new(0.0, -280.0),
-    // 2. Round the bend at the north end of town, and south-west up to the
-    // east mouth of the excavation.
-    Vec2::new(-18.0, -390.0),
-    Vec2::new(-75.0, -455.0),
-    Vec2::new(-165.0, -450.0),
-    Vec2::new(-230.0, -380.0),
-    Vec2::new(-260.0, -280.0),
-    Vec2::new(-315.0, -210.0),
-    // 3. Through the mountain, west, snaking through two splits.
-    Vec2::new(-400.0, -199.7),
-    Vec2::new(-458.0, -190.8),
-    Vec2::new(-525.0, -200.0),
-    Vec2::new(-592.0, -209.2),
-    Vec2::new(-660.0, -200.0),
-    Vec2::new(-720.0, -200.0),
-    Vec2::new(-790.0, -200.0),
-    Vec2::new(-862.0, -209.1),
-    Vec2::new(-935.0, -200.0),
-    Vec2::new(-1008.0, -190.9),
-    Vec2::new(-1080.0, -200.0),
-    Vec2::new(-1140.0, -200.0),
-    // 4. Out of the west mouth and round, north, to the lake.
-    Vec2::new(-1220.0, -208.0),
-    Vec2::new(-1302.0, -240.0),
-    Vec2::new(-1365.0, -300.0),
-    Vec2::new(-1398.0, -375.0),
-    // 5. The bridge, straight across the lake, north-east.
+    // 2. Into the dunes: a kink to the right, the straight past the gas
+    // station, and round to the left at their far end.
+    Vec2::new(3.0, -380.0),
+    Vec2::new(28.0, -455.0),
+    Vec2::new(52.0, -526.0),
+    Vec2::new(76.0, -597.0),
+    Vec2::new(100.0, -668.0),
+    Vec2::new(116.0, -728.0),
+    Vec2::new(104.0, -782.0),
+    Vec2::new(60.0, -812.0),
+    Vec2::new(0.0, -810.0),
+    Vec2::new(-55.0, -782.0),
+    // 3. South down the red canyon, in esses, to the east mouth.
+    Vec2::new(-100.0, -745.0),
+    Vec2::new(-140.0, -700.0),
+    Vec2::new(-162.0, -645.0),
+    Vec2::new(-158.0, -590.0),
+    Vec2::new(-150.0, -535.0),
+    Vec2::new(-170.0, -470.0),
+    Vec2::new(-205.0, -410.0),
+    Vec2::new(-218.0, -345.0),
+    Vec2::new(-212.0, -288.0),
+    Vec2::new(-238.0, -236.0),
+    // 4. Through the mountain, west: the lap snakes between the ways of two
+    // splits, with the timbered neck between them.
+    Vec2::new(-300.0, -215.0),
+    Vec2::new(-350.0, -215.0),
+    Vec2::new(-391.2, -224.1),
+    Vec2::new(-432.5, -238.9),
+    Vec2::new(-473.8, -237.1),
+    Vec2::new(-515.0, -215.0),
+    Vec2::new(-556.2, -192.9),
+    Vec2::new(-597.5, -191.1),
+    Vec2::new(-638.8, -205.9),
+    Vec2::new(-680.0, -215.0),
+    Vec2::new(-730.0, -215.0),
+    Vec2::new(-780.0, -215.0),
+    Vec2::new(-821.2, -205.9),
+    Vec2::new(-862.5, -191.1),
+    Vec2::new(-903.8, -192.9),
+    Vec2::new(-945.0, -215.0),
+    Vec2::new(-986.2, -237.1),
+    Vec2::new(-1027.5, -238.9),
+    Vec2::new(-1068.8, -224.1),
+    Vec2::new(-1110.0, -215.0),
+    Vec2::new(-1160.0, -215.0),
+    // 5. Out of the west mouth and along the rim of the pit.
+    Vec2::new(-1215.0, -224.0),
+    Vec2::new(-1272.0, -248.0),
+    Vec2::new(-1330.0, -282.0),
+    Vec2::new(-1380.0, -330.0),
+    Vec2::new(-1404.0, -395.0),
+    // 6. The bridge, straight across the lake, north-east.
     Vec2::new(-1385.0, -460.0),
     Vec2::new(-1305.0, -543.0),
     Vec2::new(-1225.0, -626.0),
     Vec2::new(-1145.0, -709.0),
     Vec2::new(-1065.0, -792.0),
-    // 6. Up the mountain's north flank.
-    Vec2::new(-980.0, -840.0),
-    Vec2::new(-885.0, -830.0),
-    Vec2::new(-805.0, -745.0),
-    Vec2::new(-725.0, -675.0),
-    Vec2::new(-645.0, -595.0),
-    Vec2::new(-575.0, -510.0),
-    Vec2::new(-540.0, -420.0),
-    Vec2::new(-565.0, -330.0),
-    Vec2::new(-640.0, -270.0),
-    // 7. Over the top, south, across the road through the mountain beneath.
-    Vec2::new(-705.0, -210.0),
-    Vec2::new(-745.0, -130.0),
-    Vec2::new(-770.0, -45.0),
-    Vec2::new(-755.0, 40.0),
-    // 8. Down the south-east flank, and back into town.
-    Vec2::new(-690.0, 105.0),
-    Vec2::new(-580.0, 150.0),
-    Vec2::new(-450.0, 185.0),
-    Vec2::new(-310.0, 205.0),
-    Vec2::new(-175.0, 195.0),
-    Vec2::new(-65.0, 150.0),
-    Vec2::new(-10.0, 80.0),
+    // 7. Up the switchbacks of the north flank: a hairpin to the right, one
+    // to the left, and a long sweep round onto the top.
+    Vec2::new(-1010.0, -845.0),
+    Vec2::new(-950.0, -872.0),
+    Vec2::new(-890.0, -876.0),
+    Vec2::new(-835.0, -876.0),
+    Vec2::new(-780.0, -875.0),
+    Vec2::new(-752.5, -867.6),
+    Vec2::new(-732.4, -847.5),
+    Vec2::new(-725.0, -820.0),
+    Vec2::new(-732.4, -792.5),
+    Vec2::new(-752.5, -772.4),
+    Vec2::new(-780.0, -765.0),
+    Vec2::new(-827.0, -765.0),
+    Vec2::new(-875.0, -765.0),
+    Vec2::new(-902.5, -757.6),
+    Vec2::new(-922.6, -737.5),
+    Vec2::new(-930.0, -710.0),
+    Vec2::new(-922.6, -682.5),
+    Vec2::new(-902.5, -662.4),
+    Vec2::new(-875.0, -655.0),
+    Vec2::new(-825.0, -655.0),
+    Vec2::new(-772.0, -648.0),
+    Vec2::new(-722.0, -622.0),
+    Vec2::new(-678.0, -572.0),
+    Vec2::new(-646.0, -502.0),
+    Vec2::new(-630.0, -422.0),
+    Vec2::new(-640.0, -338.0),
+    Vec2::new(-685.0, -265.0),
+    // 8. Over the top, south, across the road through the mountain beneath.
+    Vec2::new(-730.0, -200.0),
+    Vec2::new(-742.0, -130.0),
+    Vec2::new(-748.0, -50.0),
+    Vec2::new(-722.0, 30.0),
+    // 9. Down the south-east flank, in esses, and back into town.
+    Vec2::new(-660.0, 90.0),
+    Vec2::new(-580.0, 110.0),
+    Vec2::new(-520.0, 160.0),
+    Vec2::new(-440.0, 190.0),
+    Vec2::new(-350.0, 170.0),
+    Vec2::new(-270.0, 200.0),
+    Vec2::new(-180.0, 215.0),
+    Vec2::new(-90.0, 180.0),
+    Vec2::new(-30.0, 132.0),
+    Vec2::new(-4.0, 72.0),
 ];
 
-/// Up from town to the east mouth; through the mountain, down into the
-/// mine and up again; down to the lake and over it; up the mountain, 48 m,
-/// over its top and down again into town.
-const ELEVATION: [(f32, f32); 57] = [
+/// Up from town over the dunes and the canyon to the east mouth; through the
+/// mountain, down into the mine and up again; along the rim of the pit and
+/// over the lake; up the switchbacks, 55 m, over the top and down again
+/// into town.
+const ELEVATION: [(f32, f32); 62] = [
     // Through town, over a crest where the bike flies.
     (0.0, 2.0),
     (110.0, 2.4),
     (185.0, 6.6),
     (225.0, 5.0),
-    // Round the bend and up to the east mouth.
     (300.0, 2.6),
-    (450.0, 3.5),
-    (600.0, 6.5),
-    (750.0, 11.0),
-    (860.0, 15.0),
-    // Through the mountain: down into the mine, under the road over the top,
-    // and up again to the west mouth.
-    (905.0, 16.6),
-    (950.0, 16.2),
-    (1010.0, 13.2),
-    (1070.0, 10.0),
-    (1130.0, 6.8),
-    (1190.0, 4.0),
-    (1250.0, 2.6),
-    (1300.0, 3.0),
-    (1350.0, 4.4),
-    (1410.0, 7.2),
-    (1470.0, 10.3),
-    (1530.0, 13.4),
-    (1590.0, 16.4),
-    (1640.0, 18.6),
-    (1690.0, 19.6),
-    (1740.0, 19.4),
-    // Down to the lake, and over it, with a crest in the middle of the bridge
-    // where the bike takes off.
-    (1800.0, 19.2),
-    (1900.0, 18.6),
-    (2000.0, 18.1),
-    (2090.0, 17.8),
-    (2320.0, 17.6),
-    (2390.0, 21.8),
-    (2435.0, 20.4),
-    (2500.0, 18.2),
-    (2560.0, 17.6),
-    (2600.0, 17.6),
-    // Up the mountain's north flank.
-    (2690.0, 19.0),
-    (2780.0, 23.0),
-    (2880.0, 28.5),
-    (2980.0, 34.0),
-    (3080.0, 39.5),
-    (3180.0, 45.5),
-    (3280.0, 52.0),
-    (3370.0, 58.0),
-    (3450.0, 62.5),
-    (3530.0, 66.0),
+    // Up onto the dunes, over a blind crest on the straight by the gas
+    // station, down into a hollow round the far end and up again.
+    (380.0, 3.4),
+    (450.0, 8.0),
+    (520.0, 13.0),
+    (595.0, 17.2),
+    (635.0, 15.6),
+    (700.0, 13.0),
+    (780.0, 7.0),
+    (860.0, 6.5),
+    (940.0, 11.0),
+    // Rolling up the red canyon to the east mouth.
+    (1010.0, 14.0),
+    (1090.0, 11.5),
+    (1180.0, 15.5),
+    (1270.0, 14.0),
+    (1360.0, 18.5),
+    (1450.0, 17.0),
+    (1540.0, 20.5),
+    (1610.0, 23.0),
+    // Through the mountain: down past the first split to the neck, under
+    // the road over the top, and up past the second.
+    (1660.0, 22.5),
+    (1706.0, 20.0),
+    (2062.0, 8.0),
+    (2112.0, 5.5),
+    (2162.0, 6.5),
+    (2516.0, 18.0),
+    (2566.0, 21.0),
+    // Rolling along the rim of the pit.
+    (2640.0, 24.0),
+    (2740.0, 19.5),
+    (2830.0, 21.5),
+    (2920.0, 18.6),
+    // Over the lake, with a crest in the middle of the bridge where the
+    // bike takes off.
+    (2960.0, 17.8),
+    (3160.0, 17.6),
+    (3230.0, 21.8),
+    (3275.0, 20.4),
+    (3340.0, 18.2),
+    (3400.0, 17.6),
+    // Up the switchbacks and round onto the top.
+    (3480.0, 19.0),
+    (3600.0, 23.6),
+    (3760.0, 29.2),
+    (3880.0, 33.4),
+    (4000.0, 37.6),
+    (4150.0, 42.8),
+    (4300.0, 50.0),
+    (4450.0, 59.0),
+    (4600.0, 68.4),
+    (4716.0, 74.3),
     // Over the top.
-    (3610.0, 68.0),
-    (3700.0, 69.0),
-    (3790.0, 68.5),
-    (3870.0, 66.5),
-    // Down its south-east flank into town.
-    (3960.0, 62.0),
-    (4080.0, 54.5),
-    (4200.0, 46.5),
-    (4320.0, 38.0),
-    (4440.0, 29.0),
-    (4560.0, 19.5),
-    (4660.0, 10.5),
-    (4740.0, 4.5),
+    (4800.0, 75.5),
+    (4900.0, 75.0),
+    (5000.0, 72.5),
+    // Down the south-east flank, easing past the pueblo, into town.
+    (5100.0, 66.5),
+    (5200.0, 58.0),
+    (5300.0, 50.5),
+    (5380.0, 46.5),
+    (5450.0, 44.5),
+    (5540.0, 37.0),
+    (5640.0, 27.0),
+    (5740.0, 17.0),
+    (5830.0, 8.5),
+    (5900.0, 3.5),
 ];
 
 /// The ways off the lap under the mountain, each through points to one
 /// side of it (m along the lap and from its centre line in the comments),
 /// from where it leaves the lap to where it joins it again. The high road,
-/// to the left, from 932 m to 1224 m.
+/// to the left, from the first split: it runs straight on where the lap
+/// swings right, and out round a wide curve back to it.
 const HIGH_ROAD: [Vec2; 11] = [
-    // 946 m, 1 m.
-    Vec2::new(-394.5, -199.0),
-    // 967 m, 3 m.
-    Vec2::new(-414.8, -194.3),
-    // 991 m, 7 m.
-    Vec2::new(-438.0, -185.5),
-    // 1018 m, 19 m.
-    Vec2::new(-467.0, -172.5),
-    // 1042 m, 33 m.
-    Vec2::new(-496.0, -162.0),
-    // 1071 m, 42 m.
-    Vec2::new(-525.0, -158.0),
-    // 1099 m, 42 m.
-    Vec2::new(-554.0, -162.0),
-    // 1133 m, 36 m.
-    Vec2::new(-583.0, -172.5),
-    // 1169 m, 22 m.
-    Vec2::new(-612.0, -185.5),
-    // 1190 m, 9 m.
-    Vec2::new(-635.2, -194.3),
-    // 1209 m, 1 m.
-    Vec2::new(-655.5, -199.0),
+    // 1718 m, 2 m.
+    Vec2::new(-361.7, -215.2),
+    // 1746 m, 15 m.
+    Vec2::new(-392.9, -209.1),
+    // 1768 m, 40 m.
+    Vec2::new(-424.9, -194.2),
+    // 1829 m, 65 m.
+    Vec2::new(-455.6, -174.2),
+    // 1889 m, 64 m.
+    Vec2::new(-488.6, -155.8),
+    // 1918 m, 57 m.
+    Vec2::new(-521.6, -145.6),
+    // 1935 m, 44 m.
+    Vec2::new(-554.6, -148.6),
+    // 1958 m, 25 m.
+    Vec2::new(-587.6, -165.0),
+    // 1991 m, 9 m.
+    Vec2::new(-621.3, -188.9),
+    // 2021 m, 3 m.
+    Vec2::new(-646.1, -205.0),
+    // 2042 m, 0 m.
+    Vec2::new(-666.4, -212.5),
 ];
 
-/// The deep road, to the right, from 932 m to 1224 m.
+/// The deep road, to the right, from the first split: it swings out to the
+/// right before the lap does, and back to it late.
 const DEEP_ROAD: [Vec2; 11] = [
-    // 945 m, -1 m.
-    Vec2::new(-394.5, -201.0),
-    // 964 m, -8 m.
-    Vec2::new(-414.8, -205.7),
-    // 986 m, -22 m.
-    Vec2::new(-438.0, -214.5),
-    // 1022 m, -36 m.
-    Vec2::new(-467.0, -227.5),
-    // 1056 m, -42 m.
-    Vec2::new(-496.0, -238.0),
-    // 1084 m, -42 m.
-    Vec2::new(-525.0, -242.0),
-    // 1112 m, -33 m.
-    Vec2::new(-554.0, -238.0),
-    // 1137 m, -19 m.
-    Vec2::new(-583.0, -227.5),
-    // 1164 m, -7 m.
-    Vec2::new(-612.0, -214.5),
-    // 1188 m, -2 m.
-    Vec2::new(-635.2, -205.7),
-    // 1209 m, -1 m.
-    Vec2::new(-655.5, -201.0),
+    // 1718 m, -0 m.
+    Vec2::new(-361.3, -217.0),
+    // 1748 m, -4 m.
+    Vec2::new(-389.4, -227.9),
+    // 1786 m, -14 m.
+    Vec2::new(-421.7, -250.3),
+    // 1814 m, -32 m.
+    Vec2::new(-455.6, -272.1),
+    // 1836 m, -49 m.
+    Vec2::new(-488.6, -283.3),
+    // 1854 m, -60 m.
+    Vec2::new(-521.6, -280.7),
+    // 1889 m, -65 m.
+    Vec2::new(-554.6, -266.7),
+    // 1967 m, -57 m.
+    Vec2::new(-587.5, -247.3),
+    // 2001 m, -29 m.
+    Vec2::new(-615.7, -228.2),
+    // 2021 m, -11 m.
+    Vec2::new(-643.3, -218.3),
+    // 2042 m, -1 m.
+    Vec2::new(-666.1, -214.4),
 ];
 
-/// The upper gallery, to the left, from 1334 m to 1648 m.
+/// The upper gallery, to the left, from the second split: it swings out to
+/// the left before the lap does, and back to it late.
 const UPPER_GALLERY: [Vec2; 11] = [
-    // 1349 m, 1 m.
-    Vec2::new(-795.5, -199.0),
-    // 1370 m, 9 m.
-    Vec2::new(-817.2, -194.3),
-    // 1393 m, 22 m.
-    Vec2::new(-842.0, -185.5),
-    // 1431 m, 36 m.
-    Vec2::new(-873.0, -172.5),
-    // 1466 m, 42 m.
-    Vec2::new(-904.0, -162.0),
-    // 1496 m, 42 m.
-    Vec2::new(-935.0, -158.0),
-    // 1527 m, 33 m.
-    Vec2::new(-966.0, -162.0),
-    // 1554 m, 19 m.
-    Vec2::new(-997.0, -172.5),
-    // 1583 m, 7 m.
-    Vec2::new(-1028.0, -185.5),
-    // 1609 m, 2 m.
-    Vec2::new(-1052.8, -194.3),
-    // 1631 m, 1 m.
-    Vec2::new(-1074.5, -199.0),
+    // 2166 m, 0 m.
+    Vec2::new(-789.9, -213.2),
+    // 2197 m, 4 m.
+    Vec2::new(-818.5, -202.4),
+    // 2235 m, 14 m.
+    Vec2::new(-851.4, -179.8),
+    // 2264 m, 32 m.
+    Vec2::new(-885.6, -157.9),
+    // 2285 m, 49 m.
+    Vec2::new(-918.6, -146.7),
+    // 2304 m, 60 m.
+    Vec2::new(-951.6, -149.3),
+    // 2338 m, 65 m.
+    Vec2::new(-984.6, -163.3),
+    // 2417 m, 57 m.
+    Vec2::new(-1017.5, -182.7),
+    // 2450 m, 29 m.
+    Vec2::new(-1045.2, -202.0),
+    // 2470 m, 11 m.
+    Vec2::new(-1072.2, -212.0),
+    // 2492 m, 1 m.
+    Vec2::new(-1096.6, -215.5),
 ];
 
-/// The lower gallery, to the right, from 1334 m to 1648 m.
+/// The lower gallery, to the right, from the second split: it runs straight
+/// on where the lap swings left, and out round a wide curve back to it.
 const LOWER_GALLERY: [Vec2; 11] = [
-    // 1349 m, -1 m.
-    Vec2::new(-795.5, -201.0),
-    // 1372 m, -2 m.
-    Vec2::new(-817.2, -205.7),
-    // 1397 m, -7 m.
-    Vec2::new(-842.0, -214.5),
-    // 1426 m, -19 m.
-    Vec2::new(-873.0, -227.5),
-    // 1454 m, -33 m.
-    Vec2::new(-904.0, -238.0),
-    // 1484 m, -42 m.
-    Vec2::new(-935.0, -242.0),
-    // 1515 m, -42 m.
-    Vec2::new(-966.0, -238.0),
-    // 1550 m, -36 m.
-    Vec2::new(-997.0, -227.5),
-    // 1587 m, -22 m.
-    Vec2::new(-1028.0, -214.5),
-    // 1611 m, -9 m.
-    Vec2::new(-1052.8, -205.7),
-    // 1631 m, -1 m.
-    Vec2::new(-1074.5, -201.0),
+    // 2166 m, -2 m.
+    Vec2::new(-790.3, -215.0),
+    // 2195 m, -15 m.
+    Vec2::new(-821.9, -221.2),
+    // 2217 m, -40 m.
+    Vec2::new(-854.8, -235.9),
+    // 2279 m, -65 m.
+    Vec2::new(-885.6, -255.8),
+    // 2339 m, -64 m.
+    Vec2::new(-918.6, -274.2),
+    // 2367 m, -57 m.
+    Vec2::new(-951.6, -284.4),
+    // 2384 m, -44 m.
+    Vec2::new(-984.6, -281.4),
+    // 2408 m, -25 m.
+    Vec2::new(-1017.6, -265.0),
+    // 2440 m, -9 m.
+    Vec2::new(-1050.8, -241.3),
+    // 2469 m, -3 m.
+    Vec2::new(-1075.0, -225.3),
+    // 2492 m, -0 m.
+    Vec2::new(-1096.9, -217.4),
 ];
 
-/// How much higher than the lap beside it the high road runs: over a hump where
-/// it is well apart from the lap (m along it, m).
-const HIGH_ROAD_RISE: [(f32, f32); 11] = [
-    (88.5, 0.00),
-    (108.5, 0.00),
-    (124.1, 0.28),
-    (139.7, 0.95),
-    (155.4, 1.62),
-    (171.0, 1.90),
-    (186.7, 1.62),
-    (202.3, 0.95),
-    (217.9, 0.28),
-    (233.6, 0.00),
-    (253.6, 0.00),
+/// How much higher than the lap beside it the high road runs: over a hump
+/// where it is far from the lap, broad at its top (m along it, m).
+const HIGH_ROAD_RISE: [(f32, f32); 35] = [
+    (55.9, 0.00),
+    (61.9, 0.01),
+    (67.9, 0.06),
+    (73.9, 0.22),
+    (79.9, 0.51),
+    (85.9, 0.87),
+    (91.9, 1.26),
+    (97.9, 1.65),
+    (103.9, 2.04),
+    (109.9, 2.43),
+    (115.9, 2.82),
+    (121.9, 3.21),
+    (127.9, 3.58),
+    (133.9, 3.92),
+    (139.9, 4.19),
+    (145.9, 4.38),
+    (151.9, 4.50),
+    (157.9, 4.54),
+    (163.9, 4.50),
+    (169.9, 4.37),
+    (175.9, 4.17),
+    (181.9, 3.90),
+    (187.9, 3.56),
+    (193.9, 3.18),
+    (199.9, 2.80),
+    (205.9, 2.41),
+    (211.9, 2.02),
+    (217.9, 1.63),
+    (223.9, 1.24),
+    (229.9, 0.85),
+    (235.9, 0.49),
+    (241.9, 0.21),
+    (247.9, 0.06),
+    (253.9, 0.01),
+    (259.9, 0.00),
 ];
 
-/// How much higher than the lap beside it the deep road runs: through a dip where
-/// it is well apart from the lap (m along it, m).
-const DEEP_ROAD_RISE: [(f32, f32); 11] = [
-    (48.8, 0.00),
-    (68.8, 0.00),
-    (84.4, -0.28),
-    (100.0, -0.95),
-    (115.7, -1.62),
-    (131.3, -1.90),
-    (146.9, -1.62),
-    (162.6, -0.95),
-    (178.2, -0.28),
-    (193.8, 0.00),
-    (213.8, 0.00),
+/// How much higher than the lap beside it the deep road runs: through a dip
+/// where it is far from the lap, gentle at its edges (m along it, m).
+const DEEP_ROAD_RISE: [(f32, f32); 33] = [
+    (112.3, 0.00),
+    (118.3, -0.01),
+    (124.3, -0.06),
+    (130.3, -0.14),
+    (136.3, -0.29),
+    (142.3, -0.49),
+    (148.3, -0.75),
+    (154.3, -1.06),
+    (160.3, -1.42),
+    (166.3, -1.80),
+    (172.3, -2.19),
+    (178.3, -2.58),
+    (184.3, -2.97),
+    (190.3, -3.36),
+    (196.3, -3.71),
+    (202.3, -3.97),
+    (208.3, -4.05),
+    (214.3, -3.92),
+    (220.3, -3.63),
+    (226.3, -3.26),
+    (232.3, -2.87),
+    (238.3, -2.48),
+    (244.3, -2.09),
+    (250.3, -1.70),
+    (256.3, -1.32),
+    (262.3, -0.98),
+    (268.3, -0.68),
+    (274.3, -0.43),
+    (280.3, -0.24),
+    (286.3, -0.12),
+    (292.3, -0.04),
+    (298.3, -0.01),
+    (304.3, 0.00),
 ];
 
-/// How much higher than the lap beside it the upper gallery runs: over a hump where
-/// it is well apart from the lap (m along it, m).
-const UPPER_GALLERY_RISE: [(f32, f32); 11] = [
-    (54.1, 0.00),
-    (74.1, 0.00),
-    (90.8, 0.32),
-    (107.4, 1.08),
-    (124.0, 1.84),
-    (140.7, 2.15),
-    (157.3, 1.84),
-    (173.9, 1.08),
-    (190.5, 0.32),
-    (207.2, 0.00),
-    (227.2, 0.00),
+/// How much higher than the lap beside it the upper gallery runs: over a
+/// hump where it is far from the lap, broad at its top (m along it, m).
+const UPPER_GALLERY_RISE: [(f32, f32); 35] = [
+    (106.3, 0.00),
+    (112.3, 0.01),
+    (118.3, 0.06),
+    (124.3, 0.22),
+    (130.3, 0.51),
+    (136.3, 0.87),
+    (142.3, 1.26),
+    (148.3, 1.65),
+    (154.3, 2.04),
+    (160.3, 2.43),
+    (166.3, 2.82),
+    (172.3, 3.20),
+    (178.3, 3.58),
+    (184.3, 3.91),
+    (190.3, 4.17),
+    (196.3, 4.36),
+    (202.3, 4.47),
+    (208.3, 4.50),
+    (214.3, 4.45),
+    (220.3, 4.32),
+    (226.3, 4.11),
+    (232.3, 3.83),
+    (238.3, 3.48),
+    (244.3, 3.11),
+    (250.3, 2.72),
+    (256.3, 2.33),
+    (262.3, 1.94),
+    (268.3, 1.55),
+    (274.3, 1.16),
+    (280.3, 0.77),
+    (286.3, 0.42),
+    (292.3, 0.16),
+    (298.3, 0.04),
+    (304.3, 0.01),
+    (310.3, 0.00),
 ];
 
-/// How much higher than the lap beside it the lower gallery runs: through a dip where
-/// it is well apart from the lap (m along it, m).
-const LOWER_GALLERY_RISE: [(f32, f32); 11] = [
-    (96.1, 0.00),
-    (116.1, 0.00),
-    (132.8, -0.32),
-    (149.4, -1.08),
-    (166.0, -1.84),
-    (182.6, -2.15),
-    (199.3, -1.84),
-    (215.9, -1.08),
-    (232.5, -0.32),
-    (249.2, 0.00),
-    (269.2, 0.00),
+/// How much higher than the lap beside it the lower gallery runs: through a
+/// dip where it is far from the lap, gentle at its edges (m along it, m).
+const LOWER_GALLERY_RISE: [(f32, f32); 33] = [
+    (61.9, 0.00),
+    (67.9, -0.01),
+    (73.9, -0.06),
+    (79.9, -0.14),
+    (85.9, -0.29),
+    (91.9, -0.49),
+    (97.9, -0.75),
+    (103.9, -1.06),
+    (109.9, -1.42),
+    (115.9, -1.80),
+    (121.9, -2.19),
+    (127.9, -2.58),
+    (133.9, -2.97),
+    (139.9, -3.36),
+    (145.9, -3.72),
+    (151.9, -4.00),
+    (157.9, -4.10),
+    (163.9, -3.98),
+    (169.9, -3.70),
+    (175.9, -3.34),
+    (181.9, -2.95),
+    (187.9, -2.56),
+    (193.9, -2.17),
+    (199.9, -1.78),
+    (205.9, -1.40),
+    (211.9, -1.04),
+    (217.9, -0.73),
+    (223.9, -0.48),
+    (229.9, -0.28),
+    (235.9, -0.14),
+    (241.9, -0.05),
+    (247.9, -0.01),
+    (253.9, 0.00),
 ];
 
 /// The great lake north-west of the mountain, at the bottom of the open
@@ -733,15 +1039,19 @@ fn water(point: Vec2) -> f32 {
 
 /// The mountain the lap crosses through and over: its middle, its radius
 /// and its height (m).
-const MOUNTAIN: Massif = climbed_massif(-720.0, -200.0, 540.0, 70.0);
+const MOUNTAIN: Massif = climbed_massif(-720.0, -200.0, 540.0, 78.0);
 
-const MASSIFS: [Massif; 16] = [
+const MASSIFS: [Massif; 19] = [
     // The mountain, and the shoulders the road climbs onto it from the
     // lake and comes down from it to town on.
     MOUNTAIN,
     climbed_massif(-840.0, -700.0, 250.0, 34.0),
     climbed_massif(-460.0, 160.0, 300.0, 50.0),
     climbed_massif(-140.0, 200.0, 200.0, 26.0),
+    // Dunes of red sand round the road out of town.
+    climbed_massif(-60.0, -560.0, 150.0, 15.0),
+    climbed_massif(200.0, -600.0, 140.0, 17.0),
+    climbed_massif(40.0, -950.0, 170.0, 18.0),
     // Towers of red rock standing up from its slopes and its top, well
     // away from the roads.
     massif(-960.0, -520.0, 60.0, 26.0),
@@ -761,24 +1071,25 @@ const MASSIFS: [Massif; 16] = [
 ];
 
 const CUTTINGS: [Cutting; 4] = [
-    // The rock round the mouths of the excavation.
+    // The sheer walls of the red canyon, down to the east mouth.
     Cutting {
-        span: span(835.0, 905.0),
+        span: span(CANYON.from + 10.0, EXCAVATION.from + 35.0),
         side: Side::Left,
-        height: 30.0,
+        height: 36.0,
     },
     Cutting {
-        span: span(835.0, 905.0),
+        span: span(CANYON.from + 10.0, EXCAVATION.from + 35.0),
         side: Side::Right,
-        height: 30.0,
+        height: 36.0,
     },
+    // The rock round the west mouth.
     Cutting {
-        span: span(1670.0, 1735.0),
+        span: span(2520.0, 2595.0),
         side: Side::Left,
         height: 30.0,
     },
     Cutting {
-        span: span(1670.0, 1735.0),
+        span: span(2520.0, 2595.0),
         side: Side::Right,
         height: 30.0,
     },

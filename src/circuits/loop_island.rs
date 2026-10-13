@@ -68,6 +68,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
             },
         ],
         // Inside the first long corner, round the loop.
+        narrows: &[],
         branches: &[Branch {
             from: SHORTCUT.from,
             to: SHORTCUT.to,
@@ -147,7 +148,10 @@ pub const LOOP_ISLAND: Circuit = Circuit {
             },
         ],
         tunnels: &[TUNNEL],
-        bridges: &[BRIDGE],
+        bridges: &[Bridge {
+            span: BRIDGE,
+            style: BridgeStyle::Wooden,
+        }],
         gantries: &[
             Gantry {
                 along: 0.0,
@@ -196,6 +200,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
             max: 0,
             paints: &[],
             spans: &[],
+            style: HouseStyle::Cottage,
         },
         palms: &[
             Row {
@@ -303,7 +308,6 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         beach_parasols: &[],
         brake_markers: &[],
         soil: Soil::Checkered,
-        bridge_style: BridgeStyle::Wooden,
         sunflowers: &[
             Row {
                 span: span(20.0, 280.0),
@@ -379,6 +383,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         water: Water::Sea,
         pit: None,
         mine: None,
+        desert: None,
     },
 };
 

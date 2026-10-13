@@ -564,7 +564,7 @@ impl<'a> Shaper<'a> {
             .scenery
             .bridges
             .iter()
-            .map(|span| span.weight(along, self.lap, 15.0))
+            .map(|bridge| bridge.span.weight(along, self.lap, 15.0))
             .fold(0.0, f32::max);
         if bridge > 0.0 {
             let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
@@ -579,7 +579,7 @@ impl<'a> Shaper<'a> {
 /// where it would otherwise be at `ground`: under the water as it was; then,
 /// from just above the water, bench above bench, each face steep, up to the
 /// rim; past it, the spoil heaped round the rim slopes down to the ground
-/// round about, or the pit is cut into higher ground.
+/// round about, or, cut into higher ground, the benches go on up into it.
 fn pit_ground(pit: &Pit, land: f32, ground: f32) -> f32 {
     if land < 0.0 {
         return ground;
@@ -593,8 +593,13 @@ fn pit_ground(pit: &Pit, land: f32, ground: f32) -> f32 {
         return foot + (bench + up) * pit.step;
     }
     let rim = foot + pit.benches as f32 * pit.step;
+    if ground > rim {
+        // Cut into higher ground, the benches go on up into it.
+        let bench = (land / pitch).floor();
+        let up = smoothstep(0.0, pit.step * PIT_FACE, land - bench * pitch);
+        return (foot + (bench + up) * pit.step).min(ground);
+    }
     rim.lerp(ground, smoothstep(width, width + pit.spoil, land))
-        .max(ground)
 }
 
 /// El valor en `along` de una función a trozos dada por pares (metros desde
@@ -934,7 +939,7 @@ mod tests {
                     .scenery
                     .bridges
                     .iter()
-                    .any(|b| b.contains(along, lap))
+                    .any(|b| b.span.contains(along, lap))
                 {
                     continue;
                 }
@@ -978,9 +983,10 @@ mod tests {
             assert_eq!(edges.len(), track.sample_count());
             let mut inside = 0;
             for (index, sides) in edges.iter().enumerate() {
+                let wall = track.wall_at(index);
                 for (edge, side) in sides.iter().zip([1.0, -1.0]) {
-                    assert!((track.half_width()..=WALL_DISTANCE).contains(edge));
-                    inside += usize::from(*edge < WALL_DISTANCE);
+                    assert!((track.half_width().min(wall)..=wall).contains(edge));
+                    inside += usize::from(*edge < wall);
                     // Short of the edge, the earth is not above the road.
                     let road = track.surface_point(index, side * (edge - 0.15));
                     let earth = terrain.height(Vec2::new(road.x, road.z));
@@ -1014,7 +1020,7 @@ mod tests {
         assert!(terrain.height(Vec2::new(120.0, -520.0)) < SEA_LEVEL);
         assert!(terrain.height(Vec2::new(330.0, -60.0)) < SEA_LEVEL);
         // The river runs in under the middle of the bridge.
-        let bridge = circuit.scenery.bridges[0];
+        let bridge = circuit.scenery.bridges[0].span;
         let middle = track.index_at((bridge.from + bridge.to) / 2.0);
         let below = track.offset_point(middle, 0.0);
         assert!(
@@ -1074,13 +1080,19 @@ mod tests {
         // in a canyon: past the flat ground beside it, the mountainside never
         // towers over it on both sides, and often falls away on one. (Where
         // it passes over the excavation, the rock of the excavation carries
-        // it.)
+        // it, and over the gully, its bridge.)
+        let on_bridge = |along: f32| {
+            circuit.scenery.bridges.iter().any(|bridge| {
+                span(bridge.span.from - 20.0, bridge.span.to + 20.0).contains(along, lap)
+            })
+        };
         let on_mountain: Vec<usize> = (0..track.sample_count())
             .step_by(25)
             .filter(|&i| {
                 let (point, road) = (track.centerline()[i], track.elevations()[i]);
                 road > 30.0
                     && !tunnel.contains(i as f32 * step, lap)
+                    && !on_bridge(i as f32 * step)
                     && tunnels.beneath(&track, point, BURIED + FLAT).is_none()
             })
             .collect();
@@ -1155,13 +1167,17 @@ mod tests {
                 pit_ground(&pit, face + pit.step * PIT_FACE, 0.0) - pit_ground(&pit, face, 0.0);
             assert!((rise - pit.step).abs() < 1e-4);
         }
-        // Past the rim, the spoil slopes down to the ground round about, or
-        // the pit is cut into higher ground.
+        // Past the rim, the spoil slopes down to the ground round about, or,
+        // cut into higher ground, the benches go on up into it, a step at a
+        // time, until they reach it.
         let width = 4.0 * pitch;
         let rim = foot + 4.0 * pit.step;
         assert!((pit_ground(&pit, width + 1.0, 2.0) - rim).abs() < 0.1);
         assert_eq!(pit_ground(&pit, width + pit.spoil + 1.0, 2.0), 2.0);
-        assert_eq!(pit_ground(&pit, width + 1.0, 30.0), 30.0);
+        let above = width + 0.5 * pitch + pit.step * PIT_FACE / 2.0;
+        assert!((pit_ground(&pit, above, 30.0) - (rim + pit.step)).abs() < 1e-4);
+        assert!((pit_ground(&pit, above + pitch, 30.0) - (rim + 2.0 * pit.step)).abs() < 1e-4);
+        assert_eq!(pit_ground(&pit, width + 10.0 * pitch, 30.0), 30.0);
     }
 
     #[test]
@@ -1228,7 +1244,7 @@ mod tests {
         // to the west, and the sea comes in under the middle of the bridge.
         assert!(terrain.height(Vec2::new(200.0, 260.0)) < SEA_LEVEL);
         assert!(terrain.height(Vec2::new(-300.0, -200.0)) < SEA_LEVEL);
-        let bridge = circuit.scenery.bridges[0];
+        let bridge = circuit.scenery.bridges[0].span;
         let middle = track.index_at((bridge.from + bridge.to) / 2.0);
         assert!(terrain.height(track.offset_point(middle, 0.0)) < SEA_LEVEL);
         // The walls of the tunnel stand well above the road.

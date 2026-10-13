@@ -192,13 +192,23 @@ pub struct Pit {
     pub spoil: f32,
 }
 
-/// How the bridges are built.
+/// A stretch of the lap carried by a bridge, and how it is built.
+#[derive(Clone, Copy, Debug)]
+pub struct Bridge {
+    pub span: Span,
+    pub style: BridgeStyle,
+}
+
+/// How a bridge is built.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BridgeStyle {
     /// A concrete deck under two red steel arches.
     RedArches,
     /// A wooden deck of planks on log piers, with a wooden fence on each side.
     Wooden,
+    /// A concrete deck between two steel through trusses, braced across
+    /// overhead, on concrete piers, as in West Way (Moto Racer).
+    Truss,
 }
 
 /// Un tramo con otro muro distinto del de piedra a un lado.
@@ -259,6 +269,18 @@ pub struct Houses {
     pub max: usize,
     pub paints: &'static [Color],
     pub spans: &'static [Span],
+    pub style: HouseStyle,
+}
+
+/// How the houses are built.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HouseStyle {
+    /// Plastered walls under a tiled gable roof.
+    Cottage,
+    /// The same, with a wooden false front standing up over the roof at the
+    /// front and a porch along it, as in the towns of the Old West (and of
+    /// West Way, in Moto Racer).
+    FalseFront,
 }
 
 /// Todo lo que hace falta para construir el escenario de una pista.
@@ -275,7 +297,7 @@ pub struct Scenery {
     pub curbs: [Color; 2],
     pub walls: &'static [WallRun],
     pub tunnels: &'static [Span],
-    pub bridges: &'static [Span],
+    pub bridges: &'static [Bridge],
     pub gantries: &'static [Gantry],
     pub billboards: &'static [Billboard],
     /// Farolas, cada `every` metros.
@@ -307,7 +329,6 @@ pub struct Scenery {
     pub brake_markers: &'static [BrakeMarker],
     /// What cliffs and rock walls are made of.
     pub soil: Soil,
-    pub bridge_style: BridgeStyle,
     /// Rows of tall sunflowers turned towards the road.
     pub sunflowers: &'static [Row],
     /// Carved totem poles beside the road.
@@ -326,6 +347,89 @@ pub struct Scenery {
     pub pit: Option<Pit>,
     /// The works of a mine around the road, if there is one.
     pub mine: Option<Mine>,
+    /// The roadside of a desert of the American West, if the road runs
+    /// through one.
+    pub desert: Option<Desert>,
+}
+
+/// The roadside of a desert of the American West, as in West Way (Moto
+/// Racer): gas stations, oil pumpjacks nodding on the dunes, highway
+/// viaducts across the road, adobe pueblos, diamond warning signs before
+/// the bends, cacti, and tumbleweeds rolling across the road.
+pub struct Desert {
+    pub gas_stations: &'static [GasStation],
+    pub pumpjacks: &'static [Pumpjack],
+    pub overpasses: &'static [Overpass],
+    pub pueblos: &'static [Pueblo],
+    pub curve_signs: &'static [CurveSign],
+    pub cacti: Cacti,
+    pub tumbleweeds: &'static [Tumbleweed],
+}
+
+/// Saguaro cacti beside the road: about `count` of them, scattered along
+/// `spans` either side, on fairly level ground clear of the roads.
+pub struct Cacti {
+    pub count: usize,
+    pub spans: &'static [Span],
+}
+
+/// A tumbleweed blown across the road `along` the lap, rolling and bouncing
+/// from `reach` metres out on one side to as far on the other, and again.
+pub struct Tumbleweed {
+    pub along: f32,
+    pub reach: f32,
+}
+
+/// A gas station beside the road, `lateral` metres from its centre line on
+/// `side`, facing it: pumps under a canopy, a shop behind them and a tall
+/// sign by the road.
+pub struct GasStation {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// An oil pumpjack at `position` (x, z), its beam nodding towards
+/// `heading` (see [`crate::geometry`]).
+pub struct Pumpjack {
+    pub position: Vec2,
+    pub heading: f32,
+}
+
+/// A concrete highway viaduct across the road `along` the lap, the bottom
+/// of its deck `height` metres over the road, from one rock wall into the
+/// other on columns beyond the walls (put a [`Cutting`] on both sides
+/// first).
+pub struct Overpass {
+    pub along: f32,
+    pub height: f32,
+}
+
+/// An adobe pueblo beside the road, `lateral` metres from its centre line on
+/// `side`: flat-roofed houses of earth, some of two floors, with beams
+/// sticking out under their roofs, ladders and a dry tree.
+pub struct Pueblo {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// A diamond warning sign before a bend that way, high on a post on its
+/// outside, `along` the lap.
+pub struct CurveSign {
+    pub along: f32,
+    pub direction: ChevronDirection,
+    pub color: SignColor,
+}
+
+/// The colour of a diamond warning sign: green with a white arrow for a
+/// bend, yellow with a black one for a sharp one, red with a white one for
+/// a hairpin.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum SignColor {
+    Green,
+    Yellow,
+    Red,
 }
 
 /// The works of a mine: rails with ore carts rolling on them, timber
@@ -458,7 +562,7 @@ pub struct Boat {
 }
 
 /// Dirección de la flecha de curva.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum ChevronDirection {
     Left,
     Right,
