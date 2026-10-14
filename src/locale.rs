@@ -523,13 +523,6 @@ impl Language {
         }
     }
 
-    pub fn hint_section(self) -> &'static str {
-        match self {
-            Language::Spanish => "Sección",
-            Language::English => "Section",
-        }
-    }
-
     pub fn hint_resume(self) -> &'static str {
         match self {
             Language::Spanish => "Continuar",

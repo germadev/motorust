@@ -75,8 +75,6 @@ pub enum Keys {
     Confirm,
     /// Esc or B.
     Back,
-    /// Change of section: Tab, or the shoulder buttons.
-    Tabs,
 }
 
 /// The face, edge and letters of the badges of each device.
@@ -231,10 +229,8 @@ fn badges(device: ActiveDevice, keys: Keys) -> Vec<Badge> {
     match (device, keys) {
         (ActiveDevice::Keyboard, Keys::Confirm) => vec![text(device, "Enter")],
         (ActiveDevice::Keyboard, Keys::Back) => vec![text(device, "Esc")],
-        (ActiveDevice::Keyboard, Keys::Tabs) => vec![text(device, "Tab")],
         (_, Keys::Confirm) => pad(&[B::South]),
         (_, Keys::Back) => pad(&[B::East]),
-        (_, Keys::Tabs) => pad(&[B::LeftTrigger, B::RightTrigger]),
     }
 }
 
@@ -289,6 +285,29 @@ pub fn race_prompts(device: ActiveDevice, lang: Language, controls: &Controls) -
             action: action.into(),
         })
         .collect()
+}
+
+/// The keys or buttons that change to the section before and after, on
+/// `device`: Q and E on the keyboard, the shoulder buttons on a gamepad.
+pub fn section_badges(device: ActiveDevice) -> [Badge; 2] {
+    match device {
+        ActiveDevice::Keyboard => [text(device, "Q"), text(device, "E")],
+        _ => [
+            button_badge(device, GamepadButton::LeftTrigger),
+            button_badge(device, GamepadButton::RightTrigger),
+        ],
+    }
+}
+
+/// A key or button on its own, as in the legend, for `device`.
+pub fn spawn_lone_badge(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    icons: &UiIcons,
+    device: ActiveDevice,
+    badge: &Badge,
+) {
+    spawn_badge(parent, font, icons, &style(device), device, badge);
 }
 
 /// The legend, centred at the bottom of `parent` (which fills the screen).
@@ -581,7 +600,6 @@ mod tests {
             let hints = [
                 (Keys::Confirm, lang.hint_accept()),
                 (Keys::Back, lang.back()),
-                (Keys::Tabs, lang.hint_section()),
             ];
             let keyboard = menu_prompts(ActiveDevice::Keyboard, &hints);
             for device in DEVICES {
@@ -608,9 +626,13 @@ mod tests {
         assert_eq!(confirm(ActiveDevice::Xbox).label, Label::Text("A".into()));
         assert_eq!(confirm(ActiveDevice::Switch).label, Label::Text("B".into()));
         assert!(confirm(ActiveDevice::PlayStation).round);
-        let tabs = badges(ActiveDevice::PlayStation, Keys::Tabs);
-        assert_eq!(tabs.len(), 2);
-        assert_eq!(tabs[0].label, Label::Text("L1".into()));
+        // The sections change with the shoulder buttons, or Q and E.
+        let [previous, next] = section_badges(ActiveDevice::PlayStation);
+        assert_eq!(previous.label, Label::Text("L1".into()));
+        assert_eq!(next.label, Label::Text("R1".into()));
+        let [previous, next] = section_badges(ActiveDevice::Keyboard);
+        assert_eq!(previous.label, Label::Text("Q".into()));
+        assert_eq!(next.label, Label::Text("E".into()));
     }
 
     #[test]

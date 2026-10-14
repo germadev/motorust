@@ -6,7 +6,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
-use crate::legend::{Keys, menu_prompts, spawn_legend};
+use crate::legend::{Keys, menu_prompts, section_badges, spawn_legend, spawn_lone_badge};
 use crate::locale::{LANGUAGES, Language};
 use crate::pause::DebugOptions;
 use crate::settings::{
@@ -621,14 +621,15 @@ fn show_options_menu(
     }
 
     let accent = options_menu.tab.accent();
+    // The keys that change the section go beside the tabs instead.
     let prompts = menu_prompts(
         active_dev,
         &[
             (Keys::Confirm, lang.hint_accept()),
             (Keys::Back, lang.back()),
-            (Keys::Tabs, lang.hint_section()),
         ],
     );
+    let [previous, next] = section_badges(active_dev);
     commands
         .spawn((
             OptionsModal,
@@ -690,15 +691,18 @@ fn show_options_menu(
                         .spawn((Node {
                             flex_direction: FlexDirection::Row,
                             justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
                             column_gap: px(10),
                             margin: UiRect::bottom(px(6)),
                             ..default()
                         },))
                         .with_children(|tab_bar| {
-                            // Each section in its colour: the one shown
-                            // filled with it, the others edged with it. When
-                            // the row of sections is chosen, the one shown
-                            // stands out with a white edge.
+                            // The key for the section before, on the left.
+                            spawn_lone_badge(tab_bar, &font, &icons, active_dev, &previous);
+                            // Each section in its colour, without an edge:
+                            // the one shown filled with it, the others
+                            // faintly. When the row of sections is chosen,
+                            // the one shown is underlined in white.
                             for tab in TABS {
                                 let is_active = tab == options_menu.tab;
                                 let focused = is_active && options_menu.on_tabs;
@@ -706,36 +710,45 @@ fn show_options_menu(
                                 tab_bar
                                     .spawn((
                                         Node {
+                                            flex_direction: FlexDirection::Column,
                                             padding: UiRect::axes(px(18), px(7)),
                                             border_radius: BorderRadius::all(px(10)),
-                                            border: UiRect::all(px(if focused { 3 } else { 2 })),
                                             justify_content: JustifyContent::Center,
                                             align_items: AlignItems::Center,
+                                            row_gap: px(3),
                                             ..default()
                                         },
                                         BackgroundColor(if is_active {
                                             color
                                         } else {
-                                            color.with_alpha(0.1)
-                                        }),
-                                        BorderColor::all(if focused {
-                                            Color::WHITE
-                                        } else if is_active {
-                                            color
-                                        } else {
-                                            color.with_alpha(0.45)
+                                            color.with_alpha(0.16)
                                         }),
                                     ))
-                                    .with_child((
-                                        Text::new(tab.name(lang)),
-                                        text_font(&font, 18.0),
-                                        TextColor(if is_active {
-                                            Color::srgb(0.06, 0.05, 0.04)
-                                        } else {
-                                            color.mix(&Color::WHITE, 0.55)
-                                        }),
-                                    ));
+                                    .with_children(|tab_node| {
+                                        tab_node.spawn((
+                                            Text::new(tab.name(lang)),
+                                            text_font(&font, 18.0),
+                                            TextColor(if is_active {
+                                                Color::srgb(0.06, 0.05, 0.04)
+                                            } else {
+                                                color.mix(&Color::WHITE, 0.55)
+                                            }),
+                                        ));
+                                        if focused {
+                                            tab_node.spawn((
+                                                Node {
+                                                    width: percent(100),
+                                                    height: px(3),
+                                                    border_radius: BorderRadius::all(px(2)),
+                                                    ..default()
+                                                },
+                                                BackgroundColor(Color::WHITE),
+                                            ));
+                                        }
+                                    });
                             }
+                            // The key for the section after, on the right.
+                            spawn_lone_badge(tab_bar, &font, &icons, active_dev, &next);
                         });
                     // A line in the colour of the section under the tabs.
                     panel.spawn((
