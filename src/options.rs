@@ -447,6 +447,52 @@ fn use_options_menu(
 #[derive(Component)]
 struct OptionsModal;
 
+/// A section's tab, in its colour and without an edge: the one shown
+/// (`active`) filled with it, the others faintly. When the row of sections
+/// is chosen (`on_tabs`), the one shown lights up: a brighter fill and a
+/// glow round it, which leave its size as it is.
+fn spawn_tab(
+    tabs: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    tab: OptionsTab,
+    active: bool,
+    on_tabs: bool,
+    lang: Language,
+) {
+    let color = tab.accent();
+    let lit = active && on_tabs;
+    let (fill, glow) = if lit {
+        (
+            color.mix(&Color::WHITE, 0.35),
+            color.mix(&Color::WHITE, 0.2).with_alpha(0.9),
+        )
+    } else if active {
+        (color, Color::NONE)
+    } else {
+        (color.with_alpha(0.16), Color::NONE)
+    };
+    tabs.spawn((
+        Node {
+            padding: UiRect::axes(px(18), px(7)),
+            border_radius: BorderRadius::all(px(10)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(fill),
+        BoxShadow::new(glow, px(0), px(0), px(2), px(14)),
+    ))
+    .with_child((
+        Text::new(tab.name(lang)),
+        text_font(font, 18.0),
+        TextColor(if active {
+            Color::srgb(0.06, 0.05, 0.04)
+        } else {
+            color.mix(&Color::WHITE, 0.55)
+        }),
+    ));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn show_options_menu(
     mut commands: Commands,
@@ -686,67 +732,38 @@ fn show_options_menu(
                         },
                     ));
 
-                    // Barra de pestañas
+                    // Barra de pestañas: the keys that change the section
+                    // at its ends, the sections in the middle.
                     panel
                         .spawn((Node {
                             flex_direction: FlexDirection::Row,
-                            justify_content: JustifyContent::Center,
+                            justify_content: JustifyContent::SpaceBetween,
                             align_items: AlignItems::Center,
-                            column_gap: px(10),
                             margin: UiRect::bottom(px(6)),
                             ..default()
                         },))
                         .with_children(|tab_bar| {
                             // The key for the section before, on the left.
                             spawn_lone_badge(tab_bar, &font, &icons, active_dev, &previous);
-                            // Each section in its colour, without an edge:
-                            // the one shown filled with it, the others
-                            // faintly. When the row of sections is chosen,
-                            // the one shown is underlined in white.
-                            for tab in TABS {
-                                let is_active = tab == options_menu.tab;
-                                let focused = is_active && options_menu.on_tabs;
-                                let color = tab.accent();
-                                tab_bar
-                                    .spawn((
-                                        Node {
-                                            flex_direction: FlexDirection::Column,
-                                            padding: UiRect::axes(px(18), px(7)),
-                                            border_radius: BorderRadius::all(px(10)),
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                            row_gap: px(3),
-                                            ..default()
-                                        },
-                                        BackgroundColor(if is_active {
-                                            color
-                                        } else {
-                                            color.with_alpha(0.16)
-                                        }),
-                                    ))
-                                    .with_children(|tab_node| {
-                                        tab_node.spawn((
-                                            Text::new(tab.name(lang)),
-                                            text_font(&font, 18.0),
-                                            TextColor(if is_active {
-                                                Color::srgb(0.06, 0.05, 0.04)
-                                            } else {
-                                                color.mix(&Color::WHITE, 0.55)
-                                            }),
-                                        ));
-                                        if focused {
-                                            tab_node.spawn((
-                                                Node {
-                                                    width: percent(100),
-                                                    height: px(3),
-                                                    border_radius: BorderRadius::all(px(2)),
-                                                    ..default()
-                                                },
-                                                BackgroundColor(Color::WHITE),
-                                            ));
-                                        }
-                                    });
-                            }
+                            tab_bar
+                                .spawn(Node {
+                                    flex_direction: FlexDirection::Row,
+                                    align_items: AlignItems::Center,
+                                    column_gap: px(10),
+                                    ..default()
+                                })
+                                .with_children(|tabs| {
+                                    for tab in TABS {
+                                        spawn_tab(
+                                            tabs,
+                                            &font,
+                                            tab,
+                                            tab == options_menu.tab,
+                                            options_menu.on_tabs,
+                                            lang,
+                                        );
+                                    }
+                                });
                             // The key for the section after, on the right.
                             spawn_lone_badge(tab_bar, &font, &icons, active_dev, &next);
                         });
