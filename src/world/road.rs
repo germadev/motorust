@@ -398,11 +398,13 @@ fn ribbon(
 
 /// The cross-section of a wall: points (m out from the line of its face on
 /// the road's side, m up from the road) from its foot on the road's side,
-/// up and over its top, down to its foot on the far side.
+/// up and over its top, down to its foot on the far side. Its corners are
+/// rounded off and it is shaded smoothly round them: no wall has sharp
+/// edges.
 struct Profile {
     points: Vec<Vec2>,
-    /// Whether it is rounded (a hedge) rather than cut with sharp edges.
-    smooth: bool,
+    /// Whether it is lumpy all over (a hedge).
+    lumpy: bool,
     /// The point at the top of the face on the road's side: the texture is
     /// measured down and over from there.
     top: usize,
@@ -419,20 +421,9 @@ struct Profile {
 /// - checkerboard earth and timber: blocks, straight up.
 fn profile(style: WallStyle) -> Profile {
     let foot = -WALL_FOOTING;
-    let block = |height: f32| Profile {
-        points: [
-            (0.0, foot),
-            (0.0, height),
-            (WALL_THICKNESS, height),
-            (WALL_THICKNESS, foot),
-        ]
-        .map(Vec2::from)
-        .to_vec(),
-        smooth: false,
-        top: 1,
-        tile: Vec2::splat(WALL_TILE),
-    };
-    let (points, smooth, top, tile): (&[(f32, f32)], bool, usize, Vec2) = match style {
+    // The corners, how much each is rounded off (m), and which is the top
+    // of the face on the road's side.
+    let (corners, rounding, top, tile): (&[(f32, f32)], f32, usize, Vec2) = match style {
         WallStyle::Stone => (
             &[
                 (0.0, foot),
@@ -446,7 +437,7 @@ fn profile(style: WallStyle) -> Profile {
                 (WALL_THICKNESS - 0.05, 0.92),
                 (WALL_THICKNESS, foot),
             ],
-            false,
+            0.04,
             4,
             STONE_WALL,
         ),
@@ -463,7 +454,7 @@ fn profile(style: WallStyle) -> Profile {
                 (WALL_THICKNESS, 0.08),
                 (WALL_THICKNESS, foot),
             ],
-            false,
+            0.06,
             4,
             Vec2::splat(WALL_TILE),
         ),
@@ -481,18 +472,56 @@ fn profile(style: WallStyle) -> Profile {
                 (0.6, 0.25),
                 (0.56, foot),
             ],
-            true,
+            0.12,
             3,
             Vec2::splat(WALL_TILE),
         ),
-        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing => return block(WALL_HEIGHT),
+        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing => (
+            &[
+                (0.0, foot),
+                (0.0, WALL_HEIGHT),
+                (WALL_THICKNESS, WALL_HEIGHT),
+                (WALL_THICKNESS, foot),
+            ],
+            0.06,
+            1,
+            Vec2::splat(WALL_TILE),
+        ),
     };
+    let corners: Vec<Vec2> = corners.iter().map(|&p| Vec2::from(p)).collect();
+    let points = round_corners(&corners, rounding);
+    let top = (0..points.len())
+        .min_by(|&a, &b| {
+            let distance = |k: usize| points[k].distance(corners[top]);
+            distance(a).total_cmp(&distance(b))
+        })
+        .expect("a profile has points");
     Profile {
-        points: points.iter().map(|&p| Vec2::from(p)).collect(),
-        smooth,
+        points,
+        lumpy: style == WallStyle::Hedge,
         top,
         tile,
     }
+}
+
+/// The points of a profile with its corners (all but its two ends) rounded
+/// off: each replaced by three points along a curve, `radius` (m) back
+/// along each side, or a little under half the side if it is shorter.
+fn round_corners(corners: &[Vec2], radius: f32) -> Vec<Vec2> {
+    let last = corners.len() - 1;
+    let mut points = vec![corners[0]];
+    for k in 1..last {
+        let (before, corner, after) = (corners[k - 1], corners[k], corners[k + 1]);
+        let back = |to: Vec2| {
+            let side = to - corner;
+            corner + side.normalize_or_zero() * radius.min(side.length() * 0.45)
+        };
+        let (a, b) = (back(before), back(after));
+        // The middle of a quadratic curve from a to b about the corner.
+        points.extend([a, a * 0.25 + corner * 0.5 + b * 0.25, b]);
+    }
+    points.push(corners[last]);
+    points
 }
 
 /// The concrete barriers come in sections this many points of the centre
@@ -613,7 +642,7 @@ fn walls(
             let (base, _) = frame(i);
             let ground = line.offset_point(i, inner(i) + side * p.x);
             let mut position = Vec3::new(ground.x, base + p.y, ground.y);
-            if profile.smooth {
+            if profile.lumpy {
                 // A hedge is lumpy: pushed in and out along its profile.
                 let (_, out) = frame(i);
                 let lump = fbm(
@@ -644,27 +673,17 @@ fn walls(
                 for k in 0..profile.points.len() - 1 {
                     let (a, b) = (profile.points[k], profile.points[k + 1]);
                     let corner = |t: f32, p: Vec2| at(index, p).lerp(at(next, p), t);
+                    // Shaded smoothly round the profile.
                     let normal = |t: f32, k: usize| {
-                        let n = if profile.smooth {
-                            point_normal(k)
-                        } else {
-                            edge_normal(k.min(profile.points.len() - 2))
-                        };
+                        let n = point_normal(k);
                         direction(index, n)
                             .lerp(direction(next, n), t)
                             .normalize_or_zero()
                     };
-                    let flat = edge_normal(k);
                     let corners = [(t0, a, k), (t1, a, k), (t1, b, k + 1), (t0, b, k + 1)].map(
                         |(t, p, point)| {
                             let position = corner(t, p);
-                            let n = if profile.smooth {
-                                normal(t, point)
-                            } else {
-                                direction(index, flat)
-                                    .lerp(direction(next, flat), t)
-                                    .normalize_or_zero()
-                            };
+                            let n = normal(t, point);
                             let v = around[point] / profile.tile.y;
                             let tint = wall_tint(style, position, p.y);
                             let tint = if dark {
@@ -1110,10 +1129,23 @@ mod tests {
             let far = points.iter().map(|p| p.x).fold(f32::MIN, f32::max);
             assert!((0.5..0.75).contains(&far), "{style:?}: {far}");
             assert!(points[profile.top].y > 0.9, "{style:?}");
+            // No sharp corners: no two edges in a row turn by more than 60°.
+            for k in 1..points.len() - 1 {
+                let (a, b) = (points[k] - points[k - 1], points[k + 1] - points[k]);
+                assert!(a.angle_to(b).abs() < 60f32.to_radians(), "{style:?} at {k}");
+            }
         }
         // A concrete barrier slopes out at its foot: narrower at the top.
         let barrier = profile(WallStyle::Concrete);
-        assert!(barrier.points[3].x > barrier.points[1].x + 0.15);
+        let inner = |from: f32, to: f32| {
+            barrier
+                .points
+                .iter()
+                .filter(|p| (from..to).contains(&p.y) && p.x < WALL_THICKNESS / 2.0)
+                .map(|p| p.x)
+                .fold(f32::MAX, f32::min)
+        };
+        assert!(inner(0.8, 1.1) > inner(-0.1, 0.1) + 0.15);
         // A stone wall's coping juts out over its face.
         let stone = profile(WallStyle::Stone);
         assert!(stone.points.iter().any(|p| p.x < 0.0));

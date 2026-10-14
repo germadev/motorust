@@ -831,13 +831,16 @@ pub struct TreePlan {
 const BARK: Color = Color::srgb(0.32, 0.22, 0.15);
 
 /// How much smaller the solid core of each crown is than the crown its
-/// leaves cover, and how much darker: the shade deep inside the foliage,
-/// seen through the gaps between the leaves.
-const CROWN_CORE: f32 = 0.78;
-const CORE_SHADE: f32 = 0.85;
+/// leaves cover, and how much darker: only the deep shade inside the
+/// foliage, glimpsed through the gaps between the leaves.
+const CROWN_CORE: f32 = 0.62;
+const CORE_SHADE: f32 = 0.5;
 /// How many times over the cards of leaves cover each crown: the leaves on
 /// them leave gaps, and many are seen edge on.
-const LEAF_COVER: f32 = 4.5;
+const LEAF_COVER: f32 = 5.5;
+/// How deep into each crown its leaves go, from its outside (fraction of
+/// the way to its middle), darker the deeper.
+const LEAF_DEPTH: f32 = 0.3;
 /// How much lighter the leaves are drawn than their colours.
 const LEAF_LIGHT: f32 = 1.3;
 
@@ -919,9 +922,9 @@ fn leaf_cards(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
         let size = (scale.x * scale.y * scale.z).cbrt();
         // Smaller cards on smaller crowns; enough of them to cover it,
         // overlapping.
-        let card = (0.55 + 0.32 * size).clamp(0.8, 1.9);
+        let card = (0.6 + 0.35 * size).clamp(0.9, 2.1);
         let area = 4.0 * std::f32::consts::PI * size * size;
-        let count = ((area / (card * card) * LEAF_COVER) as usize).clamp(24, 220);
+        let count = ((area / (card * card) * LEAF_COVER) as usize).clamp(30, 260);
         let seed = variant.seed * 131 + k as u32 * 977;
         for n in 0..count as u32 {
             let random = |j: u32| random01(seed + n * 12 + j);
@@ -931,7 +934,9 @@ fn leaf_cards(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
             let surface = transform.transform_point(local);
             // Out from the middle of the crown, as an ellipsoid's.
             let out = ((surface - center) / (scale * scale)).normalize_or(Vec3::Y);
-            let at = surface - out * card * 0.3 * random(1);
+            // In a layer round the outside of the crown, not just on it.
+            let deep = random(1);
+            let at = center + (surface - center) * (1.04 - LEAF_DEPTH * deep);
             // Not under the ground, where a crown reaches down to it.
             if at.y < 0.4 {
                 continue;
@@ -956,7 +961,9 @@ fn leaf_cards(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
             let ao = (0.45 + 0.55 * (out.y * 0.5 + 0.5)).clamp(0.0, 1.0);
             // A little lighter than the crown under them: the texture of
             // the leaves darkens them at their ribs and edges.
-            let color = shade.mix(&sunlit, (lit * ao).clamp(0.0, 1.0)).to_linear() * LEAF_LIGHT;
+            let inside = 1.0 - 0.4 * deep;
+            let color =
+                shade.mix(&sunlit, (lit * ao).clamp(0.0, 1.0)).to_linear() * (LEAF_LIGHT * inside);
             let color = Color::LinearRgba(color.with_alpha(1.0));
             // Corners in the order `quad` keeps when facing that way: side
             // × up is `facing`.
