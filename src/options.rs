@@ -11,17 +11,16 @@ use crate::legend::{
     spawn_prompts,
 };
 use crate::locale::{LANGUAGES, Language};
+use crate::mapping::{Held, MapDevice, Mapping, MappingLook, spawn_mapping, use_mapping};
 use crate::pause::DebugOptions;
 use crate::settings::{
-    ACTIONS, Action, Controls, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES,
-    RACE_STARTS, RESOLUTIONS, Settings, StartedWith, WEB, cycle,
+    DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES, RACE_STARTS, RESOLUTIONS,
+    Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
     InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
 };
 
-/// Tiempo para pulsar la tecla o el botón nuevo antes de que se cancele (s).
-const CAPTURE_TIME: f32 = 8.0;
 /// Height of the panel (px): the tab with the most options (Control) fits.
 const PANEL_HEIGHT: f32 = 600.0;
 /// Room kept at the bottom of the screen for the legend (px).
@@ -111,7 +110,8 @@ pub struct OptionsMenu {
     /// section (`selected`): the arrows across then change the section.
     pub on_tabs: bool,
     pub selected: usize,
-    pub capture: Option<Capture>,
+    /// The view of the controls' mapping, while it is open.
+    pub mapping: Option<Mapping>,
     pub return_to: OptionsReturn,
     pub rescan_msg_until: f32,
 }
@@ -121,13 +121,13 @@ impl OptionsMenu {
         self.is_open = true;
         self.on_tabs = false;
         self.selected = 0;
-        self.capture = None;
+        self.mapping = None;
         self.return_to = return_to;
     }
 
     pub fn close(&mut self) {
         self.is_open = false;
-        self.capture = None;
+        self.mapping = None;
     }
 
     /// Moves round the menu: up and down (`step`) through the row of
@@ -162,12 +162,6 @@ impl OptionsMenu {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Capture {
-    pub action: Action,
-    pub since: f32,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum GameItem {
     Language,
@@ -178,8 +172,8 @@ enum GameItem {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ControlItem {
-    Bind(Action),
-    ResetControls,
+    /// The view where the keys and buttons are remapped.
+    Mapping,
     StickTurnLimit,
     KeyboardTurnLimit,
     KeyboardTurnRate,
@@ -216,22 +210,18 @@ fn game_items() -> Vec<GameItem> {
     ]
 }
 
-/// The controls, and how the stick and the keyboard steer.
+/// The mapping of the controls, and how the stick and the keyboard steer.
 fn control_items() -> Vec<ControlItem> {
-    ACTIONS
-        .iter()
-        .map(|&action| ControlItem::Bind(action))
-        .chain([
-            ControlItem::ResetControls,
-            ControlItem::StickTurnLimit,
-            ControlItem::KeyboardTurnLimit,
-            ControlItem::KeyboardTurnRate,
-            ControlItem::KeyboardReturnRate,
-            ControlItem::ShowLegend,
-            ControlItem::RescanGamepads,
-            ControlItem::Back,
-        ])
-        .collect()
+    vec![
+        ControlItem::Mapping,
+        ControlItem::StickTurnLimit,
+        ControlItem::KeyboardTurnLimit,
+        ControlItem::KeyboardTurnRate,
+        ControlItem::KeyboardReturnRate,
+        ControlItem::ShowLegend,
+        ControlItem::RescanGamepads,
+        ControlItem::Back,
+    ]
 }
 
 fn sound_items() -> Vec<SoundItem> {
@@ -279,34 +269,33 @@ fn use_options_menu(
     mut settings: ResMut<Settings>,
     mut debug_options: ResMut<DebugOptions>,
     mut gamepads: ResMut<Gamepads>,
+    device: Res<InputDevice>,
+    active_controller: Option<Res<ActiveController>>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
     let request = input.read();
     let now = time.elapsed_secs();
 
-    // Captura de nueva tecla o botón
-    if let Some(capture) = options_menu.capture {
-        let key = input
-            .keyboard
-            .get_just_pressed()
-            .copied()
-            .find(|&key| key != KeyCode::KeyM);
-        let button = input
-            .gamepads
-            .iter()
-            .find_map(|gamepad| gamepad.get_just_pressed().next().copied());
-
-        if key == Some(KeyCode::Escape) || now - capture.since > CAPTURE_TIME {
-            options_menu.capture = None;
-            sounds.write(MenuSound::Move);
-        } else if let Some(key) = key {
-            settings.controls.bind_key(capture.action, key);
-            options_menu.capture = None;
-            sounds.write(MenuSound::Confirm);
-        } else if let Some(button) = button {
-            settings.controls.bind_button(capture.action, button);
-            options_menu.capture = None;
-            sounds.write(MenuSound::Confirm);
+    // The mapping of the controls, while it is open: it follows the device
+    // in use.
+    if let Some(mapping) = options_menu.mapping.as_mut() {
+        if device.is_changed() && !mapping.capturing() {
+            mapping.device =
+                MapDevice::of(current_active_device(*device, active_controller.as_deref()));
+        }
+        let held = Held {
+            keyboard: &input.keyboard,
+            gamepads: input.gamepads.iter().collect(),
+        };
+        if use_mapping(
+            mapping,
+            &request,
+            &held,
+            &mut settings.controls,
+            now,
+            &mut sounds,
+        ) {
+            options_menu.mapping = None;
         }
         return;
     }
@@ -372,12 +361,9 @@ fn use_options_menu(
             let items = control_items();
             let item = items[options_menu.selected.min(items.len() - 1)];
             match item {
-                ControlItem::Bind(action) if request.confirm => {
-                    options_menu.capture = Some(Capture { action, since: now });
-                    sounds.write(MenuSound::Confirm);
-                }
-                ControlItem::ResetControls if request.confirm => {
-                    settings.controls = Controls::default();
+                ControlItem::Mapping if request.confirm => {
+                    let device = current_active_device(*device, active_controller.as_deref());
+                    options_menu.mapping = Some(Mapping::open(MapDevice::of(device)));
                     sounds.write(MenuSound::Confirm);
                 }
                 ControlItem::StickTurnLimit if change != 0 => {
@@ -545,6 +531,8 @@ fn show_options_menu(
     shown: Query<Entity, With<OptionsModal>>,
     time: Res<Time<Real>>,
     started: Option<Res<StartedWith>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
     mut last: Local<Option<String>>,
 ) {
     let started = started.as_deref();
@@ -593,17 +581,16 @@ fn show_options_menu(
         OptionsTab::Control => control_items()
             .into_iter()
             .map(|item| match item {
-                ControlItem::Bind(action) => Row::with_value(
-                    action.name(lang),
-                    match options_menu.capture {
-                        Some(capture) if capture.action == action => match lang {
-                            Language::Spanish => "Pulsa una tecla o botón".into(),
-                            Language::English => "Press key or button".into(),
-                        },
-                        _ => settings.controls.describe(action, lang),
+                ControlItem::Mapping => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Asignación",
+                        Language::English => "Mapping",
+                    },
+                    match lang {
+                        Language::Spanish => "Teclado y mando   >",
+                        Language::English => "Keyboard and gamepad   >",
                     },
                 ),
-                ControlItem::ResetControls => Row::new(lang.reset_controls()),
                 ControlItem::StickTurnLimit => Row::with_value(
                     match lang {
                         Language::Spanish => "Stick: limitar giro con velocidad",
@@ -744,10 +731,29 @@ fn show_options_menu(
     };
 
     let active_dev = current_active_device(*device, active_controller.as_deref());
+    // The mapping view lights the keys and buttons held down.
+    let held = Held {
+        keyboard: &keyboard,
+        gamepads: gamepads.iter().collect(),
+    };
+    let mut held_down: Vec<String> = keyboard
+        .get_pressed()
+        .map(|key| format!("{key:?}"))
+        .chain(
+            gamepads
+                .iter()
+                .flat_map(|pad| pad.get_pressed())
+                .map(|button| format!("{button:?}")),
+        )
+        .collect();
+    held_down.sort();
     // Built again only when something shown changes (the window, for
     // example, changes with every move of the mouse).
     let wanted = format!(
-        "{:?} {} {} {:?} {:?} {:?} {}",
+        "{:?} {:?} {:?} {held_down:?} {:?} {} {} {:?} {:?} {:?} {}",
+        options_menu.mapping,
+        settings.controls,
+        current_active_device(InputDevice::Gamepad, active_controller.as_deref()),
         options_menu.tab,
         options_menu.on_tabs,
         options_menu.selected,
@@ -818,6 +824,22 @@ fn show_options_menu(
                     BorderColor::all(accent.with_alpha(0.55)),
                 ))
                 .with_children(|panel| {
+                    // The mapping of the controls, in place of the sections.
+                    if let Some(mapping) = &options_menu.mapping {
+                        let look = MappingLook {
+                            font: &font,
+                            icons: &icons,
+                            lang,
+                            pad: current_active_device(
+                                InputDevice::Gamepad,
+                                active_controller.as_deref(),
+                            ),
+                            controls: &settings.controls,
+                            held: &held,
+                        };
+                        spawn_mapping(panel, mapping, &look);
+                        return;
+                    }
                     // Título
                     panel.spawn((
                         Text::new(lang.options().to_uppercase()),
@@ -883,14 +905,8 @@ fn show_options_menu(
                     ));
 
                     // Lista de opciones de la pestaña. It fills the panel, and
-                    // Back, always last, stands at its foot on every tab. The
-                    // controls, many more, are set a little closer.
-                    let compact = options_menu.tab == OptionsTab::Control;
-                    let (size, padding, gap) = if compact {
-                        (17.0, 3.0, 1.0)
-                    } else {
-                        (20.0, 5.0, 3.0)
-                    };
+                    // Back, always last, stands at its foot on every tab.
+                    let (size, padding, gap) = (20.0, 5.0, 3.0);
                     panel
                         .spawn((Node {
                             flex_direction: FlexDirection::Column,

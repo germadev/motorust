@@ -26,7 +26,7 @@ impl Plugin for RaceHudPlugin {
         app.add_systems(OnEnter(GameState::Race), spawn_race_info)
             .add_systems(
                 Update,
-                (show_race_info, show_watched).run_if(in_state(GameState::Race)),
+                (show_race_info, show_watched, show_arrivals).run_if(in_state(GameState::Race)),
             );
     }
 }
@@ -57,6 +57,11 @@ enum WatchInfo {
     Notice,
 }
 
+/// Top right, under the frame rate: who has crossed the line at the end, in
+/// order, and when.
+#[derive(Component)]
+struct Arrivals;
+
 fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
     let players = if *game_mode == GameMode::SplitScreen {
         2
@@ -68,6 +73,25 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
         font_size: FontSize::Px(size),
         ..default()
     };
+    // Top right, under the frame rate, with no panel behind: those in.
+    commands.spawn((
+        DespawnOnExit(GameState::Race),
+        Arrivals,
+        Text::new(""),
+        text(17.0),
+        TextColor(Color::WHITE),
+        TextLayout::justify(Justify::Right),
+        TextShadow {
+            offset: Vec2::splat(1.5),
+            color: Color::srgba(0.0, 0.0, 0.0, 0.85),
+        },
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(40),
+            right: px(16),
+            ..default()
+        },
+    ));
     // Over the whole screen, left of the results: the bike watched.
     commands
         .spawn((
@@ -382,6 +406,61 @@ fn show_watched(
     }
 }
 
+/// In a race or the arcade, those who have crossed the line at the end, as
+/// they do: their place, name and time. Once the results are up, they say
+/// it instead.
+fn show_arrivals(
+    rules: Res<Rules>,
+    standing: Res<Standing>,
+    settings: Res<Settings>,
+    outcome: Option<Res<Outcome>>,
+    bikes: Query<(&Rider, &Progress)>,
+    mut text: Query<&mut Text, With<Arrivals>>,
+) {
+    let wanted = if matches!(rules.mode, Mode::Race | Mode::Arcade) && outcome.is_none() {
+        arrival_lines(&standing.order, settings.language, |rider| {
+            bikes
+                .iter()
+                .find(|(r, _)| r.0 == rider)
+                .and_then(|(_, progress)| progress.finished)
+        })
+    } else {
+        String::new()
+    };
+    for mut text in &mut text {
+        if text.0 != wanted {
+            text.0.clone_from(&wanted);
+        }
+    }
+}
+
+/// A line for each bike of `order` (bikes of the roster) that has crossed
+/// the line at the end (`finished`: when), in order: "1st  Name  1:23.4".
+fn arrival_lines(
+    order: &[usize],
+    lang: Language,
+    finished: impl Fn(usize) -> Option<f32>,
+) -> String {
+    let mut arrived: Vec<(usize, f32)> = order
+        .iter()
+        .filter_map(|&rider| finished(rider).map(|time| (rider, time)))
+        .collect();
+    arrived.sort_by(|a, b| a.1.total_cmp(&b.1));
+    arrived
+        .iter()
+        .enumerate()
+        .map(|(index, (rider, time))| {
+            format!(
+                "{}   {}   {}",
+                ordinal(index + 1, lang),
+                ROSTER[*rider].name,
+                clock(*time)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The big notice in the middle for a player at `place`: their place when
 /// they cross the line at the end, that their time is up or they are out,
 /// who has just gone out, or a lap record.
@@ -461,6 +540,24 @@ mod tests {
         assert_eq!(clock(0.0), "0:00.0");
         assert_eq!(clock(83.47), "1:23.4");
         assert_eq!(clock(600.0), "10:00.0");
+    }
+
+    #[test]
+    fn those_in_are_listed_by_when_they_crossed_the_line() {
+        let finished = |rider: usize| match rider {
+            3 => Some(83.4),
+            1 => Some(81.2),
+            _ => None,
+        };
+        let lines = arrival_lines(&[1, 3, 0, 2], Language::English, finished);
+        assert_eq!(
+            lines,
+            format!(
+                "1st   {}   1:21.2\n2nd   {}   1:23.4",
+                ROSTER[1].name, ROSTER[3].name
+            )
+        );
+        assert_eq!(arrival_lines(&[0, 2], Language::Spanish, finished), "");
     }
 
     #[test]

@@ -72,14 +72,14 @@ The result is three files: `index.html`, `motorust.js` and `motorust_bg.wasm`.
 
 ### The page
 
-`web/index.html` gives the game the whole window and shows a loading screen on top of it. The screen shows download progress ("Descargando el juego…", *Downloading the game…*), then "Preparando la pista…" (*Preparing the track…*) while the first frame builds the world. When the game is visible, `src/web.rs` sets `data-motorust="ready"` on the page and the loading screen fades out. If the browser has no WebGL2, or the game fails before it is shown, the page displays the error instead.
+`web/index.html` gives the game the whole window and shows a screen on top of it with the title, a "Jugar online" (*Play online*) button and the desktop downloads. Nothing of the game is downloaded when the page opens: the button says how much it will download (or that it is already kept, see below), and only once it is pressed (or Enter or Space) does the page fetch the `.wasm` and the JavaScript glue (`motorust.js`, imported then). It shows download progress ("Descargando el juego…", *Downloading the game…*), then "Preparando la pista…" (*Preparing the track…*) while the first frame builds the world. When the game is visible, `src/web.rs` sets `data-motorust="ready"` on the page and the loading screen fades out. If the browser has no WebGL2, or the game fails before it is shown, the page displays the error instead.
 
 ### Caching the game
 
 The browser keeps the `.wasm` between visits, so reloading the tab starts the game without downloading it again:
 
 - The page asks for `motorust_bg.wasm?v=<first 16 hex digits of its SHA-256>`. Each build has its own URL, so the server can let browsers keep the file for a year (`Cache-Control: immutable`, set in `functions/motorust_bg.wasm.js`) and no browser reuses an old build's `.wasm` with a new build's `motorust.js`.
-- After downloading it, the page keeps a copy in [Cache Storage](https://developer.mozilla.org/docs/Web/API/CacheStorage) (cache `motorust-wasm`), but only if its SHA-256 matches the page's `WASM_SHA256`, and deletes the copies of older builds. On the next visit the game comes from there ("Listo, sin volver a descargarlo"), even after a hard reload, which skips the HTTP cache.
+- After downloading it, the page keeps a copy in [Cache Storage](https://developer.mozilla.org/docs/Web/API/CacheStorage) (cache `motorust-wasm`), but only if its SHA-256 matches the page's `WASM_SHA256`, and deletes the copies of older builds. On the next visit, once "Jugar online" is pressed, the game comes from there (the page says "Ya descargado: empieza al momento" beforehand), even after a hard reload, which skips the HTTP cache.
 - Cache Storage only exists on https and `localhost`, and the browser may refuse it (some private windows, no disk space) or clear it to free space. Then the page just downloads the game as before.
 
 This is not WasmFS: WasmFS is Emscripten's file system for programs built with Emscripten, while motorust is built with `wasm32-unknown-unknown` and `wasm-bindgen`, and keeps its settings in `localStorage`.

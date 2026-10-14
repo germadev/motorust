@@ -735,8 +735,8 @@ mod tests {
             .expect("the wheelie is in the legend");
         assert_eq!(wheelie.badges[0].label, Label::Text("Espacio".into()));
 
-        controls.bind_key(Action::Wheelie, KeyCode::KeyJ);
-        controls.bind_button(Action::Throttle, GamepadButton::RightTrigger);
+        controls.remap(KeyCode::Space, &[KeyCode::KeyJ]);
+        controls.remap(GamepadButton::RightTrigger2, &[GamepadButton::RightTrigger]);
         let keyboard = race_prompts(ActiveDevice::Keyboard, Language::English, &controls);
         let wheelie = keyboard.iter().find(|p| p.action == "Wheelie").unwrap();
         assert_eq!(wheelie.badges[0].label, Label::Text("J".into()));

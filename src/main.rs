@@ -12,6 +12,7 @@ mod hud;
 mod legend;
 mod lobby;
 pub mod locale;
+mod mapping;
 mod menu;
 mod minimap;
 mod modes;

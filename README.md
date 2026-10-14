@@ -11,20 +11,24 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
   [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
-- **Game modes.** Story (every track in turn, five laps each, points per
-  race, saved as you go), free ride, a race of 1 to 9 laps, elimination (the
-  last one is out every lap) and checkpoint (each checkpoint adds seconds
-  to the clock). Two players: free ride, race and elimination. Best laps
-  and checkpoint records are kept per track.
+- **Game modes.** Arcade (every track in turn, five laps each, points per
+  race), free ride, a race of 1 to 9 laps (5 by default), elimination (seven
+  laps on the track you choose, the last one out every lap until two race
+  the last) and checkpoint (each checkpoint gantry adds seconds to the
+  clock). Two players: free ride, race and elimination. Races start at
+  Grand Prix lights, three difficulty levels, and once you cross the line
+  the bike rides itself while the camera shows the others coming in. Best
+  laps and checkpoint records are kept per track.
 - **Arcade handling.** Lean into corners at full throttle, pop wheelies, take
   short jumps and feel the suspension. Play with a keyboard, a D-pad or an
   analog stick.
 - **Synthesized sound and music.** Engines, gearbox, wind, tyres and impacts
   are all generated in real time, with Doppler on passing rivals. Each track
   has its own song, mixed well below the engine.
-- **Everything else.** Two-player split screen, a minimap, rebindable
-  controls and gamepad support (including the macOS GameController
-  framework). It runs on Linux, Windows, macOS and the web.
+- **Everything else.** Two-player split screen, a minimap, controls
+  remapped on a drawing of the keyboard or the gamepad (keys or buttons
+  pressed together too), and gamepad support (including the macOS
+  GameController framework). It runs on Linux, Windows, macOS and the web.
 
 ## Tracks
 

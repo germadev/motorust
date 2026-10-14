@@ -331,12 +331,15 @@ impl Action {
     }
 }
 
-/// Las teclas y los botones del mando de una acción.
+/// Las teclas y los botones del mando de una acción: each on its own, or
+/// several pressed together.
 #[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Binding {
     pub keys: Vec<KeyCode>,
     pub buttons: Vec<GamepadButton>,
+    pub key_combos: Vec<Vec<KeyCode>>,
+    pub button_combos: Vec<Vec<GamepadButton>>,
 }
 
 impl Binding {
@@ -344,8 +347,53 @@ impl Binding {
         Self {
             keys: keys.to_vec(),
             buttons: buttons.to_vec(),
+            ..default()
         }
     }
+}
+
+/// A kind of input an action is bound to: the keys of the keyboard or the
+/// buttons of a gamepad, each kind remapped on its own.
+pub trait Bound: Copy + PartialEq + std::fmt::Debug + 'static {
+    fn singles(binding: &Binding) -> &Vec<Self>;
+    fn singles_mut(binding: &mut Binding) -> &mut Vec<Self>;
+    fn combos(binding: &Binding) -> &Vec<Vec<Self>>;
+    fn combos_mut(binding: &mut Binding) -> &mut Vec<Vec<Self>>;
+}
+
+impl Bound for KeyCode {
+    fn singles(binding: &Binding) -> &Vec<Self> {
+        &binding.keys
+    }
+    fn singles_mut(binding: &mut Binding) -> &mut Vec<Self> {
+        &mut binding.keys
+    }
+    fn combos(binding: &Binding) -> &Vec<Vec<Self>> {
+        &binding.key_combos
+    }
+    fn combos_mut(binding: &mut Binding) -> &mut Vec<Vec<Self>> {
+        &mut binding.key_combos
+    }
+}
+
+impl Bound for GamepadButton {
+    fn singles(binding: &Binding) -> &Vec<Self> {
+        &binding.buttons
+    }
+    fn singles_mut(binding: &mut Binding) -> &mut Vec<Self> {
+        &mut binding.buttons
+    }
+    fn combos(binding: &Binding) -> &Vec<Vec<Self>> {
+        &binding.button_combos
+    }
+    fn combos_mut(binding: &mut Binding) -> &mut Vec<Vec<Self>> {
+        &mut binding.button_combos
+    }
+}
+
+/// Whether two combinations are the same keys or buttons, in any order.
+fn same_combo<T: PartialEq>(a: &[T], b: &[T]) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.contains(x))
 }
 
 /// Las teclas y botones de cada acción.
@@ -415,26 +463,79 @@ impl Controls {
         }
     }
 
-    /// La acción pasa a hacerse con esta tecla (en lugar de las que tuviera),
-    /// y la tecla deja de hacer cualquier otra.
-    pub fn bind_key(&mut self, action: Action, key: KeyCode) {
-        for other in ACTIONS {
-            self.get_mut(other).keys.retain(|&k| k != key);
-        }
-        self.get_mut(action).keys = vec![key];
+    /// The action `input` does, on its own or with others: the first one
+    /// it is bound to.
+    pub fn action_of<T: Bound>(&self, input: T) -> Option<Action> {
+        ACTIONS
+            .into_iter()
+            .find(|&action| T::singles(self.get(action)).contains(&input))
+            .or_else(|| {
+                ACTIONS.into_iter().find(|&action| {
+                    T::combos(self.get(action))
+                        .iter()
+                        .any(|combo| combo.contains(&input))
+                })
+            })
     }
 
-    /// Lo mismo con un botón del mando.
-    pub fn bind_button(&mut self, action: Action, button: GamepadButton) {
-        for other in ACTIONS {
-            self.get_mut(other).buttons.retain(|&b| b != button);
+    /// What `from` did (its action, on its own or the combination it is
+    /// in) is done with `to` instead: one key or button, or several pressed
+    /// together. `to` stops doing anything else, and the action keeps its
+    /// other keys or buttons. The action, if `from` had one.
+    pub fn remap<T: Bound>(&mut self, from: T, to: &[T]) -> Option<Action> {
+        let action = self.action_of(from)?;
+        if to.is_empty() {
+            return Some(action);
         }
-        self.get_mut(action).buttons = vec![button];
+        // Where `from` was, to put `to` there.
+        let binding = self.get_mut(action);
+        let single = T::singles(binding).iter().position(|&x| x == from);
+        match single {
+            Some(index) => {
+                T::singles_mut(binding).remove(index);
+            }
+            None => T::combos_mut(binding).retain(|combo| !combo.contains(&from)),
+        }
+        for other in ACTIONS {
+            let binding = self.get_mut(other);
+            match to {
+                [one] => T::singles_mut(binding).retain(|x| x != one),
+                _ => T::combos_mut(binding).retain(|combo| !same_combo(combo, to)),
+            }
+        }
+        let binding = self.get_mut(action);
+        match to {
+            [one] => {
+                let singles = T::singles_mut(binding);
+                let index = single.unwrap_or(singles.len()).min(singles.len());
+                singles.insert(index, *one);
+            }
+            _ => T::combos_mut(binding).push(to.to_vec()),
+        }
+        Some(action)
     }
 
-    /// 1 si se pulsa alguna tecla de la acción, y si no, 0.
+    /// Every action back to its keys (or buttons) at first; the other kind
+    /// is left as it is.
+    pub fn reset<T: Bound>(&mut self) {
+        let defaults = Controls::default();
+        for action in ACTIONS {
+            let default = defaults.get(action);
+            let binding = self.get_mut(action);
+            *T::singles_mut(binding) = T::singles(default).clone();
+            *T::combos_mut(binding) = T::combos(default).clone();
+        }
+    }
+
+    /// 1 si se pulsa alguna tecla de la acción (or all the keys of one of
+    /// its combinations), y si no, 0.
     pub fn key_value(&self, action: Action, keyboard: &ButtonInput<KeyCode>) -> f32 {
-        if keyboard.any_pressed(self.get(action).keys.iter().copied()) {
+        let binding = self.get(action);
+        let combo = binding
+            .key_combos
+            .iter()
+            .any(|combo| !combo.is_empty() && keyboard.all_pressed(combo.iter().copied()));
+        if combo || keyboard.any_pressed(binding.keys.iter().copied()) {
             1.0
         } else {
             0.0
@@ -442,16 +543,31 @@ impl Controls {
     }
 
     /// Cuánto se aprieta en este mando algún botón de la acción (0..1): los
-    /// gatillos, según lo que se aprieten; los demás, a tope o nada.
+    /// gatillos, según lo que se aprieten; los demás, a tope o nada. A
+    /// combination counts once all its buttons are pressed, as much as the
+    /// least pressed of them.
     pub fn button_value(&self, action: Action, gamepad: &Gamepad) -> f32 {
-        self.get(action)
+        let binding = self.get(action);
+        let combos = binding.button_combos.iter().map(|combo| {
+            if !combo.is_empty() && combo.iter().all(|&button| gamepad.pressed(button)) {
+                combo
+                    .iter()
+                    .map(|&button| gamepad.get(button).unwrap_or(0.0))
+                    .fold(1.0, f32::min)
+            } else {
+                0.0
+            }
+        });
+        binding
             .buttons
             .iter()
             .map(|&button| gamepad.get(button).unwrap_or(0.0))
+            .chain(combos)
             .fold(0.0, f32::max)
     }
 
-    /// Si se acaba de pulsar una tecla o un botón de la acción.
+    /// Si se acaba de pulsar una tecla o un botón de la acción (or completed
+    /// one of its combinations).
     pub fn just_pressed<'a>(
         &self,
         action: Action,
@@ -459,41 +575,65 @@ impl Controls {
         gamepads: impl IntoIterator<Item = &'a Gamepad>,
     ) -> bool {
         let binding = self.get(action);
-        keyboard.any_just_pressed(binding.keys.iter().copied())
+        let key_combo = binding.key_combos.iter().any(|combo| {
+            !combo.is_empty()
+                && keyboard.all_pressed(combo.iter().copied())
+                && keyboard.any_just_pressed(combo.iter().copied())
+        });
+        key_combo
+            || keyboard.any_just_pressed(binding.keys.iter().copied())
             || gamepads.into_iter().any(|gamepad| {
                 binding
                     .buttons
                     .iter()
                     .any(|&button| gamepad.just_pressed(button))
+                    || binding.button_combos.iter().any(|combo| {
+                        !combo.is_empty()
+                            && combo.iter().all(|&button| gamepad.pressed(button))
+                            && combo.iter().any(|&button| gamepad.just_pressed(button))
+                    })
             })
     }
 
-    /// Las teclas y los botones de la acción, para la tabla de controles.
-    pub fn describe(&self, action: Action, lang: Language) -> String {
+    /// The keys of the action, a combination joined with "+".
+    pub fn describe_keys(&self, action: Action, lang: Language) -> String {
         let binding = self.get(action);
-        let list = |names: Vec<String>| {
-            if names.is_empty() {
-                "—".to_string()
-            } else {
-                names.join(", ")
-            }
-        };
-        let buttons = if action == Action::Wheelie && binding.buttons.is_empty() {
-            "RT + A".to_string()
-        } else {
-            list(
-                binding
-                    .buttons
-                    .iter()
-                    .map(|&b| button_name(b, lang))
-                    .collect(),
-            )
-        };
-        format!(
-            "{}   ·   {}",
-            list(binding.keys.iter().map(|&k| key_name(k, lang)).collect()),
-            buttons
+        names(&binding.keys, &binding.key_combos, |&key| {
+            key_name(key, lang)
+        })
+    }
+
+    /// The gamepad buttons of the action, a combination joined with "+".
+    pub fn describe_buttons(&self, action: Action, lang: Language) -> String {
+        let binding = self.get(action);
+        // The wheelie always has RT and A together too.
+        if action == Action::Wheelie
+            && binding.buttons.is_empty()
+            && binding.button_combos.is_empty()
+        {
+            return "RT + A".to_string();
+        }
+        names(&binding.buttons, &binding.button_combos, |&button| {
+            button_name(button, lang)
+        })
+    }
+}
+
+/// The names of some keys or buttons, and of combinations of them, in a list.
+fn names<T>(singles: &[T], combos: &[Vec<T>], name: impl Fn(&T) -> String) -> String {
+    let list: Vec<String> = singles
+        .iter()
+        .map(&name)
+        .chain(
+            combos
+                .iter()
+                .map(|combo| combo.iter().map(&name).collect::<Vec<_>>().join("+")),
         )
+        .collect();
+    if list.is_empty() {
+        "—".to_string()
+    } else {
+        list.join(", ")
     }
 }
 
@@ -1117,10 +1257,13 @@ mod tests {
             language: Language::Spanish,
             ..default()
         };
-        settings.controls.bind_key(Action::Wheelie, KeyCode::KeyJ);
+        settings.controls.remap(KeyCode::Space, &[KeyCode::KeyJ]);
         settings
             .controls
-            .bind_button(Action::Throttle, GamepadButton::RightTrigger);
+            .remap(GamepadButton::South, &[GamepadButton::RightTrigger]);
+        settings
+            .controls
+            .remap(KeyCode::ShiftLeft, &[KeyCode::ControlLeft, KeyCode::KeyW]);
         // The records and the start are kept too.
         settings.records.lap("Bahía GP", 71.25);
         settings.records.checkpoint("Bahía GP", 3);
@@ -1169,18 +1312,68 @@ mod tests {
     #[test]
     fn a_key_does_only_one_thing() {
         let mut controls = Controls::default();
-        // W pasa a frenar: deja de acelerar, que se queda con la flecha.
-        controls.bind_key(Action::Brake, KeyCode::KeyW);
-        assert_eq!(controls.brake.keys, [KeyCode::KeyW]);
+        // W pasa a frenar en lugar de S: deja de acelerar, que se queda con
+        // la flecha, y frenar sigue también con la suya.
+        assert_eq!(
+            controls.remap(KeyCode::KeyS, &[KeyCode::KeyW]),
+            Some(Action::Brake)
+        );
+        assert_eq!(controls.brake.keys, [KeyCode::KeyW, KeyCode::ArrowDown]);
         assert_eq!(controls.throttle.keys, [KeyCode::ArrowUp]);
         // Los botones van aparte: frenar sigue con los suyos.
         assert_eq!(
             controls.brake.buttons,
             [GamepadButton::LeftTrigger2, GamepadButton::West]
         );
-        controls.bind_button(Action::Wheelie, GamepadButton::South);
+        // B, the wheelie's, becomes A, which stops accelerating.
+        controls.remap(GamepadButton::East, &[GamepadButton::South]);
         assert_eq!(controls.wheelie.buttons, [GamepadButton::South]);
         assert_eq!(controls.throttle.buttons, [GamepadButton::RightTrigger2]);
+        // A key that does nothing has nothing to remap.
+        assert_eq!(controls.remap(KeyCode::KeyK, &[KeyCode::KeyL]), None);
+    }
+
+    #[test]
+    fn an_action_can_take_keys_pressed_together() {
+        let mut controls = Controls::default();
+        let together = [KeyCode::ShiftLeft, KeyCode::KeyR];
+        assert_eq!(
+            controls.remap(KeyCode::KeyR, &together),
+            Some(Action::Restart)
+        );
+        assert!(controls.restart.keys.is_empty());
+        assert_eq!(controls.restart.key_combos, [together.to_vec()]);
+        // Shift on its own still does the wheelie.
+        assert!(controls.wheelie.keys.contains(&KeyCode::ShiftLeft));
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::KeyR);
+        assert_eq!(controls.key_value(Action::Restart, &keyboard), 0.0);
+        assert!(!controls.just_pressed(Action::Restart, &keyboard, []));
+        keyboard.clear();
+        keyboard.press(KeyCode::ShiftLeft);
+        assert!(controls.just_pressed(Action::Restart, &keyboard, []));
+        assert_eq!(controls.key_value(Action::Restart, &keyboard), 1.0);
+        assert_eq!(
+            controls.describe_keys(Action::Restart, Language::English),
+            "Left Shift+R"
+        );
+        // A key of a combination remaps it all.
+        assert_eq!(controls.action_of(KeyCode::KeyR), Some(Action::Restart));
+        controls.remap(KeyCode::KeyR, &[KeyCode::F5]);
+        assert_eq!(controls.restart.keys, [KeyCode::F5]);
+        assert!(controls.restart.key_combos.is_empty());
+    }
+
+    #[test]
+    fn the_keyboard_and_the_gamepad_are_reset_apart() {
+        let mut controls = Controls::default();
+        controls.remap(KeyCode::KeyW, &[KeyCode::KeyI]);
+        controls.remap(GamepadButton::South, &[GamepadButton::North]);
+        controls.reset::<KeyCode>();
+        assert_eq!(controls.throttle.keys, Controls::default().throttle.keys);
+        assert!(controls.throttle.buttons.contains(&GamepadButton::North));
+        controls.reset::<GamepadButton>();
+        assert_eq!(controls, Controls::default());
     }
 
     #[test]
@@ -1393,18 +1586,17 @@ mod tests {
             "D-pad left"
         );
         let controls = Controls::default();
+        assert_eq!(controls.describe_keys(Action::Throttle, es), "W, Arriba");
+        assert_eq!(controls.describe_buttons(Action::Throttle, es), "RT, A");
         assert_eq!(
-            controls.describe(Action::Throttle, es),
-            "W, Arriba   ·   RT, A"
+            controls.describe_keys(Action::Throttle, Language::English),
+            "W, Up"
         );
         assert_eq!(
-            controls.describe(Action::Throttle, Language::English),
-            "W, Up   ·   RT, A"
+            controls.describe_keys(Action::Wheelie, es),
+            "Espacio, Mayús izq."
         );
-        assert_eq!(
-            controls.describe(Action::Wheelie, es),
-            "Espacio, Mayús izq.   ·   B"
-        );
+        assert_eq!(controls.describe_buttons(Action::Wheelie, es), "B");
     }
 
     #[test]
@@ -1415,7 +1607,8 @@ mod tests {
         assert_eq!(saved.wheelie.buttons, [GamepadButton::East]);
         // Unless B already does something else.
         let mut taken = Controls::default();
-        taken.bind_button(Action::Brake, GamepadButton::East);
+        taken.wheelie.buttons.clear();
+        taken.brake.buttons = vec![GamepadButton::East];
         taken.give_the_wheelie_a_button();
         assert!(taken.wheelie.buttons.is_empty());
         assert_eq!(taken.brake.buttons, [GamepadButton::East]);
