@@ -39,9 +39,6 @@ pub struct WorldTextures {
     /// Layers of sandstone, cream, salmon, rust and ochre, one over another
     /// down the texture.
     pub strata: Handle<Image>,
-    /// Clusters of leaves and pine needles for the crowns of the trees,
-    /// see-through between them (see [`super::foliage::leaves`]).
-    pub leaves: Handle<Image>,
     /// A tuft of grass blades seen from the side (see
     /// [`super::foliage::tuft`]).
     pub tuft: Handle<Image>,
@@ -103,7 +100,6 @@ impl FromWorld for WorldTextures {
         let falls = images.add(falls());
         let planks = images.add(planks());
         let strata = images.add(strata());
-        let leaves = images.add(super::foliage::leaves());
         let tuft = images.add(super::foliage::tuft());
         let grass_edge = images.add(super::foliage::grass_edge());
         let light_pool = images.add(light_pool());
@@ -122,7 +118,6 @@ impl FromWorld for WorldTextures {
             falls,
             planks,
             strata,
-            leaves,
             tuft,
             grass_edge,
             light_pool,

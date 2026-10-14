@@ -1,12 +1,11 @@
 //! Procedural textures of plants, painted at startup like the other
 //! procedural textures: the lawn the grass is drawn with, tufts of blades
-//! standing up beside the road, and clusters of leaves and of pine needles
-//! for the crowns of the trees.
+//! standing up beside the road, and the ragged edge of the grass along it.
 //!
-//! The ones with see-through gaps (tufts and leaves) are drawn with alpha
+//! The ones with see-through gaps (tufts and the edge) are drawn with alpha
 //! masking: their mipmaps keep as much of them solid as the full-size
-//! image has (see [`keep_coverage`]), so the trees and the grass do not
-//! thin out and vanish in the distance.
+//! image has (see [`keep_coverage`]), so the grass does not thin out and
+//! vanish in the distance.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -92,36 +91,6 @@ impl Canvas {
                 if coverage > 0.0 {
                     self.blend(x, y, start.lerp(end, t), coverage);
                 }
-            }
-        }
-    }
-
-    /// A leaf: pointed at both ends, `length` long and `width` wide (px),
-    /// centred on `center` along `direction`, `color` with a darker rib
-    /// down its middle and darker edges.
-    fn leaf(&mut self, center: Vec2, direction: Vec2, (length, width): (f32, f32), color: Vec4) {
-        let along = direction.normalize();
-        let across = along.perp();
-        let reach = length * 0.5 + 1.0;
-        for y in (center.y - reach).floor() as i32..=(center.y + reach).ceil() as i32 {
-            for x in (center.x - reach).floor() as i32..=(center.x + reach).ceil() as i32 {
-                let d = Vec2::new(x as f32 + 0.5, y as f32 + 0.5) - center;
-                let u = d.dot(along) / (length * 0.5);
-                if u.abs() >= 1.0 {
-                    continue;
-                }
-                let half = width * 0.5 * (1.0 - u * u).powf(0.8);
-                let v = d.dot(across);
-                let coverage = half - v.abs() + 0.5;
-                if coverage <= 0.0 {
-                    continue;
-                }
-                let side = (v.abs() / half.max(0.5)).min(1.0);
-                // Lighter across the blade, darker at the rib and edges.
-                let rib = 1.0 - 0.25 * (1.0 - (v.abs() * 2.0).min(1.0));
-                let shade = rib * (1.0 - 0.25 * side * side) * (0.9 + 0.1 * u);
-                let tinted = (color.truncate() * shade).extend(color.w);
-                self.blend(x, y, tinted, coverage);
             }
         }
     }
@@ -406,74 +375,6 @@ pub fn grass_edge() -> Image {
     image
 }
 
-/// The leaves of the trees: two squares side by side, a cluster of broad
-/// leaves on twigs on the left and a spray of pine needles on the right,
-/// each round its middle on a clear ground. Pale, to be tinted by the
-/// colour of each tree's foliage.
-pub fn leaves() -> Image {
-    const TILE: u32 = 256;
-    let base = Color::srgb(0.7, 0.75, 0.62);
-    let mut canvas = Canvas::new(2 * TILE, TILE, false, base, 0.0);
-    let center = Vec2::splat(TILE as f32 / 2.0);
-    let twig = Vec4::new(0.35, 0.28, 0.2, 1.0);
-    // Broad leaves on a few twigs from the middle out.
-    for n in 0..9 {
-        let r = |k: u32| rand(3, n, k);
-        let direction = Vec2::from_angle(n as f32 / 9.0 * std::f32::consts::TAU + r(0) * 0.6);
-        let end = center + direction * TILE as f32 * (0.32 + 0.1 * r(1));
-        canvas.stroke(center, end, (3.0, 1.5), twig, twig);
-    }
-    for n in 0..150 {
-        let r = |k: u32| rand(4, n, k);
-        // Thicker towards the middle, as round a twig's end.
-        let distance = TILE as f32 * 0.4 * r(0).sqrt();
-        let at = center + Vec2::from_angle(r(1) * std::f32::consts::TAU) * distance;
-        let direction = (at - center)
-            .normalize_or(Vec2::X)
-            .rotate(Vec2::from_angle((r(2) - 0.5) * 1.6));
-        let shade = 0.62 + 0.38 * r(3);
-        let color = Vec4::new(shade, shade, shade * 0.95, 1.0);
-        let length = 26.0 + 20.0 * r(4);
-        canvas.leaf(
-            at,
-            direction,
-            (length, length * (0.36 + 0.12 * r(5))),
-            color,
-        );
-    }
-    // Pine needles: bunches of thin strokes fanning out from twigs.
-    let needles = center + Vec2::new(TILE as f32, 0.0);
-    for n in 0..14 {
-        let r = |k: u32| rand(5, n, k);
-        let direction = Vec2::from_angle(n as f32 / 14.0 * std::f32::consts::TAU + r(0) * 0.4);
-        let length = TILE as f32 * (0.28 + 0.12 * r(1));
-        let end = needles + direction * length;
-        canvas.stroke(needles, end, (3.0, 1.2), twig, twig);
-        for k in 0..22 {
-            let s = |j: u32| rand(6, n * 32 + k, j);
-            let along = needles + direction * length * (0.15 + 0.85 * k as f32 / 22.0);
-            for side in [-1.0, 1.0] {
-                let spread = direction.rotate(Vec2::from_angle(side * (0.5 + 0.35 * s(0))));
-                let tip = along + spread * TILE as f32 * (0.07 + 0.05 * s(1));
-                let shade = 0.6 + 0.4 * s(2);
-                let color = Vec4::new(shade, shade, shade * 0.9, 1.0);
-                canvas.stroke(
-                    along,
-                    tip,
-                    (2.4, 1.0),
-                    color * Vec4::new(0.8, 0.8, 0.8, 1.0),
-                    color,
-                );
-            }
-        }
-    }
-    canvas.image(true)
-}
-
-/// Where each of the two kinds of foliage is in [`leaves`] (u from, u to).
-pub const BROAD_LEAVES: (f32, f32) = (0.0, 0.5);
-pub const NEEDLES: (f32, f32) = (0.5, 1.0);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,20 +398,8 @@ mod tests {
     }
 
     #[test]
-    fn leaves_are_clusters_on_a_clear_ground() {
-        let image = leaves();
-        assert_eq!((image.width(), image.height()), (512, 256));
-        for (x, y) in [(0, 0), (255, 0), (256, 255), (511, 255), (0, 128)] {
-            assert_eq!(alpha(&image, x, y), 0, "clear at ({x}, {y})");
-        }
-        assert!(alpha(&image, 128, 128) > 200, "solid in the middle");
-        let full = coverage_at(&image, 0);
-        assert!((0.2..0.8).contains(&full), "{full}");
-    }
-
-    #[test]
     fn masked_mipmaps_keep_their_coverage() {
-        let image = leaves();
+        let image = tuft();
         let full = coverage_at(&image, 0);
         for level in 1..6 {
             let smaller = coverage_at(&image, level);
