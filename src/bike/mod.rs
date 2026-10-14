@@ -14,7 +14,7 @@ mod model;
 #[cfg(test)]
 use crash::{Body, carry, collide};
 pub use crash::{CrashState, Knock};
-pub use grass_kickup::{GrassKickup, GrassKickupPlugin, GrassParticle};
+pub use grass_kickup::{DustPuff, GrassKickup, GrassKickupPlugin, GrassParticle};
 pub use loop_ride::Ride;
 
 use bevy::input::gamepad::{GamepadRumbleIntensity, GamepadRumbleRequest};
@@ -258,7 +258,8 @@ pub struct BikeState {
     /// La parte de `steer` que entró directa en el último paso.
     pub steer_direct: f32,
     /// Cuánto se ha metido en la hierba, de 0 a 1: sube mientras la pisa y
-    /// baja al volver al asfalto.
+    /// baja al volver al asfalto. Dirt counts as grass (see
+    /// [`Surface::is_rough`]).
     pub grass: f32,
     /// Inclinación en radianes; positiva hacia la izquierda.
     pub lean: f32,
@@ -453,7 +454,9 @@ pub fn step(
     let throttle = input.throttle.clamp(0.0, 1.0) * contact;
     let brake = input.brake.clamp(0.0, 1.0) * contact;
     // La hierba frena poco a poco: la punta baja según lo que se lleva en ella.
-    let on_grass = matches!(ground.surface, Surface::Grass) && state.grounded;
+    // Dirt does the same; the concrete or planks of a tunnel or a bridge
+    // are as firm as the road.
+    let on_grass = ground.surface.is_rough() && state.grounded;
     let grass = if on_grass {
         move_toward(state.grass, 1.0, dt / GRASS_BITE_TIME)
     } else {
@@ -1489,6 +1492,9 @@ fn stick_steer(x: f32) -> f32 {
 /// Con la tecla de reiniciar (R o Select en el mando, si no se han cambiado)
 /// todas las motos vuelven a la parrilla y la carrera espera a que el jugador
 /// acelere.
+/// What the wheels throw up: blades of grass and puffs of dust.
+type KickedUp = (With<GrassParticle>, With<DustPuff>);
+
 #[allow(clippy::too_many_arguments)]
 fn restart_race(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -1503,7 +1509,7 @@ fn restart_race(
         &mut Knock,
         &mut CrashState,
     )>,
-    particles: Query<Entity, With<GrassParticle>>,
+    particles: Query<Entity, Or<KickedUp>>,
     mut commands: Commands,
 ) {
     if !settings
@@ -1764,7 +1770,7 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
 
     use crate::pause::{ReturnRate, SteerRate};
-    use crate::track::WALL_DISTANCE;
+    use crate::track::{Dust, WALL_DISTANCE};
 
     use super::*;
 
@@ -1808,6 +1814,17 @@ mod tests {
         let fast = drive(full_throttle(), Surface::Asphalt, 30.0, parked());
         let on_grass = drive(full_throttle(), Surface::Grass, 10.0, fast);
         assert!(on_grass.speed <= tuning.grass_max_speed + 0.5);
+    }
+
+    #[test]
+    fn dirt_slows_the_bike_down_and_concrete_does_not() {
+        let tuning = BikeTuning::default();
+        let fast = drive(full_throttle(), Surface::Asphalt, 30.0, parked());
+        let on_dirt = drive(full_throttle(), Surface::Dirt(Dust::Earth), 10.0, fast);
+        assert!(on_dirt.speed <= tuning.grass_max_speed + 0.5);
+        let on_concrete = drive(full_throttle(), Surface::Paved, 10.0, fast);
+        assert!(on_concrete.speed > tuning.grass_max_speed + 20.0);
+        assert_eq!(on_concrete.grass, 0.0);
     }
 
     #[test]

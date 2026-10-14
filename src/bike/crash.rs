@@ -34,7 +34,7 @@ use bevy::prelude::*;
 
 use super::{BikeState, GRAVITY, WallHit, footprint, move_toward, wall_contact};
 use crate::geometry::{approach, forward};
-use crate::track::{Surface, Track};
+use crate::track::Track;
 
 /// Collision shape seen from above: a capsule along the bike, from wheel to
 /// wheel, as wide as bike and rider.
@@ -1082,11 +1082,16 @@ pub fn rejoin_pose(track: &Track, at: Vec2, height: f32, others: &[Vec2]) -> (Ve
     (place(lateral), heading, lateral)
 }
 
-/// Drag factor at `point`, at `height`, for the given (asphalt, grass) pair.
+/// Drag factor at `point`, at `height`, for the given (asphalt, grass) pair:
+/// concrete and planks are as smooth as asphalt, dirt as rough as grass.
 fn drag_factor(track: &Track, point: Vec2, height: f32, (asphalt, grass): (f32, f32)) -> f32 {
-    match track.surface_beside(&track.nearest_at(point, height)) {
-        Surface::Asphalt => asphalt,
-        Surface::Grass => grass,
+    if track
+        .surface_beside(&track.nearest_at(point, height))
+        .is_rough()
+    {
+        grass
+    } else {
+        asphalt
     }
 }
 

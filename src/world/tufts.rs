@@ -1,0 +1,216 @@
+//! Tufts of grass standing up on the shoulders of the roads where they are
+//! grass (see [`Track::set_shoulders`]): crossed cards of blades (see
+//! [`super::foliage::tuft`]) between the curbs and the walls, the colour of
+//! the grass they grow in, so the ground beside the road has some depth
+//! as it rushes past. Never on sand, earth or concrete.
+//!
+//! They are gathered into a mesh for every stretch of each road, so the
+//! stretches out of sight are not drawn.
+
+use bevy::prelude::*;
+
+use super::foliage::ALPHA_CUTOFF;
+use super::quads::MeshBuilder;
+use super::terrain::{Ground, Terrain, ground_vertex_color};
+use super::textures::WorldTextures;
+use crate::geometry::random01;
+use crate::track::{CURB_WIDTH, Surface, Track};
+
+/// How many tufts grow on each side of each stretch of road between two
+/// points of its centre line, at most.
+const PER_STRETCH: u32 = 7;
+/// How many points of the centre line each mesh gathers.
+const CHUNK: usize = 48;
+/// How far from the curbs and from the walls the tufts keep (m).
+const CLEAR_OF_CURB: f32 = 0.2;
+const CLEAR_OF_WALL: f32 = 0.35;
+/// How tall and wide a tuft is (m), at least and at most.
+const HEIGHT: (f32, f32) = (0.22, 0.42);
+const WIDTH: (f32, f32) = (0.45, 0.8);
+/// Tufts are only where the ground is about as high as the road beside
+/// it (m): not up the earth that rises before a rock face.
+const LEVEL: f32 = 0.4;
+
+/// The tufts of a circuit, a mesh and its material for each stretch of
+/// each road that has any, given what each road's shoulders are and where
+/// its solid edges are (the lap first, then the roads off it).
+pub fn tuft_pieces(
+    track: &Track,
+    terrain: &Terrain,
+    shoulders: &[Vec<[Surface; 2]>],
+    edges: &[Vec<[f32; 2]>],
+    textures: &WorldTextures,
+) -> Vec<(Mesh, StandardMaterial)> {
+    let material = StandardMaterial {
+        base_color_texture: Some(textures.tuft.clone()),
+        alpha_mode: AlphaMode::Mask(ALPHA_CUTOFF),
+        perceptual_roughness: 0.9,
+        reflectance: 0.15,
+        // Lit as the ground they grow on, from either side.
+        cull_mode: None,
+        double_sided: false,
+        ..default()
+    };
+    tuft_meshes(track, terrain, shoulders, edges, textures.grass_color)
+        .into_iter()
+        .map(|mesh| (mesh, material.clone()))
+        .collect()
+}
+
+/// The meshes of the tufts (see [`tuft_pieces`]), the grass of `grass`
+/// colour on average.
+fn tuft_meshes(
+    track: &Track,
+    terrain: &Terrain,
+    shoulders: &[Vec<[Surface; 2]>],
+    edges: &[Vec<[f32; 2]>],
+    grass: Color,
+) -> Vec<Mesh> {
+    let mut meshes = Vec::new();
+    for (road, sides) in shoulders.iter().enumerate() {
+        let line = track.road(road);
+        let segments = line.segment_count();
+        let next = |index: usize| (index + 1) % line.sample_count();
+        let grassy = |index: usize, side: usize| {
+            sides.get(index).is_some_and(|s| s[side] == Surface::Grass)
+                && sides
+                    .get(next(index))
+                    .is_some_and(|s| s[side] == Surface::Grass)
+        };
+        for chunk in (0..segments).step_by(CHUNK) {
+            let mut mesh = MeshBuilder::default();
+            for index in chunk..(chunk + CHUNK).min(segments) {
+                for (side, sign) in [(0, 1.0), (1, -1.0)] {
+                    if !grassy(index, side) {
+                        continue;
+                    }
+                    let from = line.half_width_at(index) + CURB_WIDTH + CLEAR_OF_CURB;
+                    let edge = edges
+                        .get(road)
+                        .and_then(|edges| edges.get(index))
+                        .map_or(line.wall_at(index), |edge| edge[side]);
+                    let to = edge.min(line.wall_at(index)) - CLEAR_OF_WALL;
+                    // Where two roads meet, one's shoulder is the other's
+                    // asphalt.
+                    let on_other_road = |lateral: f32| {
+                        track.on_other_road(
+                            road,
+                            line.offset_point(index, sign * lateral),
+                            |other, nearest| other.half_width_at(nearest.index) + CURB_WIDTH + 0.5,
+                        )
+                    };
+                    if to <= from || on_other_road(from) || on_other_road(to) {
+                        continue;
+                    }
+                    let seed = (road as u32 * 100_003 + index as u32) * 2 + side as u32;
+                    for n in 0..PER_STRETCH {
+                        let random = |k: u32| random01((seed * PER_STRETCH + n) * 8 + k);
+                        // Somewhere on this stretch of shoulder.
+                        let along = random(0);
+                        let lateral = sign * from.lerp(to, random(1));
+                        let ground = line
+                            .offset_point(index, lateral)
+                            .lerp(line.offset_point(next(index), lateral), along);
+                        let road_height = track
+                            .surface_point_on(road, index, lateral)
+                            .y
+                            .lerp(track.surface_point_on(road, next(index), lateral).y, along);
+                        let height = terrain.height(ground);
+                        if (height - road_height).abs() > LEVEL
+                            || terrain.ground_drawn(ground) != Ground::Grass
+                        {
+                            continue;
+                        }
+                        let root = Vec3::new(ground.x, height - 0.04, ground.y);
+                        add_tuft(&mut mesh, root, grass, |k| random(2 + k));
+                    }
+                }
+            }
+            if !mesh.is_empty() {
+                let mut mesh = mesh.build();
+                normals_up(&mut mesh);
+                meshes.push(mesh);
+            }
+        }
+    }
+    meshes
+}
+
+/// A tuft at `root`: two cards crossed at right angles, turned at random,
+/// darker at the roots; every normal points up, so it is lit like the
+/// ground (see [`tuft_pieces`]).
+fn add_tuft(mesh: &mut MeshBuilder, root: Vec3, grass: Color, random: impl Fn(u32) -> f32) {
+    let height = HEIGHT.0.lerp(HEIGHT.1, random(0));
+    let width = WIDTH.0.lerp(WIDTH.1, random(1));
+    let turn = random(2) * std::f32::consts::PI;
+    let tint = ground_vertex_color(Ground::Grass, root, Vec3::Y);
+    let shade = 0.85 + 0.3 * random(3);
+    let linear = grass.to_linear();
+    let color = Color::LinearRgba(LinearRgba::rgb(
+        linear.red * tint[0] * shade,
+        linear.green * tint[1] * shade,
+        linear.blue * tint[2] * shade,
+    ));
+    for k in 0..2 {
+        let across = Vec2::from_angle(turn + k as f32 * std::f32::consts::FRAC_PI_2);
+        let half = Vec3::new(across.x, 0.0, across.y) * width * 0.5;
+        let up = Vec3::Y * height;
+        // Leaning a little, as the wind and the bikes leave it.
+        let lean = Vec3::new(random(4) - 0.5, 0.0, random(5) - 0.5) * height * 0.4;
+        mesh.quad(
+            [
+                (root - half, Vec2::new(0.0, 1.0)),
+                (root + half, Vec2::new(1.0, 1.0)),
+                (root + half + up + lean, Vec2::new(1.0, 0.0)),
+                (root - half + up + lean, Vec2::new(0.0, 0.0)),
+            ],
+            Vec3::new(-across.y, 0.0, across.x),
+            color,
+        );
+    }
+}
+
+/// Points every normal of a mesh up.
+fn normals_up(mesh: &mut Mesh) {
+    let count = mesh.count_vertices();
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 1.0, 0.0]; count]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::circuits::CIRCUITS;
+    use crate::world::shoulders::track_shoulders;
+
+    #[test]
+    fn tufts_grow_on_grass_shoulders_only() {
+        for circuit in CIRCUITS.iter() {
+            let track = Track::new(&circuit.layout);
+            let terrain = Terrain::new(&track, &circuit.scenery);
+            let shoulders = track_shoulders(&track, &terrain, &circuit.scenery);
+            let edges = terrain.track_edges(&track);
+            let meshes = tuft_meshes(&track, &terrain, &shoulders, &edges, Color::WHITE);
+            let grass = shoulders.iter().flatten().flatten();
+            let any_grass = grass.clone().any(|&s| s == Surface::Grass);
+            assert_eq!(!meshes.is_empty(), any_grass, "{}", circuit.name);
+            for mesh in &meshes {
+                let Some(positions) = mesh
+                    .attribute(Mesh::ATTRIBUTE_POSITION)
+                    .and_then(|p| p.as_float3())
+                else {
+                    panic!("tufts have positions");
+                };
+                for &[x, _, z] in positions.iter().step_by(4) {
+                    let point = Vec2::new(x, z);
+                    let nearest = track.nearest(point);
+                    // Off the asphalt and the curbs, on grass.
+                    assert!(
+                        nearest.distance > track.half_width_beside(&nearest) + CURB_WIDTH - 0.5,
+                        "{}: a tuft on the road at {point}",
+                        circuit.name
+                    );
+                }
+            }
+        }
+    }
+}

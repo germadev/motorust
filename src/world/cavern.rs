@@ -265,6 +265,17 @@ fn rock_material(stone: Stone, textures: &WorldTextures) -> StandardMaterial {
     }
 }
 
+/// The stone of a mine's excavation at `point`, `along` a lap of `lap`
+/// metres: that of the hall it is in, where one ends and the next begins
+/// wavering, or a timbered gallery outside the halls.
+pub fn stone_at(halls: &[Hall], lap: f32, point: Vec2, along: f32) -> Stone {
+    let along = along + 30.0 * (fbm(point / 13.0, 2) - 0.5);
+    halls
+        .iter()
+        .find(|hall| hall.span.contains(along, lap))
+        .map_or(Stone::Timbered, |hall| hall.stone)
+}
+
 /// The floor beside the roads of each stone: planks in the galleries,
 /// gravel and earth in the halls.
 fn floor_material(stone: Stone, textures: &WorldTextures) -> StandardMaterial {
@@ -467,14 +478,9 @@ impl<'a> Cave<'a> {
         )
     }
 
-    /// The stone at `point`, `along` the lap: that of the hall it is in,
-    /// where one ends and the next begins wavering.
+    /// The stone at `point`, `along` the lap (see [`stone_at`]).
     fn stone(&self, point: Vec2, along: f32) -> Stone {
-        let along = along + 30.0 * (fbm(point / 13.0, 2) - 0.5);
-        self.halls
-            .iter()
-            .find(|hall| hall.span.contains(along, self.lap))
-            .map_or(Stone::Timbered, |hall| hall.stone)
+        stone_at(self.halls, self.lap, point, along)
     }
 
     /// How high the walls stand straight up at `point` of their foot (m

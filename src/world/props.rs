@@ -3,10 +3,11 @@
 //! mar, según el escenario de cada pista ([`Scenery`]). Todo se coloca al
 //! azar, pero siempre igual, con [`random01`].
 
-use bevy::mesh::Indices;
+use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::prelude::*;
 
 use super::Assets3d;
+use super::foliage::{ALPHA_CUTOFF, BROAD_LEAVES, NEEDLES};
 use super::landmarks;
 use super::quads::MeshBuilder;
 use super::scenery::{
@@ -462,6 +463,19 @@ fn gable_roof(width: f32, depth: f32, eaves: f32) -> (Mesh, Mesh) {
 struct TreeVariant {
     wood: Vec<(Handle<Mesh>, Transform)>,
     crowns: Vec<(Handle<Mesh>, Transform)>,
+    /// Whether its foliage is pine needles rather than broad leaves.
+    needles: bool,
+    /// The colours of its foliage in shade and in the sun.
+    foliage: (Color, Color),
+    seed: u32,
+}
+
+/// Whether a species has needles rather than broad leaves.
+fn has_needles(species: Species) -> bool {
+    matches!(
+        species,
+        Species::UmbrellaPine | Species::Cypress | Species::Tall | Species::MaritimePine
+    )
 }
 
 /// Colores de la copa en sombra y al sol.
@@ -496,7 +510,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
     let mut variants = Vec::with_capacity(VARIANTS as usize);
     for variant in 0..VARIANTS {
         let seed = variant * 47 + kind as u32 * 17;
-        let v = match kind {
+        let (wood, crowns) = match kind {
             Species::UmbrellaPine => {
                 let (dx, dz) = match variant {
                     0 => (0.3, 0.0),
@@ -538,7 +552,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(2.5, 1.1, 2.5)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Cypress => {
                 let (scale_w, scale_h) = match variant {
@@ -558,7 +572,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                     Transform::from_xyz(0.0, 4.8, 0.0)
                         .with_scale(Vec3::new(scale_w, scale_h, scale_w)),
                 )];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Olive => {
                 let (dx, dz) = match variant {
@@ -601,7 +615,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(1.7, 1.3, 1.7)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Broadleaf => {
                 let (dx, dz) = match variant {
@@ -644,7 +658,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(2.1, 1.9, 2.1)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Tall => {
                 let (h1, h2) = match variant {
@@ -669,7 +683,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                         Transform::from_xyz(0.0, h1, 0.0).with_scale(Vec3::new(3.4, 4.0, 3.4)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::MaritimePine => {
                 let (dx, dz) = match variant {
@@ -712,7 +726,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(2.1, 1.1, 2.1)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Poplar => {
                 let (scale_w, scale_h) = match variant {
@@ -732,7 +746,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                     Transform::from_xyz(0.0, 6.0, 0.0)
                         .with_scale(Vec3::new(scale_w, scale_h, scale_w)),
                 )];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Almond => {
                 let (dx, dz) = match variant {
@@ -775,10 +789,16 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(1.6, 1.2, 1.6)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
         };
-        variants.push(v);
+        variants.push(TreeVariant {
+            wood,
+            crowns,
+            needles: has_needles(kind),
+            foliage: foliage(kind),
+            seed,
+        });
     }
     variants
 }
@@ -801,31 +821,57 @@ struct PlannedTree {
 pub struct TreePlan {
     scattered: Vec<PlannedTree>,
     forests: Vec<PlannedTree>,
-    /// The variants of each species, each one mesh (see [`merged_variant`]).
-    models: Vec<(Species, Vec<Mesh>)>,
+    /// The variants of each species, each two meshes: its wood and the
+    /// core of its crowns (see [`merged_variant`]), and its leaves (see
+    /// [`leaf_cards`]).
+    models: Vec<(Species, Vec<(Mesh, Mesh)>)>,
 }
 
 /// The colour of the bark (sRGB).
 const BARK: Color = Color::srgb(0.32, 0.22, 0.15);
 
-/// A tree variant as one mesh: its wood painted the colour of bark and its
-/// crowns, so each tree is one entity to draw, not one per branch and
-/// crown.
+/// How much smaller the solid core of each crown is than the crown its
+/// leaves cover, and how much darker: the shade deep inside the foliage,
+/// seen through the gaps between the leaves.
+const CROWN_CORE: f32 = 0.78;
+const CORE_SHADE: f32 = 0.85;
+/// How many times over the cards of leaves cover each crown: the leaves on
+/// them leave gaps, and many are seen edge on.
+const LEAF_COVER: f32 = 4.5;
+/// How much lighter the leaves are drawn than their colours.
+const LEAF_LIGHT: f32 = 1.3;
+
+/// A tree variant's wood painted the colour of bark and the solid core of
+/// its crowns as one mesh, so each tree is two entities to draw (this and
+/// its leaves, see [`leaf_cards`]), not one per branch and crown.
 fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
     let bark = BARK.to_linear().to_f32_array();
     let mut merged: Option<Mesh> = None;
     for (parts, wood) in [(&variant.wood, true), (&variant.crowns, false)] {
         for (handle, transform) in parts {
+            let transform = if wood {
+                *transform
+            } else {
+                transform.with_scale(transform.scale * CROWN_CORE)
+            };
             let mut part = meshes
                 .get(handle)
                 .expect("the parts of a variant are in its assets")
                 .clone()
-                .transformed_by(*transform);
+                .transformed_by(transform);
             part.remove_attribute(Mesh::ATTRIBUTE_UV_0);
             part.remove_attribute(Mesh::ATTRIBUTE_TANGENT);
             if wood {
                 let count = part.count_vertices();
                 part.insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![bark; count]);
+            } else if let Some(VertexAttributeValues::Float32x4(colors)) =
+                part.attribute_mut(Mesh::ATTRIBUTE_COLOR)
+            {
+                for color in colors {
+                    for channel in &mut color[..3] {
+                        *channel *= CORE_SHADE;
+                    }
+                }
             }
             if let Some(Indices::U16(indices)) = part.indices() {
                 let wide: Vec<u32> = indices.iter().map(|&i| u32::from(i)).collect();
@@ -840,6 +886,92 @@ fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
         }
     }
     merged.expect("a tree has wood and a crown")
+}
+
+/// The leaves of a tree variant: cards with clusters of leaves or of
+/// needles on them (see [`super::foliage::leaves`]), scattered over the
+/// outside of each crown and turned every way, so its outline is ragged and
+/// the sky shows through it. Each card is lit as the crown would be where
+/// it is, rounder than flat cards: its normals point out from the middle of
+/// the crown.
+fn leaf_cards(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
+    let mut cards = MeshBuilder::default();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let (u0, u1) = if variant.needles {
+        NEEDLES
+    } else {
+        BROAD_LEAVES
+    };
+    let (shade, sunlit) = variant.foliage;
+    let sun = Vec3::new(0.55, 0.82, -0.35).normalize();
+    for (k, (handle, transform)) in variant.crowns.iter().enumerate() {
+        let crown = meshes
+            .get(handle)
+            .expect("the crowns of a variant are in its assets");
+        let Some(positions) = crown
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .and_then(|p| p.as_float3())
+        else {
+            continue;
+        };
+        let center = transform.translation;
+        let scale = transform.scale;
+        let size = (scale.x * scale.y * scale.z).cbrt();
+        // Smaller cards on smaller crowns; enough of them to cover it,
+        // overlapping.
+        let card = (0.55 + 0.32 * size).clamp(0.8, 1.9);
+        let area = 4.0 * std::f32::consts::PI * size * size;
+        let count = ((area / (card * card) * LEAF_COVER) as usize).clamp(24, 220);
+        let seed = variant.seed * 131 + k as u32 * 977;
+        for n in 0..count as u32 {
+            let random = |j: u32| random01(seed + n * 12 + j);
+            let local = Vec3::from_array(
+                positions[(random(0) * positions.len() as f32) as usize % positions.len()],
+            );
+            let surface = transform.transform_point(local);
+            // Out from the middle of the crown, as an ellipsoid's.
+            let out = ((surface - center) / (scale * scale)).normalize_or(Vec3::Y);
+            let at = surface - out * card * 0.3 * random(1);
+            // Not under the ground, where a crown reaches down to it.
+            if at.y < 0.4 {
+                continue;
+            }
+            let facing = (out + Vec3::new(random(2) - 0.5, random(3) - 0.5, random(4) - 0.5) * 0.9)
+                .normalize_or(Vec3::Y);
+            let side = facing.any_orthonormal_vector();
+            let side = Quat::from_axis_angle(facing, random(5) * std::f32::consts::TAU) * side;
+            let up = facing.cross(side);
+            let size = card * (0.8 + 0.4 * random(6));
+            let (a, b) = (side * size * 0.5, up * size * 0.5);
+            let (left, right) = if random(7) < 0.5 { (u0, u1) } else { (u1, u0) };
+            let corners = [
+                (at - a - b, Vec2::new(left, 1.0)),
+                (at + a - b, Vec2::new(right, 1.0)),
+                (at + a + b, Vec2::new(right, 0.0)),
+                (at - a + b, Vec2::new(left, 0.0)),
+            ];
+            // Lit by the sun on its side of the crown, darker underneath,
+            // each card a little different.
+            let lit = (out.dot(sun) * 0.5 + 0.5) * 0.75 + 0.25 * random(8);
+            let ao = (0.45 + 0.55 * (out.y * 0.5 + 0.5)).clamp(0.0, 1.0);
+            // A little lighter than the crown under them: the texture of
+            // the leaves darkens them at their ribs and edges.
+            let color = shade.mix(&sunlit, (lit * ao).clamp(0.0, 1.0)).to_linear() * LEAF_LIGHT;
+            let color = Color::LinearRgba(color.with_alpha(1.0));
+            // Corners in the order `quad` keeps when facing that way: side
+            // × up is `facing`.
+            cards.quad(corners, facing, color);
+            for (corner, _) in corners {
+                let normal =
+                    ((corner - center) / (scale * scale) + Vec3::Y * 0.3).normalize_or(Vec3::Y);
+                normals.push(normal.to_array());
+            }
+        }
+    }
+    let mut mesh = cards.build();
+    debug_assert_eq!(mesh.count_vertices(), normals.len());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh
 }
 
 /// Plans the trees of a circuit (see [`TreePlan`]).
@@ -925,7 +1057,12 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
             let variants = build_tree_variants(kind, &mut scratch);
             let merged = variants
                 .iter()
-                .map(|variant| merged_variant(&scratch, variant))
+                .map(|variant| {
+                    (
+                        merged_variant(&scratch, variant),
+                        leaf_cards(&scratch, variant),
+                    )
+                })
                 .collect();
             (kind, merged)
         })
@@ -936,6 +1073,10 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
         models,
     }
 }
+
+/// A tree variant's meshes: its wood and the core of its crowns, and its
+/// leaves.
+type TreeModel = (Handle<Mesh>, Handle<Mesh>);
 
 /// Plants the trees planned for a circuit, except those in the way of what
 /// is `occupied`: up to [`MAX_TREES`] scattered ones, and the forests.
@@ -951,7 +1092,18 @@ fn spawn_trees(
         perceptual_roughness: 0.95,
         ..default()
     });
-    let models: Vec<(Species, Vec<Handle<Mesh>>)> = plan
+    // The leaves: clusters on cards with the sky showing between them. Lit
+    // from whichever side they are seen, as the crown is where they are.
+    let leaves = assets.materials.add(StandardMaterial {
+        base_color_texture: Some(assets.textures.leaves.clone()),
+        alpha_mode: AlphaMode::Mask(ALPHA_CUTOFF),
+        perceptual_roughness: 0.85,
+        reflectance: 0.2,
+        cull_mode: None,
+        double_sided: false,
+        ..default()
+    });
+    let models: Vec<(Species, Vec<TreeModel>)> = plan
         .models
         .iter()
         .map(|(kind, variants)| {
@@ -959,7 +1111,12 @@ fn spawn_trees(
                 *kind,
                 variants
                     .iter()
-                    .map(|mesh| assets.meshes.add(mesh.clone()))
+                    .map(|(body, foliage)| {
+                        (
+                            assets.meshes.add(body.clone()),
+                            assets.meshes.add(foliage.clone()),
+                        )
+                    })
                     .collect(),
             )
         })
@@ -979,14 +1136,20 @@ fn spawn_trees(
     let plant = |world: &mut ChildSpawnerCommands, tree: &PlannedTree| {
         let random = |k: u32| random01(tree.seed * 8 + k);
         let variants = model(tree.kind);
-        let variant = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
+        let (body, foliage) = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
         let scale = 0.75 + 0.60 * random(5);
+        let transform = Transform::from_xyz(tree.position.x, tree.height, tree.position.y)
+            .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
+            .with_scale(Vec3::splat(scale));
         world.spawn((
-            Mesh3d(variant.clone()),
+            Mesh3d(body.clone()),
             MeshMaterial3d(material.clone()),
-            Transform::from_xyz(tree.position.x, tree.height, tree.position.y)
-                .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
-                .with_scale(Vec3::splat(scale)),
+            transform,
+        ));
+        world.spawn((
+            Mesh3d(foliage.clone()),
+            MeshMaterial3d(leaves.clone()),
+            transform,
         ));
     };
     for tree in plan.scattered.iter().filter(free).take(MAX_TREES) {
@@ -1432,9 +1595,11 @@ enum CrownStyle {
 /// Tree crown sculpted according to species style, with volumetric shading
 /// and directional sun plus ambient light illumination.
 fn crown_mesh(seed: u32, style: CrownStyle, (shade, sunlit): (Color, Color)) -> Mesh {
+    // The leaves on it make its outline (see `leaf_cards`): the solid core
+    // can be coarse.
     let mut mesh = Sphere::new(1.0)
         .mesh()
-        .ico(3)
+        .ico(2)
         .expect("la subdivisión de la esfera es válida");
     let offset = Vec2::new(seed as f32 * 3.7, seed as f32 * 1.3);
     let positions: Vec<[f32; 3]> = mesh
@@ -2090,6 +2255,61 @@ fn parasol_mesh() -> Mesh {
 mod tests {
     use super::*;
     use crate::circuits::CIRCUITS;
+
+    #[test]
+    fn trees_have_leaves_round_their_crowns() {
+        let mut meshes = Assets::<Mesh>::default();
+        for species in [
+            Species::UmbrellaPine,
+            Species::Cypress,
+            Species::Olive,
+            Species::Tall,
+            Species::Broadleaf,
+            Species::MaritimePine,
+            Species::Poplar,
+            Species::Almond,
+        ] {
+            for variant in build_tree_variants(species, &mut meshes) {
+                let leaves = leaf_cards(&meshes, &variant);
+                let positions = leaves
+                    .attribute(Mesh::ATTRIBUTE_POSITION)
+                    .and_then(|p| p.as_float3())
+                    .unwrap();
+                assert!(positions.len() >= 4 * 14, "{species:?}");
+                let normals = leaves
+                    .attribute(Mesh::ATTRIBUTE_NORMAL)
+                    .and_then(|p| p.as_float3())
+                    .unwrap();
+                assert_eq!(normals.len(), positions.len());
+                for normal in normals {
+                    assert!((Vec3::from(*normal).length() - 1.0).abs() < 1e-3);
+                }
+                // Up in the crowns, round them, not under the ground.
+                for card in positions.chunks(4) {
+                    let p = card.iter().map(|&p| Vec3::from(p)).sum::<Vec3>() / 4.0;
+                    let near = variant.crowns.iter().any(|(_, crown)| {
+                        let local = (p - crown.translation) / crown.scale;
+                        local.length() < 1.6
+                    });
+                    assert!(near && p.y > 0.3, "{species:?}: a leaf at {p}");
+                }
+                // The leaves of pines are needles.
+                let u = leaves
+                    .attribute(Mesh::ATTRIBUTE_UV_0)
+                    .and_then(|uv| match uv {
+                        VertexAttributeValues::Float32x2(uv) => Some(uv),
+                        _ => None,
+                    })
+                    .unwrap();
+                let (from, to) = if has_needles(species) {
+                    NEEDLES
+                } else {
+                    BROAD_LEAVES
+                };
+                assert!(u.iter().all(|uv| (from..=to).contains(&uv[0])));
+            }
+        }
+    }
 
     #[test]
     fn every_circuit_gets_its_houses() {

@@ -157,16 +157,17 @@ pub struct Sunlight;
 /// How many clouds there are, how far from the camera (m: inside the dome),
 /// how high above the horizon (rad), how wide (m), and how fast they all
 /// turn round the sky (rad/s).
-const CLOUDS: usize = 18;
+const CLOUDS: usize = 22;
 const CLOUD_DISTANCE: f32 = 4200.0;
 const CLOUD_ELEVATION: (f32, f32) = (0.035, 0.24);
 const CLOUD_WIDTH: (f32, f32) = (650.0, 1250.0);
 const CLOUD_DRIFT: f32 = 0.004;
 /// The different cloud shapes, and the size of their images (px).
-const CLOUD_SHAPES: u32 = 6;
+const CLOUD_SHAPES: u32 = 10;
 const CLOUD_IMAGE: UVec2 = UVec2::new(512, 256);
-/// Where the flat base of a cumulus is, down its image (fraction).
-const CLOUD_BOTTOM: f32 = 0.8;
+/// The lowest any cloud reaches down its image (fraction): below it the
+/// image is clear.
+const CLOUD_BOTTOM: f32 = 0.92;
 /// How opaque a cloud gets per unit of thickness, and how much the
 /// sunlight dims going through it (per unit of thickness, in units of the
 /// image's height).
@@ -409,17 +410,25 @@ fn facing_the_camera(at: Vec3, size: Vec2) -> Transform {
 }
 
 /// Where each cloud is (m from the camera) and its size (m): spread round
-/// the sky, each at its own height and size.
+/// the sky, each at its own height and size, as its kind is (see
+/// [`CloudKind`]): torn shreds low down and small, towers and wide layers
+/// big. Cloud `index` has shape `index % CLOUD_SHAPES`.
 fn cloud_places() -> Vec<(Vec3, Vec2)> {
     let aspect = CLOUD_IMAGE.y as f32 / CLOUD_IMAGE.x as f32;
     (0..CLOUDS)
         .map(|index| {
             let seed = index as u32;
             let azimuth = (index as f32 + 0.8 * random(seed, 0)) / CLOUDS as f32 * TAU;
-            let elevation = CLOUD_ELEVATION
-                .0
-                .lerp(CLOUD_ELEVATION.1, random(seed, 1).powi(2));
-            let width = CLOUD_WIDTH.0.lerp(CLOUD_WIDTH.1, random(seed, 2));
+            let (low, size) = match CloudKind::of(seed % CLOUD_SHAPES) {
+                CloudKind::Fractus => (true, (0.45, 0.7)),
+                CloudKind::Cluster => (false, (0.75, 1.05)),
+                CloudKind::Cumulus => (false, (0.6, 1.0)),
+                CloudKind::Towering => (false, (0.9, 1.25)),
+                CloudKind::Stratocumulus => (true, (0.95, 1.3)),
+            };
+            let height = random(seed, 1).powi(2) * if low { 0.45 } else { 1.0 };
+            let elevation = CLOUD_ELEVATION.0.lerp(CLOUD_ELEVATION.1, height);
+            let width = CLOUD_WIDTH.1 * size.0.lerp(size.1, random(seed, 2));
             (
                 direction(azimuth, elevation) * CLOUD_DISTANCE,
                 Vec2::new(width, width * aspect),
@@ -464,31 +473,77 @@ fn cirrus_places() -> Vec<(Vec3, Vec2)> {
         .collect()
 }
 
+/// What a cloud is like.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloudKind {
+    /// A fair-weather cumulus: a heap of puffs, higher in the middle, on a
+    /// base that is flattish but uneven, curling up at its ends.
+    Cumulus,
+    /// A towering cumulus: a heap that rises in rounded towers.
+    Towering,
+    /// A stratocumulus: wide, low rolls side by side at their own heights,
+    /// with a lumpy, ragged underside.
+    Stratocumulus,
+    /// A few small cumulus together, each on its own base.
+    Cluster,
+    /// Torn shreds of cloud, thin and ragged all round (fractus).
+    Fractus,
+}
+
+impl CloudKind {
+    /// The kind of cloud `shape`.
+    fn of(shape: u32) -> Self {
+        const KINDS: [CloudKind; CLOUD_SHAPES as usize] = [
+            CloudKind::Cumulus,
+            CloudKind::Towering,
+            CloudKind::Stratocumulus,
+            CloudKind::Cluster,
+            CloudKind::Cumulus,
+            CloudKind::Fractus,
+            CloudKind::Towering,
+            CloudKind::Cluster,
+            CloudKind::Stratocumulus,
+            CloudKind::Cumulus,
+        ];
+        KINDS[(shape % CLOUD_SHAPES) as usize]
+    }
+}
+
 /// A puff of a cumulus: its centre and radius, in units of the image's
 /// height (x from 0 to 2, y down from 0 to 1).
+#[derive(Clone, Copy)]
 struct Puff {
     center: Vec2,
     radius: f32,
 }
 
-/// The puffs of cloud `shape`: a heap that rises in the middle, each a
-/// little different, all sitting on the flat base. The last shapes are
-/// lower and wider (stratocumulus) or small and ragged.
-fn puffs(shape: u32) -> Vec<Puff> {
-    let bottom = CLOUD_BOTTOM;
-    let (count, tall, spread) = match shape % CLOUD_SHAPES {
-        4 => (11, 0.45, 0.85),
-        5 => (6, 0.7, 0.45),
-        _ => (7 + shape % 3, 1.0, 0.68),
-    };
+/// A heap of puffs and where its underside is: about `base` down the image
+/// in the middle, rising by `curl` at its ends, `half` either side of
+/// `middle` (x).
+struct Heap {
+    puffs: Vec<Puff>,
+    middle: f32,
+    half: f32,
+    base: f32,
+    curl: f32,
+}
+
+/// A heap of `count` puffs `half` either side of `middle`, on a base
+/// `base` down the image, as tall as `tall` says (1 for a usual cumulus),
+/// with `towers` rising from its top. `seed` makes each one different.
+fn heap(seed: u32, middle: f32, half: f32, base: f32, tall: f32, count: u32, towers: u32) -> Heap {
     let mut puffs = Vec::new();
     for puff in 0..count {
         let t = (puff as f32 + 0.5) / count as f32;
-        let middle = 1.0 - (2.0 * t - 1.0).abs();
-        let x = 1.0 + (2.0 * t - 1.0) * spread + 0.06 * (random(shape + 3, puff) - 0.5);
-        let radius = (0.13 + 0.17 * middle * tall) * (0.8 + 0.4 * random(shape + 7, puff));
-        // Sitting on the base, higher in the middle.
-        let y = bottom - radius * 0.55 - 0.2 * middle * tall * random(shape + 11, puff);
+        let across = 2.0 * t - 1.0;
+        let crown = 1.0 - across.abs();
+        let x = middle + across * half + 0.08 * half * (random(seed + 3, puff) - 0.5);
+        let radius =
+            (0.07 + 0.25 * half * (0.4 + crown * tall)) * (0.75 + 0.5 * random(seed + 7, puff));
+        // On the base, higher in the middle; those at the ends ride up with
+        // its curl.
+        let lift = 0.05 * across * across;
+        let y = base - lift - radius * 0.55 - 0.2 * crown * tall * random(seed + 11, puff);
         puffs.push(Puff {
             center: Vec2::new(x, y),
             radius,
@@ -499,46 +554,114 @@ fn puffs(shape: u32) -> Vec<Puff> {
     let heaped = puffs.len();
     for puff in 0..heaped {
         for bubble in 0..3 {
-            let angle = (35.0
-                + 55.0 * bubble as f32
-                + 20.0 * random(shape + 29, (puff * 3 + bubble) as u32))
-            .to_radians();
+            let k = (puff * 3 + bubble) as u32;
+            let angle = (25.0 + 65.0 * bubble as f32 + 25.0 * random(seed + 29, k)).to_radians();
             let Puff { center, radius } = puffs[puff];
-            let size = radius * (0.32 + 0.18 * random(shape + 31, (puff * 3 + bubble) as u32));
+            let size = radius * (0.3 + 0.22 * random(seed + 31, k));
             let at = center + Vec2::new(angle.cos(), -angle.sin()) * (radius - size * 0.35);
-            if at.y + size * 0.5 < bottom {
-                puffs.push(Puff {
-                    center: at,
-                    radius: size,
-                });
-            }
+            puffs.push(Puff {
+                center: at,
+                radius: size,
+            });
         }
     }
-    // Towers on top of the biggest heaps.
-    let towers = if shape % CLOUD_SHAPES < 4 {
-        2 + shape % 2
-    } else {
-        0
-    };
+    // Towers, one on another, leaning a little each way.
+    let mut top = Vec2::new(middle, base - 0.3 * tall);
     for tower in 0..towers {
-        let x = 1.0 + 0.4 * (random(shape + 17, tower) - 0.5);
-        let radius = 0.1 + 0.06 * random(shape + 19, tower);
-        let y = bottom - 0.42 * tall - 0.12 * random(shape + 23, tower);
-        puffs.push(Puff {
-            center: Vec2::new(x, y),
-            radius,
-        });
+        let radius = (0.09 + 0.07 * random(seed + 19, tower)) * (1.0 - 0.12 * tower as f32);
+        top += Vec2::new(
+            0.18 * (random(seed + 17, tower) - 0.5),
+            -radius * (0.9 + 0.4 * random(seed + 23, tower)),
+        );
+        for (dx, scale) in [(0.0, 1.0), (-0.7, 0.6), (0.7, 0.55)] {
+            puffs.push(Puff {
+                center: top + Vec2::new(dx * radius, 0.25 * radius * dx.abs()),
+                radius: radius * scale,
+            });
+        }
     }
-    puffs
+    Heap {
+        puffs,
+        middle,
+        half,
+        base,
+        curl: 0.06 + 0.05 * random(seed + 37, 0),
+    }
+}
+
+/// The heaps of cloud `shape`, as its kind is (see [`CloudKind`]).
+fn heaps(shape: u32) -> Vec<Heap> {
+    let r = |n: u32| random(shape + 101, n);
+    match CloudKind::of(shape) {
+        CloudKind::Cumulus => vec![heap(
+            shape,
+            1.0 + 0.1 * (r(0) - 0.5),
+            0.55 + 0.15 * r(1),
+            0.74 + 0.08 * r(2),
+            0.8 + 0.3 * r(3),
+            7 + shape % 3,
+            1 + shape % 2,
+        )],
+        CloudKind::Towering => vec![heap(
+            shape,
+            1.0,
+            0.45 + 0.1 * r(1),
+            0.84 + 0.04 * r(2),
+            1.4,
+            7,
+            3 + shape % 2,
+        )],
+        CloudKind::Stratocumulus => (0..3)
+            .map(|k| {
+                heap(
+                    shape * 7 + k,
+                    0.5 + 0.5 * k as f32 + 0.12 * (r(k) - 0.5),
+                    0.36 + 0.1 * r(k + 3),
+                    0.66 + 0.16 * r(k + 6),
+                    0.35 + 0.15 * r(k + 9),
+                    6,
+                    0,
+                )
+            })
+            .collect(),
+        CloudKind::Cluster => (0..4)
+            .map(|k| {
+                heap(
+                    shape * 7 + k,
+                    0.32 + 0.45 * k as f32 + 0.15 * (r(k) - 0.5),
+                    0.13 + 0.09 * r(k + 4),
+                    0.5 + 0.35 * r(k + 8),
+                    0.5 + 0.5 * r(k + 12),
+                    4,
+                    u32::from(r(k + 16) > 0.6),
+                )
+            })
+            .collect(),
+        CloudKind::Fractus => (0..3)
+            .map(|k| {
+                heap(
+                    shape * 7 + k,
+                    0.45 + 0.55 * k as f32 + 0.2 * (r(k) - 0.5),
+                    0.22 + 0.12 * r(k + 4),
+                    0.55 + 0.25 * r(k + 8),
+                    0.25,
+                    4,
+                    0,
+                )
+            })
+            .collect(),
+    }
 }
 
 /// How thick cloud `shape` is through each point of its image (in units of
-/// the image's height), row by row: the puffs as balls seen through, heaped
-/// with a smooth union, frayed and made billowy by fractal noise, and cut
-/// off flat at the base.
+/// the image's height), row by row: the puffs of each heap as balls seen
+/// through, heaped with a smooth union, frayed and made billowy by fractal
+/// noise, and cut off softly along an uneven base, curling up at its ends.
+/// Torn shreds are eaten away all over.
 fn cloud_thickness(shape: u32) -> Vec<f32> {
     let (width, height) = (CLOUD_IMAGE.x as usize, CLOUD_IMAGE.y as usize);
-    let puffs = puffs(shape);
+    let heaps = heaps(shape);
+    let kind = CloudKind::of(shape);
     let seed = Vec2::new(shape as f32 * 37.1, shape as f32 * 11.7);
     let mut thickness = Vec::with_capacity(width * height);
     for y in 0..height {
@@ -551,16 +674,6 @@ fn cloud_thickness(shape: u32) -> Vec<f32> {
                 fbm(p * 7.0 + seed + 19.3, 3) - 0.5,
             ) * 0.07;
             let q = p + warp;
-            // A smooth union of the balls: their thicknesses through q.
-            let mut sum = 0.0;
-            for puff in &puffs {
-                let d2 = (q - puff.center).length_squared();
-                let r2 = puff.radius * puff.radius;
-                if d2 < r2 {
-                    sum += (r2 - d2).sqrt().powi(4);
-                }
-            }
-            let heap = sum.powf(0.25);
             // Billows: rounded lumps all over, the cauliflower look of a
             // cumulus, finer and finer.
             let mut billows = 0.0;
@@ -572,22 +685,73 @@ fn cloud_thickness(shape: u32) -> Vec<f32> {
                 amplitude *= 0.5;
                 frequency *= 2.1;
             }
-            let mut t = heap * (0.85 + 0.2 * billows) - 0.03 * (1.0 - billows) - 0.012;
-            // The flat base, a little ragged.
-            let base = CLOUD_BOTTOM + 0.01 * (value_noise(Vec2::new(p.x * 30.0, 0.5) + seed) - 0.5);
-            t *= 1.0 - smoothstep(base - 0.012, base + 0.004, p.y);
+            let mut t: f32 = 0.0;
+            for heap in &heaps {
+                // A smooth union of the balls: their thicknesses through q.
+                let mut sum = 0.0;
+                for puff in &heap.puffs {
+                    let d2 = (q - puff.center).length_squared();
+                    let r2 = puff.radius * puff.radius;
+                    if d2 < r2 {
+                        sum += (r2 - d2).sqrt().powi(4);
+                    }
+                }
+                if sum <= 0.0 {
+                    continue;
+                }
+                let lumps = sum.powf(0.25) * (0.85 + 0.2 * billows) - 0.03 * (1.0 - billows);
+                // The underside: flattish in the middle, curling up at the
+                // ends, wavy along and lumpy, its edge soft.
+                let across = ((q.x - heap.middle) / heap.half).clamp(-1.5, 1.5);
+                let wave = 0.035 * (fbm(Vec2::new(q.x * 4.0, 0.5) + seed, 3) - 0.5)
+                    + 0.012 * (value_noise(Vec2::new(q.x * 30.0, q.y * 4.0) + seed) - 0.5);
+                let base = heap.base - heap.curl * across * across + wave;
+                let under = 1.0 - smoothstep(base - 0.03, base + 0.02, q.y);
+                t = t.max(lumps * under);
+            }
+            t -= 0.012;
+            if kind == CloudKind::Fractus {
+                // Torn: holes and ragged shreds all over, and thin.
+                let tatters = fbm(Vec2::new(q.x * 9.0, q.y * 5.0) + seed * 0.7, 3);
+                t = (t - 0.04 * smoothstep(0.35, 0.75, tatters)) * 0.7;
+            }
+            // Nothing reaches the very bottom of the image.
+            t *= 1.0 - smoothstep(CLOUD_BOTTOM - 0.04, CLOUD_BOTTOM, p.y);
             thickness.push(t.max(0.0));
         }
     }
     thickness
 }
 
+/// How far each point of a cloud is above its underside, column by column
+/// (in units of the image's height): the run of cloud below it, down to
+/// where the sky shows through.
+fn depth_above_underside(thickness: &[f32], width: usize, height: usize) -> Vec<f32> {
+    const CLEAR: f32 = 0.004;
+    let mut above = vec![0.0; thickness.len()];
+    for x in 0..width {
+        let mut run = 0usize;
+        for y in (0..height).rev() {
+            let i = y * width + x;
+            if thickness[i] < CLEAR {
+                run = 0;
+            } else {
+                run += 1;
+            }
+            above[i] = run as f32 / height as f32;
+        }
+    }
+    above
+}
+
 /// The image of cloud `shape`: as opaque as it is thick, white where the
 /// sunlight reaches it through little cloud, grey-blue in its own shadow
-/// and darker at its base, with mipmaps (it is seen at many sizes).
+/// and darker along its underside, with mipmaps (it is seen at many
+/// sizes).
 fn cloud_image(shape: u32) -> Image {
     let (width, height) = (CLOUD_IMAGE.x as usize, CLOUD_IMAGE.y as usize);
     let thickness = cloud_thickness(shape);
+    let above = depth_above_underside(&thickness, width, height);
     let at = |x: f32, y: f32| {
         let (x, y) = (x.round() as isize, y.round() as isize);
         if x < 0 || y < 0 || x >= width as isize || y >= height as isize {
@@ -625,11 +789,13 @@ fn cloud_image(shape: u32) -> Image {
             let normal = (-slope * 0.6).extend(1.0).normalize();
             let facing = normal.dot(light).max(0.0);
             let lit = (sunlit.powf(0.8) * (0.35 + 0.8 * facing)).clamp(0.0, 1.0);
-            let up = (CLOUD_BOTTOM - (fy + 0.5) / height as f32).max(0.0);
-            let base = 1.0 - smoothstep(0.0, 0.1, up);
+            // The underside, in the shade of the cloud over it, the darker
+            // the more cloud there is above.
+            let underside = 1.0 - smoothstep(0.0, 0.1, above[y * width + x]);
+            let base = underside * (1.0 - sunlit * 0.5);
             let color: [f32; 3] = std::array::from_fn(|c| {
                 let shade = CLOUD_SHADOW[c].lerp(CLOUD_BASE[c], base);
-                shade.lerp(CLOUD_SUNLIT[c], lit)
+                shade.lerp(CLOUD_SUNLIT[c], lit * (1.0 - 0.6 * base))
             });
             let alpha = 1.0 - (-CLOUD_DENSITY * t).exp();
             data.extend(color.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8));
@@ -832,36 +998,94 @@ mod tests {
         assert_eq!(day.sky_color(Vec3::Y), ZENITH);
     }
 
+    /// The lowest row of cloud `data` thicker than half in column `x`, if
+    /// there is one.
+    fn underside(data: &[u8], x: usize) -> Option<usize> {
+        let (width, height) = (CLOUD_IMAGE.x as usize, CLOUD_IMAGE.y as usize);
+        (0..height)
+            .rev()
+            .find(|&y| data[(y * width + x) * 4 + 3] > 128)
+    }
+
     #[test]
-    fn clouds_are_heaps_on_a_flat_base() {
+    fn clouds_are_heaps_on_soft_uneven_bases() {
+        let (width, height) = (CLOUD_IMAGE.x as usize, CLOUD_IMAGE.y as usize);
         for shape in 0..CLOUD_SHAPES {
             let image = cloud_image(shape);
             let data = image.data.as_ref().unwrap();
-            let (width, height) = (CLOUD_IMAGE.x as usize, CLOUD_IMAGE.y as usize);
             let alpha = |x: usize, y: usize| data[(y * width + x) * 4 + 3];
-            let bottom = (CLOUD_IMAGE.y as f32 * CLOUD_BOTTOM) as usize;
-            // Solid in the middle, just above the base; clear in the top
-            // corners and under the base.
-            assert!(alpha(width / 2, bottom - 8) > 200, "{shape}");
-            assert_eq!(alpha(2, 2), 0, "{shape}");
-            assert_eq!(alpha(width - 3, 2), 0, "{shape}");
-            assert!((0..width).all(|x| alpha(x, bottom + 6) == 0), "{shape}");
-            // Clear all round the edges, so no cloud is cut off.
+            // Some of it is solid, if not a torn shred.
+            let thickest = (0..width * height).map(|i| data[i * 4 + 3]).max().unwrap();
+            let solid = if CloudKind::of(shape) == CloudKind::Fractus {
+                100
+            } else {
+                200
+            };
+            assert!(thickest > solid, "{shape}: {thickest}");
+            // Clear all round the edges, so no cloud is cut off, and below
+            // the lowest base.
             assert!((0..width).all(|x| alpha(x, 0) == 0));
             assert!((0..height).all(|y| alpha(0, y) == 0 && alpha(width - 1, y) == 0));
-            // Sunlit on top, grey at the base.
+            let bottom = (CLOUD_BOTTOM * height as f32) as usize;
+            assert!((0..width).all(|x| alpha(x, bottom + 1) == 0), "{shape}");
+            // Not cut off along a straight line: its underside goes up and
+            // down.
+            let undersides: Vec<usize> = (0..width).filter_map(|x| underside(data, x)).collect();
+            let (low, high) = (
+                undersides.iter().max().unwrap(),
+                undersides.iter().min().unwrap(),
+            );
+            assert!(low - high > 12, "{shape}: from {high} to {low}");
+        }
+    }
+
+    #[test]
+    fn clouds_are_sunlit_on_top_and_blue_grey_underneath() {
+        let width = CLOUD_IMAGE.x as usize;
+        for shape in (0..CLOUD_SHAPES).filter(|&s| CloudKind::of(s) != CloudKind::Fractus) {
+            let image = cloud_image(shape);
+            let data = image.data.as_ref().unwrap();
+            let alpha = |x: usize, y: usize| data[(y * width + x) * 4 + 3];
             let brightness = |x: usize, y: usize| {
                 let i = (y * width + x) * 4;
                 data[i] as u32 + data[i + 1] as u32 + data[i + 2] as u32
             };
-            let top = (0..bottom)
-                .find(|&y| alpha(width / 2, y) > 128)
-                .expect("the cloud is solid in the middle");
-            assert!(brightness(width / 2, top + 2) > brightness(width / 2, bottom - 4) + 60);
-            // The base is blue-grey, not white.
-            let i = ((bottom - 4) * width + width / 2) * 4;
-            assert!(data[i + 2] > data[i], "{shape}");
+            // The column through the thickest part of the cloud.
+            let x = (0..width)
+                .max_by_key(|&x| {
+                    (0..CLOUD_IMAGE.y as usize)
+                        .filter(|&y| alpha(x, y) > 200)
+                        .count()
+                })
+                .unwrap();
+            let bottom = underside(data, x).expect("solid somewhere");
+            let top = (0..bottom).find(|&y| alpha(x, y) > 128).unwrap();
+            assert!(
+                brightness(x, top + 2) > brightness(x, bottom - 2) + 60,
+                "{shape}"
+            );
+            let i = ((bottom - 2) * width + x) * 4;
+            assert!(data[i + 2] > data[i], "{shape}: the underside is blue-grey");
         }
+    }
+
+    #[test]
+    fn the_sky_has_clouds_of_every_kind_and_size() {
+        let kinds: Vec<CloudKind> = (0..CLOUD_SHAPES).map(CloudKind::of).collect();
+        for kind in [
+            CloudKind::Cumulus,
+            CloudKind::Towering,
+            CloudKind::Stratocumulus,
+            CloudKind::Cluster,
+            CloudKind::Fractus,
+        ] {
+            assert!(kinds.contains(&kind), "{kind:?}");
+        }
+        let widths: Vec<f32> = cloud_places().iter().map(|(_, size)| size.x).collect();
+        let (narrow, wide) = widths
+            .iter()
+            .fold((f32::MAX, 0.0f32), |(a, b), &w| (a.min(w), b.max(w)));
+        assert!(wide > 2.0 * narrow, "{narrow} to {wide}");
     }
 
     #[test]

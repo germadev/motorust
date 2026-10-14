@@ -1,0 +1,217 @@
+//! What the ground between the asphalt and the walls of each road is made
+//! of (see [`Track::set_shoulders`]): the concrete walkways of the tunnels,
+//! the decks of the bridges, the planks and gravel of a mine's excavation,
+//! and elsewhere the terrain drawn there: grass, sand or bare earth.
+
+use bevy::prelude::*;
+
+use super::cavern::stone_at;
+use super::scenery::{Scenery, Soil, Stone};
+use super::terrain::{Ground, Terrain};
+use crate::track::{CURB_WIDTH, Dust, Surface, Track};
+
+/// How far past the curbs the shoulder is looked at (m): a little way into
+/// it, where a bike that runs wide goes, and further out. The most common
+/// of the three wins; if they all differ, the nearest.
+const LOOKS: [f32; 3] = [0.6, 1.6, 2.6];
+/// The shoulder is looked at no closer to the walls than this (m).
+const WALL_MARGIN: f32 = 0.2;
+
+/// What the shoulders of every road of a circuit are, at each point of its
+/// centre line, to the left and to the right: the lap first, then the
+/// roads off it (see [`Track::set_shoulders`]).
+pub fn track_shoulders(
+    track: &Track,
+    terrain: &Terrain,
+    scenery: &Scenery,
+) -> Vec<Vec<[Surface; 2]>> {
+    (0..=track.side_roads().len())
+        .map(|road| road_shoulders(track, road, terrain, scenery))
+        .collect()
+}
+
+/// Like [`track_shoulders`], for road number `road`.
+fn road_shoulders(
+    track: &Track,
+    road: usize,
+    terrain: &Terrain,
+    scenery: &Scenery,
+) -> Vec<[Surface; 2]> {
+    let line = track.road(road);
+    let lap = track.lap_length();
+    let halls = scenery.mine.as_ref().map_or(&[][..], |mine| mine.halls);
+    (0..line.sample_count())
+        .map(|index| {
+            let along = line.lap_along_at(index);
+            let in_span = |span: &super::scenery::Span| span.contains(along, lap);
+            // The lap's tunnels have concrete walkways beside the road and its
+            // bridges a deck of concrete or planks out to the walls. A mine's
+            // tunnels are its excavation, which the branches through it share.
+            let tunnel = scenery.tunnels.iter().any(in_span);
+            let excavation = tunnel && scenery.soil == Soil::Mine;
+            let paved = road == 0
+                && ((tunnel && !excavation)
+                    || scenery.bridges.iter().any(|bridge| in_span(&bridge.span)));
+            [1.0, -1.0].map(|side| {
+                if paved {
+                    return Surface::Paved;
+                }
+                let from = line.half_width_at(index) + CURB_WIDTH;
+                let to = line.wall_at(index) - WALL_MARGIN;
+                let seen = LOOKS.map(|look| {
+                    let point = line.offset_point(index, side * (from + look).min(to));
+                    if excavation {
+                        stone_surface(stone_at(halls, lap, point, along))
+                    } else {
+                        terrain_surface(terrain.ground_drawn(point), terrain.soil())
+                    }
+                });
+                if seen[1] == seen[2] { seen[1] } else { seen[0] }
+            })
+        })
+        .collect()
+}
+
+/// The surface of the terrain drawn as `ground` where its steep faces are of
+/// `soil` (see [`super::terrain::spawn_terrain`]).
+fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
+    match (soil, ground) {
+        // In a desert canyon the flat ground is dry, red-brown earth, and
+        // by the river damp sand.
+        (Soil::Mine, Ground::Grass | Ground::Rock) => Surface::Dirt(Dust::Desert),
+        (_, Ground::Sand) => Surface::Dirt(Dust::Sand),
+        (_, Ground::Grass) => Surface::Grass,
+        (Soil::Rock, Ground::Rock) => Surface::Dirt(Dust::Sand),
+        (Soil::Checkered, Ground::Rock) => Surface::Dirt(Dust::Earth),
+    }
+}
+
+/// The floor beside the roads of a mine's excavation of each stone (see
+/// [`super::cavern`]): planks in the galleries, gravel and earth in the
+/// halls.
+fn stone_surface(stone: Stone) -> Surface {
+    match stone {
+        Stone::Timbered => Surface::Paved,
+        Stone::Sandstone => Surface::Dirt(Dust::Desert),
+        Stone::Slate => Surface::Dirt(Dust::Slate),
+        Stone::Clay => Surface::Dirt(Dust::Earth),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::circuits::CIRCUITS;
+
+    /// The shoulders of a circuit, by its name, with its track and scenery.
+    fn shoulders_of(name: &str) -> (Track, &'static Scenery, Vec<Vec<[Surface; 2]>>) {
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == name)
+            .expect("the circuit exists");
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let shoulders = track_shoulders(&track, &terrain, &circuit.scenery);
+        (track, &circuit.scenery, shoulders)
+    }
+
+    /// The surfaces beside the lap over a span, both sides.
+    fn along_span(
+        track: &Track,
+        shoulders: &[Vec<[Surface; 2]>],
+        span: super::super::scenery::Span,
+    ) -> Vec<Surface> {
+        let lap = track.lap_length();
+        (0..track.sample_count())
+            .filter(|&index| span.contains(track.lap_along_at(index), lap))
+            .flat_map(|index| shoulders[0][index])
+            .collect()
+    }
+
+    #[test]
+    fn every_road_of_every_circuit_has_its_shoulders() {
+        for circuit in CIRCUITS.iter() {
+            let (track, _, shoulders) = shoulders_of(circuit.name);
+            assert_eq!(
+                shoulders.len(),
+                1 + track.side_roads().len(),
+                "{}",
+                circuit.name
+            );
+            for (road, sides) in shoulders.iter().enumerate() {
+                assert_eq!(sides.len(), track.road(road).sample_count());
+            }
+        }
+    }
+
+    #[test]
+    fn tunnels_and_bridges_are_paved_beside_the_road() {
+        for circuit in CIRCUITS.iter() {
+            let (track, scenery, shoulders) = shoulders_of(circuit.name);
+            let spans = scenery.bridges.iter().map(|bridge| bridge.span).chain(
+                scenery
+                    .tunnels
+                    .iter()
+                    .copied()
+                    .filter(|_| scenery.soil != Soil::Mine),
+            );
+            for span in spans {
+                let surfaces = along_span(&track, &shoulders, span);
+                assert!(!surfaces.is_empty());
+                assert!(
+                    surfaces.iter().all(|&surface| surface == Surface::Paved),
+                    "{}: {surfaces:?}",
+                    circuit.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_bay_is_mostly_grass_and_the_gold_mine_has_none() {
+        let (_, _, bay) = shoulders_of(CIRCUITS[0].name);
+        let grass = bay[0]
+            .iter()
+            .flatten()
+            .filter(|&&surface| surface == Surface::Grass)
+            .count();
+        assert!(grass > bay[0].len(), "{grass} of {}", 2 * bay[0].len());
+
+        let gold_mine = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.scenery.soil == Soil::Mine)
+            .expect("there is a mine");
+        let (track, scenery, shoulders) = shoulders_of(gold_mine.name);
+        let all: Vec<Surface> = shoulders.iter().flatten().flatten().copied().collect();
+        assert!(!all.contains(&Surface::Grass), "no grass in the desert");
+        assert!(all.contains(&Surface::Dirt(Dust::Desert)));
+        // Its excavation: planks in the galleries, gravel in the halls.
+        let excavation = along_span(&track, &shoulders, scenery.tunnels[0]);
+        assert!(excavation.contains(&Surface::Paved));
+        assert!(
+            excavation
+                .iter()
+                .any(|surface| matches!(surface, Surface::Dirt(_)))
+        );
+    }
+
+    #[test]
+    fn rock_and_sand_beside_the_road_are_dirt() {
+        assert_eq!(
+            terrain_surface(Ground::Sand, Soil::Rock),
+            Surface::Dirt(Dust::Sand)
+        );
+        assert_eq!(
+            terrain_surface(Ground::Rock, Soil::Checkered),
+            Surface::Dirt(Dust::Earth)
+        );
+        assert_eq!(
+            terrain_surface(Ground::Grass, Soil::Checkered),
+            Surface::Grass
+        );
+        assert_eq!(
+            terrain_surface(Ground::Grass, Soil::Mine),
+            Surface::Dirt(Dust::Desert)
+        );
+    }
+}
