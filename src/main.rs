@@ -14,8 +14,10 @@ mod lobby;
 pub mod locale;
 mod menu;
 mod minimap;
+mod modes;
 mod options;
 mod pause;
+mod race;
 mod settings;
 mod shapes;
 mod sound;
@@ -139,7 +141,8 @@ fn main() {
             settings::SettingsPlugin,
             sound::SoundPlugin,
             ui::UiPlugin,
-        ));
+        ))
+        .add_plugins((race::RacePlugin, modes::ModesPlugin));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);
     app.run();

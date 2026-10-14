@@ -1,8 +1,11 @@
 //! Elegir pista: la pista se ve desde lo alto, girando despacio, con su
 //! nombre, una descripción, su longitud y un plano del trazado. Izquierda y
 //! derecha cambian de pista (y el mundo se vuelve a construir), Enter o A
-//! pasan a elegir moto, y Esc o B vuelven a la bienvenida, como dice la
-//! leyenda de abajo ([`crate::legend`]).
+//! pasan a elegir moto, y Esc o B vuelven a los modos de juego, como dice
+//! la leyenda de abajo ([`crate::legend`]).
+//!
+//! The card also says what is being played ([`crate::race::Mode`]) and the
+//! best of the track for it; in a race, up and down choose its laps.
 
 use bevy::prelude::*;
 
@@ -15,12 +18,14 @@ use crate::legend::{KeyPrompt, Keys, ScreenLegend, menu_prompts, show_screen_leg
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::minimap::TrackMap;
+use crate::modes;
+use crate::race::hud::clock;
+use crate::race::{LAPS, Mode, Rules};
 use crate::settings::Settings;
 use crate::track::Track;
 use crate::ui::{
     InputDevice, MenuInput, MenuSound, UiIcons, current_active_device, spawn_title, text_font,
 };
-use crate::welcome::GameMode;
 
 /// La cámara gira alrededor de la pista a esta velocidad (rad/s), a esta
 /// distancia del centro y a esta altura (fracciones del tamaño de la pista),
@@ -37,7 +42,13 @@ impl Plugin for TrackSelectPlugin {
         app.add_systems(OnEnter(GameState::Tracks), spawn_screen)
             .add_systems(
                 Update,
-                (choose_track, show_track, show_legend, aerial_camera)
+                (
+                    choose_track,
+                    show_track,
+                    show_rules,
+                    show_legend,
+                    aerial_camera,
+                )
                     .run_if(in_state(GameState::Tracks)),
             );
     }
@@ -69,6 +80,14 @@ type LengthFilter = (
     Without<TrackDescription>,
 );
 
+/// The best of the track for the mode being played.
+#[derive(Component)]
+struct TrackRecord;
+
+/// In a race, the laps chosen.
+#[derive(Component)]
+struct LapsChosen;
+
 /// Punto que marca qué pista se está viendo.
 #[derive(Component)]
 struct Dot(usize);
@@ -78,8 +97,10 @@ fn spawn_screen(
     font: Res<UiFont>,
     map: Res<TrackMap>,
     settings: Res<Settings>,
+    rules: Res<Rules>,
 ) {
     let lang = settings.language;
+    let mode = rules.mode;
     commands
         .spawn((
             DespawnOnExit(GameState::Tracks),
@@ -100,7 +121,17 @@ fn spawn_screen(
             },
         ))
         .with_children(|screen| {
-            spawn_title(screen, &font, lang.select_track(), 44.0);
+            // The title, and under it what is being played.
+            screen
+                .spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    ..default()
+                })
+                .with_children(|top| {
+                    spawn_title(top, &font, lang.select_track(), 44.0);
+                    modes::spawn_mode_badge(top, &font, mode, None, lang);
+                });
             // Flechas a los lados, si hay entre qué elegir.
             screen
                 .spawn(Node {
@@ -160,6 +191,15 @@ fn spawn_screen(
                             text_font(&font, 20.0),
                             TextColor(Color::srgb(1.0, 0.8, 0.2)),
                         ));
+                        text.spawn((
+                            TrackRecord,
+                            Text::new(""),
+                            text_font(&font, 18.0),
+                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                        ));
+                        if mode == Mode::Race {
+                            spawn_laps_chooser(text, &font, lang);
+                        }
                         text.spawn(Node {
                             column_gap: px(10),
                             margin: UiRect::vertical(px(4)),
@@ -184,12 +224,76 @@ fn spawn_screen(
         });
 }
 
-/// Izquierda y derecha cambian de pista; Enter, Espacio, A o Start pasan a
-/// elegir moto, y Esc o B vuelven a la bienvenida.
+/// The laps of a race: their number between a chevron up and one down
+/// (the font has no arrows: its ‹ and › turned), as up and down change
+/// them.
+fn spawn_laps_chooser(parent: &mut ChildSpawnerCommands, font: &UiFont, lang: Language) {
+    let gold = Color::srgb(1.0, 0.8, 0.2);
+    parent
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                column_gap: px(16),
+                padding: UiRect::axes(px(16), px(4)),
+                border_radius: BorderRadius::all(px(10)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.08)),
+        ))
+        .with_children(|row| {
+            row.spawn((
+                Text::new(match lang {
+                    Language::Spanish => "VUELTAS",
+                    Language::English => "LAPS",
+                }),
+                text_font(font, 20.0),
+                TextColor(gold),
+            ));
+            row.spawn(Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                ..default()
+            })
+            .with_children(|column| {
+                let chevron = |degrees: f32| {
+                    (
+                        Text::new("›"),
+                        text_font(font, 34.0),
+                        TextColor(gold),
+                        UiTransform::from_rotation(Rot2::degrees(degrees)),
+                        Node {
+                            height: px(22),
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        },
+                    )
+                };
+                column.spawn(chevron(-90.0));
+                column.spawn((
+                    LapsChosen,
+                    Text::new(""),
+                    text_font(font, 34.0),
+                    TextShadow::default(),
+                ));
+                column.spawn(chevron(90.0));
+            });
+        });
+}
+
+/// The laps of a race after a step up (-1) or down (1) from `laps`: more
+/// going up, within [`LAPS`].
+pub fn laps_after(laps: u32, step: i32) -> u32 {
+    (laps as i32 - step).clamp(*LAPS.start() as i32, *LAPS.end() as i32) as u32
+}
+
+/// Izquierda y derecha cambian de pista; en una carrera, arriba y abajo sus
+/// vueltas; Enter, Espacio, A o Start pasan a elegir moto, y Esc o B
+/// vuelven a los modos de juego.
 fn choose_track(
     mut input: MenuInput,
     mut choice: ResMut<CurrentCircuit>,
-    game_mode: Res<GameMode>,
+    mut rules: ResMut<Rules>,
     mut next: ResMut<NextState<GameState>>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
@@ -198,15 +302,54 @@ fn choose_track(
         choice.0 = (choice.0 as i32 + request.side).rem_euclid(CIRCUITS.len() as i32) as usize;
         sounds.write(MenuSound::Move);
     }
+    if rules.mode == Mode::Race && request.step != 0 {
+        let laps = laps_after(rules.laps, request.step);
+        if laps != rules.laps {
+            rules.laps = laps;
+            sounds.write(MenuSound::Move);
+        }
+    }
     if request.confirm || request.start {
         sounds.write(MenuSound::Confirm);
         next.set(GameState::Select);
     } else if request.back {
         sounds.write(MenuSound::Move);
-        if *game_mode == GameMode::SplitScreen {
-            next.set(GameState::Lobby);
-        } else {
-            next.set(GameState::Welcome);
+        next.set(GameState::Modes);
+    }
+}
+
+/// The best of the track for the mode (the best lap, or against the clock
+/// the most laps) and, in a race, its laps.
+fn show_rules(
+    choice: Res<CurrentCircuit>,
+    rules: Res<Rules>,
+    settings: Res<Settings>,
+    mut record: Query<&mut Text, (With<TrackRecord>, Without<LapsChosen>)>,
+    mut laps: Query<&mut Text, (With<LapsChosen>, Without<TrackRecord>)>,
+) {
+    let lang = settings.language;
+    let name = choice.get().name;
+    let records = &settings.records;
+    let best = match rules.mode {
+        Mode::Checkpoint => records.checkpoint_best(name).map(|laps| match lang {
+            Language::Spanish => format!("Récord: {laps} vueltas"),
+            Language::English => format!("Record: {laps} laps"),
+        }),
+        _ => records.best_lap(name).map(|time| match lang {
+            Language::Spanish => format!("Récord de vuelta: {}", clock(time)),
+            Language::English => format!("Lap record: {}", clock(time)),
+        }),
+    }
+    .unwrap_or_default();
+    for mut text in &mut record {
+        if text.0 != best {
+            text.0.clone_from(&best);
+        }
+    }
+    let count = rules.laps.to_string();
+    for mut text in &mut laps {
+        if text.0 != count {
+            text.0.clone_from(&count);
         }
     }
 }
@@ -323,6 +466,7 @@ mod tests {
             .add_message::<MenuSound>()
             .init_resource::<crate::hud::UiFont>()
             .init_resource::<crate::welcome::GameMode>()
+            .init_resource::<Rules>()
             .init_resource::<InputDevice>()
             .init_resource::<CurrentCircuit>()
             .init_resource::<CameraGlide>()
@@ -350,5 +494,13 @@ mod tests {
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Tracks);
         app.update();
+    }
+
+    #[test]
+    fn up_and_down_choose_the_laps_of_a_race_within_their_range() {
+        assert_eq!(laps_after(3, -1), 4);
+        assert_eq!(laps_after(3, 1), 2);
+        assert_eq!(laps_after(*LAPS.start(), 1), *LAPS.start());
+        assert_eq!(laps_after(*LAPS.end(), -1), *LAPS.end());
     }
 }

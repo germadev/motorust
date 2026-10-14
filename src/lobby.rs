@@ -447,7 +447,7 @@ fn handle_lobby_input(
 
     if (key_confirm || pad_confirm) && config.is_ready() {
         sounds.write(MenuSound::Confirm);
-        next.set(GameState::Tracks);
+        next.set(GameState::Modes);
         return;
     }
 

@@ -122,12 +122,18 @@ impl Plugin for BikePlugin {
                 (
                     (restart_race, read_player_input)
                         .run_if(in_state(GameState::Race).and_then(pause::running))
+                        .in_set(RaceControls)
                         .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
                     interpolate_bikes.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
                 ),
             );
     }
 }
+
+/// The systems that read the players' controls in the race (and restart
+/// it): other plugins can hold them, as the results of a race do.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RaceControls;
 
 /// Estado de la carrera: los rivales esperan en la parrilla hasta que el
 /// jugador acelera por primera vez.
@@ -181,6 +187,16 @@ struct GridPosition(usize);
 /// Marca la moto que lleva el jugador.
 #[derive(Component)]
 pub struct Player;
+
+/// Which bike of the [`ROSTER`] this is (also its rider): who it is in the
+/// race's results.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Rider(pub usize);
+
+/// A player's bike out of the race (in elimination, or when the race is
+/// over): it no longer answers the controls and rolls to a stop.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Retired;
 
 /// Marca los jugadores locales en modo multijugador (0 para Player 1, 1 para Player 2).
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
@@ -1031,6 +1047,7 @@ fn spawn_grid(
         let mut bike = commands.entity(bike);
         bike.insert((
             GridPosition(slot),
+            Rider(entry),
             DespawnOnExit(GameState::Race),
             CollisionImpact::default(),
         ));
@@ -1545,6 +1562,7 @@ fn simulate_bikes(
         &mut CrashState,
         Option<&mut ai::Line>,
         Option<&mut CollisionImpact>,
+        Has<Retired>,
     )>,
 ) {
     let dt = time.delta_secs();
@@ -1552,7 +1570,12 @@ fn simulate_bikes(
         .iter()
         .map(|(entity, _, state, ..)| (entity, state.position))
         .collect();
-    for (entity, input, mut state, mut previous, mut knock, mut crash, line, impact) in &mut bikes {
+    let idle = BikeInput::default();
+    for (entity, input, mut state, mut previous, mut knock, mut crash, line, impact, retired) in
+        &mut bikes
+    {
+        // Out of the race, a player's bike rolls to a stop.
+        let input = if retired { &idle } else { input };
         previous.0 = *state;
         if let Some(ride) = state.ride.filter(|_| !crash.is_down()) {
             let outcome;

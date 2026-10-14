@@ -73,6 +73,9 @@ impl Plugin for WorldPlugin {
             )
             .add_systems(OnEnter(GameState::Tracks), cache_all_circuits)
             .add_systems(OnExit(GameState::Tracks), unload_unused_circuits)
+            // A championship goes from track to track without choosing
+            // them: the one left behind goes when the next race starts.
+            .add_systems(OnEnter(GameState::Race), unload_unused_circuits)
             .add_systems(
                 PostUpdate,
                 sky::follow_camera.before(TransformSystems::Propagate),

@@ -1,15 +1,18 @@
 //! Menú de pausa: Esc o Start paran la carrera y abren un menú para seguir,
 //! go back to the bike selection, change the options or go back to the
-//! main menu.
+//! main menu. Under its title it says what is being played and where.
 
 use bevy::prelude::*;
 
+use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::legend::{Keys, menu_prompts, spawn_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
+use crate::modes;
 use crate::options::{OptionsInput, OptionsMenu, OptionsReturn};
+use crate::race::{Championship, Rules};
 use crate::settings::{Action as Control, Settings, cycle};
 use crate::ui::{
     InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, spawn_panel,
@@ -281,7 +284,9 @@ fn use_pause_menu(
     mut time: ResMut<Time<Virtual>>,
     mut next: ResMut<NextState<GameState>>,
     mut sounds: MessageWriter<MenuSound>,
+    outcome: Option<Res<crate::race::Outcome>>,
 ) {
+    let over = outcome.is_some();
     // While the options are open, and in the frame they close (the key that
     // closed them must not also act here).
     if options_menu
@@ -298,7 +303,8 @@ fn use_pause_menu(
             .controls
             .just_pressed(Control::Pause, &input.keyboard, input.gamepads.iter());
     let Some(page) = pause.page else {
-        if toggle {
+        // Not over the results of a race.
+        if toggle && !over {
             *pause = Pause {
                 page: Some(Page::Main),
                 selected: 0,
@@ -372,6 +378,9 @@ fn show_pause_menu(
     font: Res<UiFont>,
     icons: Res<UiIcons>,
     shown: Query<Entity, With<PauseMenu>>,
+    rules: Option<Res<Rules>>,
+    current: Option<Res<CurrentCircuit>>,
+    championship: Option<Res<Championship>>,
 ) {
     if !pause.is_changed()
         && options_menu.as_ref().is_some_and(|m| !m.is_changed())
@@ -429,6 +438,18 @@ fn show_pause_menu(
         ))
         .with_children(|menu| {
             spawn_title(menu, &font, title, 52.0);
+            // What is being played and where.
+            if let (Some(rules), Some(current)) = (rules, current) {
+                let track = current.get().name(lang);
+                let beside = match championship.filter(|_| rules.mode.is_championship()) {
+                    Some(championship) => {
+                        let round = championship.round.min(CIRCUITS.len() - 1) + 1;
+                        format!("{track}  ·  {round}/{}", CIRCUITS.len())
+                    }
+                    None => track.to_string(),
+                };
+                modes::spawn_mode_badge(menu, &font, rules.mode, Some(&beside), lang);
+            }
             spawn_panel(menu, &font, &rows, pause.selected, false);
             spawn_legend(menu, &font, &icons, active_dev, &prompts);
         });

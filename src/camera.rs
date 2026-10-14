@@ -64,6 +64,14 @@ impl Plugin for ChaseCameraPlugin {
             (GameState::Tracks, GameState::Lobby),
             (GameState::Tracks, GameState::Select),
             (GameState::Select, GameState::Tracks),
+            (GameState::Welcome, GameState::Modes),
+            (GameState::Modes, GameState::Welcome),
+            (GameState::Lobby, GameState::Modes),
+            (GameState::Modes, GameState::Lobby),
+            (GameState::Modes, GameState::Tracks),
+            (GameState::Tracks, GameState::Modes),
+            (GameState::Modes, GameState::Select),
+            (GameState::Select, GameState::Modes),
         ] {
             app.add_systems(
                 OnTransition {
@@ -81,6 +89,7 @@ impl Plugin for ChaseCameraPlugin {
             .add_systems(OnEnter(GameState::Tracks), cleanup_camera_viewports)
             .add_systems(OnEnter(GameState::Welcome), cleanup_camera_viewports)
             .add_systems(OnEnter(GameState::Lobby), cleanup_camera_viewports)
+            .add_systems(OnEnter(GameState::Modes), cleanup_camera_viewports)
             .add_systems(
                 Update,
                 (

@@ -42,7 +42,7 @@ const FLYBY_LOOK_HEIGHT: f32 = 1.5;
 const FLYBY_FOV: f32 = 0.9;
 
 /// Size of the title of the game (px). The menu is exactly as wide.
-const TITLE_SIZE: f32 = 110.0;
+pub const TITLE_SIZE: f32 = 110.0;
 
 /// The menu design is 1417 units wide; everything below is in its units.
 const DESIGN_WIDTH: f32 = 1417.0;
@@ -53,9 +53,9 @@ const CORNER_RADIUS: f32 = 18.0;
 /// design. The design mixes it with what is behind in sRGB, which darkens
 /// more than mixing in linear light as Bevy does: 87 % opaque here looks the
 /// same (1 - 0.4^2.2).
-const IDLE: Color = Color::srgba(0.0, 0.0, 0.0, 0.867);
+pub const IDLE: Color = Color::srgba(0.0, 0.0, 0.0, 0.867);
 /// Seconds a button takes to light up or go dark.
-const FADE: f32 = 0.15;
+pub const FADE: f32 = 0.15;
 
 /// The buttons of the menu, in order: 1 player, 2 players, Options, Exit.
 struct Button {
@@ -134,8 +134,11 @@ impl Plugin for WelcomePlugin {
                     )
                         .chain()
                         .run_if(in_state(GameState::Welcome)),
-                    fly_over_track
-                        .run_if(in_state(GameState::Welcome).or_else(in_state(GameState::Lobby))),
+                    fly_over_track.run_if(
+                        in_state(GameState::Welcome)
+                            .or_else(in_state(GameState::Lobby))
+                            .or_else(in_state(GameState::Modes)),
+                    ),
                 ),
             )
             .add_systems(
@@ -297,7 +300,7 @@ fn use_welcome(
         Item::SinglePlayer => {
             sounds.write(MenuSound::Confirm);
             *game_mode = GameMode::SinglePlayer;
-            next.set(GameState::Tracks);
+            next.set(GameState::Modes);
         }
         Item::SplitScreen => {
             sounds.write(MenuSound::Confirm);
@@ -345,6 +348,29 @@ pub struct CardMaterial {
     /// button (units); w: how much the flag shows (0 to 1).
     #[uniform(1)]
     flow: Vec4,
+}
+
+impl CardMaterial {
+    /// A button `width` units wide filled with `color`, whose chequered flag
+    /// slides `flow` units in a period, as much shown as `flag` (0 to 1).
+    pub fn new(color: Color, flow: Vec2, width: f32, flag: f32) -> Self {
+        Self {
+            color: Srgba::from(color).to_vec4(),
+            flow: flow.extend(width).extend(flag),
+        }
+    }
+
+    /// Lights it up towards `color` with its flag showing `flag`, a
+    /// fraction `step` of the way: done little by little, it fades.
+    pub fn fade_to(&mut self, color: Color, flag: f32, step: f32) {
+        self.color = approach(self.color, Srgba::from(color).to_vec4(), step);
+        self.flow.w = approach(Vec4::splat(self.flow.w), Vec4::splat(flag), step).x;
+    }
+
+    /// Whether it has finished fading to `color` with its flag at `flag`.
+    pub fn is(&self, color: Color, flag: f32) -> bool {
+        self.color == Srgba::from(color).to_vec4() && self.flow.w == flag
+    }
 }
 
 impl UiMaterial for CardMaterial {

@@ -57,6 +57,9 @@ pub struct Settings {
     #[serde(rename = "music_level")]
     pub music_volume: u32,
     pub music_enabled: bool,
+    /// The championship under way and the best of each track (see
+    /// [`crate::race::Records`]).
+    pub records: crate::race::Records,
 }
 
 /// Volume the effects and the music start at (%).
@@ -73,6 +76,7 @@ impl Default for Settings {
             fx_volume: DEFAULT_VOLUME,
             music_volume: DEFAULT_VOLUME,
             music_enabled: true,
+            records: crate::race::Records::default(),
         }
     }
 }
@@ -883,6 +887,13 @@ mod tests {
         settings
             .controls
             .bind_button(Action::Throttle, GamepadButton::RightTrigger);
+        // The records and the championship under way are kept too.
+        settings.records.lap("Bahía GP", 71.25);
+        settings.records.checkpoint("Bahía GP", 3);
+        settings.records.story = Some(crate::race::Championship {
+            round: 2,
+            points: [10, 8, 6, 5, 4, 3, 2, 1],
+        });
         let text = ron::ser::to_string_pretty(&settings, default()).unwrap();
         let loaded: Settings = ron::from_str(&text).unwrap();
         assert_eq!(loaded, settings);

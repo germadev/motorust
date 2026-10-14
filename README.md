@@ -11,6 +11,11 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
   [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
+- **Game modes.** Story (every track in turn, five laps each, points per
+  race, saved as you go), free ride, a race of 1 to 9 laps, elimination (the
+  last one is out every lap) and checkpoint (each checkpoint adds seconds
+  to the clock). Two players: free ride, race and elimination. Best laps
+  and checkpoint records are kept per track.
 - **Arcade handling.** Lean into corners at full throttle, pop wheelies, take
   short jumps and feel the suspension. Play with a keyboard, a D-pad or an
   analog stick.
