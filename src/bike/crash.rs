@@ -493,6 +493,9 @@ impl ThrownRider {
                 };
             }
         } else {
+            // Down a slope gravity pulls the rider on; the friction stops
+            // them.
+            self.velocity -= slope(track, self.position, self.altitude()) * GRAVITY * dt;
             let drag = drag_factor(track, self.position, self.altitude(), RIDER_SLIDE);
             self.velocity = shrink(self.velocity, drag * GRAVITY * dt);
             self.roll_rate = move_toward(self.roll_rate, 0.0, TUMBLE_FRICTION * dt);
@@ -811,9 +814,11 @@ pub fn fall(state: &mut BikeState, knock: &mut Knock, hit: &Hit) -> CrashState {
     } else {
         (launch, 0.0)
     };
+    // Thrown up from where it was going: on a downhill it was already
+    // going down with the road, and goes on down with it.
     if launch > 0.0 {
         state.grounded = false;
-        state.climb = launch;
+        state.climb += launch;
     }
     let mut rider = ThrownRider {
         position: state.position + left * state.lean.sin() * SEAT_HEIGHT - ahead * SEAT_BACK,
@@ -928,9 +933,12 @@ pub fn slide(
     dt: f32,
 ) {
     crash.elapsed += dt;
-    // On the ground it slides and the friction stops it; in the air (thrown
-    // up, bouncing, or off a loop) it flies on.
+    let slope = slope(track, state.position, state.elevation);
+    // On the ground it slides, gravity pulls it down the slope and the
+    // friction stops it; in the air (thrown up, bouncing, or off a loop) it
+    // flies on.
     if state.grounded {
+        knock.velocity -= slope * GRAVITY * dt;
         let drag = drag_factor(track, state.position, state.elevation, BIKE_SLIDE);
         knock.velocity = shrink(knock.velocity, drag * GRAVITY * dt);
         knock.yaw_rate = approach(knock.yaw_rate, 0.0, SLIDE_SPIN_DAMPING, dt);
@@ -940,7 +948,9 @@ pub fn slide(
     let contact = wall_contact(track, state.position, state.elevation, &footprint(state));
     contain(&mut state.position, &mut knock.velocity, contact);
     let ground = track.road_height_at(state.position, state.elevation);
-    tumble(state, crash, ground, dt);
+    // How fast the road rises (or drops) under it as it slides on.
+    let rise = knock.velocity.dot(slope);
+    tumble(state, crash, ground, rise, dt);
     crash.wheels = crash
         .wheels
         .map(|wheel| move_toward(wheel * (-WHEEL_DRAG * dt).exp(), 0.0, WHEEL_FRICTION * dt));
@@ -993,12 +1003,15 @@ fn whole_turn(angle: f32) -> f32 {
     (angle / TAU).round() * TAU
 }
 
-/// One step of a fallen bike rolling and flipping over. On the ground it
+/// One step of a fallen bike rolling and flipping over, over a road at
+/// `ground` that rises `rise` m/s under it as it goes. On the ground it
 /// rolls over its outline: gravity pulls it towards a side and the ground
 /// slows it, so it settles on a side (or bounces up, rolling onto one
 /// hard), and it comes back level end to end. In the air it turns freely
-/// about its centre of mass, which falls, and lands on its outline.
-fn tumble(state: &mut BikeState, crash: &mut CrashState, ground: f32, dt: f32) {
+/// about its centre of mass, which falls, and lands on its outline. Its
+/// hops and bounces are off the road, which on a slope is itself going up
+/// or down: down a hill the bike does not float away from it.
+fn tumble(state: &mut BikeState, crash: &mut CrashState, ground: f32, rise: f32, dt: f32) {
     if state.grounded {
         const STEP: f32 = 1e-3;
         let slope = (center_height(state.pitch, state.lean + STEP)
@@ -1015,9 +1028,9 @@ fn tumble(state: &mut BikeState, crash: &mut CrashState, ground: f32, dt: f32) {
         crash.flip_rate = 0.0;
         state.pitch = approach(state.pitch, whole_turn(state.pitch), FALL_RATE, dt);
         state.elevation = ground + lift(pose(state.pitch, state.lean));
-        state.climb = 0.0;
+        state.climb = rise;
         if landed && crash.roll_rate.abs() > HOP_FROM {
-            state.climb = HOP_PER_ROLL * crash.roll_rate.abs();
+            state.climb = rise + HOP_PER_ROLL * crash.roll_rate.abs();
             crash.roll_rate *= HOP_KEEPS;
             state.grounded = false;
         }
@@ -1038,10 +1051,12 @@ fn tumble(state: &mut BikeState, crash: &mut CrashState, ground: f32, dt: f32) {
     let floor = ground + lift(after);
     if state.elevation <= floor {
         state.elevation = floor;
-        if state.climb < -BOUNCE_FROM {
-            state.climb = (-state.climb * BOUNCE).min(MAX_BOUNCE);
+        // How fast it comes down onto the road, which may be going down too.
+        let into = rise - state.climb;
+        if into > BOUNCE_FROM {
+            state.climb = rise + (into * BOUNCE).min(MAX_BOUNCE);
         } else {
-            state.climb = 0.0;
+            state.climb = rise;
             state.grounded = true;
             crash.flip_rate = 0.0;
         }
@@ -1080,6 +1095,15 @@ pub fn rejoin_pose(track: &Track, at: Vec2, height: f32, others: &[Vec2]) -> (Ve
             .unwrap_or(wanted)
     };
     (place(lateral), heading, lateral)
+}
+
+/// How steep the road is at `point`, under something at `height`: how much
+/// it rises per metre going along x and along z.
+fn slope(track: &Track, point: Vec2, height: f32) -> Vec2 {
+    Vec2::new(
+        track.grade(point, Vec2::X, height),
+        track.grade(point, Vec2::Y, height),
+    )
 }
 
 /// Drag factor at `point`, at `height`, for the given (asphalt, grass) pair:
@@ -1261,6 +1285,94 @@ mod tests {
         let still = state;
         carry(&mut state, &mut knock, &track, DT);
         assert_eq!(state, still);
+    }
+
+    /// The steepest downhill of the laps of all the circuits: the track, the
+    /// point of its centre line and how steep it is there.
+    fn steepest_downhill() -> (Track, usize, f32) {
+        crate::circuits::CIRCUITS
+            .iter()
+            .map(|circuit| {
+                let track = Track::new(&circuit.layout);
+                let (index, grade) = (0..track.sample_count())
+                    .map(|index| {
+                        let (point, heading) = track.pose_at(index);
+                        let height = track.road_height(point);
+                        (index, track.grade(point, forward(heading), height))
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .expect("a lap has points");
+                (track, index, grade)
+            })
+            .min_by(|a, b| a.2.total_cmp(&b.2))
+            .expect("there are circuits")
+    }
+
+    #[test]
+    fn a_bike_that_falls_downhill_does_not_float_off_the_road() {
+        let (track, index, grade) = steepest_downhill();
+        assert!(grade < -0.08, "a real downhill: {grade}");
+        let (position, heading) = track.pose_at(index);
+        let mut state = riding(position, heading, 45.0);
+        state.elevation = track.road_height(position);
+        // Riding down the hill, going down with it.
+        state.climb = grade * state.speed;
+        let ahead = forward(heading);
+        let hit = Hit {
+            before: ahead * state.speed,
+            dv: ahead.perp() * 9.0,
+            dw: 0.0,
+            falls: true,
+        };
+        let mut knock = Knock {
+            velocity: hit.dv,
+            yaw_rate: 0.0,
+        };
+        let mut crash = fall(&mut state, &mut knock, &hit);
+        assert!(!state.grounded, "thrown up a little");
+        assert!(state.climb < 0.0, "still going down with the road");
+        let (mut highest, mut first_flight) = (0.0f32, None);
+        for step in 0..(1.5 / DT) as usize {
+            slide(&mut state, &mut knock, &mut crash, &track, DT);
+            let ground = track.road_height_at(state.position, state.elevation);
+            let above = state.elevation - ground - lift(pose(state.pitch, state.lean));
+            highest = highest.max(above);
+            if state.grounded && first_flight.is_none() {
+                first_flight = Some(step as f32 * DT);
+            }
+        }
+        // A hop off the road, not a glide down the hill.
+        assert!(highest < 0.6, "{highest} m above the road");
+        let first_flight = first_flight.expect("it comes down");
+        assert!(first_flight < 0.5, "{first_flight} s in the air");
+    }
+
+    #[test]
+    fn a_fallen_bike_slides_further_down_a_hill_than_up_it() {
+        let (track, index, _) = steepest_downhill();
+        let (position, heading) = track.pose_at(index);
+        let slide_for = |heading: f32| {
+            let mut state = riding(position, heading, 0.0);
+            state.elevation = track.road_height(position);
+            let mut knock = Knock {
+                velocity: forward(heading) * 15.0,
+                yaw_rate: 0.0,
+            };
+            let hit = Hit {
+                before: forward(heading) * 15.0,
+                dv: Vec2::ZERO,
+                dw: 0.0,
+                falls: true,
+            };
+            let mut crash = fall(&mut state, &mut knock, &hit);
+            for _ in 0..(1.0 / DT) as usize {
+                slide(&mut state, &mut knock, &mut crash, &track, DT);
+            }
+            state.position.distance(position)
+        };
+        let down = slide_for(heading);
+        let up = slide_for(heading + PI);
+        assert!(down > up + 0.5, "down {down} m, up {up} m");
     }
 
     #[test]
