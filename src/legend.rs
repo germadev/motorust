@@ -287,6 +287,31 @@ pub fn race_prompts(device: ActiveDevice, lang: Language, controls: &Controls) -
         .collect()
 }
 
+/// What changes free ride's music, on `device` (Y, or the top face
+/// button), and what it plays (`what`).
+pub fn music_prompt(device: ActiveDevice, lang: Language, what: String) -> KeyPrompt {
+    let badge = match device {
+        ActiveDevice::Keyboard => key_badge(crate::sound::music::MUSIC_KEY, lang),
+        _ => button_badge(device, crate::sound::music::MUSIC_BUTTON),
+    };
+    KeyPrompt {
+        badges: vec![badge],
+        action: what,
+    }
+}
+
+/// What turns the music on or off in the menus (the same as changes free
+/// ride's), and whether it is on.
+pub fn music_toggle_prompt(device: ActiveDevice, lang: Language, on: bool) -> KeyPrompt {
+    let what = match (lang, on) {
+        (Language::Spanish, true) => "Música: sí",
+        (Language::Spanish, false) => "Música: no",
+        (Language::English, true) => "Music: on",
+        (Language::English, false) => "Music: off",
+    };
+    music_prompt(device, lang, what.into())
+}
+
 /// The keys or buttons of a shortcut on `device`: M for the sound and
 /// Cmd+Enter (Alt+Enter) for fullscreen on the keyboard, Select held with Y
 /// or Start on a gamepad.

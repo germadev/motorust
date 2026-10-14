@@ -14,7 +14,9 @@ use crate::camera::CameraGlide;
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
-use crate::legend::{KeyPrompt, Keys, ScreenLegend, menu_prompts, show_screen_legend};
+use crate::legend::{
+    KeyPrompt, Keys, ScreenLegend, menu_prompts, music_toggle_prompt, show_screen_legend,
+};
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::minimap::TrackMap;
@@ -410,11 +412,17 @@ fn show_legend(
         (Keys::Confirm, lang.hint_choose_bike()),
         (Keys::Back, lang.back()),
     ];
+    let mut prompts = menu_prompts(active_dev, &hints);
+    prompts.push(music_toggle_prompt(
+        active_dev,
+        lang,
+        settings.music_enabled,
+    ));
     show_screen_legend(
         &mut commands,
         &shown,
         &mut last,
-        menu_prompts(active_dev, &hints),
+        prompts,
         active_dev,
         &font,
         &icons,

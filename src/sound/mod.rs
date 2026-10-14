@@ -10,7 +10,8 @@
 //! Each track also has its music ([`music`]), which plays during the race
 //! well below the engines.
 
-mod music;
+pub mod ambience;
+pub mod music;
 mod synth;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ use bevy::audio::AddAudioSource;
 use bevy::prelude::*;
 
 use crate::bike::{BikeInput, BikeState, LocalPlayer, Player};
+use crate::circuits::{Ambience, CIRCUITS, CurrentCircuit};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
@@ -72,6 +74,8 @@ impl Plugin for SoundPlugin {
             .add_message::<StartBeep>()
             .add_message::<ToggleMute>()
             .init_resource::<Blip>()
+            .init_resource::<music::FreeMusic>()
+            .add_systems(OnEnter(GameState::Race), music::reset_free_music)
             .add_systems(Startup, start_mixer)
             .add_systems(
                 Update,
@@ -82,12 +86,26 @@ impl Plugin for SoundPlugin {
                     place_sounds,
                     player_sounds,
                     pause_sounds,
+                    surroundings,
                     menu_sounds,
                     toggle_mute,
                 )
                     .chain(),
             )
-            .add_systems(Update, music::play_music.after(toggle_mute));
+            .add_systems(
+                Update,
+                (
+                    music::change_free_music.run_if(in_state(GameState::Race)),
+                    music::toggle_menu_music.run_if(
+                        in_state(GameState::Welcome)
+                            .or_else(in_state(GameState::Modes))
+                            .or_else(in_state(GameState::Tracks)),
+                    ),
+                    music::play_music,
+                )
+                    .chain()
+                    .after(toggle_mute),
+            );
     }
 }
 
@@ -469,6 +487,26 @@ fn nearest_listener(listeners: &[(Vec3, Vec3, Vec3)], at: Vec3) -> &(Vec3, Vec3,
                 .total_cmp(&b.0.distance_squared(at))
         })
         .expect("there is at least one listener")
+}
+
+/// Choosing the bike, the sounds of the chosen track's surroundings;
+/// elsewhere, none (they fade in and out in the synthesiser).
+fn surroundings(
+    state: Res<State<GameState>>,
+    circuit: Res<CurrentCircuit>,
+    controls: Res<SoundControls>,
+) {
+    let ambience = if *state.get() == GameState::Select {
+        CIRCUITS[circuit.0].ambience
+    } else {
+        Ambience::default()
+    };
+    let params = &controls.0.ambience;
+    params.sea.set(ambience.sea);
+    params.gulls.set(ambience.gulls);
+    params.birds.set(ambience.birds);
+    params.cicadas.set(ambience.cicadas);
+    params.wind.set(ambience.wind);
 }
 
 /// En pausa se apaga el ruido de la carrera, y moverse por el menú suena.

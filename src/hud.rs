@@ -5,11 +5,14 @@
 
 use bevy::prelude::*;
 
+use crate::circuits::CurrentCircuit;
 use crate::gamepads::ActiveController;
-use crate::legend::{KeyPrompt, race_prompts, spawn_legend};
+use crate::legend::{KeyPrompt, music_prompt, race_prompts, spawn_legend};
 use crate::menu::GameState;
 use crate::pause::{DebugOptions, Pause};
+use crate::race::{Mode, Rules};
 use crate::settings::Settings;
+use crate::sound::music::FreeMusic;
 use crate::speedometer::{SpeedometerPlugin, spawn_speedometer};
 use crate::ui::{InputDevice, UiIcons, current_active_device};
 use crate::welcome::GameMode;
@@ -176,13 +179,19 @@ fn spawn_race_hud(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Game
 }
 
 /// La leyenda se ve u oculta según la opción de Opciones y se adapta al
-/// mando activo y a los controles elegidos. In the pause menu it gives way
+/// mando activo y a los controles elegidos. In free ride, what changes the
+/// music, and what plays, is always in it. In the pause menu it gives way
 /// to the menu's own legend.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn show_race_legend(
     mut commands: Commands,
     options: Res<DebugOptions>,
     settings: Res<Settings>,
+    (rules, free_music, circuit): (
+        Option<Res<Rules>>,
+        Option<Res<FreeMusic>>,
+        Option<Res<CurrentCircuit>>,
+    ),
     pause: Res<Pause>,
     device: Option<Res<InputDevice>>,
     active_controller: Option<Res<ActiveController>>,
@@ -195,8 +204,19 @@ fn show_race_legend(
         device.as_deref().copied().unwrap_or_default(),
         active_controller.as_deref(),
     );
-    let wanted = (options.show_legend && !pause.is_open())
-        .then(|| race_prompts(active_dev, settings.language, &settings.controls));
+    let lang = settings.language;
+    let mut wanted = options
+        .show_legend
+        .then(|| race_prompts(active_dev, lang, &settings.controls));
+    if rules.is_some_and(|rules| rules.mode == Mode::Free)
+        && let (Some(free_music), Some(circuit)) = (free_music, circuit)
+    {
+        let what = free_music.describe(circuit.0, lang);
+        wanted
+            .get_or_insert_default()
+            .push(music_prompt(active_dev, lang, what));
+    }
+    let wanted = wanted.filter(|_| !pause.is_open());
     if *last == wanted && shown.is_empty() == wanted.is_none() {
         return;
     }

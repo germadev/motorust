@@ -20,13 +20,33 @@ pub struct Circuit {
     pub description_en: &'static str,
     /// The music that plays during the race.
     pub song: Song,
+    /// What its surroundings sound like, choosing the bike.
+    pub ambience: Ambience,
     pub layout: Layout,
     pub scenery: Scenery,
 }
 
-/// A track's music: an MP3 built into the game ([`crate::sound`] loops it).
+/// The sounds of a track's surroundings, heard while choosing the bike
+/// (see [`crate::sound::ambience`]): how much of each, from 0 to 1.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Ambience {
+    /// Waves breaking on the shore.
+    pub sea: f32,
+    /// Seagulls calling now and then.
+    pub gulls: f32,
+    /// Small birds chirping in the trees.
+    pub birds: f32,
+    /// Cicadas buzzing in the heat.
+    pub cicadas: f32,
+    pub wind: f32,
+}
+
+/// A song: an MP3 built into the game ([`crate::sound`] loops it, or, in a
+/// list, plays it through and goes on to the next).
 pub struct Song {
     pub mp3: &'static [u8],
+    /// How long it lasts (s), as `ffprobe` gives it.
+    pub length: f32,
     /// How loud it sounds over the engines, as mastered: the integrated
     /// loudness (LUFS) of its first two minutes, as long as a race, above
     /// 500 Hz, as `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f

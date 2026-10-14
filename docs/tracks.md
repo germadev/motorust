@@ -108,11 +108,12 @@ Gold Mine ("Mina Dorada") is a gold mine in a desert at dusk, after Wario's Gold
 
 ### Where tracks live
 
-Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs` and `gold_mine.rs`). A `Circuit` has five fields:
+Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs` and `gold_mine.rs`). A `Circuit` has six fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
-- `song`: the music for the race, an MP3 in `assets/music/` embedded with `include_bytes!`, and its `loudness`: the integrated loudness (LUFS) of its first two minutes above 500 Hz, which `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all sound equally loud over the engine (whose drone covers the lower notes), and well under it.
+- `song`: the music for the race, an MP3 in `assets/music/` embedded with `include_bytes!`, its `length` in seconds (as `ffprobe` gives it) and its `loudness`: the integrated loudness (LUFS) of its first two minutes above 500 Hz, which `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all sound equally loud over the engine (whose drone covers the lower notes), and well under it.
+- `ambience`: what its surroundings sound like on the bike select screen: how much sea, seagulls, small birds, cicadas and wind (0 to 1 each).
 - `layout`: the road itself (a `Layout` from `src/track.rs`).
 - `scenery`: everything around the road (a `Scenery` from `src/world/scenery.rs`).
 

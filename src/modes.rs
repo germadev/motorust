@@ -13,7 +13,7 @@ use bevy::window::PrimaryWindow;
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
-use crate::legend::{Keys, menu_prompts, spawn_legend};
+use crate::legend::{Keys, menu_prompts, music_toggle_prompt, spawn_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::race::{
@@ -260,6 +260,8 @@ struct ModesScreen;
 #[derive(Clone, PartialEq, Debug)]
 struct Shown {
     two: bool,
+    /// Whether the music is on, as the legend says.
+    music: bool,
     language: Language,
     device: ActiveDevice,
     width: f32,
@@ -287,6 +289,7 @@ fn show_modes(
     let window = window.iter().next();
     let now = Shown {
         two: *game_mode == GameMode::SplitScreen,
+        music: settings.music_enabled,
         language: lang,
         device: active_dev,
         width: window.map_or(1280.0, Window::width),
@@ -425,13 +428,14 @@ fn show_modes(
                         }
                     });
             }
-            let prompts = menu_prompts(
+            let mut prompts = menu_prompts(
                 active_dev,
                 &[
                     (Keys::Confirm, lang.hint_accept()),
                     (Keys::Back, lang.back()),
                 ],
             );
+            prompts.push(music_toggle_prompt(active_dev, lang, now.music));
             spawn_legend(screen, &font, &icons, active_dev, &prompts);
         });
 }

@@ -23,8 +23,10 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
   short jumps and feel the suspension. Play with a keyboard, a D-pad or an
   analog stick.
 - **Synthesized sound and music.** Engines, gearbox, wind, tyres and impacts
-  are all generated in real time, with Doppler on passing rivals. Each track
-  has its own song, mixed well below the engine.
+  are all generated in real time, with Doppler on passing rivals, and so
+  are the sea, gulls, birds and cicadas around each track while choosing the
+  bike. Each track has its own song, mixed well below the engine; the menus
+  have theirs, and free ride can play every track's or a chill playlist.
 - **Everything else.** Two-player split screen, a minimap, controls
   remapped on a drawing of the keyboard or the gamepad (keys or buttons
   pressed together too), and gamepad support (including the macOS

@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use bevy::audio::{ChannelCount, Decodable, SampleRate, Source};
 use bevy::prelude::*;
 
+use super::ambience::{Ambience, AmbienceParams};
 use crate::geometry::smoothstep;
 
 pub const SAMPLE_RATE: u32 = 44_100;
@@ -121,6 +122,8 @@ pub struct Controls {
     /// De 0 a 1, cuánto se apagan los motores, el viento, los neumáticos y la
     /// hierba (en pausa); los avisos y clics siguen sonando.
     pub muffle: Param,
+    /// The sounds of the track's surroundings (see [`super::ambience`]).
+    pub ambience: AmbienceParams,
     queue: Mutex<Vec<Sound>>,
 }
 
@@ -134,6 +137,7 @@ impl Default for Controls {
             fx: Param::new(1.0),
             master: Param::default(),
             muffle: Param::default(),
+            ambience: AmbienceParams::default(),
             queue: Mutex::new(Vec::new()),
         }
     }
@@ -163,11 +167,11 @@ impl Decodable for Mix {
 }
 
 /// Generador de números pseudoaleatorios (xorshift), para el ruido.
-struct Noise(u32);
+pub(super) struct Noise(pub(super) u32);
 
 impl Noise {
     /// De -1 a 1.
-    fn next(&mut self) -> f32 {
+    pub(super) fn next(&mut self) -> f32 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 17;
         self.0 ^= self.0 << 5;
@@ -175,19 +179,19 @@ impl Noise {
     }
 
     /// De 0 a 1.
-    fn chance(&mut self) -> f32 {
+    pub(super) fn chance(&mut self) -> f32 {
         self.next() * 0.5 + 0.5
     }
 }
 
 /// Coeficiente de un filtro de un polo con frecuencia de corte `cutoff`.
-fn one_pole(cutoff: f32) -> f32 {
+pub(super) fn one_pole(cutoff: f32) -> f32 {
     1.0 - (-TAU * cutoff / SAMPLE_RATE as f32).exp()
 }
 
 /// Filtro paso banda (biquad de RBJ), para resonancias y chirridos.
 #[derive(Clone, Copy, Default)]
-struct BandPass {
+pub(super) struct BandPass {
     b0: f32,
     a1: f32,
     a2: f32,
@@ -196,7 +200,7 @@ struct BandPass {
 }
 
 impl BandPass {
-    fn tuned(center: f32, q: f32) -> Self {
+    pub(super) fn tuned(center: f32, q: f32) -> Self {
         let mut filter = Self::default();
         filter.tune(center, q);
         filter
@@ -211,7 +215,7 @@ impl BandPass {
         self.a2 = (1.0 - alpha) / a0;
     }
 
-    fn process(&mut self, input: f32) -> f32 {
+    pub(super) fn process(&mut self, input: f32) -> f32 {
         let output = self.b0 * (input - self.x[1]) - self.a1 * self.y[0] - self.a2 * self.y[1];
         self.x = [input, self.x[0]];
         self.y = [output, self.y[0]];
@@ -445,6 +449,7 @@ pub struct Mixer {
     gust: f32,
     skid: (f32, BandPass, f32),
     grass: (f32, f32),
+    surroundings: Ambience,
     ambient: f32,
     fx: f32,
     master: f32,
@@ -467,6 +472,7 @@ impl Mixer {
             gust: 0.0,
             skid: (0.0, BandPass::tuned(1150.0, 9.0), 0.0),
             grass: (0.0, 0.0),
+            surroundings: Ambience::default(),
             ambient: 1.0,
             fx,
             master: 0.0,
@@ -538,6 +544,13 @@ impl Mixer {
             left += grass;
             right += grass;
         }
+
+        // The surroundings of the track.
+        let (l, r) = self
+            .surroundings
+            .sample(&controls.ambience, &mut self.noise);
+        left += l;
+        right += r;
 
         // En pausa, todo lo de la carrera se apaga; los avisos, no.
         self.ambient += (1.0 - controls.muffle.get() - self.ambient) * self.smooth;
