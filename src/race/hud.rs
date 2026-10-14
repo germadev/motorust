@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 
 use super::{Mode, Outcome, Progress, Rules, Standing, Watching};
-use crate::bike::{LocalPlayer, Player, ROSTER, Retired, Rider};
+use crate::bike::{LocalPlayer, Player, ROSTER, Race, Retired, Rider};
 use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::menu::GameState;
@@ -252,6 +252,7 @@ pub fn ordinal(place: usize, lang: Language) -> String {
 #[allow(clippy::type_complexity)]
 fn show_race_info(
     rules: Res<Rules>,
+    race: Res<Race>,
     standing: Res<Standing>,
     settings: Res<Settings>,
     outcome: Option<Res<Outcome>>,
@@ -329,7 +330,15 @@ fn show_race_info(
                     (true, false) => Out::Retired,
                     (false, false) => Out::In,
                 };
-                notice(&rules, &standing, progress, out, place, lang)
+                // Back on the grid after a false start: how many so far.
+                let made = standing
+                    .false_starts
+                    .iter()
+                    .filter(|&&r| r == rider.0)
+                    .count() as u32;
+                let false_starts =
+                    (!race.started && made > 0).then_some((made, settings.false_starts));
+                notice(&rules, &standing, progress, out, false_starts, place, lang)
             }
             _ => (String::new(), color.0),
         };
@@ -479,15 +488,27 @@ enum Out {
 
 /// The big notice in the middle for a player at `place`: their place when
 /// they cross the line at the end, that their time is up, they are out or
-/// disqualified, who has just gone out, or a lap record.
+/// disqualified, back on the grid after a false start (`false_starts`: how
+/// many they have made and are let off), who has just gone out, or a lap
+/// record.
 fn notice(
     rules: &Rules,
     standing: &Standing,
     progress: &Progress,
     out: Out,
+    false_starts: Option<(u32, u32)>,
     place: usize,
     lang: Language,
 ) -> (String, Color) {
+    if let Some((made, allowed)) = false_starts.filter(|_| out == Out::In) {
+        return (
+            match lang {
+                Language::Spanish => format!("¡SALIDA NULA!  {made} de {allowed}"),
+                Language::English => format!("FALSE START!  {made} of {allowed}"),
+            },
+            GOLD,
+        );
+    }
     if out == Out::Disqualified {
         return (
             match lang {
@@ -598,9 +619,17 @@ mod tests {
             ..default()
         };
         let told = |standing: &Standing, progress: &Progress| {
-            notice(&rules, standing, progress, Out::In, 8, Language::English)
-                .0
-                .starts_with("LAP RECORD")
+            notice(
+                &rules,
+                standing,
+                progress,
+                Out::In,
+                None,
+                8,
+                Language::English,
+            )
+            .0
+            .starts_with("LAP RECORD")
         };
         assert!(told(&standing, &progress));
         // Not to the other player, whose best is another.
@@ -616,6 +645,32 @@ mod tests {
             ..progress.clone()
         };
         assert!(!told(&standing, &later));
+    }
+
+    #[test]
+    fn back_on_the_grid_after_a_false_start_it_says_how_many() {
+        let rules = Rules {
+            mode: Mode::Race,
+            laps: 5,
+        };
+        let standing = Standing::default();
+        let progress = Progress::default();
+        let said = |out, false_starts| {
+            notice(
+                &rules,
+                &standing,
+                &progress,
+                out,
+                false_starts,
+                8,
+                Language::Spanish,
+            )
+            .0
+        };
+        assert_eq!(said(Out::In, Some((1, 2))), "¡SALIDA NULA!  1 de 2");
+        assert_eq!(said(Out::In, None), "");
+        // Disqualified says so instead.
+        assert!(said(Out::Disqualified, Some((2, 2))).contains("DESCALIFICADO"));
     }
 
     #[test]

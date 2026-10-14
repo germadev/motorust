@@ -6,8 +6,10 @@
 //! going out beeps higher, while the lights flash green.
 //!
 //! In the options ([`crate::settings::RaceStart`]) the lights can also leave the bikes free
-//! on the grid: a player who moves off before they go out jumps the start
-//! and is disqualified. Or the race can start as it used to, when a player
+//! on the grid (once the first light is on): a player who moves off before
+//! they go out jumps the start. The first false starts of each player (two
+//! at first: [`crate::settings::Settings::false_starts`]) send everybody
+//! back to the grid and the lights start again; the next one disqualifies. Or the race can start as it used to, when a player
 //! first opens the throttle, with no lights.
 
 use std::ops::Range;
@@ -15,10 +17,10 @@ use std::ops::Range;
 use bevy::prelude::*;
 
 use super::Standing;
-use crate::bike::{BikeState, LocalPlayer, Player, Race, Retired, Rider};
+use crate::bike::{BikeState, LocalPlayer, Player, Race, RecallToGrid, Retired, Rider};
 use crate::menu::GameState;
 use crate::pause;
-use crate::settings::Settings;
+use crate::settings::{RaceStart, Settings};
 use crate::welcome::GameMode;
 
 /// How many red lights there can be.
@@ -32,6 +34,9 @@ const BETWEEN: f32 = 1.0;
 const HOLD: Range<f32> = 0.3..1.3;
 /// Seconds the lights show green once they are out.
 const GREEN_FOR: f32 = 0.8;
+/// After a false start, seconds more before the first light: to read the
+/// notice and let go of the throttle.
+const RECALL_PAUSE: f32 = 1.5;
 /// How fast a bike goes (m/s) once it has moved off the grid: before the
 /// lights go out, a jump start.
 const JUMP_SPEED: f32 = 1.0;
@@ -160,7 +165,8 @@ fn run_lights(
     mut lights: ResMut<StartLights>,
     mut beeps: MessageWriter<StartBeep>,
 ) {
-    let (lights_on, held) = (settings.start.at_lights(), settings.start.holds());
+    let lights_on = settings.start.at_lights();
+    let held = holds_now(settings.start, &lights);
     if race.lights != lights_on {
         race.lights = lights_on;
     }
@@ -183,19 +189,32 @@ fn run_lights(
     }
 }
 
+/// Whether the bikes are held on the grid now, starting as `start` says:
+/// at the lights, free or not, nobody moves before the first one comes on
+/// (after a false start, a moment to let go of the throttle).
+fn holds_now(start: RaceStart, lights: &StartLights) -> bool {
+    start.holds() || (start.at_lights() && lights.lit() == 0 && !lights.out())
+}
+
 /// Whether a bike going at `speed` (m/s) has moved off the grid.
 fn moved_off(speed: f32) -> bool {
     speed.abs() > JUMP_SPEED
 }
 
 /// At the lights with the bikes free
-/// ([`crate::settings::RaceStart::LightsUnheld`]), a
-/// player who moves off the grid before they go out jumps the start: they
-/// are disqualified, out of the race (their bike rolls to a stop).
-#[allow(clippy::type_complexity)]
+/// ([`crate::settings::RaceStart::LightsUnheld`]), a player who moves off
+/// the grid before they go out jumps the start. While they have false
+/// starts left ([`Settings::false_starts`]), everybody goes back to the
+/// grid and the lights start again; then they are disqualified, out of
+/// the race (their bike rolls to a stop).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn jump_starts(
     mut commands: Commands,
     race: Res<Race>,
+    settings: Res<Settings>,
+    real: Res<Time<Real>>,
+    mut lights: ResMut<StartLights>,
+    mut recalls: MessageWriter<RecallToGrid>,
     standing: Option<ResMut<Standing>>,
     bikes: Query<
         (Entity, &Rider, &BikeState),
@@ -208,13 +227,36 @@ fn jump_starts(
     if race.started || !race.lights || race.held {
         return;
     }
+    let mut recall = false;
     for (bike, rider, state) in &bikes {
-        if moved_off(state.speed) && !standing.out.contains(&rider.0) {
+        if !moved_off(state.speed) || standing.out.contains(&rider.0) {
+            continue;
+        }
+        let made = standing
+            .false_starts
+            .iter()
+            .filter(|&&r| r == rider.0)
+            .count() as u32;
+        if made < settings.false_starts {
+            info!(
+                "Salida nula: {} ({}/{})",
+                rider.0,
+                made + 1,
+                settings.false_starts
+            );
+            standing.false_starts.push(rider.0);
+            recall = true;
+        } else {
             info!("Salida anticipada: {} descalificado", rider.0);
             commands.entity(bike).insert(Retired);
             standing.out.push(rider.0);
             standing.disqualified.push(rider.0);
         }
+    }
+    if recall {
+        recalls.write(RecallToGrid);
+        *lights = StartLights::new(chance(&real), lights.count());
+        lights.elapsed = -RECALL_PAUSE;
     }
 }
 
@@ -387,7 +429,10 @@ mod tests {
 
     /// A grid at the lights, the bikes free or `held`: a rival and the
     /// players' bikes going at `speeds` (m/s).
-    fn grid(held: bool, speeds: [f32; 3]) -> (App, Vec<Entity>) {
+    /// A grid at the lights, the bikes free or `held`, `let_off` false
+    /// starts let off: a rival and the players' bikes going at `speeds`
+    /// (m/s).
+    fn grid(held: bool, let_off: u32, speeds: [f32; 3]) -> (App, Vec<Entity>) {
         let mut app = App::new();
         app.insert_resource(Race {
             started: false,
@@ -395,6 +440,13 @@ mod tests {
             held,
         })
         .insert_resource(Standing::default())
+        .insert_resource(Settings {
+            false_starts: let_off,
+            ..default()
+        })
+        .init_resource::<Time<Real>>()
+        .init_resource::<StartLights>()
+        .add_message::<RecallToGrid>()
         .add_systems(Update, jump_starts);
         let bikes = speeds
             .iter()
@@ -419,7 +471,7 @@ mod tests {
     #[test]
     fn a_player_who_moves_off_before_the_lights_go_out_is_disqualified() {
         // The rival and the second player keep still; the first moves off.
-        let (mut app, bikes) = grid(false, [3.0, 2.0, 0.2]);
+        let (mut app, bikes) = grid(false, 0, [3.0, 2.0, 0.2]);
         app.update();
         let standing = app.world().resource::<Standing>();
         assert_eq!(standing.disqualified, [1]);
@@ -442,8 +494,49 @@ mod tests {
 
     #[test]
     fn with_the_bikes_held_nobody_jumps_the_start() {
-        let (mut app, _) = grid(true, [0.0, 2.0, 2.0]);
+        let (mut app, _) = grid(true, 2, [0.0, 2.0, 2.0]);
         app.update();
         assert!(app.world().resource::<Standing>().out.is_empty());
+    }
+
+    #[test]
+    fn the_first_false_starts_send_everybody_back_to_the_grid() {
+        let (mut app, bikes) = grid(false, 2, [0.0, 2.0, 0.0]);
+        let recalls = |app: &mut App| {
+            app.world_mut()
+                .resource_mut::<Messages<RecallToGrid>>()
+                .drain()
+                .count()
+        };
+        for made in 1..=2 {
+            // The lights some way on.
+            app.world_mut().resource_mut::<StartLights>().elapsed = 3.5;
+            app.update();
+            let standing = app.world().resource::<Standing>();
+            assert_eq!(standing.false_starts, vec![1; made], "{made}");
+            assert!(standing.out.is_empty());
+            assert!(app.world().get::<Retired>(bikes[1]).is_none());
+            assert_eq!(recalls(&mut app), 1, "back to the grid");
+            // The lights again from the start, after a pause.
+            let lights = app.world().resource::<StartLights>();
+            assert_eq!(lights.elapsed, -RECALL_PAUSE);
+            assert_eq!(lights.lit(), 0);
+        }
+        // The third: disqualified.
+        app.update();
+        let standing = app.world().resource::<Standing>();
+        assert_eq!(standing.disqualified, [1]);
+        assert_eq!(standing.false_starts, [1, 1]);
+        assert_eq!(recalls(&mut app), 0);
+    }
+
+    #[test]
+    fn free_or_not_nobody_moves_before_the_first_light() {
+        let mut lights = StartLights::new(0.5, LIGHTS);
+        assert!(holds_now(RaceStart::LightsUnheld, &lights));
+        lights.advance(FIRST_LIGHT + 0.1);
+        assert!(!holds_now(RaceStart::LightsUnheld, &lights));
+        assert!(holds_now(RaceStart::Lights, &lights));
+        assert!(!holds_now(RaceStart::Throttle, &StartLights::default()));
     }
 }

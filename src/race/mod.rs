@@ -406,6 +406,9 @@ pub struct Standing {
     /// Of those, the players disqualified for jumping the start (see
     /// [`lights`]).
     pub disqualified: Vec<usize>,
+    /// The players' false starts let off so far, one for each (bikes of
+    /// the roster).
+    pub false_starts: Vec<usize>,
     /// The order of the race now (bikes of the roster), first to last.
     pub order: Vec<usize>,
     /// The laps whose last one has already gone out.

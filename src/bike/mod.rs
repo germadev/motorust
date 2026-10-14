@@ -105,6 +105,7 @@ impl Plugin for BikePlugin {
         app.add_plugins((BikeModelPlugin, GrassKickupPlugin))
             .init_resource::<BikeTuning>()
             .init_resource::<Race>()
+            .add_message::<RecallToGrid>()
             .init_resource::<SplitChoices>()
             .add_systems(OnEnter(GameState::Race), spawn_grid)
             .add_systems(
@@ -129,6 +130,11 @@ impl Plugin for BikePlugin {
             );
     }
 }
+
+/// Every bike back to its grid slot, as a restart does: after a false
+/// start (see [`crate::race::lights`]).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct RecallToGrid;
 
 /// The systems that read the players' controls in the race (and restart
 /// it): other plugins can hold them, as the results of a race do.
@@ -1578,11 +1584,14 @@ fn restart_race(
     )>,
     particles: Query<Entity, Or<KickedUp>>,
     autopiloted: Query<Entity, With<Autopilot>>,
+    mut recalls: MessageReader<RecallToGrid>,
     mut commands: Commands,
 ) {
-    if !settings
-        .controls
-        .just_pressed(Action::Restart, &keyboard, gamepads.iter())
+    let recalled = recalls.read().count() > 0;
+    if !recalled
+        && !settings
+            .controls
+            .just_pressed(Action::Restart, &keyboard, gamepads.iter())
     {
         return;
     }

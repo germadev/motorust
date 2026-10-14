@@ -70,6 +70,9 @@ pub struct Settings {
     pub start: RaceStart,
     /// How many red lights the start has (see [`crate::race::lights`]).
     pub start_lights: u32,
+    /// At the lights without holding the bikes, how many false starts each
+    /// player is let off in a race: the next one disqualifies.
+    pub false_starts: u32,
     /// Whether a race's results go to the middle of the screen once
     /// everybody is in (see [`crate::race::results`]); otherwise they stay
     /// at the top right.
@@ -164,6 +167,10 @@ pub enum RaceStart {
 pub const START_LIGHTS: [u32; 5] = [1, 2, 3, 4, 5];
 pub const DEFAULT_START_LIGHTS: u32 = 5;
 
+/// How many false starts a player can be let off, and how many at first.
+pub const FALSE_STARTS: [u32; 4] = [0, 1, 2, 3];
+pub const DEFAULT_FALSE_STARTS: u32 = 2;
+
 /// The starts that can be chosen, in order.
 pub const RACE_STARTS: [RaceStart; 3] = [
     RaceStart::Lights,
@@ -210,6 +217,7 @@ impl Default for Settings {
             music_enabled: true,
             start: RaceStart::default(),
             start_lights: DEFAULT_START_LIGHTS,
+            false_starts: DEFAULT_FALSE_STARTS,
             centre_results: false,
             difficulty: Difficulty::default(),
             pipelined_rendering: true,
@@ -1327,6 +1335,7 @@ mod tests {
         assert_eq!(partial.controls, Controls::default());
         assert_eq!(partial.start, RaceStart::Lights);
         assert_eq!(partial.start_lights, DEFAULT_START_LIGHTS);
+        assert_eq!(partial.false_starts, DEFAULT_FALSE_STARTS);
         assert!(!partial.centre_results);
         // At the lights, held or not; or at the throttle.
         assert!(RaceStart::Lights.at_lights() && RaceStart::Lights.holds());

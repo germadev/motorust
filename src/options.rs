@@ -17,8 +17,8 @@ use crate::mapping::{
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
 use crate::pause::{DebugOptions, ReturnRate, SteerRate, TurnLimit};
 use crate::settings::{
-    ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES, RACE_STARTS,
-    RESOLUTIONS, START_LIGHTS, Settings, StartedWith, WEB, cycle,
+    ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES,
+    RACE_STARTS, RESOLUTIONS, RaceStart, START_LIGHTS, Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
@@ -212,6 +212,8 @@ enum GameItem {
     RaceStart,
     /// How many red lights the start has.
     StartLights,
+    /// How many false starts are let off, with the bikes free.
+    FalseStarts,
     /// Whether the results go to the middle once everybody is in.
     CentreResults,
 }
@@ -250,6 +252,7 @@ fn game_items() -> Vec<GameItem> {
         GameItem::Difficulty,
         GameItem::RaceStart,
         GameItem::StartLights,
+        GameItem::FalseStarts,
         GameItem::CentreResults,
     ]
 }
@@ -352,12 +355,14 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.difficulty,
                 settings.start,
                 settings.start_lights,
+                settings.false_starts,
                 settings.centre_results,
             ) == (
                 first.language,
                 first.difficulty,
                 first.start,
                 first.start_lights,
+                first.false_starts,
                 first.centre_results,
             )
         }
@@ -397,6 +402,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.difficulty = first.difficulty;
             settings.start = first.start;
             settings.start_lights = first.start_lights;
+            settings.false_starts = first.false_starts;
             settings.centre_results = first.centre_results;
         }
         OptionsTab::Control => *debug = DebugOptions::default(),
@@ -521,6 +527,10 @@ fn use_options_menu(
                 }
                 GameItem::StartLights if change != 0 => {
                     settings.start_lights = cycle(&START_LIGHTS, settings.start_lights, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GameItem::FalseStarts if change != 0 => {
+                    settings.false_starts = cycle(&FALSE_STARTS, settings.false_starts, change);
                     sounds.write(MenuSound::Move);
                 }
                 GameItem::CentreResults if change != 0 => {
@@ -787,6 +797,17 @@ fn show_options_menu(
                             Language::English => "Red start lights",
                         },
                         format!("<  {}  >", settings.start_lights),
+                    )
+                },
+                // Faint unless the bikes are free at the lights.
+                GameItem::FalseStarts => Row {
+                    disabled: settings.start != RaceStart::LightsUnheld,
+                    ..Row::with_value(
+                        match lang {
+                            Language::Spanish => "Salidas nulas permitidas",
+                            Language::English => "False starts let off",
+                        },
+                        format!("<  {}  >", settings.false_starts),
                     )
                 },
                 GameItem::CentreResults => Row::with_value(
