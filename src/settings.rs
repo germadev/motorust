@@ -23,6 +23,7 @@ pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ToggleMute>()
+            .init_resource::<ControlsTest>()
             .add_systems(
                 PreUpdate,
                 gamepad_shortcuts.after(bevy::input::InputSystems),
@@ -1065,6 +1066,16 @@ pub const SHORTCUT_HELD: GamepadButton = GamepadButton::Select;
 pub const FULLSCREEN_BUTTON: GamepadButton = GamepadButton::Start;
 pub const MUTE_BUTTON: GamepadButton = GamepadButton::North;
 
+/// While the controls are tried out (Options > Control > Mapping, Test),
+/// Select with Start ends the test instead of switching fullscreen.
+#[derive(Resource, Clone, Copy, Default, Debug)]
+pub struct ControlsTest {
+    /// Whether they are being tried out.
+    pub on: bool,
+    /// Whether Select with Start was pressed meanwhile, to end it.
+    pub ended: bool,
+}
+
 /// Asks for the sound to be turned off, or back on (M, or Select and Y).
 #[derive(Message, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ToggleMute;
@@ -1126,16 +1137,19 @@ pub fn read_shortcut(
     shortcut
 }
 
-/// The gamepads' shortcuts: fullscreen and sound.
+/// The gamepads' shortcuts: fullscreen (or, trying the controls out, the
+/// end of the test) and sound.
 fn gamepad_shortcuts(
     mut gamepads: Query<(Entity, &mut Gamepad)>,
     mut holds: Local<bevy::platform::collections::HashMap<Entity, ShortcutHold>>,
     mut settings: ResMut<Settings>,
+    mut test: ResMut<ControlsTest>,
     mut mute: MessageWriter<ToggleMute>,
 ) {
     for (entity, mut gamepad) in &mut gamepads {
         let hold = holds.entry(entity).or_default();
         match read_shortcut(gamepad.bypass_change_detection().digital_mut(), hold) {
+            Some(Shortcut::Fullscreen) if test.on => test.ended = true,
             Some(Shortcut::Fullscreen) => settings.fullscreen = !settings.fullscreen,
             Some(Shortcut::Mute) => {
                 mute.write(ToggleMute);
@@ -1504,6 +1518,31 @@ mod tests {
             window.mode,
             WindowMode::BorderlessFullscreen(MonitorSelection::Current)
         );
+    }
+
+    #[test]
+    fn trying_the_controls_select_with_start_ends_the_test_instead() {
+        let press = |test: bool| {
+            let mut app = App::new();
+            app.add_message::<ToggleMute>()
+                .insert_resource(Settings::default())
+                .insert_resource(ControlsTest {
+                    on: test,
+                    ended: false,
+                })
+                .add_systems(Update, gamepad_shortcuts);
+            let mut pad = Gamepad::default();
+            pad.digital_mut().press(GamepadButton::Select);
+            pad.digital_mut().press(GamepadButton::Start);
+            app.world_mut().spawn(pad);
+            app.update();
+            (
+                app.world().resource::<Settings>().fullscreen,
+                app.world().resource::<ControlsTest>().ended,
+            )
+        };
+        assert_eq!(press(false), (true, false));
+        assert_eq!(press(true), (false, true));
     }
 
     #[test]

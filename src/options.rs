@@ -12,13 +12,13 @@ use crate::legend::{
 };
 use crate::locale::{LANGUAGES, Language};
 use crate::mapping::{
-    Held, MapDevice, Mapping, MappingLook, PAD_HEIGHT, spawn_mapping, use_mapping,
+    Held, MapDevice, Mapping, MappingLook, PAD_HEIGHT, Step, spawn_mapping, use_mapping,
 };
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
 use crate::pause::{DebugOptions, ReturnRate, SteerRate, TurnLimit};
 use crate::settings::{
-    DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES, RACE_STARTS, RESOLUTIONS,
-    START_LIGHTS, Settings, StartedWith, WEB, cycle,
+    ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES, RACE_STARTS,
+    RESOLUTIONS, START_LIGHTS, Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
@@ -35,6 +35,7 @@ impl Plugin for OptionsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<OptionsMenu>()
             .init_resource::<PadArts>()
+            .init_resource::<ControlsTest>()
             .add_systems(
                 Update,
                 (
@@ -43,9 +44,24 @@ impl Plugin for OptionsPlugin {
                         .in_set(OptionsInput),
                     finish_pad_arts,
                     show_options_menu,
+                    mark_controls_test,
                 )
                     .chain(),
             );
+    }
+}
+
+/// Whether the controls are being tried out, for the gamepad's shortcuts
+/// (see [`ControlsTest`]): what Select with Start did meanwhile has been
+/// read by then.
+fn mark_controls_test(menu: Res<OptionsMenu>, mut test: ResMut<ControlsTest>) {
+    let on = menu.is_open
+        && menu
+            .mapping
+            .as_ref()
+            .is_some_and(|mapping| mapping.step == Step::Test);
+    if test.on != on || test.ended {
+        *test = ControlsTest { on, ended: false };
     }
 }
 
@@ -409,6 +425,7 @@ fn use_options_menu(
     mut gamepads: ResMut<Gamepads>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
+    test: Res<ControlsTest>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
     let request = input.read();
@@ -424,6 +441,7 @@ fn use_options_menu(
         let held = Held {
             keyboard: &input.keyboard,
             gamepads: input.gamepads.iter().collect(),
+            select_start: test.ended,
         };
         if use_mapping(
             mapping,
@@ -948,6 +966,7 @@ fn show_options_menu(
     let held = Held {
         keyboard: &keyboard,
         gamepads: gamepads.iter().collect(),
+        select_start: false,
     };
     let mut held_down: Vec<String> = keyboard
         .get_pressed()
