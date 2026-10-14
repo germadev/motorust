@@ -107,34 +107,39 @@ fn main() {
     // Los ajustes guardados deciden cómo se abre la ventana.
     let settings = settings::Settings::load();
     let mut app = App::new();
-    app.add_plugins(
-        DefaultPlugins
-            .set(WindowPlugin {
-                primary_window: Some(settings.window()),
-                ..default()
-            })
-            // Los mandos los lee `gamepads`, que además los vuelve a buscar.
-            .disable::<bevy::gilrs::GilrsPlugin>(),
-    )
-    .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
-    .insert_resource(settings)
-    .add_plugins((
-        world::WorldPlugin,
-        bike::BikePlugin,
-        camera::ChaseCameraPlugin,
-        gamepads::GamepadsPlugin,
-        hud::HudPlugin,
-        menu::MenuPlugin,
-        lobby::LobbyPlugin,
-        minimap::MinimapPlugin,
-        welcome::WelcomePlugin,
-        track_select::TrackSelectPlugin,
-        pause::PausePlugin,
-        options::OptionsPlugin,
-        settings::SettingsPlugin,
-        sound::SoundPlugin,
-        ui::UiPlugin,
-    ));
+    let plugins = DefaultPlugins
+        .set(WindowPlugin {
+            primary_window: Some(settings.window()),
+            ..default()
+        })
+        // Los mandos los lee `gamepads`, que además los vuelve a buscar.
+        .disable::<bevy::gilrs::GilrsPlugin>();
+    // Input lag first: without pipelined rendering each frame is drawn
+    // right after it is simulated from the controls just read, instead of
+    // while the next one is being simulated, a frame later. It costs some
+    // frame rate when the CPU is the bottleneck.
+    #[cfg(not(target_arch = "wasm32"))]
+    let plugins = plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+    app.add_plugins(plugins)
+        .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
+        .insert_resource(settings)
+        .add_plugins((
+            world::WorldPlugin,
+            bike::BikePlugin,
+            camera::ChaseCameraPlugin,
+            gamepads::GamepadsPlugin,
+            hud::HudPlugin,
+            menu::MenuPlugin,
+            lobby::LobbyPlugin,
+            minimap::MinimapPlugin,
+            welcome::WelcomePlugin,
+            track_select::TrackSelectPlugin,
+            pause::PausePlugin,
+            options::OptionsPlugin,
+            settings::SettingsPlugin,
+            sound::SoundPlugin,
+            ui::UiPlugin,
+        ));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);
     app.run();

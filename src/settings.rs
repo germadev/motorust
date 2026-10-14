@@ -4,9 +4,12 @@
 //! macOS, `~/Library/Application Support/motorust`); en la web, en el
 //! almacenamiento del navegador.
 
+use std::num::NonZero;
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
+use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
+use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::window::{MonitorSelection, PresentMode, PrimaryWindow, WindowMode};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +22,13 @@ impl Plugin for SettingsPlugin {
         app.add_systems(Update, (toggle_fullscreen, apply_settings).chain());
         // En la web, el navegador decide cuándo se dibuja cada fotograma.
         if !WEB {
-            app.add_systems(Last, limit_frames);
+            // The cap is kept where the frame is shown, in the render world.
+            app.init_resource::<FrameCap>()
+                .add_plugins(ExtractResourcePlugin::<FrameCap>::default())
+                .add_systems(Update, cap_frames);
+            if let Some(render) = app.get_sub_app_mut(RenderApp) {
+                render.add_systems(Render, limit_frames.in_set(RenderSystems::PostCleanup));
+            }
             #[cfg(all(not(target_arch = "wasm32"), not(windows)))]
             app.add_systems(Update, set_window_icon);
         }
@@ -572,6 +581,9 @@ pub fn button_name(button: GamepadButton, lang: Language) -> String {
     name.into()
 }
 
+/// How many frames may wait to go to the GPU (see [`Settings::window`]).
+pub const FRAMES_QUEUED: u32 = 1;
+
 impl Settings {
     /// La ventana del juego con estos ajustes.
     pub fn window(&self) -> Window {
@@ -580,6 +592,10 @@ impl Settings {
             // En la web se dibuja en el canvas de la página y lo llena.
             canvas: WEB.then(|| "#motorust".into()),
             fit_canvas_to_parent: true,
+            // Input lag first: at most one frame waits to go to the GPU, so
+            // what is shown is never two frames behind the controls (2 by
+            // default).
+            desired_maximum_frame_latency: NonZero::new(FRAMES_QUEUED),
             ..default()
         };
         self.configure(&mut window);
@@ -778,11 +794,32 @@ fn apply_settings(
     settings.save();
 }
 
-/// Con un límite fijo, al acabar cada fotograma se espera lo que falte para
-/// no pasar de él. Cuenta desde el plazo anterior, no desde que se acabó la
-/// espera, así el ritmo no se va retrasando.
-fn limit_frames(settings: Res<Settings>, mut deadline: Local<Option<Instant>>) {
-    let FpsLimit::Cap(fps) = settings.fps else {
+/// The frame rate cap chosen, if any ([`FpsLimit::Cap`]), copied into the
+/// render world, where [`limit_frames`] keeps to it.
+#[derive(Resource, Clone, Copy, Default, PartialEq, Eq, Debug, ExtractResource)]
+pub struct FrameCap(pub Option<u32>);
+
+fn cap_frames(settings: Res<Settings>, mut cap: ResMut<FrameCap>) {
+    let wanted = FrameCap(match settings.fps {
+        FpsLimit::Cap(fps) => Some(fps),
+        FpsLimit::Screen | FpsLimit::Unlimited => None,
+    });
+    if *cap != wanted {
+        *cap = wanted;
+    }
+}
+
+/// With a fixed cap, waits whatever is left of each frame so as not to go
+/// over it. It counts from the previous deadline, not from when the wait
+/// ended, so the pace does not drift.
+///
+/// It waits right after the frame has been shown, in the render world:
+/// then the next frame starts at once, reading the controls as they are
+/// after the wait, and is shown as soon as it is drawn. Waiting before the
+/// frame is drawn (at the end of the main world's update) would show
+/// controls read before the wait, that much later.
+fn limit_frames(cap: Res<FrameCap>, mut deadline: Local<Option<Instant>>) {
+    let FrameCap(Some(fps)) = *cap else {
         *deadline = None;
         return;
     };
@@ -920,7 +957,8 @@ mod tests {
             fps: FpsLimit::Cap(50),
             ..default()
         })
-        .add_systems(Update, limit_frames);
+        .init_resource::<FrameCap>()
+        .add_systems(Update, (cap_frames, limit_frames).chain());
         let start = Instant::now();
         for _ in 0..6 {
             app.update();
