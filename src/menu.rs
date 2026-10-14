@@ -18,6 +18,7 @@ use crate::hud::UiFont;
 use crate::legend::{KeyPrompt, Keys, ScreenLegend, menu_prompts, show_screen_legend};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::locale::Language;
+use crate::race::Rules;
 use crate::settings::Settings;
 use crate::track::Track;
 use crate::ui::{InputDevice, MenuInput, MenuSound, UiIcons, current_active_device};
@@ -31,6 +32,9 @@ pub enum GameState {
     Welcome,
     /// Elegir jugador y control (2 jugadores locales).
     Lobby,
+    /// Choosing what to play: the championship, a race, against the
+    /// clock... ([`crate::modes`]).
+    Modes,
     /// Elegir pista.
     Tracks,
     /// Elegir moto y piloto.
@@ -646,7 +650,15 @@ fn choose(
     mut sounds: MessageWriter<MenuSound>,
     mut input: MenuInput,
     mut stick_hold: Local<StickHold>,
+    rules: Res<Rules>,
 ) {
+    // Back to choosing the track, or in a championship (whose tracks are
+    // not chosen) to the modes.
+    let back_to = if rules.mode.is_championship() {
+        GameState::Modes
+    } else {
+        GameState::Tracks
+    };
     if *game_mode == GameMode::SplitScreen {
         let stick = &mut *stick_hold;
         let p1_action = read_player_binding(config.p1, &keyboard, &gamepads, &mut stick.p1);
@@ -694,7 +706,7 @@ fn choose(
             && (p1_action.back || p2_action.back)
         {
             sounds.write(MenuSound::Move);
-            next.set(GameState::Tracks);
+            next.set(back_to);
         }
     } else {
         let request = input.read();
@@ -706,7 +718,7 @@ fn choose(
             next.set(GameState::Race);
         } else if request.back {
             sounds.write(MenuSound::Move);
-            next.set(GameState::Tracks);
+            next.set(back_to);
         }
     }
 }
@@ -1008,6 +1020,7 @@ mod tests {
             .init_resource::<UiIcons>()
             .init_resource::<CurrentCircuit>()
             .init_resource::<CameraGlide>()
+            .init_resource::<Rules>()
             .add_plugins(crate::camera::ChaseCameraPlugin)
             .add_plugins(crate::bike::BikePlugin)
             .add_plugins(MenuPlugin);

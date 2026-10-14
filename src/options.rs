@@ -6,7 +6,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
-use crate::legend::{Keys, menu_prompts, spawn_legend};
+use crate::legend::{Keys, menu_prompts, section_badges, spawn_legend, spawn_lone_badge};
 use crate::locale::{LANGUAGES, Language};
 use crate::pause::DebugOptions;
 use crate::settings::{
@@ -85,6 +85,17 @@ impl OptionsTab {
     pub fn next(self, step: i32) -> Self {
         cycle(&TABS, self, step)
     }
+
+    /// The colour of each section: its tab, the edge of the panel and the
+    /// option chosen in it.
+    pub fn accent(self) -> Color {
+        match self {
+            OptionsTab::Game => Color::srgb(1.0, 0.72, 0.18),
+            OptionsTab::Control => Color::srgb(0.22, 0.76, 1.0),
+            OptionsTab::Sound => Color::srgb(1.0, 0.38, 0.66),
+            OptionsTab::Graphics => Color::srgb(0.36, 0.9, 0.44),
+        }
+    }
 }
 
 /// Estado global del menú de opciones.
@@ -92,6 +103,9 @@ impl OptionsTab {
 pub struct OptionsMenu {
     pub is_open: bool,
     pub tab: OptionsTab,
+    /// Whether the row of sections is chosen, rather than an option of the
+    /// section (`selected`): the arrows across then change the section.
+    pub on_tabs: bool,
     pub selected: usize,
     pub capture: Option<Capture>,
     pub return_to: OptionsReturn,
@@ -101,6 +115,7 @@ pub struct OptionsMenu {
 impl OptionsMenu {
     pub fn open(&mut self, return_to: OptionsReturn) {
         self.is_open = true;
+        self.on_tabs = false;
         self.selected = 0;
         self.capture = None;
         self.return_to = return_to;
@@ -109,6 +124,37 @@ impl OptionsMenu {
     pub fn close(&mut self) {
         self.is_open = false;
         self.capture = None;
+    }
+
+    /// Moves round the menu: up and down (`step`) through the row of
+    /// sections and the options of the section, round and round; across
+    /// (`side`) on the row of sections changes the section, and confirming
+    /// there goes down to its first option. `count` is how many options
+    /// the section has. Whether it did anything.
+    fn navigate(&mut self, step: i32, side: i32, confirm: bool, count: usize) -> bool {
+        if self.on_tabs {
+            if side != 0 {
+                self.tab = self.tab.next(side);
+                self.selected = 0;
+                return true;
+            }
+            if step != 0 || confirm {
+                self.on_tabs = false;
+                self.selected = if step < 0 { count - 1 } else { 0 };
+                return true;
+            }
+            return false;
+        }
+        if step == 0 {
+            return false;
+        }
+        let next = self.selected as i32 + step;
+        if next < 0 || next >= count as i32 {
+            self.on_tabs = true;
+        } else {
+            self.selected = next as usize;
+        }
+        true
     }
 }
 
@@ -268,12 +314,15 @@ fn use_options_menu(
         return;
     }
 
-    // Navegación vertical
+    // Up and down through the row of sections and the options; across on
+    // the row of sections, another section.
     let count = tab_items_count(options_menu.tab);
-    if request.step != 0 {
-        options_menu.selected =
-            (options_menu.selected as i32 + request.step).rem_euclid(count as i32) as usize;
+    let on_tabs = options_menu.on_tabs;
+    if options_menu.navigate(request.step, request.side, request.confirm, count) {
         sounds.write(MenuSound::Move);
+    }
+    if on_tabs || request.step != 0 {
+        return;
     }
 
     let change = if request.side != 0 {
@@ -397,6 +446,60 @@ fn use_options_menu(
 
 #[derive(Component)]
 struct OptionsModal;
+
+/// How far the text of each option is from the sides of its row (px): the
+/// keys that change the section stand in line with it.
+const ROW_INSET: f32 = 20.0;
+
+/// How thick the edge of the chosen tab is (px). Every tab keeps room for
+/// it, so the tabs do not change size when the focus comes and goes.
+const TAB_EDGE: f32 = 2.0;
+
+/// A section's tab, in its colour: the one shown (`active`) filled with
+/// it, the others faintly. When the row of sections is chosen (`on_tabs`),
+/// the one shown is edged in a lighter tone of its colour.
+fn spawn_tab(
+    tabs: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    tab: OptionsTab,
+    active: bool,
+    on_tabs: bool,
+    lang: Language,
+) {
+    let color = tab.accent();
+    let fill = if active {
+        color
+    } else {
+        color.with_alpha(0.16)
+    };
+    // The edge of the others is their fill, so they look as big.
+    let edge = if active && on_tabs {
+        color.mix(&Color::WHITE, 0.6)
+    } else {
+        fill
+    };
+    tabs.spawn((
+        Node {
+            padding: UiRect::axes(px(18.0 - TAB_EDGE), px(7.0 - TAB_EDGE)),
+            border: UiRect::all(px(TAB_EDGE)),
+            border_radius: BorderRadius::all(px(10)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(fill),
+        BorderColor::all(edge),
+    ))
+    .with_child((
+        Text::new(tab.name(lang)),
+        text_font(font, 18.0),
+        TextColor(if active {
+            Color::srgb(0.06, 0.05, 0.04)
+        } else {
+            color.mix(&Color::WHITE, 0.55)
+        }),
+    ));
+}
 
 #[allow(clippy::too_many_arguments)]
 fn show_options_menu(
@@ -551,8 +654,9 @@ fn show_options_menu(
     // Built again only when something shown changes (the window, for
     // example, changes with every move of the mouse).
     let wanted = format!(
-        "{:?} {} {:?} {:?} {:?} {}",
+        "{:?} {} {} {:?} {:?} {:?} {}",
         options_menu.tab,
+        options_menu.on_tabs,
         options_menu.selected,
         lang,
         active_dev,
@@ -570,14 +674,16 @@ fn show_options_menu(
         commands.entity(entity).despawn();
     }
 
+    let accent = options_menu.tab.accent();
+    // The keys that change the section go beside the tabs instead.
     let prompts = menu_prompts(
         active_dev,
         &[
             (Keys::Confirm, lang.hint_accept()),
             (Keys::Back, lang.back()),
-            (Keys::Tabs, lang.hint_section()),
         ],
     );
+    let [previous, next] = section_badges(active_dev);
     commands
         .spawn((
             OptionsModal,
@@ -615,7 +721,8 @@ fn show_options_menu(
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.94)),
-                    BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.15)),
+                    // Edged in the colour of the section.
+                    BorderColor::all(accent.with_alpha(0.55)),
                 ))
                 .with_children(|panel| {
                     // Título
@@ -633,50 +740,54 @@ fn show_options_menu(
                         },
                     ));
 
-                    // Barra de pestañas
+                    // Barra de pestañas: the keys that change the section
+                    // at its ends, in line with the text of the options,
+                    // and the sections in the middle.
                     panel
                         .spawn((Node {
                             flex_direction: FlexDirection::Row,
-                            justify_content: JustifyContent::Center,
-                            column_gap: px(10),
+                            justify_content: JustifyContent::SpaceBetween,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::horizontal(px(ROW_INSET)),
                             margin: UiRect::bottom(px(6)),
                             ..default()
                         },))
                         .with_children(|tab_bar| {
-                            for tab in TABS {
-                                let is_active = tab == options_menu.tab;
-                                tab_bar
-                                    .spawn((
-                                        Node {
-                                            padding: UiRect::axes(px(18), px(7)),
-                                            border_radius: BorderRadius::all(px(10)),
-                                            border: UiRect::all(px(1)),
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                            ..default()
-                                        },
-                                        BackgroundColor(if is_active {
-                                            Color::srgba(1.0, 0.8, 0.2, 0.95)
-                                        } else {
-                                            Color::srgba(1.0, 1.0, 1.0, 0.07)
-                                        }),
-                                        BorderColor::all(if is_active {
-                                            Color::srgba(1.0, 0.85, 0.3, 1.0)
-                                        } else {
-                                            Color::srgba(1.0, 1.0, 1.0, 0.12)
-                                        }),
-                                    ))
-                                    .with_child((
-                                        Text::new(tab.name(lang)),
-                                        text_font(&font, 18.0),
-                                        TextColor(if is_active {
-                                            Color::srgb(0.08, 0.06, 0.02)
-                                        } else {
-                                            Color::WHITE
-                                        }),
-                                    ));
-                            }
+                            // The key for the section before, on the left.
+                            spawn_lone_badge(tab_bar, &font, &icons, active_dev, &previous);
+                            tab_bar
+                                .spawn(Node {
+                                    flex_direction: FlexDirection::Row,
+                                    align_items: AlignItems::Center,
+                                    column_gap: px(10),
+                                    ..default()
+                                })
+                                .with_children(|tabs| {
+                                    for tab in TABS {
+                                        spawn_tab(
+                                            tabs,
+                                            &font,
+                                            tab,
+                                            tab == options_menu.tab,
+                                            options_menu.on_tabs,
+                                            lang,
+                                        );
+                                    }
+                                });
+                            // The key for the section after, on the right.
+                            spawn_lone_badge(tab_bar, &font, &icons, active_dev, &next);
                         });
+                    // A line in the colour of the section under the tabs.
+                    panel.spawn((
+                        Node {
+                            height: px(2),
+                            min_height: px(2),
+                            flex_shrink: 0.0,
+                            margin: UiRect::bottom(px(4)),
+                            ..default()
+                        },
+                        BackgroundColor(accent.with_alpha(0.7)),
+                    ));
 
                     // Lista de opciones de la pestaña
                     panel
@@ -688,8 +799,15 @@ fn show_options_menu(
                         },))
                         .with_children(|items_container| {
                             for (index, row) in rows.iter().enumerate() {
-                                let chosen = index == options_menu.selected;
-                                let (chosen_background, chosen_text) = row.chosen_colors();
+                                let chosen =
+                                    !options_menu.on_tabs && index == options_menu.selected;
+                                // Chosen, in the colour of the section.
+                                let (chosen_background, chosen_text) =
+                                    if row.disabled || row.danger {
+                                        row.chosen_colors()
+                                    } else {
+                                        (accent, Color::srgb(0.06, 0.05, 0.04))
+                                    };
                                 let color = TextColor(if chosen {
                                     chosen_text
                                 } else if row.disabled {
@@ -708,7 +826,7 @@ fn show_options_menu(
                                             },
                                             align_items: AlignItems::Center,
                                             column_gap: px(30),
-                                            padding: UiRect::axes(px(20), px(5)),
+                                            padding: UiRect::axes(px(ROW_INSET), px(5)),
                                             border_radius: BorderRadius::all(px(8)),
                                             ..default()
                                         },
@@ -762,4 +880,53 @@ fn show_options_menu(
             // Leyenda de controles al pie
             spawn_legend(modal, &font, &icons, active_dev, &prompts);
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_arrows_reach_the_row_of_sections_and_change_section_there() {
+        let mut menu = OptionsMenu::default();
+        menu.open(OptionsReturn::Welcome);
+        let count = tab_items_count(menu.tab);
+        // Up from the first option: the row of sections.
+        assert!(menu.navigate(-1, 0, false, count));
+        assert!(menu.on_tabs);
+        // Across there: the next section, and the one before.
+        assert!(menu.navigate(0, 1, false, count));
+        assert_eq!(menu.tab, OptionsTab::Control);
+        assert!(menu.navigate(0, -1, false, count));
+        assert!(menu.navigate(0, -1, false, count));
+        assert_eq!(menu.tab, OptionsTab::Graphics);
+        assert!(menu.on_tabs);
+        // Down: its first option; up from the row: its last one.
+        let count = tab_items_count(menu.tab);
+        assert!(menu.navigate(1, 0, false, count));
+        assert!(!menu.on_tabs);
+        assert_eq!(menu.selected, 0);
+        menu.on_tabs = true;
+        assert!(menu.navigate(-1, 0, false, count));
+        assert_eq!(menu.selected, count - 1);
+        // Down from the last option: round to the row of sections.
+        assert!(menu.navigate(1, 0, false, count));
+        assert!(menu.on_tabs);
+        // Confirming on the row goes down into the section.
+        assert!(menu.navigate(0, 0, true, count));
+        assert!(!menu.on_tabs && menu.selected == 0);
+        // Across on an option is left to the option.
+        assert!(!menu.navigate(0, 1, false, count));
+        assert_eq!(menu.tab, OptionsTab::Graphics);
+    }
+
+    #[test]
+    fn each_section_has_its_own_colour() {
+        let colors: Vec<Color> = TABS.iter().map(|tab| tab.accent()).collect();
+        for (i, a) in colors.iter().enumerate() {
+            for b in &colors[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+    }
 }

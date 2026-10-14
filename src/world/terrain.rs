@@ -209,6 +209,29 @@ impl Terrain {
         classify(self.height(point), self.normal(point))
     }
 
+    /// The kind of ground drawn at a point: that of the triangle of the
+    /// terrain's meshes it is in (see [`Self::meshes`]), which is what the
+    /// player sees there.
+    pub fn ground_drawn(&self, point: Vec2) -> Ground {
+        let (i, tx) = locate(&self.xs, point.x);
+        let (j, tz) = locate(&self.zs, point.y);
+        let width = self.xs.len();
+        let position =
+            |(i, j): (usize, usize)| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
+        let corners = [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)];
+        // The same two triangles per cell as the meshes, split along the
+        // diagonal from (i + 1, j) to (i, j + 1).
+        let triangle = if tx + tz <= 1.0 { [0, 1, 2] } else { [2, 1, 3] };
+        let [a, b, c] = triangle.map(|k| position(corners[k]));
+        let face = (b - a).cross(c - a).normalize();
+        classify((a.y + b.y + c.y) / 3.0, face)
+    }
+
+    /// What the steep faces are made of.
+    pub fn soil(&self) -> Soil {
+        self.soil
+    }
+
     /// Mallas del terreno, una por tipo de suelo.
     /// The ground's meshes, by kind of ground. Pure data: they can be worked
     /// out away from the main thread.

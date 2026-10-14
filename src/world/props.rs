@@ -496,7 +496,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
     let mut variants = Vec::with_capacity(VARIANTS as usize);
     for variant in 0..VARIANTS {
         let seed = variant * 47 + kind as u32 * 17;
-        let v = match kind {
+        let (wood, crowns) = match kind {
             Species::UmbrellaPine => {
                 let (dx, dz) = match variant {
                     0 => (0.3, 0.0),
@@ -538,7 +538,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(2.5, 1.1, 2.5)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Cypress => {
                 let (scale_w, scale_h) = match variant {
@@ -558,7 +558,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                     Transform::from_xyz(0.0, 4.8, 0.0)
                         .with_scale(Vec3::new(scale_w, scale_h, scale_w)),
                 )];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Olive => {
                 let (dx, dz) = match variant {
@@ -601,7 +601,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(1.7, 1.3, 1.7)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Broadleaf => {
                 let (dx, dz) = match variant {
@@ -644,7 +644,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(2.1, 1.9, 2.1)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Tall => {
                 let (h1, h2) = match variant {
@@ -669,7 +669,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                         Transform::from_xyz(0.0, h1, 0.0).with_scale(Vec3::new(3.4, 4.0, 3.4)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::MaritimePine => {
                 let (dx, dz) = match variant {
@@ -712,7 +712,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(2.1, 1.1, 2.1)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Poplar => {
                 let (scale_w, scale_h) = match variant {
@@ -732,7 +732,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                     Transform::from_xyz(0.0, 6.0, 0.0)
                         .with_scale(Vec3::new(scale_w, scale_h, scale_w)),
                 )];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
             Species::Almond => {
                 let (dx, dz) = match variant {
@@ -775,10 +775,10 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                             .with_scale(Vec3::new(1.6, 1.2, 1.6)),
                     ),
                 ];
-                TreeVariant { wood, crowns }
+                (wood, crowns)
             }
         };
-        variants.push(v);
+        variants.push(TreeVariant { wood, crowns });
     }
     variants
 }
@@ -810,7 +810,8 @@ const BARK: Color = Color::srgb(0.32, 0.22, 0.15);
 
 /// A tree variant as one mesh: its wood painted the colour of bark and its
 /// crowns, so each tree is one entity to draw, not one per branch and
-/// crown.
+/// crown. Solid, and the same near and far: nothing changes as it comes
+/// closer, so nothing pops in.
 fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
     let bark = BARK.to_linear().to_f32_array();
     let mut merged: Option<Mesh> = None;
@@ -1432,9 +1433,10 @@ enum CrownStyle {
 /// Tree crown sculpted according to species style, with volumetric shading
 /// and directional sun plus ambient light illumination.
 fn crown_mesh(seed: u32, style: CrownStyle, (shade, sunlit): (Color, Color)) -> Mesh {
+    // Coarse: thousands of trees are drawn, and into the shadows too.
     let mut mesh = Sphere::new(1.0)
         .mesh()
-        .ico(3)
+        .ico(2)
         .expect("la subdivisión de la esfera es válida");
     let offset = Vec2::new(seed as f32 * 3.7, seed as f32 * 1.3);
     let positions: Vec<[f32; 3]> = mesh
@@ -2090,6 +2092,43 @@ fn parasol_mesh() -> Mesh {
 mod tests {
     use super::*;
     use crate::circuits::CIRCUITS;
+    use bevy::mesh::VertexAttributeValues;
+
+    #[test]
+    fn each_tree_is_one_solid_mesh_of_bark_and_foliage() {
+        let mut meshes = Assets::<Mesh>::default();
+        let bark = BARK.to_linear().to_f32_array();
+        for species in [
+            Species::UmbrellaPine,
+            Species::Cypress,
+            Species::Olive,
+            Species::Tall,
+            Species::Broadleaf,
+            Species::MaritimePine,
+            Species::Poplar,
+            Species::Almond,
+        ] {
+            for variant in build_tree_variants(species, &mut meshes) {
+                let tree = merged_variant(&meshes, &variant);
+                let positions = tree
+                    .attribute(Mesh::ATTRIBUTE_POSITION)
+                    .and_then(|p| p.as_float3())
+                    .unwrap();
+                let Some(VertexAttributeValues::Float32x4(colors)) =
+                    tree.attribute(Mesh::ATTRIBUTE_COLOR)
+                else {
+                    panic!("{species:?}: a tree is painted in its vertices");
+                };
+                assert_eq!(colors.len(), positions.len());
+                // Its wood is bark and its crowns are not, and they stand
+                // over the ground.
+                let wood = colors.iter().filter(|c| **c == bark).count();
+                assert!(wood > 0 && wood < colors.len(), "{species:?}");
+                let top = positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
+                assert!(top > 3.0, "{species:?}: {top}");
+            }
+        }
+    }
 
     #[test]
     fn every_circuit_gets_its_houses() {

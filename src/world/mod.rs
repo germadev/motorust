@@ -4,6 +4,8 @@
 
 mod cavern;
 mod desert;
+mod foliage;
+mod lamps;
 mod landmarks;
 mod lettering;
 mod mine;
@@ -12,20 +14,26 @@ mod quads;
 mod road;
 pub mod scenery;
 mod sea;
+mod shoulders;
 pub mod sky;
 mod structures;
 mod terrain;
 mod textures;
+mod tufts;
 
 use bevy::asset::embedded_asset;
 use bevy::pbr::PbrPlugin;
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
-use bevy::{light::CascadeShadowConfigBuilder, prelude::*, transform::TransformSystems};
+use bevy::tasks::{Task, TaskPool, TaskPoolBuilder, block_on, poll_once};
+use bevy::{
+    light::{CascadeShadowConfigBuilder, NotShadowCaster},
+    prelude::*,
+    transform::TransformSystems,
+};
 
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
 use crate::settings::WEB;
-use crate::track::Track;
+use crate::track::{Surface, Track};
 pub use textures::generate_mipmaps;
 
 pub struct WorldPlugin;
@@ -41,9 +49,10 @@ impl Plugin for WorldPlugin {
             app.init_asset::<sea::SeaMaterial>();
         }
         let current = CurrentCircuit::default();
+        app.add_plugins(lamps::LampsPlugin);
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
-            .init_resource::<TrackEdges>()
+            .init_resource::<Roadsides>()
             .init_resource::<Preparing>()
             .init_resource::<textures::WorldTextures>()
             .init_resource::<Sea>()
@@ -64,6 +73,9 @@ impl Plugin for WorldPlugin {
             )
             .add_systems(OnEnter(GameState::Tracks), cache_all_circuits)
             .add_systems(OnExit(GameState::Tracks), unload_unused_circuits)
+            // A championship goes from track to track without choosing
+            // them: the one left behind goes when the next race starts.
+            .add_systems(OnEnter(GameState::Race), unload_unused_circuits)
             .add_systems(
                 PostUpdate,
                 sky::follow_camera.before(TransformSystems::Propagate),
@@ -71,11 +83,28 @@ impl Plugin for WorldPlugin {
     }
 }
 
-/// Where the solid edge of each circuit built so far is (see
-/// [`Track::set_edges`]), by its index in [`CIRCUITS`]: it comes from the
-/// terrain, which is only built once.
+/// What lies beside the roads of each circuit built so far (see
+/// [`Roadside`]), by its index in [`CIRCUITS`]: it comes from the terrain,
+/// which is only built once.
 #[derive(Resource, Default)]
-struct TrackEdges(std::collections::HashMap<usize, Vec<Vec<[f32; 2]>>>);
+struct Roadsides(std::collections::HashMap<usize, Roadside>);
+
+/// What lies beside the roads of a circuit: where their solid edge is (see
+/// [`Track::set_edges`]) and what their shoulders are made of (see
+/// [`Track::set_shoulders`]).
+#[derive(Clone)]
+struct Roadside {
+    edges: Vec<Vec<[f32; 2]>>,
+    shoulders: Vec<Vec<[Surface; 2]>>,
+}
+
+impl Roadside {
+    /// Gives the circuit's track what lies beside its roads.
+    fn apply(&self, track: &mut Track) {
+        track.set_edges(self.edges.clone());
+        track.set_shoulders(self.shoulders.clone());
+    }
+}
 
 /// Cada circuito cargado tiene su entidad raíz con su índice en [`CIRCUITS`].
 #[derive(Component, Debug, PartialEq, Eq)]
@@ -93,8 +122,8 @@ impl FromWorld for Sea {
 
 /// What can be worked out for a circuit away from the main thread, which
 /// is most of the work: its track, its terrain, the terrain's meshes, where
-/// its shore is and its solid edge. The entities and assets are made on the
-/// main thread.
+/// its shore is and what lies beside its roads. The entities and assets are
+/// made on the main thread.
 struct Prepared {
     index: usize,
     track: Track,
@@ -102,9 +131,13 @@ struct Prepared {
     ground: [(terrain::Ground, Mesh); 3],
     shore: sea::ShoreMap,
     shore_image: Image,
-    edges: Vec<Vec<[f32; 2]>>,
+    roadside: Roadside,
     /// The meshes of the roads, tunnels and bridges, with their materials.
     pieces: Vec<(Mesh, StandardMaterial)>,
+    /// The lamps of its tunnels and mine (see [`lamps`]).
+    lamps: Vec<lamps::Lamp>,
+    /// Its grass beside the roads, drawn only near the camera.
+    grass: Vec<tufts::GrassPiece>,
     trees: props::TreePlan,
 }
 
@@ -135,11 +168,20 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     let ground = terrain.meshes();
     let shore = sea::ShoreMap::new(&terrain, &track);
     let shore_image = shore.image();
-    let edges = terrain.track_edges(&track);
+    let roadside = Roadside {
+        edges: terrain.track_edges(&track),
+        shoulders: shoulders::track_shoulders(&track, &terrain, scenery),
+    };
     let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
-    pieces.extend(structures::structure_pieces(
-        &track, &terrain, scenery, textures,
-    ));
+    let (structures, lamps) = structures::structure_pieces(&track, &terrain, scenery, textures);
+    pieces.extend(structures);
+    let grass = tufts::tuft_pieces(
+        &track,
+        &terrain,
+        &roadside.shoulders,
+        &roadside.edges,
+        textures,
+    );
     let trees = props::plan_trees(&track, &terrain, scenery);
     structures::draw_signs(scenery);
     Prepared {
@@ -149,10 +191,27 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         ground,
         shore,
         shore_image,
-        edges,
+        roadside,
         pieces,
+        lamps,
+        grass,
         trees,
     }
+}
+
+/// The thread the other circuits are prepared on in the background: their
+/// own, not Bevy's async compute pool. The render pipelines are compiled
+/// there, and behind a circuit being prepared (seconds of work) they would
+/// wait: nothing new would be drawn until it was ready, the screenshots
+/// included.
+fn circuit_pool() -> &'static TaskPool {
+    static POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        TaskPoolBuilder::new()
+            .num_threads(1)
+            .thread_name("Circuits".into())
+            .build()
+    })
 }
 
 /// The circuits being prepared in the background, by index in [`CIRCUITS`].
@@ -170,7 +229,7 @@ fn cache_all_circuits(
     mut preparing: ResMut<Preparing>,
 ) {
     let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
-    let pool = AsyncComputeTaskPool::get();
+    let pool = circuit_pool();
     for index in 0..CIRCUITS.len() {
         if !built.contains(&index) && !preparing.0.contains_key(&index) {
             let textures = textures.clone();
@@ -189,7 +248,7 @@ fn spawn_prepared_circuit(
     current: Res<CurrentCircuit>,
     mut preparing: ResMut<Preparing>,
     mut builder: Builder,
-    mut edges: ResMut<TrackEdges>,
+    mut roadsides: ResMut<Roadsides>,
 ) {
     let mut ready = None;
     for (index, task) in &mut preparing.0 {
@@ -208,7 +267,7 @@ fn spawn_prepared_circuit(
         Visibility::Hidden
     };
     let built = build(&mut commands, prepared, &mut builder, visibility);
-    edges.0.insert(index, built);
+    roadsides.0.insert(index, built);
 }
 
 /// Al salir del menú de pistas (hacia elegir moto o volver a bienvenida),
@@ -236,7 +295,7 @@ fn rebuild_world(
     mut roots: Query<(Entity, &WorldRoot, &mut Visibility)>,
     mut track: ResMut<Track>,
     mut builder: Builder,
-    mut edges: ResMut<TrackEdges>,
+    mut roadsides: ResMut<Roadsides>,
     mut preparing: ResMut<Preparing>,
 ) {
     if !current.is_changed() || current.is_added() {
@@ -260,11 +319,11 @@ fn rebuild_world(
             _ => prepare(current.0, &builder.textures, Urgency::Now),
         };
         let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
-        edges.0.insert(current.0, built);
+        roadsides.0.insert(current.0, built);
     }
     *track = Track::new(&current.get().layout);
-    if let Some(built) = edges.0.get(&current.0) {
-        track.set_edges(built.clone());
+    if let Some(roadside) = roadsides.0.get(&current.0) {
+        roadside.apply(&mut track);
     }
 }
 
@@ -273,12 +332,12 @@ fn build_world(
     current: Res<CurrentCircuit>,
     mut track: ResMut<Track>,
     mut builder: Builder,
-    mut edges: ResMut<TrackEdges>,
+    mut roadsides: ResMut<Roadsides>,
 ) {
     let prepared = prepare(current.0, &builder.textures, Urgency::Now);
     let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
-    track.set_edges(built.clone());
-    edges.0.insert(current.0, built);
+    built.apply(&mut track);
+    roadsides.0.insert(current.0, built);
 }
 
 /// Lo que hace falta para construir el mundo.
@@ -292,14 +351,14 @@ struct Builder<'w> {
     images: ResMut<'w, Assets<Image>>,
 }
 
-/// Builds a prepared circuit's world, and returns where its solid edge is
-/// (see [`Track::set_edges`]).
+/// Builds a prepared circuit's world, and returns what lies beside its
+/// roads (see [`Roadside`]).
 fn build(
     commands: &mut Commands,
     prepared: Prepared,
     builder: &mut Builder,
     visibility: Visibility,
-) -> Vec<Vec<[f32; 2]>> {
+) -> Roadside {
     let Prepared {
         index,
         track,
@@ -307,8 +366,10 @@ fn build(
         ground,
         shore,
         shore_image,
-        edges,
+        roadside,
         pieces,
+        lamps,
+        grass,
         trees,
     } = prepared;
     let shore_image = builder.images.add(shore_image);
@@ -323,7 +384,12 @@ fn build(
         images: &mut builder.images,
     };
     commands
-        .spawn((WorldRoot(index), Transform::default(), visibility))
+        .spawn((
+            WorldRoot(index),
+            lamps::Lamps(lamps),
+            Transform::default(),
+            visibility,
+        ))
         .with_children(|world| {
             terrain::spawn_terrain(
                 world,
@@ -339,16 +405,31 @@ fn build(
                 Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
             ));
             for (mesh, material) in pieces {
-                world.spawn((
+                // What is see-through or glows (light, dust) casts no
+                // shadow.
+                let shadowless = matches!(material.alpha_mode, AlphaMode::Add | AlphaMode::Blend);
+                let mut piece = world.spawn((
                     Mesh3d(assets.meshes.add(mesh)),
                     MeshMaterial3d(assets.materials.add(material)),
+                ));
+                if shadowless {
+                    piece.insert(NotShadowCaster);
+                }
+            }
+            for piece in grass {
+                let range = piece.range();
+                world.spawn((
+                    Mesh3d(assets.meshes.add(piece.mesh)),
+                    MeshMaterial3d(assets.materials.add(piece.material)),
+                    range,
+                    NotShadowCaster,
                 ));
             }
             road::spawn_gantries(world, &track, scenery, &mut assets);
             structures::spawn_signs(world, &track, &terrain, scenery, &mut assets);
             props::spawn_props(world, &track, &terrain, scenery, &trees, &mut assets);
         });
-    edges
+    roadside
 }
 
 /// Dónde guardar las mallas, los materiales y las imágenes del mundo.
@@ -484,8 +565,8 @@ mod tests {
             .set(GameState::Tracks);
         app.update();
 
-        // Straight to the last circuit: it is there, with its edges, in
-        // the next frame.
+        // Straight to the last circuit: it is there, with what lies beside
+        // its roads, in the next frame.
         let last = CIRCUITS.len() - 1;
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
         app.update();
@@ -496,7 +577,7 @@ mod tests {
             .map(|(root, _)| root.0)
             .collect();
         assert_eq!(shown, [last]);
-        assert!(app.world().resource::<TrackEdges>().0.contains_key(&last));
+        assert!(app.world().resource::<Roadsides>().0.contains_key(&last));
         assert!(!app.world().resource::<Preparing>().0.contains_key(&last));
     }
 }

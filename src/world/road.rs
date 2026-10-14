@@ -2,14 +2,17 @@
 //! muros (de piedra, de hormigón, barandillas o setos, según el tramo) y los
 //! arcos sobre la carretera. Todo sigue la altura y el peralte del trazado.
 
-use bevy::prelude::*;
+use bevy::{
+    asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
+};
 
 use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
 use super::scenery::{BridgeStyle, Gantry, Scenery, Side, WallStyle};
 use super::terrain::Terrain;
-use super::textures::WorldTextures;
+use super::textures::{STONE_WALL, WorldTextures};
+use crate::geometry::{fbm, smoothstep};
 use crate::track::{CURB_WIDTH, SURFACE_Y, Track, WALL_DISTANCE};
 
 /// Tamaño (m) que cubre cada repetición de la textura del asfalto.
@@ -169,6 +172,26 @@ impl<'a> Road<'a> {
     }
 }
 
+/// Whether point `index` of road number `number` (see
+/// [`crate::track::Nearest::road`]) has curbs beside its asphalt: in the
+/// corners, and into and out of the loops.
+fn has_curbs(road: Road, index: usize) -> bool {
+    road.line().smoothed_curvature(index, 4) > 1.0 / CURB_RADIUS || road.at_a_loop(index)
+}
+
+/// How far from the centre line of road number `number` the asphalt, or
+/// its curbs where it has them, end at point `index` (m): where the ground
+/// beside it begins.
+pub fn paved_edge(track: &Track, number: usize, index: usize) -> f32 {
+    let road = Road { track, number };
+    let half = road.line().half_width_at(index);
+    if has_curbs(road, index) {
+        half + CURB_WIDTH
+    } else {
+        half
+    }
+}
+
 /// How far above the asphalt of the lap a road off it goes where they meet
 /// (m).
 const SIDE_ROAD_LIFT: f32 = 0.01;
@@ -243,8 +266,7 @@ fn spawn_surface(
         painted(),
     );
     let curbs = |index: usize, corners| {
-        let curved = line.smoothed_curvature(index, 4) > 1.0 / CURB_RADIUS;
-        ((curved || road.at_a_loop(index)) && clear(corners) && !planked(index))
+        (has_curbs(road, index) && clear(corners) && !planked(index))
             .then_some(scenery.curbs[index % 2])
     };
     spawn(
@@ -259,10 +281,9 @@ fn spawn_surface(
     // Los muros, cada uno con su aspecto.
     let lap = road.track.lap_length();
     let style = |index: usize, side: Side| wall_style(scenery, lap, line.lap_along_at(index), side);
-    for (wanted, height, material) in [
+    for (wanted, material) in [
         (
             WallStyle::Stone,
-            WALL_HEIGHT,
             StandardMaterial {
                 base_color_texture: Some(textures.wall.clone()),
                 perceptual_roughness: 0.95,
@@ -271,7 +292,6 @@ fn spawn_surface(
         ),
         (
             WallStyle::Concrete,
-            CONCRETE_HEIGHT,
             StandardMaterial {
                 base_color: Color::srgb(0.92, 0.92, 0.9),
                 base_color_texture: Some(textures.plaster.clone()),
@@ -281,7 +301,6 @@ fn spawn_surface(
         ),
         (
             WallStyle::Hedge,
-            HEDGE_HEIGHT,
             StandardMaterial {
                 base_color: Color::srgb(0.55, 0.85, 0.4),
                 base_color_texture: Some(textures.grass.clone()),
@@ -291,7 +310,6 @@ fn spawn_surface(
         ),
         (
             WallStyle::Checkered,
-            WALL_HEIGHT,
             StandardMaterial {
                 base_color_texture: Some(textures.soil.clone()),
                 perceptual_roughness: 0.9,
@@ -300,7 +318,6 @@ fn spawn_surface(
         ),
         (
             WallStyle::Timber,
-            WALL_HEIGHT,
             StandardMaterial {
                 base_color: Color::srgb(0.8, 0.68, 0.56),
                 base_color_texture: Some(textures.planks.clone()),
@@ -309,7 +326,7 @@ fn spawn_surface(
             },
         ),
     ] {
-        let mesh = walls(road, terrain, height, |index, side| {
+        let mesh = walls(road, terrain, wanted, |index, side| {
             style(index, side) == Some(wanted)
         });
         if let Some(mesh) = mesh {
@@ -398,23 +415,215 @@ fn ribbon(
     mesh.build()
 }
 
-/// Muros de `height` de alto a los dos lados, donde diga `wanted`. Donde
-/// detrás sube la roca, no hace falta muro: la pared del peñasco cierra la
-/// carretera. Nor where they would stand on another road, where two roads
-/// meet. `None` si no hay ninguno.
+/// The cross-section of a wall: points (m out from the line of its face on
+/// the road's side, m up from the road) from its foot on the road's side,
+/// up and over its top, down to its foot on the far side. Its corners are
+/// rounded off and it is shaded smoothly round them: no wall has sharp
+/// edges.
+struct Profile {
+    points: Vec<Vec2>,
+    /// Whether it is lumpy all over (a hedge).
+    lumpy: bool,
+    /// The point at the top of the face on the road's side: the texture is
+    /// measured down and over from there.
+    top: usize,
+    /// What each repetition of the texture covers (m along the wall, m
+    /// across its profile).
+    tile: Vec2,
+}
+
+/// How each kind of wall is shaped:
+/// - stone: its face leaning back a little as it rises, under a coping of
+///   flat stones that juts out on both sides;
+/// - concrete: a New Jersey barrier, its foot sloping out to the road;
+/// - hedge: rounded, wider at the top than at the root;
+/// - checkerboard earth and timber: blocks, straight up.
+fn profile(style: WallStyle) -> Profile {
+    let foot = -WALL_FOOTING;
+    // The corners, how much each is rounded off (m), and which is the top
+    // of the face on the road's side.
+    let (corners, rounding, top, tile): (&[(f32, f32)], f32, usize, Vec2) = match style {
+        WallStyle::Stone => (
+            &[
+                (0.0, foot),
+                (0.05, 0.92),
+                (-0.04, 0.92),
+                (-0.04, 1.03),
+                (0.0, WALL_HEIGHT),
+                (WALL_THICKNESS, WALL_HEIGHT),
+                (WALL_THICKNESS + 0.04, 1.03),
+                (WALL_THICKNESS + 0.04, 0.92),
+                (WALL_THICKNESS - 0.05, 0.92),
+                (WALL_THICKNESS, foot),
+            ],
+            0.04,
+            4,
+            STONE_WALL,
+        ),
+        WallStyle::Concrete => (
+            &[
+                (0.0, foot),
+                (0.0, 0.08),
+                (0.17, 0.32),
+                (0.225, CONCRETE_HEIGHT - 0.03),
+                (0.255, CONCRETE_HEIGHT),
+                (0.345, CONCRETE_HEIGHT),
+                (0.375, CONCRETE_HEIGHT - 0.03),
+                (0.43, 0.32),
+                (WALL_THICKNESS, 0.08),
+                (WALL_THICKNESS, foot),
+            ],
+            0.06,
+            4,
+            Vec2::splat(WALL_TILE),
+        ),
+        WallStyle::Hedge => (
+            &[
+                (0.04, foot),
+                (0.0, 0.25),
+                (-0.06, 0.7),
+                (-0.06, 1.0),
+                (0.04, 1.2),
+                (0.3, HEDGE_HEIGHT),
+                (0.56, 1.2),
+                (0.66, 1.0),
+                (0.66, 0.7),
+                (0.6, 0.25),
+                (0.56, foot),
+            ],
+            0.12,
+            3,
+            Vec2::splat(WALL_TILE),
+        ),
+        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing => (
+            &[
+                (0.0, foot),
+                (0.0, WALL_HEIGHT),
+                (WALL_THICKNESS, WALL_HEIGHT),
+                (WALL_THICKNESS, foot),
+            ],
+            0.06,
+            1,
+            Vec2::splat(WALL_TILE),
+        ),
+    };
+    let corners: Vec<Vec2> = corners.iter().map(|&p| Vec2::from(p)).collect();
+    let points = round_corners(&corners, rounding);
+    let top = (0..points.len())
+        .min_by(|&a, &b| {
+            let distance = |k: usize| points[k].distance(corners[top]);
+            distance(a).total_cmp(&distance(b))
+        })
+        .expect("a profile has points");
+    Profile {
+        points,
+        lumpy: style == WallStyle::Hedge,
+        top,
+        tile,
+    }
+}
+
+/// The points of a profile with its corners (all but its two ends) rounded
+/// off: each replaced by three points along a curve, `radius` (m) back
+/// along each side, or a little under half the side if it is shorter.
+fn round_corners(corners: &[Vec2], radius: f32) -> Vec<Vec2> {
+    let last = corners.len() - 1;
+    let mut points = vec![corners[0]];
+    for k in 1..last {
+        let (before, corner, after) = (corners[k - 1], corners[k], corners[k + 1]);
+        let back = |to: Vec2| {
+            let side = to - corner;
+            corner + side.normalize_or_zero() * radius.min(side.length() * 0.45)
+        };
+        let (a, b) = (back(before), back(after));
+        // The middle of a quadratic curve from a to b about the corner.
+        points.extend([a, a * 0.25 + corner * 0.5 + b * 0.25, b]);
+    }
+    points.push(corners[last]);
+    points
+}
+
+/// The concrete barriers come in sections this many points of the centre
+/// line long, with a dark joint this wide (m) between them.
+const BARRIER_SECTION: usize = 2;
+const BARRIER_JOINT: f32 = 0.025;
+
+/// How light or dark a wall of `style` is at `p`, `up` from the road: the
+/// grime at its foot, slow changes of tone along it, and, on stone, its
+/// lighter coping and moss low down; on a hedge, the shade inside it.
+fn wall_tint(style: WallStyle, p: Vec3, up: f32) -> Color {
+    if style == WallStyle::Checkered {
+        return Color::WHITE;
+    }
+    let ground = Vec2::new(p.x, p.z);
+    let grime = 0.68 + 0.32 * smoothstep(-0.1, 0.4, up);
+    let along = 1.0 + 0.2 * (fbm(ground * 0.035, 2) - 0.5);
+    let shade = grime * along;
+    match style {
+        WallStyle::Stone => {
+            let coping = if up > 0.91 { 1.1 } else { 1.0 };
+            let moss = smoothstep(0.55, 0.75, fbm(ground * 0.12 + Vec2::splat(up * 1.5), 3))
+                * (1.0 - smoothstep(0.1, 0.8, up));
+            let stone = Color::srgb(shade * coping, shade * coping, shade * coping);
+            stone.mix(
+                &Color::srgb(0.5 * shade, 0.62 * shade, 0.36 * shade),
+                0.55 * moss,
+            )
+        }
+        WallStyle::Hedge => {
+            let inside = 0.6 + 0.4 * smoothstep(0.0, 1.1, up);
+            let leafy = 0.85 + 0.3 * fbm(ground * 0.4 + Vec2::splat(up * 3.0), 3);
+            let v = along * inside * leafy;
+            Color::srgb(v, v, v)
+        }
+        _ => Color::srgb(shade, shade, shade),
+    }
+}
+
+/// Muros de `style` a los dos lados, donde diga `wanted`, swept along the
+/// road with their cross-section (see [`profile`]). Donde detrás sube la
+/// roca, no hace falta muro: la pared del peñasco cierra la carretera. Nor
+/// where they would stand on another road, where two roads meet. `None` si
+/// no hay ninguno.
 fn walls(
     road: Road,
     terrain: &Terrain,
-    height: f32,
+    style: WallStyle,
     wanted: impl Fn(usize, Side) -> bool,
 ) -> Option<Mesh> {
     let line = road.line();
     let step = line.step_length();
     let segments = line.segment_count();
-    let mut mesh = MeshBuilder::default();
+    let profile = profile(style);
+    // How far round the profile each point is (m), from the top of the
+    // face on the road's side: the texture's v.
+    let mut around = vec![0.0; profile.points.len()];
+    for k in 1..profile.points.len() {
+        around[k] = around[k - 1] + profile.points[k].distance(profile.points[k - 1]);
+    }
+    let around: Vec<f32> = around.iter().map(|a| a - around[profile.top]).collect();
+    // The normal of each edge of the profile (out, up), and at each point
+    // the average of the two edges that meet there, for a rounded profile.
+    let edge_normal = |k: usize| {
+        let e = profile.points[k + 1] - profile.points[k];
+        Vec2::new(-e.y, e.x).normalize_or_zero()
+    };
+    let point_normal = |k: usize| {
+        let before = if k > 0 {
+            edge_normal(k - 1)
+        } else {
+            edge_normal(0)
+        };
+        let after = if k + 1 < profile.points.len() {
+            edge_normal(k)
+        } else {
+            before
+        };
+        (before + after).normalize_or_zero()
+    };
+    let mut mesh = WallMesh::default();
     for (side, wall_side) in [(1.0, Side::Left), (-1.0, Side::Right)] {
         let inner = |i: usize| side * line.wall_at(i);
-        let outer = |i: usize| side * (line.wall_at(i) + WALL_THICKNESS);
         let cliff = |index: usize| {
             let behind = line.offset_point(index, inner(index) + side * 5.0);
             terrain.height(behind) - road.surface_point(index, inner(index)).y > CLIFF_RISE
@@ -440,94 +649,203 @@ fn walls(
             next if next == segments => false,
             next => visible[next],
         };
-        for (index, _) in visible.iter().enumerate().filter(|&(_, &shown)| shown) {
-            let next = index + 1;
-            let outward = |i: usize| {
-                let toward = line.offset_point(i, side) - line.offset_point(i, 0.0);
-                Vec3::new(toward.x, 0.0, toward.y)
-            };
-            let top = |i: usize| road.surface_point(i, inner(i)).y + SURFACE_Y + height;
-            let point = |i: usize, lateral: f32, y: f32| {
-                let ground = line.offset_point(i, lateral);
-                Vec3::new(ground.x, y, ground.y)
-            };
-            let bottom = |i: usize, lateral: f32| road.surface_point(i, lateral).y - WALL_FOOTING;
-            let (u0, u1) = (
-                index as f32 * step / WALL_TILE,
-                next as f32 * step / WALL_TILE,
-            );
-            let v = |from: f32, to: f32| (to - from) / WALL_TILE;
-            let face_normal = outward(index);
-            // Cara hacia la carretera, cara de arriba y cara de fuera.
-            for (lateral, facing) in [
-                (&inner as &dyn Fn(usize) -> f32, -face_normal),
-                (&outer, face_normal),
-            ] {
-                let (here, there) = (lateral(index), lateral(next));
-                let height = v(bottom(index, here), top(index));
-                mesh.quad(
-                    [
-                        (
-                            point(index, here, bottom(index, here)),
-                            Vec2::new(u0, height),
-                        ),
-                        (
-                            point(next, there, bottom(next, there)),
-                            Vec2::new(u1, height),
-                        ),
-                        (point(next, there, top(next)), Vec2::new(u1, 0.0)),
-                        (point(index, here, top(index)), Vec2::new(u0, 0.0)),
-                    ],
-                    facing,
-                    Color::WHITE,
-                );
+        // A point of the profile at point `i` of the centre line: where it
+        // is, and its outward and upward directions there.
+        let frame = |i: usize| {
+            let base = road.surface_point(i, inner(i)).y + SURFACE_Y;
+            let toward = line.offset_point(i, side) - line.offset_point(i, 0.0);
+            let out = Vec3::new(toward.x, 0.0, toward.y).normalize_or_zero();
+            (base, out)
+        };
+        let at = |i: usize, p: Vec2| {
+            let (base, _) = frame(i);
+            let ground = line.offset_point(i, inner(i) + side * p.x);
+            let mut position = Vec3::new(ground.x, base + p.y, ground.y);
+            if profile.lumpy {
+                // A hedge is lumpy: pushed in and out along its profile.
+                let (_, out) = frame(i);
+                let lump = fbm(
+                    Vec2::new(position.x, position.z) * 0.9 + Vec2::splat(p.y * 2.0),
+                    2,
+                ) - 0.5;
+                position += out * lump * 0.12;
             }
-            let thickness = WALL_THICKNESS / WALL_TILE;
-            mesh.quad(
-                [
-                    (point(index, inner(index), top(index)), Vec2::new(u0, 0.0)),
-                    (point(next, inner(next), top(next)), Vec2::new(u1, 0.0)),
-                    (
-                        point(next, outer(next), top(next)),
-                        Vec2::new(u1, thickness),
-                    ),
-                    (
-                        point(index, outer(index), top(index)),
-                        Vec2::new(u0, thickness),
-                    ),
-                ],
-                Vec3::Y,
-                Color::WHITE,
-            );
-            // Remates donde el muro empieza o acaba junto a la roca.
-            let along = |i: usize| {
-                let (a, b) = (line.offset_point(i, 0.0), line.offset_point(i + 1, 0.0));
-                Vec3::new(b.x - a.x, 0.0, b.y - a.y)
-            };
-            for (at, facing, open) in [
-                (index, -along(index), !before(index)),
-                (next, along(index), !after(index)),
-            ] {
-                if open {
-                    let (bi, bo) = (bottom(at, inner(at)), bottom(at, outer(at)));
-                    mesh.quad(
+            position
+        };
+        let direction = |i: usize, n: Vec2| {
+            let (_, out) = frame(i);
+            (out * n.x + Vec3::Y * n.y).normalize_or_zero()
+        };
+        let points = profile.points.len();
+        let middle = profile.points.iter().sum::<Vec2>() / points as f32;
+        // Each run of wall without a break is one sheet, its corners shared
+        // round the profile and along the road.
+        let mut index = 0;
+        while index < segments {
+            if !visible[index] {
+                index += 1;
+                continue;
+            }
+            let start = index;
+            while index < segments && visible[index] {
+                index += 1;
+            }
+            let end = index;
+            let first = mesh.positions.len() as u32;
+            for i in start..=end {
+                let u = i as f32 * step / profile.tile.x;
+                for (k, &p) in profile.points.iter().enumerate() {
+                    let position = at(i, p);
+                    // Shaded smoothly round the profile.
+                    let normal = direction(i, point_normal(k));
+                    let uv = Vec2::new(u, around[k] / profile.tile.y);
+                    mesh.push(position, normal, uv, wall_tint(style, position, p.y));
+                }
+            }
+            let corner = |i: usize, k: usize| first + ((i - start) * points + k) as u32;
+            for i in start..end {
+                for k in 0..points - 1 {
+                    mesh.sheet_quad([
+                        corner(i, k),
+                        corner(i + 1, k),
+                        corner(i + 1, k + 1),
+                        corner(i, k + 1),
+                    ]);
+                }
+            }
+            // Concrete barriers come in sections with dark joints between
+            // them, just in front of the barrier.
+            if style == WallStyle::Concrete {
+                let dark = Color::srgb(0.2, 0.2, 0.2);
+                let t = BARRIER_JOINT / step;
+                for i in (start..end).filter(|i| i % BARRIER_SECTION == 0) {
+                    for k in 0..points - 1 {
+                        let corners = [(0.0, k), (t, k), (t, k + 1), (0.0, k + 1)].map(|(t, k)| {
+                            let p = profile.points[k];
+                            let normal = direction(i, point_normal(k));
+                            let position = at(i, p).lerp(at(i + 1, p), t) + normal * 0.004;
+                            (position, normal, Vec2::ZERO, dark)
+                        });
+                        mesh.quad(corners);
+                    }
+                }
+            }
+            // Ends where the wall starts or stops beside the rock: the
+            // profile, filled in from its middle.
+            for (at_end, open, facing) in
+                [(start, !before(start), -1.0), (end, !after(end - 1), 1.0)]
+            {
+                if !open {
+                    continue;
+                }
+                let ahead = {
+                    let segment = at_end.min(end - 1);
+                    let (a, b) = (
+                        line.offset_point(segment, 0.0),
+                        line.offset_point(segment + 1, 0.0),
+                    );
+                    Vec3::new(b.x - a.x, 0.0, b.y - a.y).normalize_or_zero() * facing
+                };
+                let center = at(at_end, middle);
+                let tint = wall_tint(style, center, middle.y);
+                let uv = |p: Vec2| (p - middle) / profile.tile.y;
+                for k in 0..points {
+                    let (a, b) = (profile.points[k], profile.points[(k + 1) % points]);
+                    mesh.triangle(
                         [
-                            (point(at, inner(at), bi), Vec2::new(0.0, v(bi, top(at)))),
-                            (
-                                point(at, outer(at), bo),
-                                Vec2::new(thickness, v(bo, top(at))),
-                            ),
-                            (point(at, outer(at), top(at)), Vec2::new(thickness, 0.0)),
-                            (point(at, inner(at), top(at)), Vec2::ZERO),
+                            (center, uv(middle)),
+                            (at(at_end, a), uv(a)),
+                            (at(at_end, b), uv(b)),
                         ],
-                        facing,
-                        Color::WHITE,
+                        ahead,
+                        tint,
                     );
                 }
             }
         }
     }
     (!mesh.is_empty()).then(|| mesh.build())
+}
+
+/// A mesh of quads, each corner with its own normal, UV and colour.
+#[derive(Default)]
+struct WallMesh {
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    uvs: Vec<[f32; 2]>,
+    colors: Vec<[f32; 4]>,
+    indices: Vec<u32>,
+}
+
+impl WallMesh {
+    fn push(&mut self, position: Vec3, normal: Vec3, uv: Vec2, color: Color) -> u32 {
+        self.positions.push(position.to_array());
+        self.normals.push(normal.to_array());
+        self.uvs.push(uv.to_array());
+        self.colors.push(color.to_linear().to_f32_array());
+        (self.positions.len() - 1) as u32
+    }
+
+    /// A quad between four vertices already pushed, facing the way their
+    /// normals point on average.
+    fn sheet_quad(&mut self, [a, b, c, d]: [u32; 4]) {
+        let position = |i: u32| Vec3::from(self.positions[i as usize]);
+        let facing: Vec3 = [a, b, c, d]
+            .iter()
+            .map(|&i| Vec3::from(self.normals[i as usize]))
+            .sum();
+        let (pa, pb, pc) = (position(a), position(b), position(c));
+        let face = (pb - pa).cross(pc - pa);
+        let face = if face.length_squared() > 1e-12 {
+            face
+        } else {
+            (position(c) - pa).cross(position(d) - pa)
+        };
+        if face.dot(facing) >= 0.0 {
+            self.indices.extend([a, b, c, a, c, d]);
+        } else {
+            self.indices.extend([a, c, b, a, d, c]);
+        }
+    }
+
+    /// A quad, facing the way its corners' normals point on average.
+    fn quad(&mut self, corners: [(Vec3, Vec3, Vec2, Color); 4]) {
+        let [a, b, c, d] = corners.map(|(p, n, uv, color)| self.push(p, n, uv, color));
+        let facing: Vec3 = corners.iter().map(|c| c.1).sum();
+        let [pa, pb, pc] = [corners[0].0, corners[1].0, corners[2].0];
+        if (pb - pa).cross(pc - pa).dot(facing) >= 0.0 {
+            self.indices.extend([a, b, c, a, c, d]);
+        } else {
+            self.indices.extend([a, c, b, a, d, c]);
+        }
+    }
+
+    /// A flat triangle facing `facing`.
+    fn triangle(&mut self, corners: [(Vec3, Vec2); 3], facing: Vec3, color: Color) {
+        let [pa, pb, pc] = corners.map(|(p, _)| p);
+        let [a, b, c] = corners.map(|(p, uv)| self.push(p, facing, uv, color));
+        if (pb - pa).cross(pc - pa).dot(facing) >= 0.0 {
+            self.indices.extend([a, b, c]);
+        } else {
+            self.indices.extend([a, c, b]);
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.indices.is_empty()
+    }
+
+    fn build(self) -> Mesh {
+        Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::RENDER_WORLD,
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.colors)
+        .with_inserted_indices(Indices::U32(self.indices))
+    }
 }
 
 /// Barandilla de paseo marítimo donde diga `wanted`: postes y dos barras
@@ -845,6 +1163,94 @@ mod tests {
             .filter(|&i| track.smoothed_curvature(i, 4) > 1.0 / CURB_RADIUS)
             .count();
         assert!(curved > 0 && curved < track.sample_count() / 2);
+    }
+
+    #[test]
+    fn walls_are_shaped_by_their_kind() {
+        for style in [
+            WallStyle::Stone,
+            WallStyle::Concrete,
+            WallStyle::Hedge,
+            WallStyle::Checkered,
+            WallStyle::Timber,
+        ] {
+            let profile = profile(style);
+            let points = &profile.points;
+            // From the foot on the road's side over the top to the far foot,
+            // standing on the line of the wall, as thick as a wall.
+            assert_eq!(points[0].y, -WALL_FOOTING, "{style:?}");
+            assert_eq!(points[points.len() - 1].y, -WALL_FOOTING, "{style:?}");
+            assert!(points[0].x.abs() < 0.05, "{style:?}");
+            let top = points.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+            assert!((0.9..1.4).contains(&top), "{style:?}: {top}");
+            let far = points.iter().map(|p| p.x).fold(f32::MIN, f32::max);
+            assert!((0.5..0.75).contains(&far), "{style:?}: {far}");
+            assert!(points[profile.top].y > 0.9, "{style:?}");
+            // No sharp corners: no two edges in a row turn by more than 60°.
+            for k in 1..points.len() - 1 {
+                let (a, b) = (points[k] - points[k - 1], points[k + 1] - points[k]);
+                assert!(a.angle_to(b).abs() < 60f32.to_radians(), "{style:?} at {k}");
+            }
+        }
+        // A concrete barrier slopes out at its foot: narrower at the top.
+        let barrier = profile(WallStyle::Concrete);
+        let inner = |from: f32, to: f32| {
+            barrier
+                .points
+                .iter()
+                .filter(|p| (from..to).contains(&p.y) && p.x < WALL_THICKNESS / 2.0)
+                .map(|p| p.x)
+                .fold(f32::MAX, f32::min)
+        };
+        assert!(inner(0.8, 1.1) > inner(-0.1, 0.1) + 0.15);
+        // A stone wall's coping juts out over its face.
+        let stone = profile(WallStyle::Stone);
+        assert!(stone.points.iter().any(|p| p.x < 0.0));
+    }
+
+    #[test]
+    fn walls_face_out_and_follow_the_road() {
+        let circuit = &crate::circuits::CIRCUITS[0];
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let road = Road {
+            track: &track,
+            number: 0,
+        };
+        for style in [WallStyle::Stone, WallStyle::Concrete, WallStyle::Hedge] {
+            let mesh = walls(road, &terrain, style, |index, _| index < 40)
+                .expect("there are walls at the start");
+            let positions = mesh
+                .attribute(Mesh::ATTRIBUTE_POSITION)
+                .and_then(|p| p.as_float3())
+                .unwrap();
+            let normals = mesh
+                .attribute(Mesh::ATTRIBUTE_NORMAL)
+                .and_then(|p| p.as_float3())
+                .unwrap();
+            let Some(Indices::U32(indices)) = mesh.indices() else {
+                panic!("indexed");
+            };
+            // Every triangle winds the way its normals point.
+            for triangle in indices.chunks(3) {
+                let [a, b, c] = [0, 1, 2].map(|k| Vec3::from(positions[triangle[k] as usize]));
+                let n: Vec3 = (0..3)
+                    .map(|k| Vec3::from(normals[triangle[k] as usize]))
+                    .sum();
+                let face = (b - a).cross(c - a);
+                if face.length() > 1e-6 && n.length() > 1e-3 {
+                    assert!(face.dot(n) > 0.0, "{style:?}");
+                }
+            }
+            // Beside the road, near its walls.
+            for &[x, _, z] in positions {
+                let distance = track.nearest(Vec2::new(x, z)).distance;
+                assert!(
+                    (WALL_DISTANCE - 0.2..WALL_DISTANCE + WALL_THICKNESS + 0.4).contains(&distance),
+                    "{style:?}: {distance}"
+                );
+            }
+        }
     }
 
     #[test]

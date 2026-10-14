@@ -101,14 +101,15 @@ const PLANK_TILE: f32 = 4.0;
 const PLANK_LIFT: f32 = 0.035;
 
 /// The meshes of the excavation along `span` of the lap, with their
-/// materials, through rock of the kinds `halls` says.
+/// materials, through rock of the kinds `halls` says, and where its
+/// lanterns hang.
 pub fn cavern_pieces(
     track: &Track,
     terrain: &Terrain,
     span: Span,
     halls: &[Hall],
     textures: &WorldTextures,
-) -> Vec<(Mesh, StandardMaterial)> {
+) -> (Vec<(Mesh, StandardMaterial)>, Vec<Vec3>) {
     let cave = Cave::new(track, span, halls);
     let mut parts = Parts::default();
     let lanterns = cave.timber_and_lanterns(&mut parts);
@@ -120,7 +121,7 @@ pub fn cavern_pieces(
     cave.veins(&mut parts);
     cave.planked_branches(&painter, &mut parts);
     cave.outside(terrain, &mut parts);
-    parts.pieces(textures)
+    (parts.pieces(textures), lanterns)
 }
 
 /// The meshes of the excavation, each for its own material.
@@ -263,6 +264,17 @@ fn rock_material(stone: Stone, textures: &WorldTextures) -> StandardMaterial {
         reflectance: 0.1,
         ..default()
     }
+}
+
+/// The stone of a mine's excavation at `point`, `along` a lap of `lap`
+/// metres: that of the hall it is in, where one ends and the next begins
+/// wavering, or a timbered gallery outside the halls.
+pub fn stone_at(halls: &[Hall], lap: f32, point: Vec2, along: f32) -> Stone {
+    let along = along + 30.0 * (fbm(point / 13.0, 2) - 0.5);
+    halls
+        .iter()
+        .find(|hall| hall.span.contains(along, lap))
+        .map_or(Stone::Timbered, |hall| hall.stone)
 }
 
 /// The floor beside the roads of each stone: planks in the galleries,
@@ -467,14 +479,9 @@ impl<'a> Cave<'a> {
         )
     }
 
-    /// The stone at `point`, `along` the lap: that of the hall it is in,
-    /// where one ends and the next begins wavering.
+    /// The stone at `point`, `along` the lap (see [`stone_at`]).
     fn stone(&self, point: Vec2, along: f32) -> Stone {
-        let along = along + 30.0 * (fbm(point / 13.0, 2) - 0.5);
-        self.halls
-            .iter()
-            .find(|hall| hall.span.contains(along, self.lap))
-            .map_or(Stone::Timbered, |hall| hall.stone)
+        stone_at(self.halls, self.lap, point, along)
     }
 
     /// How high the walls stand straight up at `point` of their foot (m

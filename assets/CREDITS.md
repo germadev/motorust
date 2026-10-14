@@ -7,7 +7,9 @@ attribution. Thank you anyway.
 
 They have been downsized and retouched (more saturation, less contrast in the
 asphalt cracks and the grass recoloured to a brighter green) to bring them
-closer to the look of 90s games.
+closer to the look of 90s games. Two of them are only the base of textures
+painted at startup: blades of grass are painted over the grass photo, and the
+stone wall photo gives its fine grain to a procedural wall of rough stones.
 
 | File | Poly Haven original |
 |---|---|

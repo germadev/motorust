@@ -3,7 +3,7 @@
 //! incrustadas en el ejecutable y sus mipmaps se calculan al arrancar, así no
 //! parpadean a lo lejos.
 
-use crate::geometry::{fbm, random01, value_noise};
+use crate::geometry::{fbm, random01, smoothstep, value_noise};
 use bevy::{
     asset::RenderAssetUsages,
     image::{
@@ -39,18 +39,40 @@ pub struct WorldTextures {
     /// Layers of sandstone, cream, salmon, rust and ochre, one over another
     /// down the texture.
     pub strata: Handle<Image>,
+    /// A tuft of grass blades seen from the side (see
+    /// [`super::foliage::tuft`]).
+    pub tuft: Handle<Image>,
+    /// The ragged edge of the grass along the road (see
+    /// [`super::foliage::grass_edge`]).
+    pub grass_edge: Handle<Image>,
+    /// A pool of lamplight: white in the middle, fading out to nothing at
+    /// its edges (see [`light_pool`]).
+    pub light_pool: Handle<Image>,
+    /// The average colour of the grass texture: the tufts of grass are
+    /// painted it (see [`super::tufts`]).
+    pub grass_color: Color,
 }
 
 impl FromWorld for WorldTextures {
     fn from_world(world: &mut World) -> Self {
         let mut images = world.resource_mut::<Assets<Image>>();
+        // The grass photo, under a mat of blades painted over it.
+        let lawn = super::foliage::lawn(&embedded(
+            include_bytes!("../../assets/textures/grass.jpg"),
+            ImageAddressMode::Repeat,
+            TextureEnhance::Grass,
+        ));
+        let grass_color = average_color(&lawn);
+        let grass = images.add(lawn);
+        // The stones of the walls, with the photo's grain.
+        let wall = images.add(stone_wall(&embedded(
+            include_bytes!("../../assets/textures/wall.jpg"),
+            ImageAddressMode::Repeat,
+            TextureEnhance::Wall,
+        )));
         let mut tiled = |bytes: &[u8], enhance: TextureEnhance| {
             images.add(embedded(bytes, ImageAddressMode::Repeat, enhance))
         };
-        let grass = tiled(
-            include_bytes!("../../assets/textures/grass.jpg"),
-            TextureEnhance::Grass,
-        );
         let rock = tiled(
             include_bytes!("../../assets/textures/rock.jpg"),
             TextureEnhance::Rock,
@@ -62,10 +84,6 @@ impl FromWorld for WorldTextures {
         let asphalt = tiled(
             include_bytes!("../../assets/textures/asphalt.jpg"),
             TextureEnhance::Asphalt,
-        );
-        let wall = tiled(
-            include_bytes!("../../assets/textures/wall.jpg"),
-            TextureEnhance::Wall,
         );
         let roof = tiled(
             include_bytes!("../../assets/textures/roof.jpg"),
@@ -82,6 +100,9 @@ impl FromWorld for WorldTextures {
         let falls = images.add(falls());
         let planks = images.add(planks());
         let strata = images.add(strata());
+        let tuft = images.add(super::foliage::tuft());
+        let grass_edge = images.add(super::foliage::grass_edge());
+        let light_pool = images.add(light_pool());
         Self {
             grass,
             rock,
@@ -97,8 +118,27 @@ impl FromWorld for WorldTextures {
             falls,
             planks,
             strata,
+            tuft,
+            grass_edge,
+            light_pool,
+            grass_color,
         }
     }
+}
+
+/// The average colour of the full-size level of an sRGB image, averaged in
+/// linear space.
+fn average_color(image: &Image) -> Color {
+    let pixels = (image.width() * image.height()) as usize;
+    let Some(data) = image.data.as_ref() else {
+        return Color::WHITE;
+    };
+    let sum = data[..pixels * 4].chunks(4).fold(Vec3::ZERO, |sum, p| {
+        let linear = Color::srgb_u8(p[0], p[1], p[2]).to_linear();
+        sum + Vec3::new(linear.red, linear.green, linear.blue)
+    });
+    let mean = sum / pixels as f32;
+    Color::linear_rgb(mean.x, mean.y, mean.z)
 }
 
 fn sampler(vertical: ImageAddressMode) -> ImageSampler {
@@ -328,6 +368,147 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
             data[idx + 2] = (b * 255.0).round() as u8;
         }
     }
+}
+
+/// A pool of lamplight, to be added over what it falls on: white in the
+/// middle, fading smoothly to black at its edges, round.
+fn light_pool() -> Image {
+    const SIZE: u32 = 64;
+    let data = (0..SIZE * SIZE)
+        .flat_map(|i| {
+            let p =
+                (Vec2::new((i % SIZE) as f32, (i / SIZE) as f32) + 0.5) / SIZE as f32 * 2.0 - 1.0;
+            let light =
+                (-3.2 * p.length_squared()).exp() * (1.0 - smoothstep(0.75, 1.0, p.length()));
+            let value = (light * 255.0).round() as u8;
+            [value, value, value, value]
+        })
+        .collect();
+    let mut image = Image::new(
+        Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = sampler(ImageAddressMode::ClampToEdge);
+    if let ImageSampler::Descriptor(descriptor) = &mut image.sampler {
+        descriptor.address_mode_u = ImageAddressMode::ClampToEdge;
+    }
+    generate_mipmaps(&mut image);
+    image
+}
+
+/// What each repetition of the stone wall covers (m along the wall and up
+/// it): far wider than it is tall, so its pattern does not show.
+pub const STONE_WALL: Vec2 = Vec2::new(9.6, 2.4);
+
+/// A wall of rough stones laid in uneven courses, as the dry-stone walls
+/// along Mediterranean roads: each stone of its own shape, size and tone
+/// (limestone, grey, ochre, brown), rounded at its edges and lit from
+/// above, with dark gaps between them and the fine grain of the stone wall
+/// `photo` on its faces. It covers [`STONE_WALL`] and repeats both ways.
+fn stone_wall(photo: &Image) -> Image {
+    const WIDTH: u32 = 1536;
+    const HEIGHT: u32 = 384;
+    // The stones: a staggered grid of cells, each with its stone somewhere
+    // in it.
+    const COLUMNS: i32 = 24;
+    const ROWS: i32 = 10;
+    let cell = Vec2::new(WIDTH as f32 / COLUMNS as f32, HEIGHT as f32 / ROWS as f32);
+    let seed_of = |column: i32, row: i32| {
+        let (c, r) = (column.rem_euclid(COLUMNS), row.rem_euclid(ROWS));
+        let n = (r * COLUMNS + c) as u32;
+        let stagger = 0.5 * (row.rem_euclid(2)) as f32;
+        let jitter = Vec2::new(
+            0.15 + 0.7 * random01(n * 4),
+            0.3 + 0.4 * random01(n * 4 + 1),
+        );
+        (
+            (Vec2::new(column as f32 + stagger, row as f32) + jitter) * cell,
+            n,
+        )
+    };
+    // The grain of the photo: its fine detail only, not its stones.
+    let (pw, ph) = (photo.width() as i32, photo.height() as i32);
+    let source = photo.data.as_ref().expect("the photo is in memory");
+    let lum = |x: i32, y: i32| {
+        let i = ((y.rem_euclid(ph) * pw + x.rem_euclid(pw)) * 4) as usize;
+        (0.299 * source[i] as f32 + 0.587 * source[i + 1] as f32 + 0.114 * source[i + 2] as f32)
+            / 255.0
+    };
+    let grain = |x: i32, y: i32| {
+        let mut blur = 0.0;
+        for (dx, dy) in [(-2, 0), (2, 0), (0, -2), (0, 2)] {
+            blur += lum(x + dx, y + dy) / 4.0;
+        }
+        lum(x, y) - blur
+    };
+    let tones = [
+        (0.35, Color::srgb(0.8, 0.72, 0.58)),
+        (0.2, Color::srgb(0.86, 0.83, 0.76)),
+        (0.2, Color::srgb(0.66, 0.65, 0.62)),
+        (0.15, Color::srgb(0.82, 0.66, 0.47)),
+        (0.1, Color::srgb(0.6, 0.52, 0.42)),
+    ];
+    let tone = |n: u32| {
+        let mut pick = random01(n * 4 + 2);
+        for (share, color) in tones {
+            if pick < share {
+                return color.to_linear();
+            }
+            pick -= share;
+        }
+        tones[0].1.to_linear()
+    };
+    let mortar = Color::srgb(0.46, 0.42, 0.36).to_linear();
+    let light = Vec2::new(-0.6, -0.8);
+    // Distances are measured squashed along, so the stones come out longer
+    // than they are tall, laid flat in their courses.
+    let squash = Vec2::new(0.62, 1.0);
+    tiling(WIDTH, HEIGHT, |x, y| {
+        let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+        let row = (p.y / cell.y).floor() as i32;
+        // The nearest two stones.
+        let mut nearest = [(f32::MAX, Vec2::ZERO, 0u32); 2];
+        for r in row - 1..=row + 1 {
+            let stagger = 0.5 * (r.rem_euclid(2)) as f32;
+            let column = (p.x / cell.x - stagger).floor() as i32;
+            for c in column - 1..=column + 1 {
+                let (at, n) = seed_of(c, r);
+                let d = (p * squash).distance_squared(at * squash);
+                if d < nearest[0].0 {
+                    nearest[1] = nearest[0];
+                    nearest[0] = (d, at, n);
+                } else if d < nearest[1].0 {
+                    nearest[1] = (d, at, n);
+                }
+            }
+        }
+        let [(d1, s1, n), (d2, s2, _)] = nearest;
+        // How far inside its stone (px): to the line half way between them.
+        let edge = (d2 - d1) / (2.0 * (s1 * squash).distance(s2 * squash).max(1e-3));
+        let gap = 2.2 + 1.6 * fbm(p / 23.0, 2);
+        let stone = smoothstep(gap, gap + 1.5, edge);
+        // Rounded edges: the face slopes down towards the gap, lit on the
+        // side of the light.
+        let toward = ((s2 - s1) * squash).normalize_or_zero();
+        let rounding = 1.0 - smoothstep(gap, gap + 10.0, edge);
+        let bevel = 1.0 + 0.45 * rounding * toward.dot(light);
+        let lumps = 0.88 + 0.24 * fbm(p / 9.0 + Vec2::splat(n as f32), 3);
+        let brightness = (0.86 + 0.24 * random01(n * 4 + 3)) * bevel * lumps;
+        // Dark lichen here and there.
+        let lichen = smoothstep(0.66, 0.8, fbm(p / 6.0 + 31.0, 3)) * 0.35;
+        let detail = 1.0 + 1.6 * grain(x as i32, y as i32);
+        let face = tone(n) * (brightness * detail * (1.0 - lichen));
+        let deep = 0.55 + 0.45 * (edge / gap).clamp(0.0, 1.0);
+        let gap_color = mortar * (deep * (0.85 + 0.3 * fbm(p / 5.0, 2)));
+        Color::LinearRgba(gap_color.mix(&face, stone))
+    })
 }
 
 /// Dos por dos paneles de hormigón, cada uno algo distinto, con juntas

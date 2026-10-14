@@ -178,7 +178,36 @@ const LOOP_LEAD: f32 = 25.0;
 pub enum Surface {
     /// Asfalto o piano.
     Asphalt,
+    /// Grass: it slows the bike down and its blades fly off the wheels.
     Grass,
+    /// Bare earth, sand or gravel: it slows the bike down like grass, and
+    /// the wheels raise a cloud of dust of its colour.
+    Dirt(Dust),
+    /// Concrete or planks, such as a tunnel's walkway or a bridge's deck:
+    /// as firm as the road, so it neither slows the bike down nor throws
+    /// anything up.
+    Paved,
+}
+
+impl Surface {
+    /// Whether it is rough ground off the road, which slows the bike down:
+    /// grass or dirt.
+    pub fn is_rough(self) -> bool {
+        matches!(self, Surface::Grass | Surface::Dirt(_))
+    }
+}
+
+/// What the dirt beside a road is, which gives its dust its colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Dust {
+    /// Pale sand of a beach, or limestone grit.
+    Sand,
+    /// Brown earth.
+    Earth,
+    /// Red-brown earth of a desert, or red sandstone gravel.
+    Desert,
+    /// Black slate gravel.
+    Slate,
 }
 
 /// Datos estáticos del circuito.
@@ -199,6 +228,10 @@ pub struct Track {
     /// and to the right (m from it): the walls, or the earth where it rises
     /// before them (see [`Self::set_edges`]). Empty: the walls everywhere.
     edges: Vec<[f32; 2]>,
+    /// What the ground between the asphalt and the walls is at each point
+    /// of the centre line, to the left and to the right (see
+    /// [`Self::set_shoulders`]). Empty: grass everywhere.
+    shoulders: Vec<[Surface; 2]>,
     /// Whether the centre line closes on itself: the lap does; a road off it
     /// (see [`Branch`]) does not.
     closed: bool,
@@ -343,6 +376,7 @@ impl Track {
             half_width: TRACK_WIDTH / 2.0,
             step: 0.0,
             edges: Vec::new(),
+            shoulders: Vec::new(),
             closed: true,
             walls: Vec::new(),
             lap_along: Vec::new(),
@@ -511,6 +545,7 @@ impl Track {
             half_width: SIDE_HALF_WIDTH,
             step,
             edges: Vec::new(),
+            shoulders: Vec::new(),
             closed: false,
             walls: Vec::new(),
             lap_along: Vec::new(),
@@ -789,6 +824,22 @@ impl Track {
                 .map(|(index, sides)| sides.map(|edge| edge.min(road.wall_at(index))))
                 .collect();
             road.edges = capped;
+        }
+    }
+
+    /// What the ground between the asphalt and the walls of each road is,
+    /// at each point of its centre line, to the left and to the right:
+    /// grass, dirt, or the concrete or planks of a tunnel or a bridge. The
+    /// lap first, then the roads off it in order (see [`Nearest::road`]).
+    pub fn set_shoulders(&mut self, mut shoulders: Vec<Vec<[Surface; 2]>>) {
+        shoulders.resize(1 + self.side_roads.len(), Vec::new());
+        for (road, shoulders) in shoulders.into_iter().enumerate() {
+            let road = match road {
+                0 => &mut *self,
+                _ => &mut self.side_roads[road - 1],
+            };
+            debug_assert!(shoulders.is_empty() || shoulders.len() == road.centerline.len());
+            road.shoulders = shoulders;
         }
     }
 
@@ -1122,12 +1173,19 @@ impl Track {
         self.nearest(point).distance
     }
 
+    /// What the ground is beside a point: the asphalt and its curbs, or
+    /// past them what the shoulder there is made of (see
+    /// [`Self::set_shoulders`]).
     pub fn surface_beside(&self, nearest: &Nearest) -> Surface {
         if nearest.distance <= self.half_width_beside(nearest) + CURB_WIDTH {
-            Surface::Asphalt
-        } else {
-            Surface::Grass
+            return Surface::Asphalt;
         }
+        let road = self.road(nearest.road);
+        let index = road.wrap(nearest.index as isize + isize::from(nearest.t >= 0.5));
+        let side = usize::from(nearest.lateral < 0.0);
+        road.shoulders
+            .get(index)
+            .map_or(Surface::Grass, |sides| sides[side])
     }
 
     /// Pendiente de la carretera en la dirección `direction` (unitaria): metros
@@ -1554,6 +1612,24 @@ mod tests {
             track.surface_beside(&track.nearest(track.offset_point(100, -edge - 0.5))),
             Surface::Grass
         );
+    }
+
+    #[test]
+    fn the_shoulders_say_what_lies_past_the_curbs() {
+        let mut track = track();
+        let mut shoulders = vec![[Surface::Grass; 2]; track.sample_count()];
+        shoulders[100] = [Surface::Paved, Surface::Dirt(Dust::Sand)];
+        track.set_shoulders(vec![shoulders]);
+        let edge = track.half_width + CURB_WIDTH;
+        let beside = |index: usize, lateral: f32| {
+            track.surface_beside(&track.nearest(track.offset_point(index, lateral)))
+        };
+        assert_eq!(beside(100, edge + 1.0), Surface::Paved);
+        assert_eq!(beside(100, -edge - 1.0), Surface::Dirt(Dust::Sand));
+        assert_eq!(beside(100, edge - 0.1), Surface::Asphalt);
+        assert_eq!(beside(110, edge + 1.0), Surface::Grass);
+        assert!(Surface::Grass.is_rough() && Surface::Dirt(Dust::Earth).is_rough());
+        assert!(!Surface::Paved.is_rough() && !Surface::Asphalt.is_rough());
     }
 
     /// The tracks with branches, with their names.

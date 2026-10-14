@@ -3,14 +3,17 @@
 //! that darkens towards its rim (from clear in the middle to translucent
 //! black), the speeds from 0 to 360 km/h round it (from 180 a little bigger
 //! each, and from 300 red, over a red arc), a blue pointer, and the speed in
-//! figures on a translucent dark disc in the middle.
+//! figures on a translucent dark disc in the middle. The pointer glows, and
+//! the figure of the scale it points at lights up in red, with a halo.
 //!
 //! Bevy does not draw SVG, so the shapes of the design are drawn with zeno
 //! (the rasterizer Bevy already uses for the fonts, which reads SVG path
 //! data) and its figures with the UI font, once per size, at the exact size
 //! the dial takes on the screen. The pointer is another image the size of
-//! the dial, turned with the node's [`UiTransform`]. Each frame, only the
-//! pointer's angle and the figures in the middle change.
+//! the dial, turned with the node's [`UiTransform`]. The figures of the
+//! scale lit up are drawn once each, on their own small images over the
+//! dial, shown as much as each one is lit. Each frame, only the pointer's
+//! angle, how lit each figure is and the figures in the middle change.
 
 use std::collections::HashMap;
 
@@ -23,6 +26,7 @@ use bevy::ui::UiSystems;
 use swash::zeno::{Mask, Stroke, Transform as Affine};
 
 use crate::bike::{BikeState, LocalPlayer, Player};
+use crate::geometry::smoothstep;
 use crate::menu::GameState;
 use crate::vector_art::{Coverage, draw_plain_text};
 
@@ -67,7 +71,22 @@ const REDLINE: u32 = 300;
 const EDGE_COLOR: [f32; 3] = rgb(0x88, 0x87, 0x80);
 const FACE_EDGE_COLOR: [f32; 3] = rgb(0xb4, 0xb2, 0xa9);
 const RED: [f32; 3] = rgb(0xe2, 0x4b, 0x4a);
-const BLUE: [f32; 3] = rgb(0x37, 0x8a, 0xdd);
+/// The lit pointer: lighter than the design's blue (#378add), turning
+/// almost white towards its tip, with a lit filament down its middle; its
+/// outline as sharp as the design's.
+const LIT_BLUE: [f32; 3] = rgb(0x4c, 0xa6, 0xff);
+const POINTER_TIP: [f32; 3] = rgb(0xdc, 0xf2, 0xff);
+/// A figure of the scale lit up, and the halo round it: pale blue like the
+/// pointer, or red from the red line up.
+const LIT_FIGURE: [f32; 3] = rgb(0xa8, 0xe0, 0xff);
+const FIGURE_GLOW: [f32; 3] = rgb(0x2e, 0x96, 0xff);
+const LIT_RED: [f32; 3] = rgb(0xff, 0x6a, 0x5c);
+const RED_GLOW: [f32; 3] = rgb(0xff, 0x2a, 0x1e);
+/// How far the halo round a lit figure spreads (units of the design).
+const FIGURE_HALO: f32 = 4.0;
+/// The box round each figure of the scale its lit image covers (units of
+/// the design).
+const LIT_BOX: Vec2 = Vec2::new(64.0, 40.0);
 const BLACK: [f32; 3] = [0.0, 0.0, 0.0];
 const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
 /// How dark the rim, the edge of the face (clear in the middle) and the
@@ -109,6 +128,33 @@ struct Pointer(usize);
 #[derive(Component)]
 struct Figures(usize);
 
+/// A figure of the scale lit up while the pointer of `player`'s speedometer
+/// points at it: the speed it marks (km/h).
+#[derive(Component)]
+struct LitFigure {
+    player: usize,
+    kmh: u32,
+}
+
+/// The speeds marked round the dial (km/h).
+fn marks() -> impl Iterator<Item = u32> {
+    (0..=TOP_SPEED as u32).step_by(MARK_STEP as usize)
+}
+
+/// The box of the design (units) a lit figure's image covers: round where
+/// the figure stands.
+fn lit_box(kmh: u32) -> Rect {
+    Rect::from_center_size(on_dial(pointer_angle(kmh as f32), MARKS), LIT_BOX)
+}
+
+/// How lit the figure for `mark` km/h is at `kmh` (0..1): fully while it
+/// is the figure nearest the pointer, fading into the next half way
+/// between them.
+pub fn figure_light(mark: u32, kmh: f32) -> f32 {
+    let step = MARK_STEP as f32;
+    1.0 - smoothstep(0.37 * step, 0.63 * step, (kmh - mark as f32).abs())
+}
+
 /// A speedometer `diameter` px wide for `player`, placed by `node`.
 pub fn spawn_speedometer(
     commands: &mut Commands,
@@ -139,7 +185,28 @@ pub fn spawn_speedometer(
             },
         )
     };
-    commands.spawn((
+    let lit: Vec<_> = marks()
+        .map(|kmh| {
+            let area = lit_box(kmh);
+            let share = |units: f32| percent(units / (2.0 * EXTENT) * 100.0);
+            (
+                LitFigure { player, kmh },
+                ImageNode {
+                    color: Color::NONE,
+                    ..default()
+                },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: share(area.min.x - (CENTER - EXTENT)),
+                    top: share(area.min.y - (CENTER - EXTENT)),
+                    width: share(area.width()),
+                    height: share(area.height()),
+                    ..default()
+                },
+            )
+        })
+        .collect();
+    let mut dial = commands.spawn((
         Speedometer,
         DespawnOnExit(GameState::Race),
         Node {
@@ -148,25 +215,29 @@ pub fn spawn_speedometer(
             ..node
         },
         ImageNode::default(),
-        children![
-            (
-                Pointer(player),
-                ImageNode::default(),
-                Node {
-                    position_type: PositionType::Absolute,
-                    width: percent(100),
-                    height: percent(100),
-                    ..default()
-                },
-            ),
-            (
-                Figures(player),
-                Text::new("0"),
-                figures(SPEED_SIZE, SPEED_AT)
-            ),
-            (Text::new("km/h"), figures(UNIT_SIZE, UNIT_AT)),
-        ],
     ));
+    dial.with_children(|dial| {
+        // The lit figures, under the pointer.
+        for figure in lit {
+            dial.spawn(figure);
+        }
+        dial.spawn((
+            Pointer(player),
+            ImageNode::default(),
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                ..default()
+            },
+        ));
+        dial.spawn((
+            Figures(player),
+            Text::new("0"),
+            figures(SPEED_SIZE, SPEED_AT),
+        ));
+        dial.spawn((Text::new("km/h"), figures(UNIT_SIZE, UNIT_AT)));
+    });
 }
 
 /// Where the pointer points at `kmh` (rad, clockwise from straight up).
@@ -174,12 +245,14 @@ pub fn pointer_angle(kmh: f32) -> f32 {
     (START + SWEEP * (kmh / TOP_SPEED).clamp(0.0, 1.0)).to_radians()
 }
 
-/// The pointers and the figures follow each player's speed.
+/// The pointers, the lit figures of the scale and the figures in the
+/// middle follow each player's speed.
 fn show_speed(
     player: Query<&BikeState, With<Player>>,
     others: Query<(&BikeState, &LocalPlayer), Without<Player>>,
     mut pointers: Query<(&Pointer, &mut UiTransform)>,
     mut figures: Query<(&Figures, &mut Text)>,
+    mut lit: Query<(&LitFigure, &mut ImageNode)>,
 ) {
     let kmh = |index: usize| {
         let state = if index == 0 {
@@ -204,45 +277,80 @@ fn show_speed(
             text.0 = label;
         }
     }
+    for (figure, mut image) in &mut lit {
+        let color = Color::WHITE.with_alpha(figure_light(figure.kmh, kmh(figure.player)));
+        if image.color != color {
+            image.color = color;
+        }
+    }
 }
 
-/// The dials and pointers drawn so far, by size (px).
-#[derive(Resource, Default)]
-struct DialArt(HashMap<u32, (Handle<Image>, Handle<Image>)>);
+/// The images of a dial drawn at one size: the dial, its pointer and each
+/// figure of its scale lit up (in the order of [`marks`]).
+struct DialImages {
+    dial: Handle<Image>,
+    pointer: Handle<Image>,
+    lit: Vec<Handle<Image>>,
+}
 
-/// Each dial and its pointer get the images drawn at the size they take on
-/// the screen; a new size (the window was resized) is drawn when it is
-/// first needed, and the sizes no longer shown are let go.
-#[allow(clippy::type_complexity)]
+/// What draws on a dial: its pointer and its lit figures.
+type DialPart = (
+    &'static mut ImageNode,
+    Has<Pointer>,
+    Option<&'static LitFigure>,
+);
+
+/// The dials drawn so far, by size (px).
+#[derive(Resource, Default)]
+struct DialArt(HashMap<u32, DialImages>);
+
+/// Each dial, its pointer and its lit figures get the images drawn at the
+/// size the dial takes on the screen; a new size (the window was resized)
+/// is drawn when it is first needed, and the sizes no longer shown are let
+/// go.
 fn draw_dials(
     mut art: ResMut<DialArt>,
     mut images: ResMut<Assets<Image>>,
-    mut nodes: Query<
-        (&ComputedNode, &mut ImageNode, Has<Pointer>),
-        Or<(With<Speedometer>, With<Pointer>)>,
-    >,
+    mut dials: Query<(&ComputedNode, &mut ImageNode, &Children), With<Speedometer>>,
+    mut parts: Query<DialPart, Without<Speedometer>>,
 ) {
     let size = |node: &ComputedNode| node.size().x.round() as u32;
-    if nodes
+    let shown: Vec<u32> = dials
         .iter()
-        .any(|(node, ..)| size(node) > 0 && !art.0.contains_key(&size(node)))
-    {
-        let shown: Vec<u32> = nodes.iter().map(|(node, ..)| size(node)).collect();
+        .map(|(node, ..)| size(node))
+        .filter(|&size| size > 0)
+        .collect();
+    if shown.iter().any(|size| !art.0.contains_key(size)) {
         art.0.retain(|size, _| shown.contains(size));
         for &size in &shown {
-            if size > 0 && !art.0.contains_key(&size) {
-                let drawn = (images.add(dial(size)), images.add(pointer(size)));
-                art.0.insert(size, drawn);
-            }
+            art.0.entry(size).or_insert_with(|| DialImages {
+                dial: images.add(dial(size)),
+                pointer: images.add(pointer(size)),
+                lit: marks()
+                    .map(|kmh| images.add(lit_figure(size, kmh)))
+                    .collect(),
+            });
         }
     }
-    for (node, mut image, is_pointer) in &mut nodes {
-        let Some((dial, pointer)) = art.0.get(&size(node)) else {
-            continue;
-        };
-        let wanted = if is_pointer { pointer } else { dial };
+    let show = |image: &mut ImageNode, wanted: &Handle<Image>| {
         if image.image != *wanted {
             image.image = wanted.clone();
+        }
+    };
+    for (node, mut image, children) in &mut dials {
+        let Some(drawn) = art.0.get(&size(node)) else {
+            continue;
+        };
+        show(&mut image, &drawn.dial);
+        for &child in children {
+            let Ok((mut image, is_pointer, lit)) = parts.get_mut(child) else {
+                continue;
+            };
+            if is_pointer {
+                show(&mut image, &drawn.pointer);
+            } else if let Some(lit) = lit {
+                show(&mut image, &drawn.lit[(lit.kmh / MARK_STEP) as usize]);
+            }
         }
     }
 }
@@ -334,6 +442,14 @@ impl Canvas {
 
     /// `text` in the UI font, `size` units of the design, centred on `at`.
     fn letters(&mut self, text: &str, size: f32, at: Vec2, color: [f32; 3]) {
+        let ink = self.letter_coverage(text, size, at);
+        self.paint_coverage(&ink, color, 1.0);
+    }
+
+    /// How much of each pixel `text` in the UI font covers (0..1), `size`
+    /// units of the design, centred on `at`.
+    fn letter_coverage(&self, text: &str, size: f32, at: Vec2) -> Vec<f32> {
+        let mut ink = vec![0.0; (self.size * self.size) as usize];
         let Coverage {
             width,
             height,
@@ -349,23 +465,71 @@ impl Canvas {
                     continue;
                 }
                 let index = (y as u32 * self.size + x as u32) as usize;
-                let cover = alpha[(row * width + column) as usize] as f32 / 255.0;
-                self.pixels[index] = over(self.pixels[index], color, cover);
+                ink[index] = alpha[(row * width + column) as usize] as f32 / 255.0;
+            }
+        }
+        ink
+    }
+
+    /// Lays `color` over the drawing as much as `coverage` (0..1) covers
+    /// each pixel, times `opacity`.
+    fn paint_coverage(&mut self, coverage: &[f32], color: [f32; 3], opacity: f32) {
+        for (pixel, &cover) in self.pixels.iter_mut().zip(coverage) {
+            if cover > 0.0 {
+                *pixel = over(*pixel, color, (cover * opacity).min(1.0));
             }
         }
     }
 
+    /// A halo of `color` round what `coverage` covers, spreading about
+    /// `radius` units of the design, as bright as `strength` says.
+    fn glow(&mut self, coverage: &[f32], radius: f32, color: [f32; 3], strength: f32) {
+        let size = self.size as usize;
+        let reach = ((radius * self.scale() / 2.0).round() as usize).max(1);
+        // Three box blurs each way: close to a Gaussian.
+        let mut blurred = coverage.to_vec();
+        for _ in 0..3 {
+            for along_rows in [true, false] {
+                let source = blurred.clone();
+                for line in 0..size {
+                    let at = |k: usize| {
+                        if along_rows {
+                            line * size + k
+                        } else {
+                            k * size + line
+                        }
+                    };
+                    for k in 0..size {
+                        let (from, to) = (k.saturating_sub(reach), (k + reach).min(size - 1));
+                        let sum: f32 = (from..=to).map(|j| source[at(j)]).sum();
+                        blurred[at(k)] = sum / (2 * reach + 1) as f32;
+                    }
+                }
+            }
+        }
+        self.paint_coverage(&blurred, color, strength);
+    }
+
     /// The drawing as an sRGB image, shown at its own size.
     fn image(self) -> Image {
-        let data = self
-            .pixels
-            .iter()
-            .flat_map(|pixel| pixel.map(|channel| (channel * 255.0).round() as u8))
+        let size = self.size;
+        self.image_of(UVec2::ZERO, UVec2::splat(size))
+    }
+
+    /// The pixels of the drawing from `from`, `size` of them, as an sRGB
+    /// image.
+    fn image_of(&self, from: UVec2, size: UVec2) -> Image {
+        let data = (from.y..from.y + size.y)
+            .flat_map(|y| (from.x..from.x + size.x).map(move |x| (x, y)))
+            .flat_map(|(x, y)| {
+                let pixel = self.pixels[(y * self.size + x) as usize];
+                pixel.map(|channel| (channel * 255.0).round() as u8)
+            })
             .collect();
         let mut image = Image::new(
             Extent3d {
-                width: self.size,
-                height: self.size,
+                width: size.x,
+                height: size.y,
                 depth_or_array_layers: 1,
             },
             TextureDimension::D2,
@@ -417,11 +581,10 @@ fn dial_canvas(size: u32) -> Canvas {
     );
     canvas.stroke(&arc, ARC_WIDTH, RED, 1.0);
     // The speeds round the dial: from 180 up, each a little bigger.
-    for kmh in (0..=TOP_SPEED as u32).step_by(MARK_STEP as usize) {
-        let size = 14.0 + (kmh.saturating_sub(180) / MARK_STEP) as f32;
+    for kmh in marks() {
         let color = if kmh >= REDLINE { RED } else { WHITE };
         let at = on_dial(pointer_angle(kmh as f32), MARKS);
-        canvas.letters(&kmh.to_string(), size, at, color);
+        canvas.letters(&kmh.to_string(), figure_size(kmh), at, color);
     }
     // The darker disc in the middle, under the figures.
     canvas.fill(&circle(HUB), BLACK, HUB_SHADE);
@@ -433,12 +596,55 @@ fn dial(size: u32) -> Image {
     dial_canvas(size).image()
 }
 
-/// The pointer, `size` px wide like the dial, pointing straight up.
+/// How big the figure for `kmh` is (units of the design): from 180 up, each
+/// a little bigger.
+fn figure_size(kmh: u32) -> f32 {
+    14.0 + (kmh.saturating_sub(180) / MARK_STEP) as f32
+}
+
+/// The figure for `kmh` lit up, on a drawing the size of the dial: pale
+/// blue glowing blue round it, or from the red line up bright red glowing
+/// red.
+fn lit_figure_canvas(size: u32, kmh: u32) -> Canvas {
+    let (color, glow) = if kmh >= REDLINE {
+        (LIT_RED, RED_GLOW)
+    } else {
+        (LIT_FIGURE, FIGURE_GLOW)
+    };
+    let mut canvas = Canvas::new(size, glow);
+    let at = on_dial(pointer_angle(kmh as f32), MARKS);
+    let ink = canvas.letter_coverage(&kmh.to_string(), figure_size(kmh), at);
+    canvas.glow(&ink, FIGURE_HALO, glow, 1.5);
+    canvas.paint_coverage(&ink, color, 1.0);
+    canvas
+}
+
+/// The figure for `kmh` lit up, for a dial `size` px wide: just the box
+/// round it (see [`lit_box`]).
+fn lit_figure(size: u32, kmh: u32) -> Image {
+    let canvas = lit_figure_canvas(size, kmh);
+    let area = lit_box(kmh);
+    let pixel = |units: Vec2| ((units - (CENTER - EXTENT)) * canvas.scale()).round();
+    let (from, to) = (
+        pixel(area.min),
+        pixel(area.max).min(Vec2::splat(size as f32)),
+    );
+    canvas.image_of(from.as_uvec2(), (to - from).max(Vec2::ONE).as_uvec2())
+}
+
+/// The pointer, `size` px wide like the dial, pointing straight up: lit
+/// from within, lighter towards its tip, with a filament down its middle,
+/// and as sharp as the design's.
 fn pointer_canvas(size: u32) -> Canvas {
-    let mut canvas = Canvas::new(size, BLUE);
+    let mut canvas = Canvas::new(size, LIT_BLUE);
     let [a, b, c] = POINTER;
     let triangle = format!("M {} {} L {} {} L {} {} Z", a.0, a.1, b.0, b.1, c.0, c.1);
-    canvas.fill(&triangle, BLUE, 1.0);
+    let shape = canvas.mask(&triangle, None);
+    canvas.paint(&shape, LIT_BLUE, |_| 1.0);
+    // Lighter towards the tip.
+    canvas.paint(&shape, POINTER_TIP, |at| 0.8 * smoothstep(a.1, c.1, at.y));
+    let core = format!("M {} {} L {} {}", CENTER, a.1 - 4.0, c.0, c.1 + 12.0);
+    canvas.stroke(&core, 1.6, WHITE, 0.7);
     canvas
 }
 
@@ -541,8 +747,60 @@ mod tests {
         // Its clear pixels are blue too, so its edges stay blue when it turns.
         assert_eq!(
             at(&canvas, Vec2::new(60.0, 60.0))[2],
-            (BLUE[2] * 255.0).round() as u8
+            (LIT_BLUE[2] * 255.0).round() as u8
         );
+        // Sharp: clear right outside it, with no halo.
+        assert_eq!(at(&canvas, Vec2::new(199.0, 120.0))[3], 0);
+        // Lit from within: lighter towards its tip.
+        let base = at(&canvas, Vec2::new(184.0, 136.0));
+        let tip = at(&canvas, Vec2::new(190.5, 97.0));
+        assert!(tip[0] > base[0] + 60, "{base:?} {tip:?}");
+    }
+
+    #[test]
+    fn the_figure_the_pointer_is_at_lights_up() {
+        assert_eq!(figure_light(120, 120.0), 1.0);
+        assert_eq!(figure_light(120, 128.0), 1.0);
+        assert!((figure_light(120, 135.0) - 0.5).abs() < 1e-5);
+        assert!((figure_light(150, 135.0) - 0.5).abs() < 1e-5);
+        assert_eq!(figure_light(120, 145.0), 0.0);
+        assert_eq!(figure_light(0, 0.0), 1.0);
+        // Always one at least half lit, all the way round.
+        for kmh in 0..=360 {
+            let most = marks()
+                .map(|mark| figure_light(mark, kmh as f32))
+                .fold(0.0, f32::max);
+            assert!(most >= 0.5, "{kmh}");
+        }
+    }
+
+    #[test]
+    fn a_lit_figure_glows_blue_and_red_from_the_red_line() {
+        let canvas = lit_figure_canvas(302, 120);
+        let center = on_dial(pointer_angle(120.0), MARKS);
+        let bluest = (-5..=5)
+            .flat_map(|dy| (-8..=8).map(move |dx| Vec2::new(dx as f32, dy as f32)))
+            .map(|d| at(&canvas, center + d))
+            .max_by_key(|p| p[3] as u32 * p[2] as u32)
+            .unwrap();
+        assert!(bluest[2] > 230 && bluest[2] > bluest[0] + 40, "{bluest:?}");
+        let canvas = lit_figure_canvas(302, 300);
+        let center = on_dial(pointer_angle(300.0), MARKS);
+        let mut reddest = [0u8; 4];
+        for dy in -5..=5 {
+            for dx in -8..=8 {
+                let pixel = at(&canvas, center + Vec2::new(dx as f32, dy as f32));
+                if pixel[3] as u32 * pixel[0] as u32 > reddest[3] as u32 * reddest[0] as u32 {
+                    reddest = pixel;
+                }
+            }
+        }
+        assert!(reddest[0] > 230 && reddest[3] > 230, "{reddest:?}");
+        // A halo round it, clear further out.
+        assert!(at(&canvas, center + Vec2::new(0.0, 9.0))[3] > 0);
+        assert_eq!(at(&canvas, center + Vec2::new(0.0, 40.0))[3], 0);
+        let image = lit_figure(302, 300);
+        assert!(image.width() < 80 && image.height() < 50);
     }
 
     #[test]

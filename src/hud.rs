@@ -3,10 +3,7 @@
 //! segundo siempre. El minimapa va aparte, en [`crate::minimap`], and the
 //! speedometer's dial is drawn in [`crate::speedometer`].
 
-use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
-    prelude::*,
-};
+use bevy::prelude::*;
 
 use crate::gamepads::ActiveController;
 use crate::legend::{KeyPrompt, race_prompts, spawn_legend};
@@ -21,7 +18,7 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((FrameTimeDiagnosticsPlugin::default(), SpeedometerPlugin))
+        app.add_plugins(SpeedometerPlugin)
             .init_resource::<UiFont>()
             .add_systems(Startup, spawn_fps_counter)
             .add_systems(OnEnter(GameState::Race), spawn_race_hud)
@@ -229,15 +226,67 @@ fn show_race_legend(
 }
 
 /// Fotogramas por segundo, suavizados para que se puedan leer.
-fn update_fps(diagnostics: Res<DiagnosticsStore>, mut text: Single<&mut Text, With<FpsCounter>>) {
-    let Some(fps) = diagnostics
-        .get(&FrameTimeDiagnosticsPlugin::FPS)
-        .and_then(|fps| fps.smoothed())
-    else {
+/// How often the frame rate shown changes (s): it is the average over that
+/// time, so it reads steadily instead of flickering frame by frame.
+const FPS_EVERY: f32 = 0.5;
+
+/// Frames counted since the frame rate shown last changed, and over how
+/// long.
+#[derive(Default)]
+struct FpsMeter {
+    frames: u32,
+    elapsed: f32,
+}
+
+impl FpsMeter {
+    /// Counts a frame that took `dt` s: every [`FPS_EVERY`], the average
+    /// frame rate since the last.
+    fn tick(&mut self, dt: f32) -> Option<f32> {
+        self.frames += 1;
+        self.elapsed += dt;
+        if self.elapsed < FPS_EVERY {
+            return None;
+        }
+        let fps = self.frames as f32 / self.elapsed;
+        *self = Self::default();
+        Some(fps)
+    }
+}
+
+fn update_fps(
+    time: Res<Time<Real>>,
+    mut meter: Local<FpsMeter>,
+    mut text: Single<&mut Text, With<FpsCounter>>,
+) {
+    let Some(fps) = meter.tick(time.delta_secs()) else {
         return;
     };
     let label = format!("{fps:.0} FPS");
     if text.0 != label {
         text.0 = label;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_frame_rate_is_shown_as_an_average_twice_a_second() {
+        let mut meter = FpsMeter::default();
+        // 60 frames a second for two seconds: shown four times.
+        let shown: Vec<f32> = (0..120).filter_map(|_| meter.tick(1.0 / 60.0)).collect();
+        assert_eq!(shown.len(), 4, "{shown:?}");
+        assert!(
+            shown.iter().all(|fps| (fps - 60.0).abs() < 2.5),
+            "{shown:?}"
+        );
+        // Uneven frames read as their average.
+        let mut meter = FpsMeter::default();
+        let shown = (0..40)
+            .filter_map(|k| meter.tick(if k % 2 == 0 { 0.01 } else { 0.03 }))
+            .next()
+            .expect("shown after half a second");
+        assert!((shown - 50.0).abs() < 1.0, "{shown}");
     }
 }

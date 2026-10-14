@@ -5,6 +5,7 @@ use bevy::prelude::*;
 
 use super::Assets3d;
 use super::cavern::cavern_pieces;
+use super::lamps::Lamp;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
 use super::scenery::{
@@ -35,6 +36,24 @@ const DECK_DROP: f32 = 0.3;
 const TUNNEL_CHECKER: f32 = 0.7;
 /// Una luz del techo y una costilla cada tantos puntos del trazado.
 const TUNNEL_LIGHT_EVERY: usize = 3;
+/// The light of the lamps on what is round them: how far it spreads across
+/// the road either side of a lamp of the ceiling (m), and up and down the
+/// wall from one on the wall (m); its colour, and how bright each pair of
+/// lamps of the ceiling is (lm, see [`super::lamps`]).
+const POOL_ACROSS: f32 = 3.2;
+const POOL_ON_WALL: f32 = 2.6;
+const LAMP_COLOR: Color = Color::srgb(1.0, 0.82, 0.58);
+const LAMP_LUMENS: f32 = 900_000.0;
+/// How high over the road the light of a pair of lamps of the ceiling
+/// shines from (m): well under the ceiling, which would otherwise burn
+/// white round it.
+const LAMP_HEIGHT: f32 = TUNNEL_HEIGHT - 1.8;
+/// How bright the lamps' light on the road and walls is drawn.
+const POOL_COLOR: Color = Color::srgb(0.42, 0.3, 0.16);
+/// A mine's oil lanterns: orange, and dimmer (lm); their light on the rock
+/// is already in its colours (see [`super::cavern`]).
+const LANTERN_COLOR: Color = Color::srgb(1.0, 0.62, 0.28);
+const LANTERN_LUMENS: f32 = 500_000.0;
 const TUNNEL_RIB_EVERY: usize = 4;
 /// Alto de los arcos del puente sobre el tablero (m), su grosor y la
 /// separación entre tirantes (en puntos del trazado).
@@ -62,26 +81,34 @@ const FENCE_HEIGHT: f32 = 1.2;
 const POST_WOOD: Color = Color::srgb(0.34, 0.2, 0.09);
 const RAIL_WOOD: Color = Color::srgb(0.52, 0.33, 0.15);
 
-/// The meshes of the tunnels and the bridges, with their materials: worked
-/// out away from the main thread, with the rest of the circuit (see
-/// [`super::prepare`]).
+/// The meshes of the tunnels and the bridges, with their materials, and
+/// the lamps of the tunnels: worked out away from the main thread, with the
+/// rest of the circuit (see [`super::prepare`]).
 pub fn structure_pieces(
     track: &Track,
     terrain: &Terrain,
     scenery: &Scenery,
     textures: &WorldTextures,
-) -> Vec<(Mesh, StandardMaterial)> {
+) -> (Vec<(Mesh, StandardMaterial)>, Vec<Lamp>) {
     let mut pieces = Vec::new();
+    let mut lamps = Vec::new();
     let lap = track.lap_length();
     for tunnel in scenery.tunnels {
         // A mine's tunnels are its excavation.
         if scenery.soil == Soil::Mine {
             let halls = scenery.mine.as_ref().map_or(&[][..], |mine| mine.halls);
-            pieces.extend(cavern_pieces(track, terrain, *tunnel, halls, textures));
+            let (cavern, lanterns) = cavern_pieces(track, terrain, *tunnel, halls, textures);
+            pieces.extend(cavern);
+            lamps.extend(lanterns.into_iter().map(|at| Lamp {
+                at,
+                color: LANTERN_COLOR,
+                lumens: LANTERN_LUMENS,
+            }));
             continue;
         }
         let indices = indices(track, *tunnel, lap);
-        let parts = tunnel_meshes(track, terrain, scenery.soil, &indices);
+        let mut parts = tunnel_meshes(track, terrain, scenery.soil, &indices);
+        lamps.append(&mut parts.lamps);
         let rock = match scenery.soil {
             Soil::Rock | Soil::Mine => StandardMaterial {
                 base_color: Color::srgb(0.85, 0.75, 0.6),
@@ -134,6 +161,15 @@ pub fn structure_pieces(
             reflectance: 0.18,
             ..default()
         };
+        // The lamps' light, added over what it falls on.
+        let pools = StandardMaterial {
+            base_color: POOL_COLOR,
+            base_color_texture: Some(textures.light_pool.clone()),
+            alpha_mode: AlphaMode::Add,
+            unlit: true,
+            fog_enabled: false,
+            ..default()
+        };
         for (mesh, material) in [
             (parts.rock, rock),
             (parts.grass, grass),
@@ -142,6 +178,7 @@ pub fn structure_pieces(
             (parts.sidewalks, concrete),
             (parts.lights, lights),
             (parts.checker, checker),
+            (parts.pools, pools),
         ] {
             // Through checkerboard earth, no grass grows on the top.
             if mesh.count_vertices() == 0 {
@@ -194,7 +231,7 @@ pub fn structure_pieces(
             },
         ));
     }
-    pieces
+    (pieces, lamps)
 }
 
 /// The signs along the road: billboards, curve chevrons and brake markers.
@@ -294,6 +331,11 @@ struct TunnelParts {
     lights: Mesh,
     /// Tablero de ajedrez al pie de las paredes.
     checker: Mesh,
+    /// The lamps' light on the road, the walkways and the walls.
+    pools: Mesh,
+    /// The lamps, for their light on what passes under them (see
+    /// [`super::lamps`]).
+    lamps: Vec<Lamp>,
 }
 
 /// Un túnel recto por dentro, con el techo plano, luces cálidas y las
@@ -307,7 +349,12 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
     let mut sidewalks = MeshBuilder::default();
     let mut lights = MeshBuilder::default();
     let mut checker = MeshBuilder::default();
+    let mut pools = MeshBuilder::default();
+    let mut lamps = Vec::new();
     let step = track.step_length();
+    let n = track.sample_count();
+    // The points of the centre line `back` before and `ahead` after `i`.
+    let around = |i: usize, back: usize, ahead: usize| ((i + n - back) % n, (i + ahead) % n);
     let road = |i: usize| track.surface_point(i, 0.0).y + SURFACE_Y;
     // Un punto a `lateral` de la línea central y `height` sobre la carretera.
     let at = |i: usize, lateral: f32, height: f32| {
@@ -392,6 +439,19 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 Vec3::Y,
                 Color::WHITE,
             );
+            // Their kerb, down to under the asphalt: nothing shows through
+            // the step between them.
+            let kerb = |k: usize| ground(k, walk) - Vec3::Y * 0.12;
+            sidewalks.quad(
+                [
+                    (kerb(i), Vec2::new(vi, 0.05)),
+                    (kerb(j), Vec2::new(vj, 0.05)),
+                    (ground(j, walk), Vec2::new(vj, 0.0)),
+                    (ground(i, walk), Vec2::new(vi, 0.0)),
+                ],
+                inward(wall),
+                Color::srgb(0.85, 0.85, 0.85),
+            );
             // Lámparas en las paredes, a media altura.
             if i % TUNNEL_LIGHT_EVERY == 0 {
                 let lamp = wall - side * 0.05;
@@ -404,6 +464,36 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                     ],
                     inward(wall),
                     Color::WHITE,
+                );
+                // Its light on the wall round it, brightest at the lamp,
+                // and on the walkway under it.
+                let (before, after) = around(i, 1, 2);
+                let glow = wall - side * 0.02;
+                let (low, high) = (4.0 - POOL_ON_WALL, (4.0 + POOL_ON_WALL).min(TUNNEL_HEIGHT));
+                let v = |height: f32| 0.5 - (height - 4.0) / (2.0 * POOL_ON_WALL);
+                pools.quad(
+                    [
+                        (at(before, glow, low), Vec2::new(0.0, v(low))),
+                        (at(after, glow, low), Vec2::new(1.0, v(low))),
+                        (at(after, glow, high), Vec2::new(1.0, v(high))),
+                        (at(before, glow, high), Vec2::new(0.0, v(high))),
+                    ],
+                    inward(wall),
+                    Color::WHITE,
+                );
+                let floor = |k: usize, lateral: f32| {
+                    track.surface_point(k, lateral) + Vec3::Y * (SURFACE_Y + 0.045)
+                };
+                let (near, far) = (side * sidewalk_from, wall - side * 0.02);
+                pools.quad(
+                    [
+                        (floor(before, near), Vec2::new(0.0, 0.0)),
+                        (floor(after, near), Vec2::new(1.0, 0.0)),
+                        (floor(after, far), Vec2::new(1.0, 0.5)),
+                        (floor(before, far), Vec2::new(0.0, 0.5)),
+                    ],
+                    Vec3::Y,
+                    Color::srgb(0.6, 0.6, 0.6),
                 );
             }
             // Los lados de la roca, por fuera.
@@ -453,7 +543,29 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                     Vec3::NEG_Y,
                     Color::WHITE,
                 );
+                // Its light on the road under it, following its banking.
+                let (before, after) = around(i, 1, 2);
+                let floor = |k: usize, lateral: f32| {
+                    track.surface_point(k, lateral) + Vec3::Y * (SURFACE_Y + 0.02)
+                };
+                let (a, b) = (lateral - POOL_ACROSS, lateral + POOL_ACROSS);
+                pools.quad(
+                    [
+                        (floor(before, a), Vec2::new(0.0, 0.0)),
+                        (floor(after, a), Vec2::new(1.0, 0.0)),
+                        (floor(after, b), Vec2::new(1.0, 1.0)),
+                        (floor(before, b), Vec2::new(0.0, 1.0)),
+                    ],
+                    Vec3::Y,
+                    Color::WHITE,
+                );
             }
+            // Both lamps, as one light over the middle of the road.
+            lamps.push(Lamp {
+                at: (at(i, 0.0, LAMP_HEIGHT) + at(j, 0.0, LAMP_HEIGHT)) / 2.0,
+                color: LAMP_COLOR,
+                lumens: LAMP_LUMENS,
+            });
         }
         // La roca de encima, en franjas de lado a lado.
         const STRIPS: usize = 12;
@@ -540,6 +652,8 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         sidewalks: sidewalks.build(),
         lights: lights.build(),
         checker: checker.build(),
+        pools: pools.build(),
+        lamps,
     }
 }
 
