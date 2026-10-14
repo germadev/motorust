@@ -23,7 +23,7 @@ mod tufts;
 
 use bevy::asset::embedded_asset;
 use bevy::pbr::PbrPlugin;
-use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
+use bevy::tasks::{Task, TaskPool, TaskPoolBuilder, block_on, poll_once};
 use bevy::{
     light::{CascadeShadowConfigBuilder, NotShadowCaster},
     prelude::*,
@@ -196,6 +196,21 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     }
 }
 
+/// The thread the other circuits are prepared on in the background: their
+/// own, not Bevy's async compute pool. The render pipelines are compiled
+/// there, and behind a circuit being prepared (seconds of work) they would
+/// wait: nothing new would be drawn until it was ready, the screenshots
+/// included.
+fn circuit_pool() -> &'static TaskPool {
+    static POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        TaskPoolBuilder::new()
+            .num_threads(1)
+            .thread_name("Circuits".into())
+            .build()
+    })
+}
+
 /// The circuits being prepared in the background, by index in [`CIRCUITS`].
 #[derive(Resource, Default)]
 struct Preparing(std::collections::HashMap<usize, Task<Prepared>>);
@@ -211,7 +226,7 @@ fn cache_all_circuits(
     mut preparing: ResMut<Preparing>,
 ) {
     let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
-    let pool = AsyncComputeTaskPool::get();
+    let pool = circuit_pool();
     for index in 0..CIRCUITS.len() {
         if !built.contains(&index) && !preparing.0.contains_key(&index) {
             let textures = textures.clone();
