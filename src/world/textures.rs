@@ -45,6 +45,9 @@ pub struct WorldTextures {
     /// A tuft of grass blades seen from the side (see
     /// [`super::foliage::tuft`]).
     pub tuft: Handle<Image>,
+    /// The ragged edge of the grass along the road (see
+    /// [`super::foliage::grass_edge`]).
+    pub grass_edge: Handle<Image>,
     /// The average colour of the grass texture: the tufts of grass are
     /// painted it (see [`super::tufts`]).
     pub grass_color: Color,
@@ -99,6 +102,7 @@ impl FromWorld for WorldTextures {
         let strata = images.add(strata());
         let leaves = images.add(super::foliage::leaves());
         let tuft = images.add(super::foliage::tuft());
+        let grass_edge = images.add(super::foliage::grass_edge());
         Self {
             grass,
             rock,
@@ -116,6 +120,7 @@ impl FromWorld for WorldTextures {
             strata,
             leaves,
             tuft,
+            grass_edge,
             grass_color,
         }
     }

@@ -172,6 +172,26 @@ impl<'a> Road<'a> {
     }
 }
 
+/// Whether point `index` of road number `number` (see
+/// [`crate::track::Nearest::road`]) has curbs beside its asphalt: in the
+/// corners, and into and out of the loops.
+fn has_curbs(road: Road, index: usize) -> bool {
+    road.line().smoothed_curvature(index, 4) > 1.0 / CURB_RADIUS || road.at_a_loop(index)
+}
+
+/// How far from the centre line of road number `number` the asphalt, or
+/// its curbs where it has them, end at point `index` (m): where the ground
+/// beside it begins.
+pub fn paved_edge(track: &Track, number: usize, index: usize) -> f32 {
+    let road = Road { track, number };
+    let half = road.line().half_width_at(index);
+    if has_curbs(road, index) {
+        half + CURB_WIDTH
+    } else {
+        half
+    }
+}
+
 /// How far above the asphalt of the lap a road off it goes where they meet
 /// (m).
 const SIDE_ROAD_LIFT: f32 = 0.01;
@@ -246,8 +266,7 @@ fn spawn_surface(
         painted(),
     );
     let curbs = |index: usize, corners| {
-        let curved = line.smoothed_curvature(index, 4) > 1.0 / CURB_RADIUS;
-        ((curved || road.at_a_loop(index)) && clear(corners) && !planked(index))
+        (has_curbs(road, index) && clear(corners) && !planked(index))
             .then_some(scenery.curbs[index % 2])
     };
     spawn(

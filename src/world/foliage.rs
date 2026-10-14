@@ -16,7 +16,7 @@ use bevy::{
 };
 
 use super::textures::generate_mipmaps;
-use crate::geometry::{fbm, random01};
+use crate::geometry::{fbm, random01, smoothstep};
 
 /// The alpha below which masked textures are see-through.
 pub const ALPHA_CUTOFF: f32 = 0.5;
@@ -336,6 +336,75 @@ pub fn tuft() -> Image {
     canvas.image(true)
 }
 
+/// The ragged edge of the grass along the road, seen from above, to lie
+/// over the edge of the asphalt: clear on the road's side (the top rows),
+/// grass on the other (the bottom ones), and between them an uneven line
+/// of grass with blades and clumps reaching out over the road. Towards the
+/// bottom the grass thins out in specks, so it melts into the grass of the
+/// ground instead of ending on a line. Pale, to be tinted by the colour of
+/// the grass. It repeats along (u) but not across (v).
+pub fn grass_edge() -> Image {
+    const WIDTH: u32 = 256;
+    const HEIGHT: u32 = 64;
+    let pale = Color::srgb(0.85, 0.85, 0.82);
+    let mut canvas = Canvas::new(WIDTH, HEIGHT, true, pale, 0.0);
+    // Where the grass begins down each column: an uneven line that repeats
+    // along.
+    let phases: Vec<f32> = (0..8)
+        .map(|k| rand(7, k, 0) * std::f32::consts::TAU)
+        .collect();
+    let line = |u: f32| {
+        let mut wave = 0.0;
+        for (k, phase) in phases.iter().enumerate() {
+            let frequency = (k + 1) as f32;
+            wave += (u * std::f32::consts::TAU * frequency + phase).sin() / frequency.sqrt();
+        }
+        0.42 + 0.05 * wave
+    };
+    for y in 0..HEIGHT {
+        for x in 0..WIDTH {
+            let (u, v) = (
+                (x as f32 + 0.5) / WIDTH as f32,
+                (y as f32 + 0.5) / HEIGHT as f32,
+            );
+            let into = (v - line(u)) * HEIGHT as f32;
+            // Thinning out into specks towards the bottom.
+            let specks = rand(8, x * HEIGHT + y, 0);
+            let thinning = smoothstep(0.75, 0.98, v);
+            if into > 0.0 && specks > thinning {
+                let shade = 0.78 + 0.22 * rand(9, x * HEIGHT + y, 0);
+                let color = Vec4::new(shade, shade, shade * 0.97, 1.0);
+                canvas.blend(x as i32, y as i32, color, into.min(1.0));
+            }
+        }
+    }
+    // Blades and little clumps reaching out over the road.
+    for n in 0..520 {
+        let r = |k: u32| rand(10, n, k);
+        let x = r(0) * WIDTH as f32;
+        let root = Vec2::new(x, (line(x / WIDTH as f32) + 0.04 * r(1)) * HEIGHT as f32);
+        let angle = -std::f32::consts::FRAC_PI_2 + (r(2) - 0.5) * 1.8;
+        let length = HEIGHT as f32 * (0.06 + 0.22 * r(3) * r(3));
+        let tip = root + Vec2::from_angle(angle) * length;
+        let shade = 0.72 + 0.28 * r(4);
+        let color = Vec4::new(shade, shade, shade * 0.95, 1.0);
+        canvas.stroke(
+            root,
+            tip,
+            (2.2 + 1.5 * r(5), 0.6),
+            color * Vec4::new(0.85, 0.85, 0.85, 1.0),
+            color,
+        );
+    }
+    let mut image = canvas.image(true);
+    // Across it does not repeat: the clear road side must not take in the
+    // grass of the other side.
+    if let ImageSampler::Descriptor(descriptor) = &mut image.sampler {
+        descriptor.address_mode_v = ImageAddressMode::ClampToEdge;
+    }
+    image
+}
+
 /// The leaves of the trees: two squares side by side, a cluster of broad
 /// leaves on twigs on the left and a spray of pine needles on the right,
 /// each round its middle on a clear ground. Pale, to be tinted by the
@@ -449,6 +518,27 @@ mod tests {
                 "level {level}: {smaller} vs {full}"
             );
         }
+    }
+
+    #[test]
+    fn the_grass_edge_is_ragged() {
+        let image = grass_edge();
+        let (width, height) = (image.width(), image.height());
+        // Clear along the top (the road), grass lower down.
+        assert!((0..width).all(|x| alpha(&image, x, 0) == 0));
+        let solid = |y: u32| (0..width).filter(|&x| alpha(&image, x, y) > 128).count();
+        assert!(solid(height * 6 / 10) > width as usize * 9 / 10);
+        // Where the grass begins goes up and down along it.
+        let starts: Vec<u32> = (0..width)
+            .filter_map(|x| (0..height).find(|&y| alpha(&image, x, y) > 128))
+            .collect();
+        let (top, bottom) = (starts.iter().min().unwrap(), starts.iter().max().unwrap());
+        assert!(bottom - top > 8, "{top}..{bottom}");
+        // It does not repeat across: the road side stays clear when drawn.
+        let ImageSampler::Descriptor(sampler) = &image.sampler else {
+            panic!("it has its sampler");
+        };
+        assert_eq!(sampler.address_mode_v, ImageAddressMode::ClampToEdge);
     }
 
     #[test]
