@@ -523,28 +523,41 @@ mod tests {
 
     #[test]
     fn against_the_clock_a_good_ride_earns_a_little_time_at_each_checkpoint() {
+        use crate::race::{CheckpointTimes, checkpoints, stretch_after};
+        use crate::settings::Difficulty;
         for circuit in &crate::circuits::CIRCUITS {
             let lap = Track::new(&circuit.layout).lap_length();
-            let points = crate::race::checkpoints(&circuit.checkpoints(), lap);
+            let points = checkpoints(&circuit.checkpoints(), lap);
             let times = checkpoint_times(circuit, 0.9, 1);
             assert_eq!(times.len(), points.len(), "{}", circuit.name);
-            let mut left = crate::race::starting_time(&points);
-            for (index, time) in times.iter().enumerate() {
-                let name = circuit.name;
-                // A rival's ride (a good one) never runs short of time...
-                left -= time;
-                assert!(left > 1.0, "{name}: {left} s left at checkpoint {index}");
-                // ...but it earns only a few seconds at each checkpoint: what
-                // the stretch to the next one takes it, and a little more.
-                let bonus =
-                    crate::race::checkpoint_bonus(crate::race::stretch_after(&points, index));
-                left += bonus;
-                if let Some(next) = times.get(index + 1) {
-                    let earned = bonus - next;
+            for (difficulty, earns) in [
+                (Difficulty::Medium, 1.0..5.0),
+                (Difficulty::Hard, 0.3..3.5),
+                (Difficulty::Easy, 2.5..9.0),
+            ] {
+                let given = CheckpointTimes::on(difficulty);
+                let mut left = given.starting(&points);
+                for (index, time) in times.iter().enumerate() {
+                    let name = circuit.name;
+                    // A rival's ride (a good one) never runs short of time,
+                    // even on hard...
+                    left -= time;
                     assert!(
-                        (1.0..5.0).contains(&earned),
-                        "{name}: {earned} s earned at checkpoint {index}"
+                        left > 0.5,
+                        "{name}, {difficulty:?}: {left} s left at checkpoint {index}"
                     );
+                    // ...but it earns only a few seconds at each checkpoint:
+                    // what the stretch to the next one takes it, and a
+                    // little more.
+                    let bonus = given.bonus(stretch_after(&points, index));
+                    left += bonus;
+                    if let Some(next) = times.get(index + 1) {
+                        let earned = bonus - next;
+                        assert!(
+                            earns.contains(&earned),
+                            "{name}, {difficulty:?}: {earned} s earned at checkpoint {index}"
+                        );
+                    }
                 }
             }
         }

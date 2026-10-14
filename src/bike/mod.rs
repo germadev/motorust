@@ -1054,6 +1054,7 @@ impl BikeAssets<'_> {
 }
 
 /// Al empezar la carrera: la parrilla con la moto elegida para el jugador.
+#[allow(clippy::too_many_arguments)]
 fn spawn_grid(
     mut commands: Commands,
     track: Res<Track>,
@@ -1062,6 +1063,7 @@ fn spawn_grid(
     mut race: ResMut<Race>,
     mut assets: BikeAssets,
     game_mode: Res<GameMode>,
+    settings: Res<Settings>,
 ) {
     race.started = false;
     let roster_indices = if *game_mode == GameMode::SplitScreen {
@@ -1088,7 +1090,9 @@ fn spawn_grid(
         } else {
             match *rival {
                 Some(rival) => {
-                    bike.insert((rival, ai::Line(rival.lane)));
+                    // As fast as the difficulty asks.
+                    let skill = settings.difficulty.rival_skill(rival.skill);
+                    bike.insert((Rival { skill, ..rival }, ai::Line(rival.lane)));
                 }
                 None => {
                     bike.insert(Player);

@@ -11,7 +11,9 @@ use bevy::prelude::*;
 
 use crate::hud::UiFont;
 use crate::locale::Language;
-use crate::settings::{Action, Controls, key_name};
+use crate::settings::{
+    Action, Controls, FULLSCREEN_BUTTON, MUTE_BUTTON, SHORTCUT_HELD, Shortcut, key_name,
+};
 use crate::ui::{ActiveDevice, UiIcons, text_font};
 use crate::vector_art::{Coverage, white_image};
 
@@ -272,10 +274,8 @@ pub fn race_prompts(device: ActiveDevice, lang: Language, controls: &Controls) -
         (first(Action::Restart), lang.restart()),
         (first(Action::Pause), lang.action_pause()),
     ];
-    // M turns the sound off and on; it has no button.
-    if device == ActiveDevice::Keyboard {
-        prompts.push((vec![text(device, "M")], lang.hint_sound()));
-    }
+    // M turns the sound off and on; on a gamepad, Select held with Y.
+    prompts.push((shortcut_badges(device, Shortcut::Mute), lang.hint_sound()));
     prompts
         .into_iter()
         // An action with nothing to do it is left out.
@@ -285,6 +285,113 @@ pub fn race_prompts(device: ActiveDevice, lang: Language, controls: &Controls) -
             action: action.into(),
         })
         .collect()
+}
+
+/// The keys or buttons of a shortcut on `device`: M for the sound and
+/// Cmd+Enter (Alt+Enter) for fullscreen on the keyboard, Select held with Y
+/// or Start on a gamepad.
+pub fn shortcut_badges(device: ActiveDevice, shortcut: Shortcut) -> Vec<Badge> {
+    match (device, shortcut) {
+        (ActiveDevice::Keyboard, Shortcut::Mute) => vec![text(device, "M")],
+        (ActiveDevice::Keyboard, Shortcut::Fullscreen) => {
+            let held = if cfg!(target_os = "macos") {
+                "Cmd"
+            } else {
+                "Alt"
+            };
+            vec![text(device, held), text(device, "Enter")]
+        }
+        (_, Shortcut::Mute) => vec![
+            button_badge(device, SHORTCUT_HELD),
+            button_badge(device, MUTE_BUTTON),
+        ],
+        (_, Shortcut::Fullscreen) => vec![
+            button_badge(device, SHORTCUT_HELD),
+            button_badge(device, FULLSCREEN_BUTTON),
+        ],
+    }
+}
+
+/// The shortcuts that work everywhere: the sound and fullscreen (this one
+/// not in the browser by gamepad, where only a key press may ask for it).
+pub fn shortcut_prompts(device: ActiveDevice, lang: Language) -> Vec<KeyPrompt> {
+    [
+        (Shortcut::Mute, lang.hint_sound()),
+        (
+            Shortcut::Fullscreen,
+            match lang {
+                Language::Spanish => "Pantalla completa",
+                Language::English => "Fullscreen",
+            },
+        ),
+    ]
+    .into_iter()
+    .map(|(shortcut, action)| KeyPrompt {
+        badges: shortcut_badges(device, shortcut),
+        action: action.into(),
+    })
+    .collect()
+}
+
+/// A row of prompts in place, as in the legend but where it is put.
+pub fn spawn_prompts(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    icons: &UiIcons,
+    device: ActiveDevice,
+    prompts: &[KeyPrompt],
+) {
+    let look = style(device);
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            column_gap: px(24),
+            row_gap: px(8),
+            ..default()
+        })
+        .with_children(|bar| {
+            for prompt in prompts {
+                spawn_prompt(bar, font, icons, &look, device, prompt);
+            }
+        });
+}
+
+/// One prompt: its badges and what it does.
+fn spawn_prompt(
+    bar: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    icons: &UiIcons,
+    look: &Style,
+    device: ActiveDevice,
+    prompt: &KeyPrompt,
+) {
+    bar.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: px(4),
+        ..default()
+    })
+    .with_children(|item| {
+        for badge in &prompt.badges {
+            spawn_badge(item, font, icons, look, device, badge);
+        }
+        item.spawn((
+            Text::new(&prompt.action),
+            text_font(font, 16.0),
+            TextColor(Color::WHITE),
+            TextShadow {
+                offset: Vec2::splat(1.5),
+                color: Color::srgba(0.0, 0.0, 0.0, 0.85),
+            },
+            Node {
+                margin: UiRect::left(px(4)),
+                ..default()
+            },
+        ));
+    });
 }
 
 /// The keys or buttons that change to the section before and after, on
@@ -339,30 +446,7 @@ pub fn spawn_legend(
         ))
         .with_children(|bar| {
             for prompt in prompts {
-                bar.spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: px(4),
-                    ..default()
-                })
-                .with_children(|item| {
-                    for badge in &prompt.badges {
-                        spawn_badge(item, font, icons, &look, device, badge);
-                    }
-                    item.spawn((
-                        Text::new(&prompt.action),
-                        text_font(font, 16.0),
-                        TextColor(Color::WHITE),
-                        TextShadow {
-                            offset: Vec2::splat(1.5),
-                            color: Color::srgba(0.0, 0.0, 0.0, 0.85),
-                        },
-                        Node {
-                            margin: UiRect::left(px(4)),
-                            ..default()
-                        },
-                    ));
-                });
+                spawn_prompt(bar, font, icons, &look, device, prompt);
             }
         });
 }
@@ -659,8 +743,28 @@ mod tests {
         let pad = race_prompts(ActiveDevice::PlayStation, Language::English, &controls);
         assert_eq!(pad[0].action, "Throttle");
         assert_eq!(pad[0].badges[0].label, Label::Text("R1".into()));
-        // Sound only has a key.
-        assert!(!pad.iter().any(|p| p.action == "Sound"));
+        // The sound: Select held with the top face button on a gamepad.
+        let sound = pad.iter().find(|p| p.action == "Sound").unwrap();
+        assert_eq!(sound.badges.len(), 2);
+        assert_eq!(sound.badges[0].label, Label::Text("Create".into()));
+        assert_eq!(sound.badges[1].label, Label::Glyphs(vec![Glyph::Triangle]));
+    }
+
+    #[test]
+    fn the_shortcuts_show_their_keys_and_buttons() {
+        for lang in [Language::Spanish, Language::English] {
+            for device in DEVICES {
+                let prompts = shortcut_prompts(device, lang);
+                assert_eq!(prompts.len(), 2);
+                assert!(drawable(&prompts), "{device:?}: {prompts:?}");
+            }
+        }
+        let keys = shortcut_prompts(ActiveDevice::Keyboard, Language::English);
+        assert_eq!(keys[0].badges[0].label, Label::Text("M".into()));
+        assert_eq!(keys[1].badges[1].label, Label::Text("Enter".into()));
+        let xbox = shortcut_prompts(ActiveDevice::Xbox, Language::English);
+        assert_eq!(xbox[1].badges[0].label, Label::Text("View".into()));
+        assert_eq!(xbox[1].badges[1].label, Label::Text("Menu".into()));
     }
 
     #[test]

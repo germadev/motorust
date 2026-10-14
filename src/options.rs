@@ -6,12 +6,15 @@ use bevy::window::PrimaryWindow;
 
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
-use crate::legend::{Keys, menu_prompts, section_badges, spawn_legend, spawn_lone_badge};
+use crate::legend::{
+    Keys, menu_prompts, section_badges, shortcut_prompts, spawn_legend, spawn_lone_badge,
+    spawn_prompts,
+};
 use crate::locale::{LANGUAGES, Language};
 use crate::pause::DebugOptions;
 use crate::settings::{
-    ACTIONS, Action, Controls, FPS_LIMITS, FULLSCREEN_KEYS, RACE_STARTS, RESOLUTIONS, Settings,
-    WEB, cycle,
+    ACTIONS, Action, Controls, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES,
+    RACE_STARTS, RESOLUTIONS, Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
     InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
@@ -168,11 +171,8 @@ pub struct Capture {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum GameItem {
     Language,
+    Difficulty,
     RaceStart,
-    StickTurnLimit,
-    KeyboardTurnLimit,
-    KeyboardTurnRate,
-    KeyboardReturnRate,
     Back,
 }
 
@@ -180,6 +180,10 @@ enum GameItem {
 enum ControlItem {
     Bind(Action),
     ResetControls,
+    StickTurnLimit,
+    KeyboardTurnLimit,
+    KeyboardTurnRate,
+    KeyboardReturnRate,
     ShowLegend,
     RescanGamepads,
     Back,
@@ -198,27 +202,31 @@ enum GraphicsItem {
     Fullscreen,
     Resolution,
     Fps,
+    PipelinedRendering,
+    FrameLatency,
     Back,
 }
 
 fn game_items() -> Vec<GameItem> {
     vec![
         GameItem::Language,
+        GameItem::Difficulty,
         GameItem::RaceStart,
-        GameItem::StickTurnLimit,
-        GameItem::KeyboardTurnLimit,
-        GameItem::KeyboardTurnRate,
-        GameItem::KeyboardReturnRate,
         GameItem::Back,
     ]
 }
 
+/// The controls, and how the stick and the keyboard steer.
 fn control_items() -> Vec<ControlItem> {
     ACTIONS
         .iter()
         .map(|&action| ControlItem::Bind(action))
         .chain([
             ControlItem::ResetControls,
+            ControlItem::StickTurnLimit,
+            ControlItem::KeyboardTurnLimit,
+            ControlItem::KeyboardTurnRate,
+            ControlItem::KeyboardReturnRate,
             ControlItem::ShowLegend,
             ControlItem::RescanGamepads,
             ControlItem::Back,
@@ -247,6 +255,8 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Fullscreen,
             GraphicsItem::Resolution,
             GraphicsItem::Fps,
+            GraphicsItem::PipelinedRendering,
+            GraphicsItem::FrameLatency,
             GraphicsItem::Back,
         ]
     }
@@ -343,24 +353,12 @@ fn use_options_menu(
                     settings.language = cycle(&LANGUAGES, settings.language, change);
                     sounds.write(MenuSound::Move);
                 }
+                GameItem::Difficulty if change != 0 => {
+                    settings.difficulty = cycle(&DIFFICULTIES, settings.difficulty, change);
+                    sounds.write(MenuSound::Move);
+                }
                 GameItem::RaceStart if change != 0 => {
                     settings.start = cycle(&RACE_STARTS, settings.start, change);
-                    sounds.write(MenuSound::Move);
-                }
-                GameItem::StickTurnLimit if change != 0 => {
-                    debug_options.stick_limit = debug_options.stick_limit.next(change);
-                    sounds.write(MenuSound::Move);
-                }
-                GameItem::KeyboardTurnLimit if change != 0 => {
-                    debug_options.keyboard_limit = debug_options.keyboard_limit.next(change);
-                    sounds.write(MenuSound::Move);
-                }
-                GameItem::KeyboardTurnRate if change != 0 => {
-                    debug_options.keyboard_rate = debug_options.keyboard_rate.next(change);
-                    sounds.write(MenuSound::Move);
-                }
-                GameItem::KeyboardReturnRate if change != 0 => {
-                    debug_options.keyboard_return = debug_options.keyboard_return.next(change);
                     sounds.write(MenuSound::Move);
                 }
                 GameItem::Back if request.confirm => {
@@ -381,6 +379,22 @@ fn use_options_menu(
                 ControlItem::ResetControls if request.confirm => {
                     settings.controls = Controls::default();
                     sounds.write(MenuSound::Confirm);
+                }
+                ControlItem::StickTurnLimit if change != 0 => {
+                    debug_options.stick_limit = debug_options.stick_limit.next(change);
+                    sounds.write(MenuSound::Move);
+                }
+                ControlItem::KeyboardTurnLimit if change != 0 => {
+                    debug_options.keyboard_limit = debug_options.keyboard_limit.next(change);
+                    sounds.write(MenuSound::Move);
+                }
+                ControlItem::KeyboardTurnRate if change != 0 => {
+                    debug_options.keyboard_rate = debug_options.keyboard_rate.next(change);
+                    sounds.write(MenuSound::Move);
+                }
+                ControlItem::KeyboardReturnRate if change != 0 => {
+                    debug_options.keyboard_return = debug_options.keyboard_return.next(change);
+                    sounds.write(MenuSound::Move);
                 }
                 ControlItem::ShowLegend if change != 0 => {
                     debug_options.show_legend = !debug_options.show_legend;
@@ -439,6 +453,15 @@ fn use_options_menu(
                 }
                 GraphicsItem::Fps if change != 0 => {
                     settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::PipelinedRendering if change != 0 => {
+                    settings.pipelined_rendering = !settings.pipelined_rendering;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::FrameLatency if change != 0 => {
+                    settings.frame_latency =
+                        cycle(&FRAME_LATENCIES, settings.frame_latency, change);
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Back if request.confirm => {
@@ -521,8 +544,10 @@ fn show_options_menu(
     icons: Res<UiIcons>,
     shown: Query<Entity, With<OptionsModal>>,
     time: Res<Time<Real>>,
+    started: Option<Res<StartedWith>>,
     mut last: Local<Option<String>>,
 ) {
+    let started = started.as_deref();
     if !options_menu.is_open {
         for entity in &shown {
             commands.entity(entity).despawn();
@@ -534,6 +559,11 @@ fn show_options_menu(
     let lang = settings.language;
     let window_inner = window.iter().next();
     let now = time.elapsed_secs();
+    // Beside a setting that takes effect when the game starts again.
+    let restart = match lang {
+        Language::Spanish => "al reiniciar   ",
+        Language::English => "on restart   ",
+    };
 
     // Filas para la pestaña activa
     let rows: Vec<Row> = match options_menu.tab {
@@ -543,40 +573,19 @@ fn show_options_menu(
                 GameItem::Language => {
                     Row::with_value(lang.language(), format!("<  {}  >", lang.name()))
                 }
+                GameItem::Difficulty => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Dificultad",
+                        Language::English => "Difficulty",
+                    },
+                    format!("<  {}  >", settings.difficulty.name(lang)),
+                ),
                 GameItem::RaceStart => Row::with_value(
                     match lang {
                         Language::Spanish => "Salida",
                         Language::English => "Race start",
                     },
                     format!("<  {}  >", settings.start.name(lang)),
-                ),
-                GameItem::StickTurnLimit => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Stick: limitar giro con velocidad",
-                        Language::English => "Stick: turn limit with speed",
-                    },
-                    format!("<  {}  >", debug_options.stick_limit.name(lang)),
-                ),
-                GameItem::KeyboardTurnLimit => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Teclado: limitar giro con velocidad",
-                        Language::English => "Keyboard: turn limit with speed",
-                    },
-                    format!("<  {}  >", debug_options.keyboard_limit.name(lang)),
-                ),
-                GameItem::KeyboardTurnRate => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Teclado: rapidez de giro sostenido",
-                        Language::English => "Keyboard: sustained turn rate",
-                    },
-                    format!("<  {}  >", debug_options.keyboard_rate.name(lang)),
-                ),
-                GameItem::KeyboardReturnRate => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Teclado: rapidez al soltar giro",
-                        Language::English => "Keyboard: return rate released",
-                    },
-                    format!("<  {}  >", debug_options.keyboard_return.name(lang)),
                 ),
                 GameItem::Back => Row::new(lang.back()),
             })
@@ -595,6 +604,34 @@ fn show_options_menu(
                     },
                 ),
                 ControlItem::ResetControls => Row::new(lang.reset_controls()),
+                ControlItem::StickTurnLimit => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Stick: limitar giro con velocidad",
+                        Language::English => "Stick: turn limit with speed",
+                    },
+                    format!("<  {}  >", debug_options.stick_limit.name(lang)),
+                ),
+                ControlItem::KeyboardTurnLimit => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Teclado: limitar giro con velocidad",
+                        Language::English => "Keyboard: turn limit with speed",
+                    },
+                    format!("<  {}  >", debug_options.keyboard_limit.name(lang)),
+                ),
+                ControlItem::KeyboardTurnRate => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Teclado: rapidez de giro sostenido",
+                        Language::English => "Keyboard: sustained turn rate",
+                    },
+                    format!("<  {}  >", debug_options.keyboard_rate.name(lang)),
+                ),
+                ControlItem::KeyboardReturnRate => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Teclado: rapidez al soltar giro",
+                        Language::English => "Keyboard: return rate released",
+                    },
+                    format!("<  {}  >", debug_options.keyboard_return.name(lang)),
+                ),
                 ControlItem::ShowLegend => Row::with_value(
                     lang.show_legend(),
                     if debug_options.show_legend {
@@ -659,6 +696,48 @@ fn show_options_menu(
                 GraphicsItem::Fps => {
                     Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang)))
                 }
+                // These two take effect when the game starts again.
+                GraphicsItem::PipelinedRendering => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Renderizado en paralelo",
+                        Language::English => "Pipelined rendering",
+                    },
+                    format!(
+                        "{}{}",
+                        if started
+                            .is_some_and(|s| s.pipelined_rendering != settings.pipelined_rendering)
+                        {
+                            restart
+                        } else {
+                            ""
+                        },
+                        if settings.pipelined_rendering {
+                            "[X]"
+                        } else {
+                            "[ ]"
+                        }
+                    ),
+                ),
+                GraphicsItem::FrameLatency => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Fotogramas en cola",
+                        Language::English => "Frame latency",
+                    },
+                    format!(
+                        "{}<  {}{}  >",
+                        if started.is_some_and(|s| s.frame_latency != settings.frame_latency) {
+                            restart
+                        } else {
+                            ""
+                        },
+                        settings.frame_latency,
+                        if settings.frame_latency == DEFAULT_FRAME_LATENCY {
+                            " (Bevy)"
+                        } else {
+                            ""
+                        }
+                    ),
+                ),
                 GraphicsItem::Back => Row::new(lang.back()),
             })
             .collect(),
@@ -803,25 +882,35 @@ fn show_options_menu(
                         BackgroundColor(accent.with_alpha(0.7)),
                     ));
 
-                    // Lista de opciones de la pestaña
+                    // Lista de opciones de la pestaña. It fills the panel, and
+                    // Back, always last, stands at its foot on every tab. The
+                    // controls, many more, are set a little closer.
+                    let compact = options_menu.tab == OptionsTab::Control;
+                    let (size, padding, gap) = if compact {
+                        (17.0, 3.0, 1.0)
+                    } else {
+                        (20.0, 5.0, 3.0)
+                    };
                     panel
                         .spawn((Node {
                             flex_direction: FlexDirection::Column,
                             align_items: AlignItems::Stretch,
-                            row_gap: px(3),
+                            flex_grow: 1.0,
+                            row_gap: px(gap),
                             ..default()
                         },))
                         .with_children(|items_container| {
                             for (index, row) in rows.iter().enumerate() {
+                                let last = index + 1 == rows.len();
                                 let chosen =
                                     !options_menu.on_tabs && index == options_menu.selected;
                                 // Chosen, in the colour of the section.
-                                let (chosen_background, chosen_text) =
-                                    if row.disabled || row.danger {
-                                        row.chosen_colors()
-                                    } else {
-                                        (accent, Color::srgb(0.06, 0.05, 0.04))
-                                    };
+                                let (chosen_background, chosen_text) = if row.disabled || row.danger
+                                {
+                                    row.chosen_colors()
+                                } else {
+                                    (accent, Color::srgb(0.06, 0.05, 0.04))
+                                };
                                 let color = TextColor(if chosen {
                                     chosen_text
                                 } else if row.disabled {
@@ -840,7 +929,12 @@ fn show_options_menu(
                                             },
                                             align_items: AlignItems::Center,
                                             column_gap: px(30),
-                                            padding: UiRect::axes(px(ROW_INSET), px(5)),
+                                            padding: UiRect::axes(px(ROW_INSET), px(padding)),
+                                            margin: if last {
+                                                UiRect::top(Val::Auto)
+                                            } else {
+                                                UiRect::ZERO
+                                            },
                                             border_radius: BorderRadius::all(px(8)),
                                             ..default()
                                         },
@@ -853,42 +947,39 @@ fn show_options_menu(
                                     .with_children(|line| {
                                         line.spawn((
                                             Text::new(&row.label),
-                                            text_font(&font, 20.0),
+                                            text_font(&font, size),
                                             color,
                                         ));
                                         if let Some(value) = &row.value {
                                             line.spawn((
                                                 Text::new(value),
-                                                text_font(&font, 20.0),
+                                                text_font(&font, size),
                                                 color,
                                             ));
                                         }
                                     });
                             }
                         });
+                });
 
-                    // Nota al pie en la pestaña de controles
+            // Under the panel, outside it, on the controls' tab: the
+            // shortcuts for the sound and fullscreen, on the device in use.
+            // The room is kept on every tab, so the panel does not move.
+            modal
+                .spawn((
+                    Node {
+                        margin: UiRect::top(px(14)),
+                        ..default()
+                    },
                     if options_menu.tab == OptionsTab::Control {
-                        let note = match lang {
-                            Language::Spanish => format!(
-                                "Stick izq: girar   ·   Stick der: mirar   ·   M: sonido   ·   {FULLSCREEN_KEYS}: pantalla completa"
-                            ),
-                            Language::English => format!(
-                                "Left stick: steer   ·   Right stick: look   ·   M: sound   ·   {FULLSCREEN_KEYS}: fullscreen"
-                            ),
-                        };
-                        panel.spawn((
-                            Text::new(note),
-                            text_font(&font, 14.0),
-                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.65)),
-                            TextShadow::default(),
-                            Node {
-                                align_self: AlignSelf::Center,
-                                margin: UiRect::top(px(4)),
-                                ..default()
-                            },
-                        ));
-                    }
+                        Visibility::Inherited
+                    } else {
+                        Visibility::Hidden
+                    },
+                ))
+                .with_children(|note| {
+                    let prompts = shortcut_prompts(active_dev, lang);
+                    spawn_prompts(note, &font, &icons, active_dev, &prompts);
                 });
 
             // Leyenda de controles al pie

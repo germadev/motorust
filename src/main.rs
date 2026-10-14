@@ -116,14 +116,19 @@ fn main() {
         })
         // Los mandos los lee `gamepads`, que además los vuelve a buscar.
         .disable::<bevy::gilrs::GilrsPlugin>();
-    // Input lag first: without pipelined rendering each frame is drawn
-    // right after it is simulated from the controls just read, instead of
-    // while the next one is being simulated, a frame later. It costs some
-    // frame rate when the CPU is the bottleneck.
+    // Pipelined rendering draws each frame while the next one is
+    // simulated: more frames per second when the CPU holds them back, but
+    // each one a frame later after the controls. Options can turn it off
+    // (less lag), from the next start.
     #[cfg(not(target_arch = "wasm32"))]
-    let plugins = plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+    let plugins = if settings.pipelined_rendering {
+        plugins
+    } else {
+        plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>()
+    };
     app.add_plugins(plugins)
         .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
+        .insert_resource(settings::StartedWith::from(&settings))
         .insert_resource(settings)
         .add_plugins((
             world::WorldPlugin,

@@ -23,7 +23,7 @@ use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
 use crate::race::lights::StartBeep;
-use crate::settings::{DEFAULT_VOLUME, Settings};
+use crate::settings::{DEFAULT_VOLUME, Settings, ToggleMute};
 use crate::ui::MenuSound;
 pub use synth::Sound;
 use synth::{Controls, Mix, REDLINE, VOICES, pan};
@@ -70,6 +70,7 @@ impl Plugin for SoundPlugin {
             .add_audio_source::<music::SongSource>()
             .insert_resource(SoundControls(controls))
             .add_message::<StartBeep>()
+            .add_message::<ToggleMute>()
             .init_resource::<Blip>()
             .add_systems(Startup, start_mixer)
             .add_systems(
@@ -482,9 +483,14 @@ fn pause_sounds(pause: Res<Pause>, controls: Res<SoundControls>) {
     controls.0.play(Sound::Click);
 }
 
-/// M silencia o devuelve el sonido.
-fn toggle_mute(keyboard: Res<ButtonInput<KeyCode>>, controls: Res<SoundControls>) {
-    if keyboard.just_pressed(KeyCode::KeyM) {
+/// M (or Select and Y on a gamepad) silencia o devuelve el sonido.
+fn toggle_mute(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut shortcut: MessageReader<ToggleMute>,
+    controls: Res<SoundControls>,
+) {
+    let pad = shortcut.read().count() % 2 == 1;
+    if keyboard.just_pressed(KeyCode::KeyM) != pad {
         let master = &controls.0.master;
         master.set(if master.get() > 0.0 { 0.0 } else { MASTER });
     }

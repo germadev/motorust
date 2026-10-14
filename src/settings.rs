@@ -22,7 +22,12 @@ pub struct SettingsPlugin;
 
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (toggle_fullscreen, apply_settings).chain());
+        app.add_message::<ToggleMute>()
+            .add_systems(
+                PreUpdate,
+                gamepad_shortcuts.after(bevy::input::InputSystems),
+            )
+            .add_systems(Update, (toggle_fullscreen, apply_settings).chain());
         // En la web, el navegador decide cuándo se dibuja cada fotograma.
         if !WEB {
             // The cap is kept where the frame is shown, in the render world.
@@ -62,8 +67,75 @@ pub struct Settings {
     pub music_enabled: bool,
     /// How races start: at the lights, or when a player opens the throttle.
     pub start: RaceStart,
+    /// How fast the rivals ride, and how much time the checkpoints give.
+    pub difficulty: Difficulty,
+    /// Whether each frame is drawn while the next one is simulated
+    /// (Bevy's pipelined rendering): more frames per second when the CPU
+    /// holds them back, a frame more between the controls and the screen.
+    /// Applied when the game starts.
+    pub pipelined_rendering: bool,
+    /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
+    /// fewer, less lag; more, steadier frames. Applied when the game starts.
+    pub frame_latency: u32,
     /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
+}
+
+/// How hard the races are.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Difficulty {
+    Easy,
+    /// The rivals as they have always been.
+    #[default]
+    Medium,
+    Hard,
+}
+
+/// The difficulties that can be chosen, in order.
+pub const DIFFICULTIES: [Difficulty; 3] = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard];
+
+impl Difficulty {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (Difficulty::Easy, Language::Spanish) => "Fácil",
+            (Difficulty::Easy, Language::English) => "Easy",
+            (Difficulty::Medium, Language::Spanish) => "Media",
+            (Difficulty::Medium, Language::English) => "Medium",
+            (Difficulty::Hard, Language::Spanish) => "Difícil",
+            (Difficulty::Hard, Language::English) => "Hard",
+        }
+    }
+
+    /// How much of its bike a rival dares to use, for one that uses
+    /// `skill` on medium: less on easy, more on hard (never more than all).
+    pub fn rival_skill(self, skill: f32) -> f32 {
+        match self {
+            Difficulty::Easy => skill - 0.07,
+            Difficulty::Medium => skill,
+            Difficulty::Hard => (skill + 0.045).min(1.0),
+        }
+    }
+}
+
+/// The frame latencies that can be chosen, and Bevy's own.
+pub const FRAME_LATENCIES: [u32; 3] = [1, 2, 3];
+pub const DEFAULT_FRAME_LATENCY: u32 = 2;
+
+/// The graphics settings the game started with: those applied only when it
+/// starts ([`Settings::pipelined_rendering`], [`Settings::frame_latency`]).
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct StartedWith {
+    pub pipelined_rendering: bool,
+    pub frame_latency: u32,
+}
+
+impl From<&Settings> for StartedWith {
+    fn from(settings: &Settings) -> Self {
+        Self {
+            pipelined_rendering: settings.pipelined_rendering,
+            frame_latency: settings.frame_latency,
+        }
+    }
 }
 
 /// How a race starts.
@@ -106,6 +178,9 @@ impl Default for Settings {
             music_volume: DEFAULT_VOLUME,
             music_enabled: true,
             start: RaceStart::default(),
+            difficulty: Difficulty::default(),
+            pipelined_rendering: true,
+            frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
         }
     }
@@ -615,9 +690,6 @@ pub fn button_name(button: GamepadButton, lang: Language) -> String {
     name.into()
 }
 
-/// How many frames may wait to go to the GPU (see [`Settings::window`]).
-pub const FRAMES_QUEUED: u32 = 1;
-
 impl Settings {
     /// La ventana del juego con estos ajustes.
     pub fn window(&self) -> Window {
@@ -626,10 +698,14 @@ impl Settings {
             // En la web se dibuja en el canvas de la página y lo llena.
             canvas: WEB.then(|| "#motorust".into()),
             fit_canvas_to_parent: true,
-            // Input lag first: at most one frame waits to go to the GPU, so
-            // what is shown is never two frames behind the controls (2 by
-            // default).
-            desired_maximum_frame_latency: NonZero::new(FRAMES_QUEUED),
+            // As chosen in Options (Bevy's 2 at first; 1 is less lag).
+            desired_maximum_frame_latency: NonZero::new(
+                if FRAME_LATENCIES.contains(&self.frame_latency) {
+                    self.frame_latency
+                } else {
+                    DEFAULT_FRAME_LATENCY
+                },
+            ),
             ..default()
         };
         self.configure(&mut window, None);
@@ -794,19 +870,10 @@ mod storage {
     }
 }
 
-/// Las teclas que ponen y quitan la pantalla completa: Cmd+Enter en macOS y
-/// Alt+Enter en Windows y Linux. En la web valen las dos, que no se sabe en
-/// qué sistema corre el navegador.
-pub const FULLSCREEN_KEYS: &str = if cfg!(target_os = "macos") {
-    "Cmd+Enter"
-} else if WEB {
-    "Alt+Enter o Cmd+Enter"
-} else {
-    "Alt+Enter"
-};
-
-/// Si se acaban de pulsar las teclas de la pantalla completa
-/// ([`FULLSCREEN_KEYS`]). Ese Enter no cuenta para los menús.
+/// Si se acaban de pulsar las teclas de la pantalla completa: Cmd+Enter en
+/// macOS y Alt+Enter en Windows y Linux. En la web valen las dos, que no se
+/// sabe en qué sistema corre el navegador. Ese Enter no cuenta para los
+/// menús.
 pub fn fullscreen_keys(keyboard: &ButtonInput<KeyCode>) -> bool {
     let command = keyboard.any_pressed([KeyCode::SuperLeft, KeyCode::SuperRight]);
     let alt = keyboard.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
@@ -820,7 +887,93 @@ pub fn fullscreen_keys(keyboard: &ButtonInput<KeyCode>) -> bool {
     held && keyboard.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter])
 }
 
-/// Con [`FULLSCREEN_KEYS`], conmuta la pantalla completa. Se guarda como si
+/// The shortcuts of a gamepad: Select held with Start switches fullscreen,
+/// with Y (the top face button) the sound off and on.
+pub const SHORTCUT_HELD: GamepadButton = GamepadButton::Select;
+pub const FULLSCREEN_BUTTON: GamepadButton = GamepadButton::Start;
+pub const MUTE_BUTTON: GamepadButton = GamepadButton::North;
+
+/// Asks for the sound to be turned off, or back on (M, or Select and Y).
+#[derive(Message, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ToggleMute;
+
+/// What a gamepad shortcut asks for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Shortcut {
+    Fullscreen,
+    Mute,
+}
+
+/// How a gamepad's Select is being held: since it went down, and whether
+/// a shortcut was made with it.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct ShortcutHold {
+    held: bool,
+    used: bool,
+    /// A press of Select alone was handed on: it is let go of next.
+    handed_on: bool,
+}
+
+/// Reads the shortcuts of a gamepad's buttons, taking their presses out
+/// of them so that nothing else acts on them: Select (which restarts the
+/// race) goes down unseen and, if no shortcut is made while it is held,
+/// counts as pressed when it is let go of; Start (which pauses or accepts)
+/// and Y held with Select are the shortcut's.
+pub fn read_shortcut(
+    buttons: &mut ButtonInput<GamepadButton>,
+    hold: &mut ShortcutHold,
+) -> Option<Shortcut> {
+    if hold.handed_on {
+        buttons.release(SHORTCUT_HELD);
+        buttons.clear_just_released(SHORTCUT_HELD);
+        hold.handed_on = false;
+    }
+    if buttons.clear_just_pressed(SHORTCUT_HELD) {
+        *hold = ShortcutHold {
+            held: true,
+            ..default()
+        };
+    }
+    let mut shortcut = None;
+    if hold.held && buttons.pressed(SHORTCUT_HELD) {
+        if buttons.clear_just_pressed(FULLSCREEN_BUTTON) {
+            shortcut = Some(Shortcut::Fullscreen);
+        } else if buttons.clear_just_pressed(MUTE_BUTTON) {
+            shortcut = Some(Shortcut::Mute);
+        }
+        hold.used |= shortcut.is_some();
+    }
+    if hold.held && buttons.just_released(SHORTCUT_HELD) {
+        hold.held = false;
+        if !hold.used {
+            // Select alone: pressed now, for a frame.
+            buttons.press(SHORTCUT_HELD);
+            hold.handed_on = true;
+        }
+    }
+    shortcut
+}
+
+/// The gamepads' shortcuts: fullscreen and sound.
+fn gamepad_shortcuts(
+    mut gamepads: Query<(Entity, &mut Gamepad)>,
+    mut holds: Local<bevy::platform::collections::HashMap<Entity, ShortcutHold>>,
+    mut settings: ResMut<Settings>,
+    mut mute: MessageWriter<ToggleMute>,
+) {
+    for (entity, mut gamepad) in &mut gamepads {
+        let hold = holds.entry(entity).or_default();
+        match read_shortcut(gamepad.bypass_change_detection().digital_mut(), hold) {
+            Some(Shortcut::Fullscreen) => settings.fullscreen = !settings.fullscreen,
+            Some(Shortcut::Mute) => {
+                mute.write(ToggleMute);
+            }
+            None => {}
+        }
+    }
+}
+
+/// With the fullscreen keys ([`fullscreen_keys`]), conmuta la pantalla completa. Se guarda como si
 /// se hubiera elegido en Opciones.
 fn toggle_fullscreen(keyboard: Res<ButtonInput<KeyCode>>, mut settings: ResMut<Settings>) {
     if !fullscreen_keys(&keyboard) {
@@ -972,6 +1125,9 @@ mod tests {
         settings.records.lap("Bahía GP", 71.25);
         settings.records.checkpoint("Bahía GP", 3);
         settings.start = RaceStart::Throttle;
+        settings.difficulty = Difficulty::Hard;
+        settings.pipelined_rendering = false;
+        settings.frame_latency = 1;
         let text = ron::ser::to_string_pretty(&settings, default()).unwrap();
         let loaded: Settings = ron::from_str(&text).unwrap();
         assert_eq!(loaded, settings);
@@ -981,6 +1137,14 @@ mod tests {
         assert_eq!(partial.fps, FpsLimit::Unlimited);
         assert_eq!(partial.controls, Controls::default());
         assert_eq!(partial.start, RaceStart::Lights);
+        // Medium, pipelined rendering and Bevy's frame latency at first.
+        assert_eq!(partial.difficulty, Difficulty::Medium);
+        assert!(partial.pipelined_rendering);
+        assert_eq!(partial.frame_latency, 2);
+        assert_eq!(
+            partial.window().desired_maximum_frame_latency,
+            NonZero::new(2)
+        );
         // One that still keeps a championship under way (the arcade no
         // longer does) loads without it.
         let older: Settings = ron::from_str(
@@ -1109,6 +1273,61 @@ mod tests {
             window.mode,
             WindowMode::BorderlessFullscreen(MonitorSelection::Current)
         );
+    }
+
+    #[test]
+    fn select_with_start_or_y_is_a_shortcut_and_alone_it_restarts_on_release() {
+        use GamepadButton as B;
+        let mut buttons = ButtonInput::<GamepadButton>::default();
+        let mut hold = ShortcutHold::default();
+        // A frame of the gamepad: what was pressed and let go of.
+        let mut frame = |buttons: &mut ButtonInput<GamepadButton>, press: &[B], release: &[B]| {
+            buttons.clear();
+            for &button in press {
+                buttons.press(button);
+            }
+            for &button in release {
+                buttons.release(button);
+            }
+            read_shortcut(buttons, &mut hold)
+        };
+        // Select down: nobody sees it yet.
+        assert_eq!(frame(&mut buttons, &[B::Select], &[]), None);
+        assert!(!buttons.just_pressed(B::Select));
+        // With Start: fullscreen, and Start does not pause.
+        assert_eq!(
+            frame(&mut buttons, &[B::Start], &[]),
+            Some(Shortcut::Fullscreen)
+        );
+        assert!(!buttons.just_pressed(B::Start));
+        // With Y: the sound.
+        assert_eq!(frame(&mut buttons, &[B::North], &[]), Some(Shortcut::Mute));
+        assert!(!buttons.just_pressed(B::North));
+        // Let go of after a shortcut: Select does nothing.
+        assert_eq!(
+            frame(&mut buttons, &[], &[B::Select, B::Start, B::North]),
+            None
+        );
+        assert!(!buttons.just_pressed(B::Select));
+        // Select alone: pressed as it is let go of, for that frame only.
+        frame(&mut buttons, &[B::Select], &[]);
+        frame(&mut buttons, &[], &[B::Select]);
+        assert!(buttons.just_pressed(B::Select));
+        frame(&mut buttons, &[], &[]);
+        assert!(!buttons.pressed(B::Select) && !buttons.just_pressed(B::Select));
+        // Start alone still pauses.
+        frame(&mut buttons, &[B::Start], &[]);
+        assert!(buttons.just_pressed(B::Start));
+    }
+
+    #[test]
+    fn the_rivals_ride_slower_on_easy_and_faster_on_hard() {
+        for skill in [0.88, 0.95] {
+            assert_eq!(Difficulty::Medium.rival_skill(skill), skill);
+            assert!(Difficulty::Easy.rival_skill(skill) < skill - 0.05);
+            assert!(Difficulty::Hard.rival_skill(skill) > skill);
+            assert!(Difficulty::Hard.rival_skill(skill) <= 1.0);
+        }
     }
 
     #[test]

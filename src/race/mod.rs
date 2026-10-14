@@ -26,7 +26,7 @@ use crate::bike::{
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
 use crate::pause;
-use crate::settings::{Action, Settings};
+use crate::settings::{Action, Difficulty, Settings};
 use crate::track::Track;
 
 /// How many laps a race of the arcade championship has.
@@ -40,14 +40,45 @@ pub const DEFAULT_LAPS: u32 = 5;
 /// The points for each place in a race of a championship.
 pub const POINTS: [u32; 8] = [10, 8, 6, 5, 4, 3, 2, 1];
 /// Against the clock: the seconds the start and each checkpoint give are
-/// those the stretch to the next checkpoint takes at this pace (m/s), about
-/// 220 km/h, a little slower than a good rival rides it, and a couple more
-/// to spare; the start gives a few more, as the bike sets off from a
-/// standstill. A rival's ride earns two to four seconds at each checkpoint;
-/// a fall costs more than that.
-const CHECKPOINT_PACE: f32 = 62.0;
-const CHECKPOINT_SPARE: f32 = 2.0;
-const START_SPARE: f32 = 3.0;
+/// those the stretch to the next checkpoint takes at a pace (m/s), and a
+/// couple more to spare; the start gives a few more, as the bike sets off
+/// from a standstill. On medium the pace is about 220 km/h, a little slower
+/// than a good rival rides it: such a ride earns one to four seconds at
+/// each checkpoint, and a fall costs more than that. Easy gives more time,
+/// hard less.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CheckpointTimes {
+    pub pace: f32,
+    pub spare: f32,
+    pub start: f32,
+}
+
+impl CheckpointTimes {
+    pub fn on(difficulty: Difficulty) -> Self {
+        let (pace, spare, start) = match difficulty {
+            Difficulty::Easy => (54.0, 3.0, 5.0),
+            Difficulty::Medium => (62.0, 2.0, 3.0),
+            Difficulty::Hard => (66.0, 1.5, 2.0),
+        };
+        Self { pace, spare, start }
+    }
+
+    /// The seconds the clock gives for a stretch of `stretch` m to the next
+    /// checkpoint.
+    pub fn bonus(self, stretch: f32) -> f32 {
+        stretch / self.pace + self.spare
+    }
+
+    /// The seconds on the clock at the start, for the stretch to the first
+    /// checkpoint of `points` (see [`checkpoints`]) from a standstill.
+    pub fn starting(self, points: &[f32]) -> f32 {
+        self.bonus(stretch_after(points, usize::MAX)) + self.start
+    }
+}
+
+/// When nothing else is known of a bike, the pace it is thought to keep
+/// (m/s).
+const USUAL_PACE: f32 = 62.0;
 /// How far past a checkpoint a bike still goes through it (m), in case a
 /// step jumps it.
 const CHECKPOINT_REACH: f32 = 150.0;
@@ -233,19 +264,6 @@ pub fn stretch_after(points: &[f32], index: usize) -> f32 {
     }
 }
 
-/// The seconds the clock gives against the clock for a stretch of `stretch`
-/// m to the next checkpoint.
-pub fn checkpoint_bonus(stretch: f32) -> f32 {
-    stretch / CHECKPOINT_PACE + CHECKPOINT_SPARE
-}
-
-/// The seconds on the clock at the start against the clock, for the
-/// stretch to the first checkpoint of `points` (see [`checkpoints`]) from a
-/// standstill.
-pub fn starting_time(points: &[f32]) -> f32 {
-    checkpoint_bonus(stretch_after(points, usize::MAX)) + START_SPARE
-}
-
 /// How a bike is getting on in the race.
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct Progress {
@@ -359,7 +377,7 @@ pub fn estimate_finish(clock: f32, distance: f32, total: f32) -> f32 {
     let pace = if clock > 0.0 && distance > 0.0 {
         distance / clock
     } else {
-        CHECKPOINT_PACE
+        USUAL_PACE
     };
     clock + (total - distance).max(0.0) / pace.max(1.0)
 }
@@ -500,10 +518,12 @@ fn start_race(
     rules: Res<Rules>,
     track: Res<Track>,
     current: Res<CurrentCircuit>,
+    settings: Res<Settings>,
 ) {
     let mut standing = Standing::default();
     if rules.mode == Mode::Checkpoint {
-        standing.time_left = starting_time(&track_checkpoints(&current, &track));
+        let times = CheckpointTimes::on(settings.difficulty);
+        standing.time_left = times.starting(&track_checkpoints(&current, &track));
     }
     commands.insert_resource(standing);
     commands.remove_resource::<Outcome>();
@@ -569,9 +589,10 @@ fn follow_the_race(
 ) {
     let lap = track.lap_length();
     let points = track_checkpoints(&current, &track);
+    let times = CheckpointTimes::on(settings.difficulty);
     // Restarted: everyone back to the grid.
     if *was_started && !race.started {
-        let left = (rules.mode == Mode::Checkpoint).then(|| starting_time(&points));
+        let left = (rules.mode == Mode::Checkpoint).then(|| times.starting(&points));
         *standing = Standing {
             time_left: left.unwrap_or(0.0),
             ..default()
@@ -582,6 +603,16 @@ fn follow_the_race(
     }
     *was_started = race.started;
     if !race.started {
+        // On the grid, waiting: the order they start in.
+        for (state, _, mut progress, ..) in &mut bikes {
+            let nearest = track.nearest_at(state.position, state.elevation);
+            progress.pass(track.along(&nearest), lap, &points);
+        }
+        let grid: Vec<(usize, &Progress)> = bikes
+            .iter()
+            .map(|(_, rider, progress, ..)| (rider.0, progress))
+            .collect();
+        standing.order = order(&grid, &[], lap);
         return;
     }
     standing.clock += time.delta_secs();
@@ -610,7 +641,7 @@ fn follow_the_race(
         }
         if human && passed.checkpoint && rules.mode == Mode::Checkpoint {
             let reached = progress.last_checkpoint(&points);
-            let bonus = checkpoint_bonus(stretch_after(&points, reached));
+            let bonus = times.bonus(stretch_after(&points, reached));
             standing.time_left += bonus;
             standing.bonus = Some((bonus, clock));
         }
@@ -986,11 +1017,17 @@ mod tests {
                     "{}: {stretch} m after checkpoint {index}",
                     circuit.name
                 );
-                // The seconds given are a little more than a ride at
-                // 60 m/s takes, and a lot less than one at 30 m/s.
-                let bonus = checkpoint_bonus(stretch);
+                // On medium, the seconds given are a little more than a
+                // ride at 60 m/s takes, and a lot less than one at 30 m/s;
+                // more on easy, fewer on hard.
+                let [easy, medium, hard] = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard]
+                    .map(CheckpointTimes::on);
+                let bonus = medium.bonus(stretch);
                 assert!(bonus > stretch / 60.0 && bonus < stretch / 30.0);
-                assert!(starting_time(&points) > checkpoint_bonus(points[0]));
+                assert!(easy.bonus(stretch) > bonus && hard.bonus(stretch) < bonus);
+                assert!(medium.starting(&points) > medium.bonus(points[0]));
+                assert!(easy.starting(&points) > medium.starting(&points));
+                assert!(hard.starting(&points) < medium.starting(&points));
             }
         }
     }
@@ -1151,7 +1188,8 @@ mod tests {
         assert!(Mode::Arcade.is_championship());
         assert!(!Mode::Race.is_championship() && !Mode::Elimination.is_championship());
         // The time against the clock grows with the stretch.
-        assert!(checkpoint_bonus(1000.0) > checkpoint_bonus(500.0));
+        let times = CheckpointTimes::on(Difficulty::Medium);
+        assert!(times.bonus(1000.0) > times.bonus(500.0));
     }
 
     /// An elimination with four bikes of the roster (0, 1, 2 and 3), the
