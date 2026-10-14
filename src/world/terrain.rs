@@ -410,7 +410,9 @@ impl<'a> Shaper<'a> {
                     })
                     .collect(),
             ),
-            Coast::Outline(points) => Some(closed_curve(points, SHORE_SPACING)),
+            Coast::Outline(points) | Coast::OutlineWithLakes(points, _) => {
+                Some(closed_curve(points, SHORE_SPACING))
+            }
         };
         let shore = polygon.map(|polygon| {
             let (min, max) = polygon.iter().fold(
@@ -432,13 +434,17 @@ impl<'a> Shaper<'a> {
     fn coast(&self, point: Vec2) -> f32 {
         match (&self.scenery.coast, &self.shore) {
             (Coast::Function(coast), _) => coast(point),
-            (_, Some((polygon, min, max))) => {
+            (coast, Some((polygon, min, max))) => {
                 // Lejos de la isla, basta con la distancia a la caja.
                 let outside = (*min - point).max(point - *max).max(Vec2::ZERO);
                 if outside.length() > 150.0 {
                     return -outside.length();
                 }
-                signed_distance(polygon, point)
+                let sea = signed_distance(polygon, point);
+                match coast {
+                    Coast::OutlineWithLakes(_, lakes) => sea.min(lakes(point)),
+                    _ => sea,
+                }
             }
             _ => unreachable!("una isla siempre tiene costa"),
         }

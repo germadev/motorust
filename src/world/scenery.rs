@@ -130,6 +130,11 @@ pub enum Coast {
     /// the land drops to the sea right beyond the walls where the shore is
     /// near; an inlet drawn under a bridge brings the sea in under it.
     Outline(&'static [Vec2]),
+    /// An island drawn as with `Outline`, with lakes inside it: the function
+    /// gives the signed distance to their shores, negative in the water, as
+    /// `Function` does to the sea's. The land drops to them right beyond the
+    /// walls where their shores are near, as it does to the sea.
+    OutlineWithLakes(&'static [Vec2], fn(Vec2) -> f32),
 }
 
 /// Cómo se cierra la carretera por los lados.

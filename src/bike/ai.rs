@@ -638,6 +638,11 @@ mod tests {
                         ..BikeState::parked_on(&track, track.pose_at(start))
                     };
                     let mut rode = false;
+                    // Until it is back on the lap a little way past the
+                    // join (before the next split, where the splits come one
+                    // after another).
+                    let past = fork.join as f32 * track.step_length() + 50.0;
+                    let mut back = false;
                     for _ in 0..(20.0 / dt) as usize {
                         let input = decide(&rival, lane, f32::INFINITY, &state, &track, &tuning);
                         state = advance(&state, &input, &track, &tuning, dt);
@@ -650,11 +655,15 @@ mod tests {
                         let parted =
                             track.road(fork.road).wall_at(nearest.index) < WALL_DISTANCE - 1.0;
                         rode |= nearest.road == fork.road && parted;
+                        let along = track.along(&nearest);
+                        if (past..past + 100.0).contains(&along) {
+                            assert_eq!(nearest.road, 0, "{name}: not back on the lap");
+                            back = true;
+                            break;
+                        }
                     }
                     assert_eq!(rode, rival.takes(fork), "{name}: lane {lane}");
-                    let nearest = track.nearest_at(state.position, state.elevation);
-                    assert_eq!(nearest.road, 0, "{name}: not back on the lap");
-                    assert!(track.along(&nearest) > fork.join as f32 * track.step_length());
+                    assert!(back, "{name}: never got past the join, lane {lane}");
                 }
             }
         }
@@ -898,11 +907,13 @@ mod tests {
     #[test]
     fn a_pack_of_rivals_races_without_wrecking_each_other() {
         // On the Bay, on Loop Island, with the rivals that take its branch
-        // going round the loop, and through the forks of Gold Mine.
+        // going round the loop, and through the forks of Gold Mine and of
+        // Tsushima Isle.
         for circuit in [
             &crate::circuits::CIRCUITS[0],
             &crate::circuits::CIRCUITS[2],
             &crate::circuits::CIRCUITS[3],
+            &crate::circuits::CIRCUITS[4],
         ] {
             pack_race(&Track::new(&circuit.layout), circuit.name);
         }

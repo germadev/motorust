@@ -32,7 +32,7 @@ Every screen has the same legend at the bottom, with no panel behind it: each ke
 
 | Mode | Players | What it is |
 |---|---|---|
-| Arcade | 1 | The four tracks in order, five laps each, with points for each place (10, 8, 6, 5, 4, 3, 2, 1) and the standings after each race. It always starts from the first track. |
+| Arcade | 1 | The five tracks in order, five laps each, with points for each place (10, 8, 6, 5, 4, 3, 2, 1) and the standings after each race. It always starts from the first track. |
 | Race | 1 or 2 | A race on the track chosen, of 1 to 9 laps (5 at first), chosen with up and down on the track screen. |
 | Elimination | 1 or 2 | Seven laps on the track chosen. Each lap, as soon as all but the last two still in have crossed the line, the one further back of those two is out: a rival leaves the race, a player's bike rolls to a stop. The last lap is raced by the two left, for the win. |
 | Checkpoint | 1 | Against the clock: the clock starts with the seconds to reach the first checkpoint, and each checkpoint (the track's red "CHECKPOINT" arches, also on the minimap, and the finish line) adds the seconds of the stretch to the next one. At nought it is over; the laps done are the score. |
@@ -113,13 +113,13 @@ On Loop Island a branch forks off the lap to the right on the climb to the start
 
 Two of the rivals always take the branch.
 
-In Gold Mine's excavation the road splits three ways twice, with no loop (see [tracks.md](tracks.md#gold-mine)): in the sandstone and slate halls a high road forks off to the left and a deep road to the right, and in the clay and sandstone halls an upper gallery to the left and a lower one to the right, each between pillars of rock, narrower than the lap and laid with planks, over a hump or through a dip, and joining the lap again further on. The three ways fan out up to 130 m apart and none runs straight through: at each split one branch runs straight on where the lap swings away, and the other swings out before it. Keep to that side to take one, or stay in the middle on the lap: no way is clearly the quickest.
+In Gold Mine's excavation the road splits three ways twice, with no loop (see [tracks.md](tracks.md#gold-mine)): in the sandstone and slate halls a high road forks off to the left and a deep road to the right, and in the clay and sandstone halls an upper gallery to the left and a lower one to the right, each between pillars of rock, narrower than the lap and laid with planks, over a hump or through a dip, and joining the lap again further on. The three ways fan out up to 130 m apart and none runs straight through: at each split one branch runs straight on where the lap swings away, and the other swings out before it. Keep to that side to take one, or stay in the middle on the lap: no way is clearly the quickest. Tsushima Isle's road splits the same way twice in the open (see [tracks.md](tracks.md#tsushima-isle)): by the temple and along the castle ridge, each way between its own fences.
 
-Gold Mine's wooden bridge over the lake is narrower than the road: its fences close in on it over the 25 m before it, 6 m either side of the middle, and are as solid as walls.
+Gold Mine's wooden bridge over the lake, and Tsushima Isle's boardwalk across its inlet, are narrower than the road: their fences close in on them over the 25 m before, 6 m either side of the middle, and are as solid as walls.
 
 ### Rivals
 
-Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole. On Loop Island two of them take the branch and go round the loop, flat out, steering to keep to their line. In Gold Mine those two leave the lap at every split of the excavation, and the others take the way on the side of their lane, or stay on the lap; coming back onto the lap, they give way to the bikes on it.
+Rivals keep to their own lane. They pull out to pass a bike they catch, or lift off if there is no room. They brake before corners and accelerate out of them. The most skilled rival starts on pole. On Loop Island two of them take the branch and go round the loop, flat out, steering to keep to their line. In Gold Mine and Tsushima Isle those two leave the lap at every split, and the others take the way on the side of their lane, or stay on the lap; coming back onto the lap, they give way to the bikes on it.
 
 ## Race HUD
 
