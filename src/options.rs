@@ -447,10 +447,17 @@ fn use_options_menu(
 #[derive(Component)]
 struct OptionsModal;
 
-/// A section's tab, in its colour and without an edge: the one shown
-/// (`active`) filled with it, the others faintly. When the row of sections
-/// is chosen (`on_tabs`), the one shown lights up: a brighter fill and a
-/// glow round it, which leave its size as it is.
+/// How far the text of each option is from the sides of its row (px): the
+/// keys that change the section stand in line with it.
+const ROW_INSET: f32 = 20.0;
+
+/// How thick the edge of the chosen tab is (px). Every tab keeps room for
+/// it, so the tabs do not change size when the focus comes and goes.
+const TAB_EDGE: f32 = 2.0;
+
+/// A section's tab, in its colour: the one shown (`active`) filled with
+/// it, the others faintly. When the row of sections is chosen (`on_tabs`),
+/// the one shown is edged in a lighter tone of its colour.
 fn spawn_tab(
     tabs: &mut ChildSpawnerCommands,
     font: &UiFont,
@@ -460,27 +467,28 @@ fn spawn_tab(
     lang: Language,
 ) {
     let color = tab.accent();
-    let lit = active && on_tabs;
-    let (fill, glow) = if lit {
-        (
-            color.mix(&Color::WHITE, 0.35),
-            color.mix(&Color::WHITE, 0.2).with_alpha(0.9),
-        )
-    } else if active {
-        (color, Color::NONE)
+    let fill = if active {
+        color
     } else {
-        (color.with_alpha(0.16), Color::NONE)
+        color.with_alpha(0.16)
+    };
+    // The edge of the others is their fill, so they look as big.
+    let edge = if active && on_tabs {
+        color.mix(&Color::WHITE, 0.6)
+    } else {
+        fill
     };
     tabs.spawn((
         Node {
-            padding: UiRect::axes(px(18), px(7)),
+            padding: UiRect::axes(px(18.0 - TAB_EDGE), px(7.0 - TAB_EDGE)),
+            border: UiRect::all(px(TAB_EDGE)),
             border_radius: BorderRadius::all(px(10)),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()
         },
         BackgroundColor(fill),
-        BoxShadow::new(glow, px(0), px(0), px(2), px(14)),
+        BorderColor::all(edge),
     ))
     .with_child((
         Text::new(tab.name(lang)),
@@ -733,12 +741,14 @@ fn show_options_menu(
                     ));
 
                     // Barra de pestañas: the keys that change the section
-                    // at its ends, the sections in the middle.
+                    // at its ends, in line with the text of the options,
+                    // and the sections in the middle.
                     panel
                         .spawn((Node {
                             flex_direction: FlexDirection::Row,
                             justify_content: JustifyContent::SpaceBetween,
                             align_items: AlignItems::Center,
+                            padding: UiRect::horizontal(px(ROW_INSET)),
                             margin: UiRect::bottom(px(6)),
                             ..default()
                         },))
@@ -816,7 +826,7 @@ fn show_options_menu(
                                             },
                                             align_items: AlignItems::Center,
                                             column_gap: px(30),
-                                            padding: UiRect::axes(px(20), px(5)),
+                                            padding: UiRect::axes(px(ROW_INSET), px(5)),
                                             border_radius: BorderRadius::all(px(8)),
                                             ..default()
                                         },
