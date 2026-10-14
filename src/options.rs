@@ -11,14 +11,17 @@ use crate::legend::{
     spawn_prompts,
 };
 use crate::locale::{LANGUAGES, Language};
-use crate::mapping::{Held, MapDevice, Mapping, MappingLook, spawn_mapping, use_mapping};
+use crate::mapping::{
+    Held, MapDevice, Mapping, MappingLook, PAD_HEIGHT, spawn_mapping, use_mapping,
+};
+use crate::pad_art::{PadArt, PadArts};
 use crate::pause::DebugOptions;
 use crate::settings::{
     DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES, RACE_STARTS, RESOLUTIONS,
     Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
-    InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
+    ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
 };
 
 /// Height of the panel (px): the tab with the most options (Control) fits.
@@ -30,16 +33,18 @@ pub struct OptionsPlugin;
 
 impl Plugin for OptionsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<OptionsMenu>().add_systems(
-            Update,
-            (
-                use_options_menu
-                    .run_if(|menu: Res<OptionsMenu>| menu.is_open)
-                    .in_set(OptionsInput),
-                show_options_menu,
-            )
-                .chain(),
-        );
+        app.init_resource::<OptionsMenu>()
+            .init_resource::<PadArts>()
+            .add_systems(
+                Update,
+                (
+                    use_options_menu
+                        .run_if(|menu: Res<OptionsMenu>| menu.is_open)
+                        .in_set(OptionsInput),
+                    show_options_menu,
+                )
+                    .chain(),
+            );
     }
 }
 
@@ -517,7 +522,7 @@ fn spawn_tab(
     ));
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn show_options_menu(
     mut commands: Commands,
     options_menu: Res<OptionsMenu>,
@@ -531,8 +536,14 @@ fn show_options_menu(
     shown: Query<Entity, With<OptionsModal>>,
     time: Res<Time<Real>>,
     started: Option<Res<StartedWith>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    gamepads: Query<&Gamepad>,
+    // The keys and buttons held, and the gamepads' names (for the mapping).
+    (keyboard, gamepads, names): (
+        Res<ButtonInput<KeyCode>>,
+        Query<&Gamepad>,
+        Query<&Name, With<Gamepad>>,
+    ),
+    // Where the mapping's gamepads are drawn.
+    (mut pad_arts, mut images): (ResMut<PadArts>, ResMut<Assets<Image>>),
     mut last: Local<Option<String>>,
 ) {
     let started = started.as_deref();
@@ -747,10 +758,18 @@ fn show_options_menu(
         )
         .collect();
     held_down.sort();
+    // The gamepad of the mapping, drawn as the one in use: by its name.
+    let pad_style = current_active_device(InputDevice::Gamepad, active_controller.as_deref());
+    let pad_name = active_controller
+        .as_deref()
+        .and_then(|controller| controller.gamepad)
+        .and_then(|pad| names.get(pad).ok())
+        .map(|name| name.as_str().to_string());
+    let art = PadArt::of(pad_style, pad_name.as_deref());
     // Built again only when something shown changes (the window, for
     // example, changes with every move of the mouse).
     let wanted = format!(
-        "{:?} {:?} {:?} {held_down:?} {:?} {} {} {:?} {:?} {:?} {}",
+        "{:?} {art:?} {:?} {:?} {held_down:?} {:?} {} {} {:?} {:?} {:?} {}",
         options_menu.mapping,
         settings.controls,
         current_active_device(InputDevice::Gamepad, active_controller.as_deref()),
@@ -826,14 +845,22 @@ fn show_options_menu(
                 .with_children(|panel| {
                     // The mapping of the controls, in place of the sections.
                     if let Some(mapping) = &options_menu.mapping {
+                        let drawn = (mapping.device == MapDevice::Gamepad).then(|| {
+                            pad_arts.get(
+                                art,
+                                pad_style == ActiveDevice::Switch,
+                                PAD_HEIGHT,
+                                window_inner.map_or(1.0, Window::scale_factor),
+                                &mut images,
+                            )
+                        });
                         let look = MappingLook {
                             font: &font,
                             icons: &icons,
                             lang,
-                            pad: current_active_device(
-                                InputDevice::Gamepad,
-                                active_controller.as_deref(),
-                            ),
+                            pad: pad_style,
+                            drawn,
+                            letters: pad_style == ActiveDevice::Switch,
                             controls: &settings.controls,
                             held: &held,
                         };

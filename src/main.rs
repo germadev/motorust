@@ -17,6 +17,7 @@ mod menu;
 mod minimap;
 mod modes;
 mod options;
+mod pad_art;
 mod pause;
 mod race;
 mod settings;

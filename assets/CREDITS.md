@@ -37,3 +37,12 @@ measurements and downsizes their textures.
 `fonts/RussoOne-Regular.ttf` is [Russo One](https://fonts.google.com/specimen/Russo+One)
 by Jovanny Lemonad, licensed under the SIL Open Font License 1.1
 (`fonts/RussoOne-OFL.txt`).
+
+## Gamepads
+
+The gamepads drawn in Options > Control > Mapping (`ui/pads/dualsense.svg`,
+`ui/pads/dualshock4.svg`, `ui/pads/dualshock3.svg` and `ui/pads/xbox.svg`) were
+designed by the project's author, with Claude, for
+[anygamepad](https://github.com/anygamepad/anygamepad.github.io)
+(`apps/web/src/art`), licensed under either the MIT or the Apache-2.0 licence.
+They are used as they are; the game draws them itself (`src/pad_art.rs`).

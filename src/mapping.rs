@@ -12,6 +12,7 @@ use bevy::prelude::*;
 use crate::hud::UiFont;
 use crate::legend::{Glyph, Label, button_badge};
 use crate::locale::Language;
+use crate::pad_art::DrawnPad;
 use crate::settings::{ACTIONS, Action, Controls, key_name};
 use crate::ui::{ActiveDevice, MenuSound, Request, UiIcons, text_font};
 
@@ -360,9 +361,17 @@ pub struct MappingLook<'a> {
     pub lang: Language,
     /// How the buttons are marked on the gamepad (Xbox, PlayStation...).
     pub pad: ActiveDevice,
+    /// The gamepad drawn, [`PAD_HEIGHT`] tall (see [`crate::pad_art`]), and
+    /// whether its face buttons' letters are to be put on it (they are not
+    /// printed on the drawing: a Switch pad's are not an Xbox pad's).
+    pub drawn: Option<&'a DrawnPad>,
+    pub letters: bool,
     pub controls: &'a Controls,
     pub held: &'a Held<'a>,
 }
+
+/// How tall the gamepad is drawn (logical px).
+pub const PAD_HEIGHT: f32 = 270.0;
 
 /// What a key or button says on it.
 enum Mark {
@@ -479,31 +488,6 @@ fn key_mark(key: KeyCode, lang: Language) -> Mark {
     Mark::Text(text.into())
 }
 
-/// The gamepad's buttons and where they are drawn: left and top, width and
-/// height (px), and whether round.
-const PAD: [(GamepadButton, f32, f32, f32, f32, bool); 17] = {
-    use GamepadButton as B;
-    [
-        (B::LeftTrigger2, 96.0, 0.0, 64.0, 22.0, false),
-        (B::LeftTrigger, 96.0, 26.0, 64.0, 18.0, false),
-        (B::RightTrigger2, 360.0, 0.0, 64.0, 22.0, false),
-        (B::RightTrigger, 360.0, 26.0, 64.0, 18.0, false),
-        (B::DPadUp, 133.0, 76.0, 26.0, 26.0, false),
-        (B::DPadLeft, 105.0, 104.0, 26.0, 26.0, false),
-        (B::DPadRight, 161.0, 104.0, 26.0, 26.0, false),
-        (B::DPadDown, 133.0, 132.0, 26.0, 26.0, false),
-        (B::Select, 214.0, 84.0, 40.0, 20.0, false),
-        (B::Start, 266.0, 84.0, 40.0, 20.0, false),
-        (B::Mode, 246.0, 112.0, 28.0, 28.0, true),
-        (B::LeftThumb, 196.0, 142.0, 42.0, 42.0, true),
-        (B::RightThumb, 282.0, 142.0, 42.0, 42.0, true),
-        (B::North, 361.0, 72.0, 30.0, 30.0, true),
-        (B::West, 331.0, 102.0, 30.0, 30.0, true),
-        (B::East, 391.0, 102.0, 30.0, 30.0, true),
-        (B::South, 361.0, 132.0, 30.0, 30.0, true),
-    ]
-};
-
 /// Spawns the view in the options panel: its title, the devices, the one
 /// chosen drawn, what each action does on it, what is going on, the
 /// buttons and Back.
@@ -575,78 +559,56 @@ pub fn spawn_mapping(panel: &mut ChildSpawnerCommands, mapping: &Mapping, look: 
         },
         BackgroundColor(ACCENT.with_alpha(0.7)),
     ));
-    // The device, drawn.
-    panel
-        .spawn(Node {
-            justify_content: JustifyContent::Center,
-            height: px(196),
-            flex_shrink: 0.0,
-            ..default()
-        })
-        .with_children(|area| match mapping.device {
-            MapDevice::Keyboard => spawn_keyboard(area, mapping, look),
-            MapDevice::Gamepad => spawn_gamepad(area, mapping, look),
-        });
-    // What is going on.
-    let (status, color) = status(mapping, look);
-    panel.spawn((
-        Text::new(status),
-        text_font(look.font, 17.0),
-        TextColor(color),
-        TextLayout::justify(Justify::Center),
-        Node {
-            align_self: AlignSelf::Center,
-            min_height: px(22),
-            ..default()
-        },
-    ));
-    // What each action does on it, in two columns.
-    panel
-        .spawn(Node {
-            display: Display::Grid,
-            grid_template_columns: RepeatedGridTrack::flex(2, 1.0),
-            column_gap: px(28),
-            row_gap: px(2),
-            padding: UiRect::horizontal(px(20)),
-            ..default()
-        })
-        .with_children(|grid| {
-            for action in ACTIONS {
-                let busy = matches!(&mapping.step, Step::Assign { action: a, .. } if *a == action);
-                let done = matches!(
-                    &mapping.note,
-                    Some((Note::Remapped { action: a, .. }, _)) if *a == action
-                );
-                let color = if busy {
-                    FROM
-                } else if done {
-                    NEW
-                } else {
-                    Color::srgba(1.0, 1.0, 1.0, 0.85)
-                };
-                let value = match mapping.device {
-                    MapDevice::Keyboard => look.controls.describe_keys(action, lang),
-                    MapDevice::Gamepad => look.controls.describe_buttons(action, lang),
-                };
-                grid.spawn(Node {
-                    justify_content: JustifyContent::SpaceBetween,
-                    column_gap: px(12),
+    // The device, drawn, and what each action does on it: under the
+    // keyboard, in two columns; beside the gamepad, in one.
+    let status_line = |panel: &mut ChildSpawnerCommands| {
+        let (status, color) = status(mapping, look);
+        panel.spawn((
+            Text::new(status),
+            text_font(look.font, 17.0),
+            TextColor(color),
+            TextLayout::justify(Justify::Center),
+            Node {
+                align_self: AlignSelf::Center,
+                min_height: px(22),
+                ..default()
+            },
+        ));
+    };
+    match mapping.device {
+        MapDevice::Keyboard => {
+            panel
+                .spawn(Node {
+                    justify_content: JustifyContent::Center,
+                    height: px(196),
+                    flex_shrink: 0.0,
                     ..default()
                 })
-                .with_children(|line| {
-                    line.spawn((
-                        Text::new(action.name(lang)),
-                        text_font(look.font, 15.0),
-                        TextColor(color),
-                    ));
-                    line.spawn((
-                        Text::new(value),
-                        text_font(look.font, 15.0),
-                        TextColor(color),
-                    ));
+                .with_children(|area| spawn_keyboard(area, mapping, look));
+            status_line(panel);
+            spawn_actions(panel, mapping, look, 2);
+        }
+        MapDevice::Gamepad => {
+            panel
+                .spawn(Node {
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    column_gap: px(28),
+                    height: px(PAD_HEIGHT + 8.0),
+                    flex_shrink: 0.0,
+                    ..default()
+                })
+                .with_children(|row| {
+                    spawn_gamepad(row, mapping, look);
+                    row.spawn(Node {
+                        width: px(270),
+                        ..default()
+                    })
+                    .with_children(|list| spawn_actions(list, mapping, look, 1));
                 });
-            }
-        });
+            status_line(panel);
+        }
+    }
     // Remap and reset, side by side.
     panel
         .spawn(Node {
@@ -867,58 +829,166 @@ fn spawn_keyboard(area: &mut ChildSpawnerCommands, mapping: &Mapping, look: &Map
     });
 }
 
-fn spawn_gamepad(area: &mut ChildSpawnerCommands, mapping: &Mapping, look: &MappingLook) {
-    area.spawn(Node {
-        width: px(520),
-        height: px(196),
-        ..default()
-    })
-    .with_children(|pad| {
-        // The body, and its grips.
-        for (left, top, width, height, radius) in [
-            (70.0, 52.0, 380.0, 112.0, 40.0),
-            (60.0, 100.0, 120.0, 92.0, 46.0),
-            (340.0, 100.0, 120.0, 92.0, 46.0),
-        ] {
-            pad.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(left),
-                    top: px(top),
-                    width: px(width),
-                    height: px(height),
-                    border_radius: BorderRadius::all(px(radius)),
+/// Every action with its keys (or buttons, on the gamepad's page), in
+/// `columns`: the one being remapped in orange, the one just remapped in
+/// yellow.
+fn spawn_actions(
+    parent: &mut ChildSpawnerCommands,
+    mapping: &Mapping,
+    look: &MappingLook,
+    columns: u16,
+) {
+    let lang = look.lang;
+    parent
+        .spawn(Node {
+            display: Display::Grid,
+            grid_template_columns: RepeatedGridTrack::flex(columns, 1.0),
+            column_gap: px(28),
+            row_gap: px(if columns == 1 { 6 } else { 2 }),
+            padding: UiRect::horizontal(px(if columns == 1 { 0 } else { 20 })),
+            flex_grow: 1.0,
+            ..default()
+        })
+        .with_children(|grid| {
+            for action in ACTIONS {
+                let busy = matches!(&mapping.step, Step::Assign { action: a, .. } if *a == action);
+                let done = matches!(
+                    &mapping.note,
+                    Some((Note::Remapped { action: a, .. }, _)) if *a == action
+                );
+                let color = if busy {
+                    FROM
+                } else if done {
+                    NEW
+                } else {
+                    Color::srgba(1.0, 1.0, 1.0, 0.85)
+                };
+                let value = match mapping.device {
+                    MapDevice::Keyboard => look.controls.describe_keys(action, lang),
+                    MapDevice::Gamepad => look.controls.describe_buttons(action, lang),
+                };
+                grid.spawn(Node {
+                    justify_content: JustifyContent::SpaceBetween,
+                    column_gap: px(12),
                     ..default()
-                },
-                // Opaque, so the grips and the body make one shape.
-                BackgroundColor(Color::srgb(0.11, 0.13, 0.19)),
-            ));
+                })
+                .with_children(|line| {
+                    line.spawn((
+                        Text::new(action.name(lang)),
+                        text_font(look.font, 15.0),
+                        TextColor(color),
+                    ));
+                    line.spawn((
+                        Text::new(value),
+                        text_font(look.font, 15.0),
+                        TextColor(color),
+                    ));
+                });
+            }
+        });
+}
+
+/// The tint over a button of the drawn gamepad: lit while held (or new, or
+/// the one being remapped), faint if it does something, none otherwise.
+fn tint(input: Pressed, mapping: &Mapping, look: &MappingLook) -> Option<Color> {
+    let (from, new) = match &mapping.step {
+        Step::Assign { from, held, .. } => (Some(*from), held.contains(&input)),
+        _ => (None, false),
+    };
+    if new {
+        Some(NEW)
+    } else if from == Some(input) {
+        Some(FROM)
+    } else if look.held.is_held(input) {
+        Some(ACCENT)
+    } else if action_of(look.controls, input).is_some() {
+        Some(ACCENT.with_alpha(0.42))
+    } else {
+        None
+    }
+}
+
+/// The gamepad, drawn (see [`crate::pad_art`]): each button tinted over it,
+/// the triggers above it, and, if the drawing does not print them, the
+/// letters of the face buttons.
+fn spawn_gamepad(area: &mut ChildSpawnerCommands, mapping: &Mapping, look: &MappingLook) {
+    let Some(drawn) = look.drawn else {
+        return;
+    };
+    area.spawn((
+        Node {
+            width: px(drawn.size.x),
+            height: px(drawn.size.y),
+            flex_shrink: 0.0,
+            ..default()
+        },
+        ImageNode::new(drawn.whole.clone()),
+    ))
+    .with_children(|pad| {
+        let place = |rect: Rect| Node {
+            position_type: PositionType::Absolute,
+            left: px(rect.min.x),
+            top: px(rect.min.y),
+            width: px(rect.width()),
+            height: px(rect.height()),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        };
+        for (button, image, rect) in &drawn.buttons {
+            let input = Pressed::Button(*button);
+            let face = matches!(
+                button,
+                GamepadButton::South
+                    | GamepadButton::East
+                    | GamepadButton::West
+                    | GamepadButton::North
+            );
+            let tinted = tint(input, mapping, look);
+            if tinted.is_none() && !(face && look.letters) {
+                continue;
+            }
+            let mut spawned = pad.spawn(place(*rect));
+            if let Some(color) = tinted {
+                spawned.insert(ImageNode::new(image.clone()).with_color(color));
+            }
+            if face
+                && look.letters
+                && let Label::Text(letter) = button_badge(look.pad, *button).label
+            {
+                spawned.with_child((
+                    Text::new(letter),
+                    text_font(look.font, (rect.height() * 0.5).clamp(9.0, 16.0)),
+                    TextColor(Color::srgb(0.3, 0.32, 0.38)),
+                ));
+            }
         }
-        for (button, left, top, width, height, round) in PAD {
-            let badge = button_badge(look.pad, button);
-            let mark = match badge.label {
-                Label::Text(text) => Mark::Text(text),
-                Label::Glyphs(glyphs) => Mark::Glyph(glyphs[0]),
+        // The triggers, where the drawing says (they are not in its view).
+        for (button, rect) in &drawn.triggers {
+            let input = Pressed::Button(*button);
+            let height = rect.height().max(15.0);
+            let bar = Rect::new(rect.min.x, rect.max.y - height, rect.max.x, rect.max.y);
+            let (fill, edge, ink) = match tint(input, mapping, look) {
+                Some(color) if color.alpha() >= 1.0 => (color, color, INK),
+                Some(color) => (color, ACCENT, Color::WHITE),
+                None => (
+                    Color::srgba(1.0, 1.0, 1.0, 0.12),
+                    Color::srgba(1.0, 1.0, 1.0, 0.3),
+                    Color::srgba(1.0, 1.0, 1.0, 0.7),
+                ),
+            };
+            let label = match button_badge(look.pad, *button).label {
+                Label::Text(text) => text,
+                Label::Glyphs(_) => String::new(),
             };
             spawn_cap(
                 pad,
                 look,
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(left),
-                    top: px(top),
-                    width: px(width),
-                    height: px(height),
-                    ..default()
-                },
-                round,
-                shade(Pressed::Button(button), mapping, look),
-                mark,
-                if width > 40.0 || height < 24.0 {
-                    12.0
-                } else {
-                    14.0
-                },
+                place(bar),
+                false,
+                (fill, edge, ink),
+                Mark::Text(label),
+                (height * 0.65).clamp(9.0, 13.0),
             );
         }
     });
@@ -1018,10 +1088,12 @@ fn status(mapping: &Mapping, look: &MappingLook) -> (String, Color) {
                         .get_pressed()
                         .map(|&key| Pressed::Key(key))
                         .collect::<Vec<_>>(),
-                    MapDevice::Gamepad => PAD
+                    MapDevice::Gamepad => look
+                        .held
+                        .gamepads
                         .iter()
-                        .map(|&(button, ..)| Pressed::Button(button))
-                        .filter(|&input| look.held.is_held(input))
+                        .flat_map(|pad| pad.get_pressed())
+                        .map(|&button| Pressed::Button(button))
                         .collect(),
                 }
                 .into_iter()
