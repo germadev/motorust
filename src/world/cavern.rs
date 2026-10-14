@@ -101,14 +101,15 @@ const PLANK_TILE: f32 = 4.0;
 const PLANK_LIFT: f32 = 0.035;
 
 /// The meshes of the excavation along `span` of the lap, with their
-/// materials, through rock of the kinds `halls` says.
+/// materials, through rock of the kinds `halls` says, and where its
+/// lanterns hang.
 pub fn cavern_pieces(
     track: &Track,
     terrain: &Terrain,
     span: Span,
     halls: &[Hall],
     textures: &WorldTextures,
-) -> Vec<(Mesh, StandardMaterial)> {
+) -> (Vec<(Mesh, StandardMaterial)>, Vec<Vec3>) {
     let cave = Cave::new(track, span, halls);
     let mut parts = Parts::default();
     let lanterns = cave.timber_and_lanterns(&mut parts);
@@ -120,7 +121,7 @@ pub fn cavern_pieces(
     cave.veins(&mut parts);
     cave.planked_branches(&painter, &mut parts);
     cave.outside(terrain, &mut parts);
-    parts.pieces(textures)
+    (parts.pieces(textures), lanterns)
 }
 
 /// The meshes of the excavation, each for its own material.

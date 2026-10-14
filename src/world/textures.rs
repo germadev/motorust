@@ -48,6 +48,9 @@ pub struct WorldTextures {
     /// The ragged edge of the grass along the road (see
     /// [`super::foliage::grass_edge`]).
     pub grass_edge: Handle<Image>,
+    /// A pool of lamplight: white in the middle, fading out to nothing at
+    /// its edges (see [`light_pool`]).
+    pub light_pool: Handle<Image>,
     /// The average colour of the grass texture: the tufts of grass are
     /// painted it (see [`super::tufts`]).
     pub grass_color: Color,
@@ -103,6 +106,7 @@ impl FromWorld for WorldTextures {
         let leaves = images.add(super::foliage::leaves());
         let tuft = images.add(super::foliage::tuft());
         let grass_edge = images.add(super::foliage::grass_edge());
+        let light_pool = images.add(light_pool());
         Self {
             grass,
             rock,
@@ -121,6 +125,7 @@ impl FromWorld for WorldTextures {
             leaves,
             tuft,
             grass_edge,
+            light_pool,
             grass_color,
         }
     }
@@ -368,6 +373,39 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
             data[idx + 2] = (b * 255.0).round() as u8;
         }
     }
+}
+
+/// A pool of lamplight, to be added over what it falls on: white in the
+/// middle, fading smoothly to black at its edges, round.
+fn light_pool() -> Image {
+    const SIZE: u32 = 64;
+    let data = (0..SIZE * SIZE)
+        .flat_map(|i| {
+            let p =
+                (Vec2::new((i % SIZE) as f32, (i / SIZE) as f32) + 0.5) / SIZE as f32 * 2.0 - 1.0;
+            let light =
+                (-3.2 * p.length_squared()).exp() * (1.0 - smoothstep(0.75, 1.0, p.length()));
+            let value = (light * 255.0).round() as u8;
+            [value, value, value, value]
+        })
+        .collect();
+    let mut image = Image::new(
+        Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = sampler(ImageAddressMode::ClampToEdge);
+    if let ImageSampler::Descriptor(descriptor) = &mut image.sampler {
+        descriptor.address_mode_u = ImageAddressMode::ClampToEdge;
+    }
+    generate_mipmaps(&mut image);
+    image
 }
 
 /// What each repetition of the stone wall covers (m along the wall and up

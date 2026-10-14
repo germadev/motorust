@@ -5,6 +5,7 @@
 mod cavern;
 mod desert;
 mod foliage;
+mod lamps;
 mod landmarks;
 mod lettering;
 mod mine;
@@ -23,7 +24,11 @@ mod tufts;
 use bevy::asset::embedded_asset;
 use bevy::pbr::PbrPlugin;
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
-use bevy::{light::CascadeShadowConfigBuilder, prelude::*, transform::TransformSystems};
+use bevy::{
+    light::{CascadeShadowConfigBuilder, NotShadowCaster},
+    prelude::*,
+    transform::TransformSystems,
+};
 
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
@@ -44,6 +49,7 @@ impl Plugin for WorldPlugin {
             app.init_asset::<sea::SeaMaterial>();
         }
         let current = CurrentCircuit::default();
+        app.add_plugins(lamps::LampsPlugin);
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
             .init_resource::<Roadsides>()
@@ -125,6 +131,8 @@ struct Prepared {
     roadside: Roadside,
     /// The meshes of the roads, tunnels and bridges, with their materials.
     pieces: Vec<(Mesh, StandardMaterial)>,
+    /// The lamps of its tunnels and mine (see [`lamps`]).
+    lamps: Vec<lamps::Lamp>,
     trees: props::TreePlan,
 }
 
@@ -160,9 +168,8 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         shoulders: shoulders::track_shoulders(&track, &terrain, scenery),
     };
     let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
-    pieces.extend(structures::structure_pieces(
-        &track, &terrain, scenery, textures,
-    ));
+    let (structures, lamps) = structures::structure_pieces(&track, &terrain, scenery, textures);
+    pieces.extend(structures);
     pieces.extend(tufts::tuft_pieces(
         &track,
         &terrain,
@@ -181,6 +188,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         shore_image,
         roadside,
         pieces,
+        lamps,
         trees,
     }
 }
@@ -339,6 +347,7 @@ fn build(
         shore_image,
         roadside,
         pieces,
+        lamps,
         trees,
     } = prepared;
     let shore_image = builder.images.add(shore_image);
@@ -353,7 +362,12 @@ fn build(
         images: &mut builder.images,
     };
     commands
-        .spawn((WorldRoot(index), Transform::default(), visibility))
+        .spawn((
+            WorldRoot(index),
+            lamps::Lamps(lamps),
+            Transform::default(),
+            visibility,
+        ))
         .with_children(|world| {
             terrain::spawn_terrain(
                 world,
@@ -369,10 +383,16 @@ fn build(
                 Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
             ));
             for (mesh, material) in pieces {
-                world.spawn((
+                // What is see-through or glows (light, dust) casts no
+                // shadow.
+                let shadowless = matches!(material.alpha_mode, AlphaMode::Add | AlphaMode::Blend);
+                let mut piece = world.spawn((
                     Mesh3d(assets.meshes.add(mesh)),
                     MeshMaterial3d(assets.materials.add(material)),
                 ));
+                if shadowless {
+                    piece.insert(NotShadowCaster);
+                }
             }
             road::spawn_gantries(world, &track, scenery, &mut assets);
             structures::spawn_signs(world, &track, &terrain, scenery, &mut assets);
