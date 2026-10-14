@@ -103,6 +103,23 @@ The rider GLB must be the auto-rigged, skinned one. The script keeps the mesh wi
 
 Upload the original GLB files to a model release of the repository so they can be re-imported later, and credit them in `assets/CREDITS.md`.
 
+## Trees
+
+The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`src/world/props.rs`).
+
+`tools/import_trees.py` turns the GLB files into what the game embeds (`assets/models/trees/`):
+
+```sh
+python3 tools/import_trees.py umbrella_pine=PINE.glb cypress=CYPRESS.glb olive=OLIVE.glb \
+    tall=TALL.glb broadleaf=LEAFY.glb maritime_pine=MARITIME.glb poplar=POPLAR.glb \
+    almond=ALMOND.glb fir=FIR.glb
+```
+
+- `trees.bin`: each tree standing with the foot of its trunk at the origin, as tall as the classic trees of its species (`HEIGHTS`: from 4.8 m for the almond to 16.1 m for the tall forest tree; 14 m for the fir), in the bikes' pack format.
+- `color.jpg`: their colour textures together, 512 × 512 each with a 2-pixel margin, in a 3 × 3 grid, so every tree shares one texture and one material.
+
+All nine take about 560 KB. `cargo test` checks that every tree is in the pack, standing on the ground, with a few hundred triangles and its texture coordinates in its own cell.
+
 ## Textures
 
 The scenery textures are CC0 (public domain) photos from [Poly Haven](https://polyhaven.com), reduced in size and retouched to look closer to 90s games: more saturation, less contrast in the asphalt cracks and the grass recoloured to a brighter green. Mipmaps are computed at startup so distant surfaces do not flicker (`src/world/textures.rs`).

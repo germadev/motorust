@@ -32,8 +32,23 @@ repository's [model releases](https://github.com/germadev/motorust/releases);
 `tools/import_models.py` splits them into parts, scales them to the game's
 measurements and downsizes their textures.
 
+The trees (`models/trees/`: stone pine, cypress, olive, tall forest tree,
+leafy broadleaf, maritime pine, poplar, almond and Nordmann fir) were made by
+the project's author with [Meshy](https://www.meshy.ai);
+`tools/import_trees.py` stands them on the ground at the game's sizes and puts
+their colour textures together.
+
 ## Font
 
 `fonts/RussoOne-Regular.ttf` is [Russo One](https://fonts.google.com/specimen/Russo+One)
 by Jovanny Lemonad, licensed under the SIL Open Font License 1.1
 (`fonts/RussoOne-OFL.txt`).
+
+## Gamepads
+
+The gamepads drawn in Options > Control > Mapping (`ui/pads/dualsense.svg`,
+`ui/pads/dualshock4.svg`, `ui/pads/dualshock3.svg` and `ui/pads/xbox.svg`) were
+designed by the project's author, with Claude, for
+[anygamepad](https://github.com/anygamepad/anygamepad.github.io)
+(`apps/web/src/art`), licensed under either the MIT or the Apache-2.0 licence.
+They are used as they are; the game draws them with resvg (`src/pad_art.rs`).

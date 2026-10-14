@@ -24,7 +24,7 @@ make test      # runs the tests
 | `make install` | Linux packages, then `cargo fetch` | Installs the system dependencies (Linux only) and downloads the crates. Fails early if `cargo` is missing. |
 | `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
-| `make test` | `cargo test` | Runs the 303 tests (see [architecture.md](architecture.md#tests)). |
+| `make test` | `cargo test` | Runs the 401 tests (see [architecture.md](architecture.md#tests)). |
 
 ### Build times and profiles
 
@@ -72,14 +72,14 @@ The result is three files: `index.html`, `motorust.js` and `motorust_bg.wasm`.
 
 ### The page
 
-`web/index.html` gives the game the whole window and shows a loading screen on top of it. The screen shows download progress ("Descargando el juego…", *Downloading the game…*), then "Preparando la pista…" (*Preparing the track…*) while the first frame builds the world. When the game is visible, `src/web.rs` sets `data-motorust="ready"` on the page and the loading screen fades out. If the browser has no WebGL2, or the game fails before it is shown, the page displays the error instead.
+`web/index.html` gives the game the whole window and shows a screen on top of it with the title, a "Jugar online" (*Play online*) button and the desktop downloads. Nothing of the game is downloaded when the page opens: the button says how much it will download (or that it is already kept, see below), and only once it is pressed (or Enter or Space) does the page fetch the `.wasm` and the JavaScript glue (`motorust.js`, imported then). It shows download progress ("Descargando el juego…", *Downloading the game…*), then "Preparando la pista…" (*Preparing the track…*) while the first frame builds the world. When the game is visible, `src/web.rs` sets `data-motorust="ready"` on the page and the loading screen fades out. If the browser has no WebGL2, or the game fails before it is shown, the page displays the error instead.
 
 ### Caching the game
 
 The browser keeps the `.wasm` between visits, so reloading the tab starts the game without downloading it again:
 
 - The page asks for `motorust_bg.wasm?v=<first 16 hex digits of its SHA-256>`. Each build has its own URL, so the server can let browsers keep the file for a year (`Cache-Control: immutable`, set in `functions/motorust_bg.wasm.js`) and no browser reuses an old build's `.wasm` with a new build's `motorust.js`.
-- After downloading it, the page keeps a copy in [Cache Storage](https://developer.mozilla.org/docs/Web/API/CacheStorage) (cache `motorust-wasm`), but only if its SHA-256 matches the page's `WASM_SHA256`, and deletes the copies of older builds. On the next visit the game comes from there ("Listo, sin volver a descargarlo"), even after a hard reload, which skips the HTTP cache.
+- After downloading it, the page keeps a copy in [Cache Storage](https://developer.mozilla.org/docs/Web/API/CacheStorage) (cache `motorust-wasm`), but only if its SHA-256 matches the page's `WASM_SHA256`, and deletes the copies of older builds. On the next visit, once "Jugar online" is pressed, the game comes from there (the page says "Ya descargado: empieza al momento" beforehand), even after a hard reload, which skips the HTTP cache.
 - Cache Storage only exists on https and `localhost`, and the browser may refuse it (some private windows, no disk space) or clear it to free space. Then the page just downloads the game as before.
 
 This is not WasmFS: WasmFS is Emscripten's file system for programs built with Emscripten, while motorust is built with `wasm32-unknown-unknown` and `wasm-bindgen`, and keeps its settings in `localStorage`.
@@ -95,7 +95,7 @@ This is not WasmFS: WasmFS is Emscripten's file system for programs built with E
 
 ### Size
 
-Without the music, the `.wasm` file is about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. The tracks' music (`assets/music/`, four 192 kbps MP3s) adds about **16.7 MB**, which compression does not shrink: about **101 MB**, or **50 MB gzipped**, in all. The JavaScript glue is about 120 KB.
+Without the music, the `.wasm` file is about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. The music (`assets/music/`, eight 192 kbps MP3s: the four tracks' songs, three chill ones and the menus') adds about **33.7 MB**, which compression does not shrink: about **118 MB**, or **67 MB gzipped**, in all. The JavaScript glue is about 120 KB.
 
 ## Continuous integration
 

@@ -1,6 +1,8 @@
-//! When a race is over: its results (each bike's place and time, and the
-//! points of a championship), then in a championship the standings, and on
-//! to the next race, to the end of the championship or back to the menus.
+//! When the players' race is over: its results (each bike's place and
+//! time, filling in as the others come in, and the points of the arcade
+//! championship), on one side while the camera watches them come in; then
+//! in the championship the standings, and on to the next race, to the end
+//! of the championship or back to the menus.
 
 use bevy::prelude::*;
 
@@ -23,39 +25,57 @@ pub struct ResultsPlugin;
 
 impl Plugin for ResultsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (use_results, show_results)
-                .chain()
-                .run_if(in_state(GameState::Race).and_then(resource_exists::<Outcome>)),
-        );
+        app.add_systems(OnEnter(GameState::Race), forget_the_page)
+            .add_systems(OnExit(GameState::Race), forget_the_page)
+            .add_systems(
+                Update,
+                (use_results, show_results)
+                    .chain()
+                    .run_if(in_state(GameState::Race).and_then(resource_exists::<Outcome>)),
+            );
     }
 }
 
-/// Which page of the results is shown: the race's, then a championship's
-/// standings.
+/// Which page of the results is shown: the race's, then the championship's
+/// standings; or none, on the way out of them.
 #[derive(Resource, Clone, Copy, Default, PartialEq, Eq, Debug)]
 enum ResultsPage {
     #[default]
     Race,
     Standings,
+    Leaving,
+}
+
+fn forget_the_page(mut commands: Commands) {
+    commands.remove_resource::<ResultsPage>();
 }
 
 /// What comes after the results: the standings of a championship, its next
-/// race, the menu after the last one, or choosing a track again.
+/// race, the menu after the last one, or, out of a championship, the same
+/// race again.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Next {
     Standings,
     Race(usize),
     Menu,
-    Tracks,
+    Again,
+}
+
+/// Where going back from the results of a race of `mode` goes: out of a
+/// championship to the game modes; otherwise to choosing the track.
+pub fn back_from(mode: Mode) -> GameState {
+    if mode.is_championship() {
+        GameState::Modes
+    } else {
+        GameState::Tracks
+    }
 }
 
 /// What comes after the page `standings` (or not) of the results of a race
 /// of `mode`, with the championship as it is now.
 pub fn next_after(mode: Mode, standings: bool, championship: &Championship) -> Next {
     if !mode.is_championship() {
-        return Next::Tracks;
+        return Next::Again;
     }
     if !standings {
         return Next::Standings;
@@ -71,39 +91,47 @@ pub fn next_after(mode: Mode, standings: bool, championship: &Championship) -> N
 fn use_results(
     mut commands: Commands,
     mut input: MenuInput,
-    outcome: Res<Outcome>,
+    mut outcome: ResMut<Outcome>,
     page: Option<Res<ResultsPage>>,
-    championship: Res<Championship>,
+    mut championship: ResMut<Championship>,
     mut current: ResMut<CurrentCircuit>,
     mut next: ResMut<NextState<GameState>>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
+    let page = page.map_or(ResultsPage::Race, |page| *page);
+    if page == ResultsPage::Leaving {
+        return;
+    }
     let request = input.read();
-    let standings = page.is_some_and(|page| *page == ResultsPage::Standings);
     if request.back {
         sounds.write(MenuSound::Move);
-        commands.remove_resource::<ResultsPage>();
-        next.set(GameState::Modes);
+        commands.insert_resource(ResultsPage::Leaving);
+        next.set(back_from(outcome.mode));
         return;
     }
     if !(request.confirm || request.start) {
         return;
     }
     sounds.write(MenuSound::Confirm);
-    match next_after(outcome.mode, standings, &championship) {
+    // Going on from the race's results makes them final, and the
+    // championship scores them.
+    outcome.settle(&mut championship);
+    // On the way out the results go at once: they are not built again
+    // while the next screen (or the next track) is set up.
+    match next_after(outcome.mode, page == ResultsPage::Standings, &championship) {
         Next::Standings => commands.insert_resource(ResultsPage::Standings),
         Next::Race(round) => {
-            commands.remove_resource::<ResultsPage>();
+            commands.insert_resource(ResultsPage::Leaving);
             current.0 = round;
             next.set(GameState::Race);
         }
         Next::Menu => {
-            commands.remove_resource::<ResultsPage>();
+            commands.insert_resource(ResultsPage::Leaving);
             next.set(GameState::Welcome);
         }
-        Next::Tracks => {
-            commands.remove_resource::<ResultsPage>();
-            next.set(GameState::Tracks);
+        Next::Again => {
+            commands.insert_resource(ResultsPage::Leaving);
+            next.set(GameState::Race);
         }
     }
 }
@@ -126,9 +154,12 @@ fn show_results(
     mut last: Local<Option<String>>,
 ) {
     let lang = settings.language;
-    let standings = page.is_some_and(|page| *page == ResultsPage::Standings);
+    let page = page.map_or(ResultsPage::Race, |page| *page);
     let active_dev = current_active_device(*device, active_controller.as_deref());
-    let wanted = format!("{standings} {lang:?} {active_dev:?} {:?}", outcome.places);
+    let wanted = format!(
+        "{page:?} {lang:?} {active_dev:?} {:?} {} {}",
+        outcome.places, outcome.settled, settings.centre_results
+    );
     if last.as_ref() == Some(&wanted) && !shown.is_empty() {
         return;
     }
@@ -136,6 +167,10 @@ fn show_results(
     for entity in &shown {
         commands.entity(entity).despawn();
     }
+    if page == ResultsPage::Leaving {
+        return;
+    }
+    let standings = page == ResultsPage::Standings;
 
     let track = CIRCUITS[outcome.track].name(lang);
     let title = if standings {
@@ -166,14 +201,14 @@ fn show_results(
     };
     let next = next_after(outcome.mode, standings, &championship);
     let go_on = match (next, lang) {
-        (Next::Standings, Language::Spanish) => "Clasificación",
-        (Next::Standings, Language::English) => "Standings",
+        (Next::Standings, Language::Spanish) => "Continuar",
+        (Next::Standings, Language::English) => "Continue",
         (Next::Race(_), Language::Spanish) => "Siguiente carrera",
         (Next::Race(_), Language::English) => "Next race",
         (Next::Menu, Language::Spanish) => "Terminar",
         (Next::Menu, Language::English) => "Finish",
-        (Next::Tracks, Language::Spanish) => "Elegir pista",
-        (Next::Tracks, Language::English) => "Choose track",
+        (Next::Again, Language::Spanish) => "Repetir",
+        (Next::Again, Language::English) => "Race again",
     };
     let prompts = menu_prompts(
         active_dev,
@@ -181,14 +216,27 @@ fn show_results(
             (Keys::Confirm, go_on),
             (
                 Keys::Back,
-                match lang {
-                    Language::Spanish => "Modos de juego",
-                    Language::English => "Game modes",
+                match (back_from(outcome.mode), lang) {
+                    (GameState::Modes, Language::Spanish) => "Modos de juego",
+                    (GameState::Modes, Language::English) => "Game modes",
+                    (_, Language::Spanish) => "Volver",
+                    (_, Language::English) => "Back",
                 },
             ),
         ],
     );
 
+    // The race's results stand at the top right, over the race that goes
+    // on behind them; if the options say so, once everybody is in, in the
+    // middle, above the bike the camera shows. The standings, in the
+    // middle, over a darker screen.
+    let stand = if standings {
+        Stand::Middle
+    } else if settings.centre_results && everyone_in(&outcome) {
+        Stand::Above
+    } else {
+        Stand::Corner
+    };
     commands
         .spawn((
             ResultsScreen,
@@ -198,12 +246,31 @@ fn show_results(
                 width: percent(100),
                 height: percent(100),
                 flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                padding: UiRect::bottom(px(56)),
+                justify_content: match stand {
+                    Stand::Corner => JustifyContent::FlexStart,
+                    _ => JustifyContent::Center,
+                },
+                align_items: match stand {
+                    Stand::Corner => AlignItems::FlexEnd,
+                    _ => AlignItems::Center,
+                },
+                padding: match stand {
+                    Stand::Middle => UiRect::bottom(px(56)),
+                    // (A share of the height: one in per cent is of the width.)
+                    Stand::Above => UiRect::bottom(Val::Vh(26.0)),
+                    Stand::Corner => UiRect {
+                        top: px(40),
+                        right: px(28),
+                        ..default()
+                    },
+                },
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.02, 0.05, 0.6)),
+            BackgroundColor(if standings {
+                Color::srgba(0.0, 0.02, 0.05, 0.6)
+            } else {
+                Color::NONE
+            }),
             GlobalZIndex(90),
         ))
         .with_children(|screen| {
@@ -211,7 +278,7 @@ fn show_results(
                 .spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
-                        width: px(640),
+                        width: px(if standings { 640 } else { 520 }),
                         max_width: percent(94),
                         padding: UiRect::axes(px(26), px(20)),
                         row_gap: px(6),
@@ -219,13 +286,13 @@ fn show_results(
                         border: UiRect::all(px(2)),
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.94)),
+                    BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.86)),
                     BorderColor::all(GOLD.with_alpha(0.6)),
                 ))
                 .with_children(|panel| {
                     panel.spawn((
                         Text::new(title),
-                        text_font(&font, 30.0),
+                        text_font(&font, 28.0),
                         TextColor(GOLD),
                         TextShadow::default(),
                         Node {
@@ -254,13 +321,17 @@ fn show_results(
                                 let color = if line.player { PLAYER } else { Color::WHITE };
                                 row.spawn((
                                     Text::new(line.left),
-                                    text_font(&font, 20.0),
+                                    text_font(&font, 19.0),
                                     TextColor(color),
                                 ));
                                 row.spawn((
                                     Text::new(line.right),
-                                    text_font(&font, 20.0),
-                                    TextColor(color),
+                                    text_font(&font, 19.0),
+                                    TextColor(if line.pending {
+                                        color.with_alpha(0.55)
+                                    } else {
+                                        color
+                                    }),
                                 ));
                             });
                     }
@@ -269,12 +340,35 @@ fn show_results(
         });
 }
 
-/// A line of the results: what goes on the left and on the right, and
-/// whether it is a player's.
+/// Where the results stand on the screen.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Stand {
+    /// At the top right, while the others come in.
+    Corner,
+    /// In the middle, above the bike the camera shows, once all are in (if
+    /// the options say so).
+    Above,
+    /// In the middle: the standings.
+    Middle,
+}
+
+/// Whether every bike of the race is in: crossed the line or out (against
+/// the clock, nobody comes in: it is over when the time is).
+fn everyone_in(outcome: &Outcome) -> bool {
+    outcome.mode == Mode::Checkpoint
+        || outcome
+            .places
+            .iter()
+            .all(|place| place.out || (place.time.is_some() && !place.estimated))
+}
+
+/// A line of the results: what goes on the left and on the right, whether
+/// it is a player's, and whether it is still to come in (shown fainter).
 struct Line {
     left: String,
     right: String,
     player: bool,
+    pending: bool,
 }
 
 /// A bike's name, marked if it is a player's.
@@ -297,7 +391,8 @@ fn rider_name(rider: usize, outcome: &Outcome, lang: Language) -> (String, bool)
 }
 
 /// Each bike's place, time (or gap, or out) and, in a championship, the
-/// points it got.
+/// points it gets. Those still racing are on their way; once the results
+/// are final, they have the time they would have taken (marked "~").
 fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
     let winner = outcome.places.first().and_then(|place| place.time);
     outcome
@@ -306,17 +401,30 @@ fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
         .enumerate()
         .map(|(index, place)| {
             let (name, player) = rider_name(place.rider, outcome, lang);
-            let result = if place.out {
+            let pending = place.estimated && !outcome.settled;
+            let result = if place.disqualified {
+                match lang {
+                    Language::Spanish => "descalificado".to_string(),
+                    Language::English => "disqualified".to_string(),
+                }
+            } else if place.out {
                 match lang {
                     Language::Spanish => "eliminado".to_string(),
                     Language::English => "out".to_string(),
                 }
             } else {
                 match (place.time, winner) {
-                    (Some(time), Some(first)) if index > 0 => {
-                        format!("+{:.1} s", time - first)
+                    _ if pending => match lang {
+                        Language::Spanish => "en carrera".to_string(),
+                        Language::English => "racing".to_string(),
+                    },
+                    (Some(time), first) => {
+                        let mark = if place.estimated { "~" } else { "" };
+                        match first {
+                            Some(first) if index > 0 => format!("{mark}+{:.1} s", time - first),
+                            _ => format!("{mark}{}", clock(time)),
+                        }
                     }
-                    (Some(time), _) => clock(time),
                     (None, _) => match lang {
                         Language::Spanish => "en carrera".to_string(),
                         Language::English => "racing".to_string(),
@@ -324,7 +432,12 @@ fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
                 }
             };
             let points = if outcome.mode.is_championship() {
-                format!("   +{}", POINTS.get(index).copied().unwrap_or(0))
+                let points = if place.disqualified {
+                    0
+                } else {
+                    POINTS.get(index).copied().unwrap_or(0)
+                };
+                format!("   +{points}")
             } else {
                 String::new()
             };
@@ -332,6 +445,7 @@ fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
                 left: format!("{}   {name}", ordinal(index + 1, lang)),
                 right: format!("{result}{points}"),
                 player,
+                pending: pending || (place.time.is_none() && !place.out),
             }
         })
         .collect()
@@ -349,6 +463,7 @@ fn standing_lines(outcome: &Outcome, championship: &Championship, lang: Language
                 left: format!("{}   {name}", ordinal(index + 1, lang)),
                 right: format!("{} pts", championship.points[rider]),
                 player,
+                pending: false,
             }
         })
         .collect()
@@ -369,6 +484,7 @@ fn checkpoint_lines(
             left: track.to_string(),
             right: String::new(),
             player: false,
+            pending: false,
         },
         Line {
             left: match lang {
@@ -384,6 +500,7 @@ fn checkpoint_lines(
                 outcome.laps.to_string()
             },
             player: true,
+            pending: false,
         },
         Line {
             left: match lang {
@@ -392,6 +509,7 @@ fn checkpoint_lines(
             },
             right: best.to_string(),
             player: false,
+            pending: false,
         },
     ];
     if let Some(lap) = lap {
@@ -402,6 +520,7 @@ fn checkpoint_lines(
             },
             right: clock(lap),
             player: false,
+            pending: false,
         });
     }
     lines
@@ -412,25 +531,183 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_results_go_to_the_middle_once_everybody_is_in() {
+        let place = |rider: usize, time: Option<f32>, estimated: bool| super::super::Place {
+            rider,
+            time,
+            out: false,
+            disqualified: false,
+            estimated,
+        };
+        let mut outcome = Outcome {
+            mode: Mode::Race,
+            track: 0,
+            places: vec![place(0, Some(90.0), false), place(7, Some(95.0), true)],
+            players: vec![0],
+            laps: 0,
+            record: false,
+            settled: false,
+        };
+        // One still racing (its time a guess): not yet.
+        assert!(!everyone_in(&outcome));
+        outcome.places[1] = place(7, None, false);
+        assert!(!everyone_in(&outcome));
+        // In, or out.
+        outcome.places[1] = place(7, Some(96.0), false);
+        assert!(everyone_in(&outcome));
+        outcome.places[1].time = None;
+        outcome.places[1].out = true;
+        assert!(everyone_in(&outcome));
+    }
+
+    #[test]
+    fn a_player_disqualified_says_so_in_the_results() {
+        let place = |rider: usize, time: Option<f32>, out: bool| super::super::Place {
+            rider,
+            time,
+            out,
+            disqualified: out,
+            estimated: false,
+        };
+        let mut outcome = Outcome {
+            mode: Mode::Race,
+            track: 0,
+            places: vec![place(0, Some(90.0), false), place(7, None, true)],
+            players: vec![7],
+            laps: 0,
+            record: false,
+            settled: true,
+        };
+        let lines = race_lines(&outcome, Language::Spanish);
+        assert!(
+            lines[1].right.starts_with("descalificado"),
+            "{}",
+            lines[1].right
+        );
+        assert!(lines[1].player && !lines[1].pending);
+        let lines = race_lines(&outcome, Language::English);
+        assert!(lines[1].right.starts_with("disqualified"));
+        // In the arcade, with no points.
+        outcome.mode = Mode::Arcade;
+        let lines = race_lines(&outcome, Language::English);
+        assert!(lines[1].right.ends_with("+0"), "{}", lines[1].right);
+    }
+
+    #[test]
     fn after_the_results_comes_what_the_mode_says() {
         let mut championship = Championship::default();
-        assert_eq!(next_after(Mode::Race, false, &championship), Next::Tracks);
+        // Out of a championship: the same race again, or back to the
+        // tracks.
+        assert_eq!(next_after(Mode::Race, false, &championship), Next::Again);
         assert_eq!(
             next_after(Mode::Checkpoint, false, &championship),
-            Next::Tracks
+            Next::Again
         );
+        assert_eq!(back_from(Mode::Race), GameState::Tracks);
+        assert_eq!(back_from(Mode::Arcade), GameState::Modes);
         // A championship: the standings, then its next race...
         assert_eq!(
-            next_after(Mode::Story, false, &championship),
+            next_after(Mode::Arcade, false, &championship),
             Next::Standings
         );
         championship.score(&[0, 1, 2, 3, 4, 5, 6, 7]);
-        assert_eq!(next_after(Mode::Story, true, &championship), Next::Race(1));
+        assert_eq!(next_after(Mode::Arcade, true, &championship), Next::Race(1));
         // ...and after the last one, the menu.
         championship.round = CIRCUITS.len();
+        assert_eq!(next_after(Mode::Arcade, true, &championship), Next::Menu);
+        // An elimination is on the track chosen, like a race.
         assert_eq!(
-            next_after(Mode::Elimination, true, &championship),
-            Next::Menu
+            next_after(Mode::Elimination, false, &championship),
+            Next::Again
         );
+    }
+
+    /// The results of an arcade race, on the screen.
+    fn results() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::input::InputPlugin)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Font>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .init_resource::<Settings>()
+            .init_resource::<InputDevice>()
+            .init_resource::<UiFont>()
+            .init_resource::<UiIcons>()
+            .init_resource::<Championship>()
+            .init_resource::<CurrentCircuit>()
+            .add_message::<MenuSound>()
+            .add_plugins((ResultsPlugin, crate::gamepads::GamepadsPlugin))
+            .add_systems(OnExit(GameState::Race), |mut commands: Commands| {
+                commands.remove_resource::<Outcome>();
+            });
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        let place = |rider: usize, time: f32| super::super::Place {
+            rider,
+            time: Some(time),
+            out: false,
+            disqualified: false,
+            estimated: false,
+        };
+        app.insert_resource(Outcome {
+            mode: Mode::Arcade,
+            track: 0,
+            places: (0..8)
+                .map(|rider| place(rider, 100.0 + rider as f32))
+                .collect(),
+            players: vec![7],
+            laps: 0,
+            record: false,
+            settled: false,
+        });
+        app.update();
+        app
+    }
+
+    fn press_enter(app: &mut App) {
+        use bevy::input::ButtonState;
+        use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+        for state in [ButtonState::Pressed, ButtonState::Released] {
+            app.world_mut().write_message(KeyboardInput {
+                key_code: KeyCode::Enter,
+                logical_key: Key::Unidentified(NativeKey::Unidentified),
+                state,
+                text: None,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            });
+            app.update();
+        }
+    }
+
+    fn screens(app: &mut App) -> usize {
+        app.world_mut()
+            .query_filtered::<Entity, With<ResultsScreen>>()
+            .iter(app.world())
+            .count()
+    }
+
+    #[test]
+    fn the_results_go_away_for_the_next_race() {
+        let mut app = results();
+        assert_eq!(screens(&mut app), 1);
+        // Continue: the race is scored and the standings are shown.
+        press_enter(&mut app);
+        assert_eq!(app.world().resource::<Championship>().round, 1);
+        assert!(app.world().resource::<Outcome>().settled);
+        assert_eq!(screens(&mut app), 1);
+        // Next race: the results go at once, and do not come back.
+        press_enter(&mut app);
+        assert_eq!(screens(&mut app), 0);
+        assert_eq!(app.world().resource::<CurrentCircuit>().0, 1);
+        app.update();
+        app.update();
+        assert_eq!(screens(&mut app), 0);
+        assert_eq!(app.world().resource::<Championship>().round, 1);
     }
 }

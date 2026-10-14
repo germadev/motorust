@@ -192,14 +192,14 @@ pub(super) static AZURA: Model = model!(
 );
 
 /// Una malla de un paquete, con su nombre.
-pub(super) struct PackedMesh {
+pub(crate) struct PackedMesh {
     pub name: String,
     pub mesh: Mesh,
 }
 
 /// Un hueso del esqueleto en reposo, en el espacio de su malla.
 #[derive(Clone, Debug)]
-pub(super) struct Joint {
+pub(crate) struct Joint {
     pub name: String,
     pub parent: Option<usize>,
     pub position: Vec3,
@@ -207,7 +207,7 @@ pub(super) struct Joint {
 }
 
 /// Contenido de un `.bin` de `tools/import_models.py`.
-pub(super) struct Pack {
+pub(crate) struct Pack {
     pub meshes: Vec<PackedMesh>,
     pub skeleton: Vec<Joint>,
 }
@@ -251,7 +251,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-pub(super) fn read(bytes: &[u8]) -> Pack {
+pub(crate) fn read(bytes: &[u8]) -> Pack {
     let mut reader = Reader { bytes };
     assert_eq!(reader.take(8), b"MRMESH01", "no es un paquete de mallas");
     let count = reader.u32();
@@ -318,7 +318,7 @@ pub(super) fn read(bytes: &[u8]) -> Pack {
 
 /// Textura de un JPEG incrustado, con mipmaps. Las de color van en sRGB; las
 /// de datos (normales, metal y rugosidad), en lineal.
-pub(super) fn texture(bytes: &[u8], srgb: bool) -> Image {
+pub(crate) fn texture(bytes: &[u8], srgb: bool) -> Image {
     let sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
         address_mode_u: ImageAddressMode::ClampToEdge,
         address_mode_v: ImageAddressMode::ClampToEdge,

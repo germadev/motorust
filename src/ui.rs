@@ -236,6 +236,9 @@ fn tilt(value: f32, held: &mut bool) -> i32 {
 /// The red of "Exit game": its button in the start menu, and the option
 /// that confirms it.
 pub const EXIT_RED: Color = Color::srgb(1.0, 32.0 / 255.0, 32.0 / 255.0);
+/// The main action of a menu, like resuming the race: the blue of the
+/// start menu's 1P card.
+pub const PRIMARY_BLUE: Color = Color::srgb(0.04, 0.4, 1.0);
 
 /// Una opción de un menú: su texto y, si tiene, su valor, a la derecha.
 pub struct Row {
@@ -245,6 +248,12 @@ pub struct Row {
     /// Whether it does something that cannot be undone, like leaving the
     /// game: chosen, it shows in red.
     pub danger: bool,
+    /// Whether it is the main action of its menu, like resuming the race:
+    /// it shows in blue, faintly when it is not chosen.
+    pub primary: bool,
+    /// Whether it is something on or off, a box ticked or not after its
+    /// value (if any). Drawn by the options menu.
+    pub check: Option<bool>,
 }
 
 impl Row {
@@ -254,6 +263,24 @@ impl Row {
             value: None,
             disabled: false,
             danger: false,
+            primary: false,
+            check: None,
+        }
+    }
+
+    /// Something on or off, with a box ticked or not.
+    pub fn check(label: impl Into<String>, on: bool) -> Self {
+        Self {
+            check: Some(on),
+            ..Self::new(label)
+        }
+    }
+
+    /// The main action of its menu, like resuming the race.
+    pub fn primary(label: impl Into<String>) -> Self {
+        Self {
+            primary: true,
+            ..Self::new(label)
         }
     }
 
@@ -288,11 +315,23 @@ impl Row {
             )
         } else if self.danger {
             (EXIT_RED, Color::WHITE)
+        } else if self.primary {
+            (PRIMARY_BLUE, Color::WHITE)
         } else {
             (
                 Color::srgba(1.0, 0.8, 0.2, 0.95),
                 Color::srgb(0.08, 0.06, 0.02),
             )
+        }
+    }
+
+    /// Background of the option when it is not chosen: none, but the main
+    /// action stands out in a faint blue.
+    pub fn idle_background(&self) -> Color {
+        if self.primary {
+            PRIMARY_BLUE.with_alpha(0.3)
+        } else {
+            Color::NONE
         }
     }
 }
@@ -359,7 +398,7 @@ pub fn spawn_panel(
                         BackgroundColor(if chosen {
                             chosen_background
                         } else {
-                            Color::NONE
+                            row.idle_background()
                         }),
                     ))
                     .with_children(|line| {
@@ -486,5 +525,14 @@ mod tests {
             .map(|value| tilt(value, &mut held))
             .collect();
         assert_eq!(steps, [0, 1, 0, 0, -1, 0, 0]);
+    }
+
+    #[test]
+    fn the_main_action_is_blue_and_leaving_red() {
+        let resume = Row::primary("Resume");
+        assert_eq!(resume.chosen_colors(), (PRIMARY_BLUE, Color::WHITE));
+        assert_ne!(resume.idle_background(), Color::NONE);
+        assert_eq!(Row::danger("Exit").chosen_colors().0, EXIT_RED);
+        assert_eq!(Row::new("Back").idle_background(), Color::NONE);
     }
 }

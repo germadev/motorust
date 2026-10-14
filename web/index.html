@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-motorust="waiting">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -105,13 +105,18 @@
     [data-motorust="failed"] #status {
       color: #ff8a7a;
     }
-    [data-motorust="failed"] .bar {
+    [data-motorust="failed"] .bar,
+    [data-motorust="failed"] #start-btn {
+      display: none;
+    }
+    /* Nothing is downloaded until the player chooses to play online. */
+    [data-motorust="waiting"] .bar {
       display: none;
     }
 
-    /* Botón de inicio cuando termina la descarga */
+    /* The button that downloads the game and starts it in the browser. */
     #start-btn {
-      display: none;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 10px;
@@ -252,8 +257,8 @@
     <h1 class="logo">MOTO<span>RUST</span></h1>
     <div class="version" id="game-version">v0.0.1</div>
     <div class="bar"><div id="progress"></div></div>
-    <button id="start-btn" type="button">Iniciar juego</button>
-    <p id="status">Descargando el juego…</p>
+    <button id="start-btn" type="button">Jugar online</button>
+    <p id="status"></p>
 
     <div class="downloads" id="downloads">
       <span class="downloads-label">Descargar versión de escritorio</span>
@@ -315,7 +320,6 @@
     })();
   </script>
   <script type="module">
-    import init from "./motorust.js";
 
     // build.sh pone aquí el tamaño del .wasm, para la barra de progreso (el
     // servidor lo manda comprimido y no siempre dice cuánto ocupa).
@@ -466,51 +470,58 @@
       }
     }
 
+    // Waits for the player to choose to play online: a click on the button,
+    // or Enter or Space. Nothing is downloaded before that.
+    function playChosen() {
+      return new Promise((resolve) => {
+        const onKey = (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            choose();
+          }
+        };
+        const choose = () => {
+          window.removeEventListener("keydown", onKey);
+          startBtn.removeEventListener("click", choose);
+          resolve();
+        };
+        startBtn.addEventListener("click", choose);
+        window.addEventListener("keydown", onKey);
+      });
+    }
+
     try {
       if (!document.createElement("canvas").getContext("webgl2")) {
         throw new Error("este navegador no tiene WebGL2");
       }
       const cache = await openWasmCache();
       let bytes = cache && (await cachedWasm(cache));
-      if (bytes) {
-        status.textContent = "Listo, sin volver a descargarlo";
-      } else {
-        bytes = await download(WASM_URL);
-        status.textContent = "Descarga completada";
-        // Saved in the background while the player presses the button.
-        if (cache) keepWasm(cache, bytes);
-      }
-
-      // Descarga de WASM completada: mostrar botón de inicio en lugar de arrancar inmediatamente
-      progress.style.width = "100%";
-      startBtn.style.display = "inline-flex";
+      status.textContent = bytes
+        ? "Ya descargado: empieza al momento"
+        : WASM_BYTES
+          ? `Se descargan unos ${Math.round(WASM_BYTES / 1048576)} MB al empezar`
+          : "Se descarga al empezar";
       startBtn.focus();
-
-      await new Promise((resolve) => {
-        let started = false;
-        const triggerStart = () => {
-          if (started) return;
-          started = true;
-          window.removeEventListener("keydown", onKey);
-          resolve();
-        };
-        const onKey = (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            triggerStart();
-          }
-        };
-        startBtn.addEventListener("click", triggerStart, { once: true });
-        window.addEventListener("keydown", onKey);
-      });
+      await playChosen();
 
       startBtn.disabled = true;
       startBtn.style.display = "none";
+      page.dataset.motorust = "loading";
+      if (!bytes) {
+        status.textContent = "Descargando el juego…";
+        bytes = await download(WASM_URL);
+        // Saved in the background while the track is prepared.
+        if (cache) keepWasm(cache, bytes);
+      }
+      progress.style.width = "100%";
       page.dataset.motorust = "starting";
       status.textContent = "Preparando la pista…";
 
       // Deja que se pinte el cartel antes de que el juego ocupe el hilo.
       await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+      // The JavaScript glue is not fetched either until the player chooses
+      // to play.
+      const { default: init } = await import("./motorust.js");
       await init({ module_or_path: bytes });
     } catch (error) {
       // winit sale de `main` con esta excepción a propósito: el juego sigue.

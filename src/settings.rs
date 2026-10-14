@@ -10,7 +10,10 @@ use std::time::{Duration, Instant};
 use bevy::prelude::*;
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::{Render, RenderApp, RenderSystems};
-use bevy::window::{MonitorSelection, PresentMode, PrimaryWindow, WindowMode};
+use bevy::window::{
+    Monitor, MonitorSelection, OnMonitor, PresentMode, PrimaryMonitor, PrimaryWindow, VideoMode,
+    VideoModeSelection, WindowMode,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::locale::Language;
@@ -19,7 +22,13 @@ pub struct SettingsPlugin;
 
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (toggle_fullscreen, apply_settings).chain());
+        app.add_message::<ToggleMute>()
+            .init_resource::<ControlsTest>()
+            .add_systems(
+                PreUpdate,
+                gamepad_shortcuts.after(bevy::input::InputSystems),
+            )
+            .add_systems(Update, (toggle_fullscreen, apply_settings).chain());
         // En la web, el navegador decide cuándo se dibuja cada fotograma.
         if !WEB {
             // The cap is kept where the frame is shown, in the render world.
@@ -57,9 +66,142 @@ pub struct Settings {
     #[serde(rename = "music_level")]
     pub music_volume: u32,
     pub music_enabled: bool,
-    /// The championship under way and the best of each track (see
-    /// [`crate::race::Records`]).
+    /// How races start: at the lights, or when a player opens the throttle.
+    pub start: RaceStart,
+    /// How many red lights the start has (see [`crate::race::lights`]).
+    pub start_lights: u32,
+    /// At the lights without holding the bikes, how many false starts each
+    /// player is let off in a race: the next one disqualifies.
+    pub false_starts: u32,
+    /// Whether a race's results go to the middle of the screen once
+    /// everybody is in (see [`crate::race::results`]); otherwise they stay
+    /// at the top right.
+    pub centre_results: bool,
+    /// How fast the rivals ride, and how much time the checkpoints give.
+    pub difficulty: Difficulty,
+    /// Whether each frame is drawn while the next one is simulated
+    /// (Bevy's pipelined rendering): more frames per second when the CPU
+    /// holds them back, a frame more between the controls and the screen.
+    /// Applied when the game starts.
+    pub pipelined_rendering: bool,
+    /// Whether the trees are the ones modelled with Meshy, or the classic
+    /// ones built in code (see [`crate::world`]).
+    pub modelled_trees: bool,
+    /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
+    /// fewer, less lag; more, steadier frames. Applied when the game starts.
+    pub frame_latency: u32,
+    /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
+}
+
+/// How hard the races are.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Difficulty {
+    Easy,
+    /// The rivals as they have always been.
+    #[default]
+    Medium,
+    Hard,
+}
+
+/// The difficulties that can be chosen, in order.
+pub const DIFFICULTIES: [Difficulty; 3] = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard];
+
+impl Difficulty {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (Difficulty::Easy, Language::Spanish) => "Fácil",
+            (Difficulty::Easy, Language::English) => "Easy",
+            (Difficulty::Medium, Language::Spanish) => "Media",
+            (Difficulty::Medium, Language::English) => "Medium",
+            (Difficulty::Hard, Language::Spanish) => "Difícil",
+            (Difficulty::Hard, Language::English) => "Hard",
+        }
+    }
+
+    /// How much of its bike a rival dares to use, for one that uses
+    /// `skill` on medium: less on easy, more on hard (never more than all).
+    pub fn rival_skill(self, skill: f32) -> f32 {
+        match self {
+            Difficulty::Easy => skill - 0.07,
+            Difficulty::Medium => skill,
+            Difficulty::Hard => (skill + 0.045).min(1.0),
+        }
+    }
+}
+
+/// The frame latencies that can be chosen, and Bevy's own.
+pub const FRAME_LATENCIES: [u32; 3] = [1, 2, 3];
+pub const DEFAULT_FRAME_LATENCY: u32 = 2;
+
+/// The graphics settings the game started with: those applied only when it
+/// starts ([`Settings::pipelined_rendering`], [`Settings::frame_latency`]).
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct StartedWith {
+    pub pipelined_rendering: bool,
+    pub frame_latency: u32,
+}
+
+impl From<&Settings> for StartedWith {
+    fn from(settings: &Settings) -> Self {
+        Self {
+            pipelined_rendering: settings.pipelined_rendering,
+            frame_latency: settings.frame_latency,
+        }
+    }
+}
+
+/// How a race starts.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum RaceStart {
+    /// At the lights: five red lights come on one by one and the race
+    /// starts when they go out (see [`crate::race::lights`]).
+    #[default]
+    Lights,
+    /// At the lights, but with nothing holding the bikes on the grid: a
+    /// player who moves off before they go out is disqualified.
+    LightsUnheld,
+    /// When a player first opens the throttle.
+    Throttle,
+}
+
+/// How many red lights the start can have, and how many it has at first,
+/// as in a Grand Prix.
+pub const START_LIGHTS: [u32; 5] = [1, 2, 3, 4, 5];
+pub const DEFAULT_START_LIGHTS: u32 = 5;
+
+/// How many false starts a player can be let off, and how many at first.
+pub const FALSE_STARTS: [u32; 4] = [0, 1, 2, 3];
+pub const DEFAULT_FALSE_STARTS: u32 = 2;
+
+/// The starts that can be chosen, in order.
+pub const RACE_STARTS: [RaceStart; 3] = [
+    RaceStart::Lights,
+    RaceStart::LightsUnheld,
+    RaceStart::Throttle,
+];
+
+impl RaceStart {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (RaceStart::Lights, Language::Spanish) => "Semáforo",
+            (RaceStart::Lights, Language::English) => "Lights",
+            (RaceStart::LightsUnheld, Language::Spanish) => "Semáforo sin bloqueo",
+            (RaceStart::LightsUnheld, Language::English) => "Lights, no hold",
+            (RaceStart::Throttle, Language::Spanish) => "Acelerando",
+            (RaceStart::Throttle, Language::English) => "Throttle",
+        }
+    }
+
+    /// Whether the race starts at the lights.
+    pub fn at_lights(self) -> bool {
+        self != RaceStart::Throttle
+    }
+
+    /// Whether the bikes are held on the grid until the lights go out.
+    pub fn holds(self) -> bool {
+        self == RaceStart::Lights
+    }
 }
 
 /// Volume the effects and the music start at (%).
@@ -76,6 +218,14 @@ impl Default for Settings {
             fx_volume: DEFAULT_VOLUME,
             music_volume: DEFAULT_VOLUME,
             music_enabled: true,
+            start: RaceStart::default(),
+            start_lights: DEFAULT_START_LIGHTS,
+            false_starts: DEFAULT_FALSE_STARTS,
+            centre_results: false,
+            difficulty: Difficulty::default(),
+            pipelined_rendering: true,
+            modelled_trees: true,
+            frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
         }
     }
@@ -226,12 +376,15 @@ impl Action {
     }
 }
 
-/// Las teclas y los botones del mando de una acción.
+/// Las teclas y los botones del mando de una acción: each on its own, or
+/// several pressed together.
 #[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Binding {
     pub keys: Vec<KeyCode>,
     pub buttons: Vec<GamepadButton>,
+    pub key_combos: Vec<Vec<KeyCode>>,
+    pub button_combos: Vec<Vec<GamepadButton>>,
 }
 
 impl Binding {
@@ -239,8 +392,53 @@ impl Binding {
         Self {
             keys: keys.to_vec(),
             buttons: buttons.to_vec(),
+            ..default()
         }
     }
+}
+
+/// A kind of input an action is bound to: the keys of the keyboard or the
+/// buttons of a gamepad, each kind remapped on its own.
+pub trait Bound: Copy + PartialEq + std::fmt::Debug + 'static {
+    fn singles(binding: &Binding) -> &Vec<Self>;
+    fn singles_mut(binding: &mut Binding) -> &mut Vec<Self>;
+    fn combos(binding: &Binding) -> &Vec<Vec<Self>>;
+    fn combos_mut(binding: &mut Binding) -> &mut Vec<Vec<Self>>;
+}
+
+impl Bound for KeyCode {
+    fn singles(binding: &Binding) -> &Vec<Self> {
+        &binding.keys
+    }
+    fn singles_mut(binding: &mut Binding) -> &mut Vec<Self> {
+        &mut binding.keys
+    }
+    fn combos(binding: &Binding) -> &Vec<Vec<Self>> {
+        &binding.key_combos
+    }
+    fn combos_mut(binding: &mut Binding) -> &mut Vec<Vec<Self>> {
+        &mut binding.key_combos
+    }
+}
+
+impl Bound for GamepadButton {
+    fn singles(binding: &Binding) -> &Vec<Self> {
+        &binding.buttons
+    }
+    fn singles_mut(binding: &mut Binding) -> &mut Vec<Self> {
+        &mut binding.buttons
+    }
+    fn combos(binding: &Binding) -> &Vec<Vec<Self>> {
+        &binding.button_combos
+    }
+    fn combos_mut(binding: &mut Binding) -> &mut Vec<Vec<Self>> {
+        &mut binding.button_combos
+    }
+}
+
+/// Whether two combinations are the same keys or buttons, in any order.
+fn same_combo<T: PartialEq>(a: &[T], b: &[T]) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.contains(x))
 }
 
 /// Las teclas y botones de cada acción.
@@ -310,26 +508,79 @@ impl Controls {
         }
     }
 
-    /// La acción pasa a hacerse con esta tecla (en lugar de las que tuviera),
-    /// y la tecla deja de hacer cualquier otra.
-    pub fn bind_key(&mut self, action: Action, key: KeyCode) {
-        for other in ACTIONS {
-            self.get_mut(other).keys.retain(|&k| k != key);
-        }
-        self.get_mut(action).keys = vec![key];
+    /// The action `input` does, on its own or with others: the first one
+    /// it is bound to.
+    pub fn action_of<T: Bound>(&self, input: T) -> Option<Action> {
+        ACTIONS
+            .into_iter()
+            .find(|&action| T::singles(self.get(action)).contains(&input))
+            .or_else(|| {
+                ACTIONS.into_iter().find(|&action| {
+                    T::combos(self.get(action))
+                        .iter()
+                        .any(|combo| combo.contains(&input))
+                })
+            })
     }
 
-    /// Lo mismo con un botón del mando.
-    pub fn bind_button(&mut self, action: Action, button: GamepadButton) {
-        for other in ACTIONS {
-            self.get_mut(other).buttons.retain(|&b| b != button);
+    /// What `from` did (its action, on its own or the combination it is
+    /// in) is done with `to` instead: one key or button, or several pressed
+    /// together. `to` stops doing anything else, and the action keeps its
+    /// other keys or buttons. The action, if `from` had one.
+    pub fn remap<T: Bound>(&mut self, from: T, to: &[T]) -> Option<Action> {
+        let action = self.action_of(from)?;
+        if to.is_empty() {
+            return Some(action);
         }
-        self.get_mut(action).buttons = vec![button];
+        // Where `from` was, to put `to` there.
+        let binding = self.get_mut(action);
+        let single = T::singles(binding).iter().position(|&x| x == from);
+        match single {
+            Some(index) => {
+                T::singles_mut(binding).remove(index);
+            }
+            None => T::combos_mut(binding).retain(|combo| !combo.contains(&from)),
+        }
+        for other in ACTIONS {
+            let binding = self.get_mut(other);
+            match to {
+                [one] => T::singles_mut(binding).retain(|x| x != one),
+                _ => T::combos_mut(binding).retain(|combo| !same_combo(combo, to)),
+            }
+        }
+        let binding = self.get_mut(action);
+        match to {
+            [one] => {
+                let singles = T::singles_mut(binding);
+                let index = single.unwrap_or(singles.len()).min(singles.len());
+                singles.insert(index, *one);
+            }
+            _ => T::combos_mut(binding).push(to.to_vec()),
+        }
+        Some(action)
     }
 
-    /// 1 si se pulsa alguna tecla de la acción, y si no, 0.
+    /// Every action back to its keys (or buttons) at first; the other kind
+    /// is left as it is.
+    pub fn reset<T: Bound>(&mut self) {
+        let defaults = Controls::default();
+        for action in ACTIONS {
+            let default = defaults.get(action);
+            let binding = self.get_mut(action);
+            *T::singles_mut(binding) = T::singles(default).clone();
+            *T::combos_mut(binding) = T::combos(default).clone();
+        }
+    }
+
+    /// 1 si se pulsa alguna tecla de la acción (or all the keys of one of
+    /// its combinations), y si no, 0.
     pub fn key_value(&self, action: Action, keyboard: &ButtonInput<KeyCode>) -> f32 {
-        if keyboard.any_pressed(self.get(action).keys.iter().copied()) {
+        let binding = self.get(action);
+        let combo = binding
+            .key_combos
+            .iter()
+            .any(|combo| !combo.is_empty() && keyboard.all_pressed(combo.iter().copied()));
+        if combo || keyboard.any_pressed(binding.keys.iter().copied()) {
             1.0
         } else {
             0.0
@@ -337,16 +588,31 @@ impl Controls {
     }
 
     /// Cuánto se aprieta en este mando algún botón de la acción (0..1): los
-    /// gatillos, según lo que se aprieten; los demás, a tope o nada.
+    /// gatillos, según lo que se aprieten; los demás, a tope o nada. A
+    /// combination counts once all its buttons are pressed, as much as the
+    /// least pressed of them.
     pub fn button_value(&self, action: Action, gamepad: &Gamepad) -> f32 {
-        self.get(action)
+        let binding = self.get(action);
+        let combos = binding.button_combos.iter().map(|combo| {
+            if !combo.is_empty() && combo.iter().all(|&button| gamepad.pressed(button)) {
+                combo
+                    .iter()
+                    .map(|&button| gamepad.get(button).unwrap_or(0.0))
+                    .fold(1.0, f32::min)
+            } else {
+                0.0
+            }
+        });
+        binding
             .buttons
             .iter()
             .map(|&button| gamepad.get(button).unwrap_or(0.0))
+            .chain(combos)
             .fold(0.0, f32::max)
     }
 
-    /// Si se acaba de pulsar una tecla o un botón de la acción.
+    /// Si se acaba de pulsar una tecla o un botón de la acción (or completed
+    /// one of its combinations).
     pub fn just_pressed<'a>(
         &self,
         action: Action,
@@ -354,41 +620,65 @@ impl Controls {
         gamepads: impl IntoIterator<Item = &'a Gamepad>,
     ) -> bool {
         let binding = self.get(action);
-        keyboard.any_just_pressed(binding.keys.iter().copied())
+        let key_combo = binding.key_combos.iter().any(|combo| {
+            !combo.is_empty()
+                && keyboard.all_pressed(combo.iter().copied())
+                && keyboard.any_just_pressed(combo.iter().copied())
+        });
+        key_combo
+            || keyboard.any_just_pressed(binding.keys.iter().copied())
             || gamepads.into_iter().any(|gamepad| {
                 binding
                     .buttons
                     .iter()
                     .any(|&button| gamepad.just_pressed(button))
+                    || binding.button_combos.iter().any(|combo| {
+                        !combo.is_empty()
+                            && combo.iter().all(|&button| gamepad.pressed(button))
+                            && combo.iter().any(|&button| gamepad.just_pressed(button))
+                    })
             })
     }
 
-    /// Las teclas y los botones de la acción, para la tabla de controles.
-    pub fn describe(&self, action: Action, lang: Language) -> String {
+    /// The keys of the action, a combination joined with "+".
+    pub fn describe_keys(&self, action: Action, lang: Language) -> String {
         let binding = self.get(action);
-        let list = |names: Vec<String>| {
-            if names.is_empty() {
-                "—".to_string()
-            } else {
-                names.join(", ")
-            }
-        };
-        let buttons = if action == Action::Wheelie && binding.buttons.is_empty() {
-            "RT + A".to_string()
-        } else {
-            list(
-                binding
-                    .buttons
-                    .iter()
-                    .map(|&b| button_name(b, lang))
-                    .collect(),
-            )
-        };
-        format!(
-            "{}   ·   {}",
-            list(binding.keys.iter().map(|&k| key_name(k, lang)).collect()),
-            buttons
+        names(&binding.keys, &binding.key_combos, |&key| {
+            key_name(key, lang)
+        })
+    }
+
+    /// The gamepad buttons of the action, a combination joined with "+".
+    pub fn describe_buttons(&self, action: Action, lang: Language) -> String {
+        let binding = self.get(action);
+        // The wheelie always has RT and A together too.
+        if action == Action::Wheelie
+            && binding.buttons.is_empty()
+            && binding.button_combos.is_empty()
+        {
+            return "RT + A".to_string();
+        }
+        names(&binding.buttons, &binding.button_combos, |&button| {
+            button_name(button, lang)
+        })
+    }
+}
+
+/// The names of some keys or buttons, and of combinations of them, in a list.
+fn names<T>(singles: &[T], combos: &[Vec<T>], name: impl Fn(&T) -> String) -> String {
+    let list: Vec<String> = singles
+        .iter()
+        .map(&name)
+        .chain(
+            combos
+                .iter()
+                .map(|combo| combo.iter().map(&name).collect::<Vec<_>>().join("+")),
         )
+        .collect();
+    if list.is_empty() {
+        "—".to_string()
+    } else {
+        list.join(", ")
     }
 }
 
@@ -585,9 +875,6 @@ pub fn button_name(button: GamepadButton, lang: Language) -> String {
     name.into()
 }
 
-/// How many frames may wait to go to the GPU (see [`Settings::window`]).
-pub const FRAMES_QUEUED: u32 = 1;
-
 impl Settings {
     /// La ventana del juego con estos ajustes.
     pub fn window(&self) -> Window {
@@ -596,19 +883,46 @@ impl Settings {
             // En la web se dibuja en el canvas de la página y lo llena.
             canvas: WEB.then(|| "#motorust".into()),
             fit_canvas_to_parent: true,
-            // Input lag first: at most one frame waits to go to the GPU, so
-            // what is shown is never two frames behind the controls (2 by
-            // default).
-            desired_maximum_frame_latency: NonZero::new(FRAMES_QUEUED),
+            // As chosen in Options (Bevy's 2 at first; 1 is less lag).
+            desired_maximum_frame_latency: NonZero::new(
+                if FRAME_LATENCIES.contains(&self.frame_latency) {
+                    self.frame_latency
+                } else {
+                    DEFAULT_FRAME_LATENCY
+                },
+            ),
             ..default()
         };
-        self.configure(&mut window);
+        self.configure(&mut window, None);
         window
     }
 
-    fn configure(&self, window: &mut Window) {
+    /// Whether the screen itself is switched to the resolution chosen: in
+    /// fullscreen with a fixed one, out of the browser. Then the monitor's
+    /// display modes are needed, known only once the window is open.
+    fn exclusive(&self) -> bool {
+        !WEB && self.fullscreen && matches!(self.resolution, Resolution::Window(..))
+    }
+
+    /// Sets `window` as these settings ask. In fullscreen with a fixed
+    /// resolution, the screen is switched to the display mode of `monitor`
+    /// that comes closest to it (in pixels); with a dynamic one, or with no
+    /// monitor known yet, the window covers the screen as it is.
+    fn configure(&self, window: &mut Window, monitor: Option<&Monitor>) {
         if self.fullscreen {
-            window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+            let mode = match (self.resolution, monitor) {
+                (Resolution::Window(width, height), Some(monitor)) if !WEB => {
+                    fitting_mode(&monitor.video_modes, width, height)
+                }
+                _ => None,
+            };
+            window.mode = match mode {
+                Some(mode) => WindowMode::Fullscreen(
+                    MonitorSelection::Current,
+                    VideoModeSelection::Specific(mode),
+                ),
+                None => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+            };
         } else {
             window.mode = WindowMode::Windowed;
             match self.resolution {
@@ -741,19 +1055,10 @@ mod storage {
     }
 }
 
-/// Las teclas que ponen y quitan la pantalla completa: Cmd+Enter en macOS y
-/// Alt+Enter en Windows y Linux. En la web valen las dos, que no se sabe en
-/// qué sistema corre el navegador.
-pub const FULLSCREEN_KEYS: &str = if cfg!(target_os = "macos") {
-    "Cmd+Enter"
-} else if WEB {
-    "Alt+Enter o Cmd+Enter"
-} else {
-    "Alt+Enter"
-};
-
-/// Si se acaban de pulsar las teclas de la pantalla completa
-/// ([`FULLSCREEN_KEYS`]). Ese Enter no cuenta para los menús.
+/// Si se acaban de pulsar las teclas de la pantalla completa: Cmd+Enter en
+/// macOS y Alt+Enter en Windows y Linux. En la web valen las dos, que no se
+/// sabe en qué sistema corre el navegador. Ese Enter no cuenta para los
+/// menús.
 pub fn fullscreen_keys(keyboard: &ButtonInput<KeyCode>) -> bool {
     let command = keyboard.any_pressed([KeyCode::SuperLeft, KeyCode::SuperRight]);
     let alt = keyboard.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
@@ -767,7 +1072,106 @@ pub fn fullscreen_keys(keyboard: &ButtonInput<KeyCode>) -> bool {
     held && keyboard.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter])
 }
 
-/// Con [`FULLSCREEN_KEYS`], conmuta la pantalla completa. Se guarda como si
+/// The shortcuts of a gamepad: Select held with Start switches fullscreen,
+/// with Y (the top face button) the sound off and on.
+pub const SHORTCUT_HELD: GamepadButton = GamepadButton::Select;
+pub const FULLSCREEN_BUTTON: GamepadButton = GamepadButton::Start;
+pub const MUTE_BUTTON: GamepadButton = GamepadButton::North;
+
+/// While the controls are tried out (Options > Control > Mapping, Test),
+/// Select with Start ends the test instead of switching fullscreen.
+#[derive(Resource, Clone, Copy, Default, Debug)]
+pub struct ControlsTest {
+    /// Whether they are being tried out.
+    pub on: bool,
+    /// Whether Select with Start was pressed meanwhile, to end it.
+    pub ended: bool,
+}
+
+/// Asks for the sound to be turned off, or back on (M, or Select and Y).
+#[derive(Message, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ToggleMute;
+
+/// What a gamepad shortcut asks for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Shortcut {
+    Fullscreen,
+    Mute,
+}
+
+/// How a gamepad's Select is being held: since it went down, and whether
+/// a shortcut was made with it.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct ShortcutHold {
+    held: bool,
+    used: bool,
+    /// A press of Select alone was handed on: it is let go of next.
+    handed_on: bool,
+}
+
+/// Reads the shortcuts of a gamepad's buttons, taking their presses out
+/// of them so that nothing else acts on them: Select (which restarts the
+/// race) goes down unseen and, if no shortcut is made while it is held,
+/// counts as pressed when it is let go of; Start (which pauses or accepts)
+/// and Y held with Select are the shortcut's.
+pub fn read_shortcut(
+    buttons: &mut ButtonInput<GamepadButton>,
+    hold: &mut ShortcutHold,
+) -> Option<Shortcut> {
+    if hold.handed_on {
+        buttons.release(SHORTCUT_HELD);
+        buttons.clear_just_released(SHORTCUT_HELD);
+        hold.handed_on = false;
+    }
+    if buttons.clear_just_pressed(SHORTCUT_HELD) {
+        *hold = ShortcutHold {
+            held: true,
+            ..default()
+        };
+    }
+    let mut shortcut = None;
+    if hold.held && buttons.pressed(SHORTCUT_HELD) {
+        if buttons.clear_just_pressed(FULLSCREEN_BUTTON) {
+            shortcut = Some(Shortcut::Fullscreen);
+        } else if buttons.clear_just_pressed(MUTE_BUTTON) {
+            shortcut = Some(Shortcut::Mute);
+        }
+        hold.used |= shortcut.is_some();
+    }
+    if hold.held && buttons.just_released(SHORTCUT_HELD) {
+        hold.held = false;
+        if !hold.used {
+            // Select alone: pressed now, for a frame.
+            buttons.press(SHORTCUT_HELD);
+            hold.handed_on = true;
+        }
+    }
+    shortcut
+}
+
+/// The gamepads' shortcuts: fullscreen (or, trying the controls out, the
+/// end of the test) and sound.
+fn gamepad_shortcuts(
+    mut gamepads: Query<(Entity, &mut Gamepad)>,
+    mut holds: Local<bevy::platform::collections::HashMap<Entity, ShortcutHold>>,
+    mut settings: ResMut<Settings>,
+    mut test: ResMut<ControlsTest>,
+    mut mute: MessageWriter<ToggleMute>,
+) {
+    for (entity, mut gamepad) in &mut gamepads {
+        let hold = holds.entry(entity).or_default();
+        match read_shortcut(gamepad.bypass_change_detection().digital_mut(), hold) {
+            Some(Shortcut::Fullscreen) if test.on => test.ended = true,
+            Some(Shortcut::Fullscreen) => settings.fullscreen = !settings.fullscreen,
+            Some(Shortcut::Mute) => {
+                mute.write(ToggleMute);
+            }
+            None => {}
+        }
+    }
+}
+
+/// With the fullscreen keys ([`fullscreen_keys`]), conmuta la pantalla completa. Se guarda como si
 /// se hubiera elegido en Opciones.
 fn toggle_fullscreen(keyboard: Res<ButtonInput<KeyCode>>, mut settings: ResMut<Settings>) {
     if !fullscreen_keys(&keyboard) {
@@ -776,26 +1180,54 @@ fn toggle_fullscreen(keyboard: Res<ButtonInput<KeyCode>>, mut settings: ResMut<S
     settings.fullscreen = !settings.fullscreen;
 }
 
+/// The display mode of a monitor that comes closest to `width` × `height`
+/// pixels: the nearest size (the same one if there is), then the fastest
+/// refresh rate and the deepest colour.
+pub fn fitting_mode(modes: &[VideoMode], width: u32, height: u32) -> Option<VideoMode> {
+    modes.iter().copied().min_by_key(|mode| {
+        let size = mode.physical_size;
+        (
+            size.x.abs_diff(width) + size.y.abs_diff(height),
+            std::cmp::Reverse(mode.refresh_rate_millihertz),
+            std::cmp::Reverse(mode.bit_depth),
+        )
+    })
+}
+
 /// Al cambiar los ajustes se guardan y, si cambian la pantalla completa, la
 /// resolución o el límite de FPS, la ventana se pone como piden.
+#[allow(clippy::type_complexity)]
 fn apply_settings(
     settings: Res<Settings>,
-    mut window: Query<&mut Window, With<PrimaryWindow>>,
+    mut window: Query<(&mut Window, Option<&OnMonitor>), With<PrimaryWindow>>,
+    monitors: Query<(&Monitor, Has<PrimaryMonitor>)>,
     mut applied: Local<Option<(bool, Resolution, FpsLimit)>>,
 ) {
     let wanted = (settings.fullscreen, settings.resolution, settings.fps);
-    // La ventana ya se abrió con los ajustes guardados.
-    let applied = applied.get_or_insert(wanted);
-    if !settings.is_changed() || settings.is_added() {
-        return;
-    }
+    // La ventana ya se abrió con los ajustes guardados; salvo que la
+    // pantalla deba pasar a la resolución elegida, que espera a conocer los
+    // modos del monitor.
+    let applied = applied.get_or_insert(if settings.exclusive() {
+        (false, Resolution::Dynamic, settings.fps)
+    } else {
+        wanted
+    });
     if *applied != wanted
-        && let Ok(mut window) = window.single_mut()
+        && let Ok((mut window, on)) = window.single_mut()
     {
-        settings.configure(&mut window);
-        *applied = wanted;
+        // The monitor the window is on, or else the main one.
+        let monitor = on
+            .and_then(|on| monitors.get(on.0).ok())
+            .or_else(|| monitors.iter().find(|(_, primary)| *primary))
+            .map(|(monitor, _)| monitor);
+        if monitor.is_some() || !settings.exclusive() {
+            settings.configure(&mut window, monitor);
+            *applied = wanted;
+        }
     }
-    settings.save();
+    if settings.is_changed() && !settings.is_added() {
+        settings.save();
+    }
 }
 
 /// The frame rate cap chosen, if any ([`FpsLimit::Cap`]), copied into the
@@ -883,17 +1315,20 @@ mod tests {
             language: Language::Spanish,
             ..default()
         };
-        settings.controls.bind_key(Action::Wheelie, KeyCode::KeyJ);
+        settings.controls.remap(KeyCode::Space, &[KeyCode::KeyJ]);
         settings
             .controls
-            .bind_button(Action::Throttle, GamepadButton::RightTrigger);
-        // The records and the championship under way are kept too.
+            .remap(GamepadButton::South, &[GamepadButton::RightTrigger]);
+        settings
+            .controls
+            .remap(KeyCode::ShiftLeft, &[KeyCode::ControlLeft, KeyCode::KeyW]);
+        // The records and the start are kept too.
         settings.records.lap("Bahía GP", 71.25);
         settings.records.checkpoint("Bahía GP", 3);
-        settings.records.story = Some(crate::race::Championship {
-            round: 2,
-            points: [10, 8, 6, 5, 4, 3, 2, 1],
-        });
+        settings.start = RaceStart::Throttle;
+        settings.difficulty = Difficulty::Hard;
+        settings.pipelined_rendering = false;
+        settings.frame_latency = 1;
         let text = ron::ser::to_string_pretty(&settings, default()).unwrap();
         let loaded: Settings = ron::from_str(&text).unwrap();
         assert_eq!(loaded, settings);
@@ -902,6 +1337,31 @@ mod tests {
         let partial: Settings = ron::from_str("(fps: Unlimited)").unwrap();
         assert_eq!(partial.fps, FpsLimit::Unlimited);
         assert_eq!(partial.controls, Controls::default());
+        assert_eq!(partial.start, RaceStart::Lights);
+        assert_eq!(partial.start_lights, DEFAULT_START_LIGHTS);
+        assert_eq!(partial.false_starts, DEFAULT_FALSE_STARTS);
+        assert!(!partial.centre_results);
+        assert!(partial.modelled_trees);
+        // At the lights, held or not; or at the throttle.
+        assert!(RaceStart::Lights.at_lights() && RaceStart::Lights.holds());
+        assert!(RaceStart::LightsUnheld.at_lights() && !RaceStart::LightsUnheld.holds());
+        assert!(!RaceStart::Throttle.at_lights() && !RaceStart::Throttle.holds());
+        // Medium, pipelined rendering and Bevy's frame latency at first.
+        assert_eq!(partial.difficulty, Difficulty::Medium);
+        assert!(partial.pipelined_rendering);
+        assert_eq!(partial.frame_latency, 2);
+        assert_eq!(
+            partial.window().desired_maximum_frame_latency,
+            NonZero::new(2)
+        );
+        // One that still keeps a championship under way (the arcade no
+        // longer does) loads without it.
+        let older: Settings = ron::from_str(
+            "(records: (story: Some((round: 2, points: (10, 8, 6, 5, 4, 3, 2, 1))), \
+             best_laps: [(\"Bahía GP\", 71.25)]))",
+        )
+        .unwrap();
+        assert_eq!(older.records.best_lap("Bahía GP"), Some(71.25));
     }
 
     #[test]
@@ -918,18 +1378,68 @@ mod tests {
     #[test]
     fn a_key_does_only_one_thing() {
         let mut controls = Controls::default();
-        // W pasa a frenar: deja de acelerar, que se queda con la flecha.
-        controls.bind_key(Action::Brake, KeyCode::KeyW);
-        assert_eq!(controls.brake.keys, [KeyCode::KeyW]);
+        // W pasa a frenar en lugar de S: deja de acelerar, que se queda con
+        // la flecha, y frenar sigue también con la suya.
+        assert_eq!(
+            controls.remap(KeyCode::KeyS, &[KeyCode::KeyW]),
+            Some(Action::Brake)
+        );
+        assert_eq!(controls.brake.keys, [KeyCode::KeyW, KeyCode::ArrowDown]);
         assert_eq!(controls.throttle.keys, [KeyCode::ArrowUp]);
         // Los botones van aparte: frenar sigue con los suyos.
         assert_eq!(
             controls.brake.buttons,
             [GamepadButton::LeftTrigger2, GamepadButton::West]
         );
-        controls.bind_button(Action::Wheelie, GamepadButton::South);
+        // B, the wheelie's, becomes A, which stops accelerating.
+        controls.remap(GamepadButton::East, &[GamepadButton::South]);
         assert_eq!(controls.wheelie.buttons, [GamepadButton::South]);
         assert_eq!(controls.throttle.buttons, [GamepadButton::RightTrigger2]);
+        // A key that does nothing has nothing to remap.
+        assert_eq!(controls.remap(KeyCode::KeyK, &[KeyCode::KeyL]), None);
+    }
+
+    #[test]
+    fn an_action_can_take_keys_pressed_together() {
+        let mut controls = Controls::default();
+        let together = [KeyCode::ShiftLeft, KeyCode::KeyR];
+        assert_eq!(
+            controls.remap(KeyCode::KeyR, &together),
+            Some(Action::Restart)
+        );
+        assert!(controls.restart.keys.is_empty());
+        assert_eq!(controls.restart.key_combos, [together.to_vec()]);
+        // Shift on its own still does the wheelie.
+        assert!(controls.wheelie.keys.contains(&KeyCode::ShiftLeft));
+        let mut keyboard = ButtonInput::<KeyCode>::default();
+        keyboard.press(KeyCode::KeyR);
+        assert_eq!(controls.key_value(Action::Restart, &keyboard), 0.0);
+        assert!(!controls.just_pressed(Action::Restart, &keyboard, []));
+        keyboard.clear();
+        keyboard.press(KeyCode::ShiftLeft);
+        assert!(controls.just_pressed(Action::Restart, &keyboard, []));
+        assert_eq!(controls.key_value(Action::Restart, &keyboard), 1.0);
+        assert_eq!(
+            controls.describe_keys(Action::Restart, Language::English),
+            "Left Shift+R"
+        );
+        // A key of a combination remaps it all.
+        assert_eq!(controls.action_of(KeyCode::KeyR), Some(Action::Restart));
+        controls.remap(KeyCode::KeyR, &[KeyCode::F5]);
+        assert_eq!(controls.restart.keys, [KeyCode::F5]);
+        assert!(controls.restart.key_combos.is_empty());
+    }
+
+    #[test]
+    fn the_keyboard_and_the_gamepad_are_reset_apart() {
+        let mut controls = Controls::default();
+        controls.remap(KeyCode::KeyW, &[KeyCode::KeyI]);
+        controls.remap(GamepadButton::South, &[GamepadButton::North]);
+        controls.reset::<KeyCode>();
+        assert_eq!(controls.throttle.keys, Controls::default().throttle.keys);
+        assert!(controls.throttle.buttons.contains(&GamepadButton::North));
+        controls.reset::<GamepadButton>();
+        assert_eq!(controls, Controls::default());
     }
 
     #[test]
@@ -959,6 +1469,149 @@ mod tests {
         assert_eq!(Resolution::Dynamic.name(None, Language::English), "Dynamic");
         assert_eq!(RESOLUTIONS[0], Resolution::Dynamic);
         assert_eq!(Resolution::default(), Resolution::Dynamic);
+    }
+
+    #[test]
+    fn fullscreen_takes_the_display_mode_nearest_the_resolution() {
+        let mode = |width: u32, height: u32, hz: u32| VideoMode {
+            physical_size: UVec2::new(width, height),
+            bit_depth: 32,
+            refresh_rate_millihertz: hz * 1000,
+        };
+        let modes = [
+            mode(2560, 1600, 60),
+            mode(1920, 1200, 60),
+            mode(1280, 720, 60),
+            mode(1280, 720, 120),
+            mode(1024, 768, 60),
+        ];
+        // The same size, at its fastest rate.
+        let found = fitting_mode(&modes, 1280, 720).unwrap();
+        assert_eq!(found, mode(1280, 720, 120));
+        // A size the screen lacks: the nearest one.
+        assert_eq!(
+            fitting_mode(&modes, 1920, 1080).unwrap().physical_size,
+            UVec2::new(1920, 1200)
+        );
+        assert_eq!(fitting_mode(&[], 1920, 1080), None);
+        // Only a fixed resolution in fullscreen switches the screen.
+        let fixed = Settings {
+            fullscreen: true,
+            resolution: Resolution::Window(1280, 720),
+            ..default()
+        };
+        assert!(fixed.exclusive());
+        assert!(
+            !Settings {
+                resolution: Resolution::Dynamic,
+                ..fixed.clone()
+            }
+            .exclusive()
+        );
+        let monitor = Monitor {
+            name: None,
+            physical_height: 1600,
+            physical_width: 2560,
+            physical_position: IVec2::ZERO,
+            refresh_rate_millihertz: Some(60_000),
+            scale_factor: 2.0,
+            video_modes: modes.to_vec(),
+        };
+        let mut window = Window::default();
+        fixed.configure(&mut window, Some(&monitor));
+        assert_eq!(
+            window.mode,
+            WindowMode::Fullscreen(
+                MonitorSelection::Current,
+                VideoModeSelection::Specific(mode(1280, 720, 120))
+            )
+        );
+        // Before the monitor is known, the window covers the screen as it is.
+        fixed.configure(&mut window, None);
+        assert_eq!(
+            window.mode,
+            WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+        );
+    }
+
+    #[test]
+    fn trying_the_controls_select_with_start_ends_the_test_instead() {
+        let press = |test: bool| {
+            let mut app = App::new();
+            app.add_message::<ToggleMute>()
+                .insert_resource(Settings::default())
+                .insert_resource(ControlsTest {
+                    on: test,
+                    ended: false,
+                })
+                .add_systems(Update, gamepad_shortcuts);
+            let mut pad = Gamepad::default();
+            pad.digital_mut().press(GamepadButton::Select);
+            pad.digital_mut().press(GamepadButton::Start);
+            app.world_mut().spawn(pad);
+            app.update();
+            (
+                app.world().resource::<Settings>().fullscreen,
+                app.world().resource::<ControlsTest>().ended,
+            )
+        };
+        assert_eq!(press(false), (true, false));
+        assert_eq!(press(true), (false, true));
+    }
+
+    #[test]
+    fn select_with_start_or_y_is_a_shortcut_and_alone_it_restarts_on_release() {
+        use GamepadButton as B;
+        let mut buttons = ButtonInput::<GamepadButton>::default();
+        let mut hold = ShortcutHold::default();
+        // A frame of the gamepad: what was pressed and let go of.
+        let mut frame = |buttons: &mut ButtonInput<GamepadButton>, press: &[B], release: &[B]| {
+            buttons.clear();
+            for &button in press {
+                buttons.press(button);
+            }
+            for &button in release {
+                buttons.release(button);
+            }
+            read_shortcut(buttons, &mut hold)
+        };
+        // Select down: nobody sees it yet.
+        assert_eq!(frame(&mut buttons, &[B::Select], &[]), None);
+        assert!(!buttons.just_pressed(B::Select));
+        // With Start: fullscreen, and Start does not pause.
+        assert_eq!(
+            frame(&mut buttons, &[B::Start], &[]),
+            Some(Shortcut::Fullscreen)
+        );
+        assert!(!buttons.just_pressed(B::Start));
+        // With Y: the sound.
+        assert_eq!(frame(&mut buttons, &[B::North], &[]), Some(Shortcut::Mute));
+        assert!(!buttons.just_pressed(B::North));
+        // Let go of after a shortcut: Select does nothing.
+        assert_eq!(
+            frame(&mut buttons, &[], &[B::Select, B::Start, B::North]),
+            None
+        );
+        assert!(!buttons.just_pressed(B::Select));
+        // Select alone: pressed as it is let go of, for that frame only.
+        frame(&mut buttons, &[B::Select], &[]);
+        frame(&mut buttons, &[], &[B::Select]);
+        assert!(buttons.just_pressed(B::Select));
+        frame(&mut buttons, &[], &[]);
+        assert!(!buttons.pressed(B::Select) && !buttons.just_pressed(B::Select));
+        // Start alone still pauses.
+        frame(&mut buttons, &[B::Start], &[]);
+        assert!(buttons.just_pressed(B::Start));
+    }
+
+    #[test]
+    fn the_rivals_ride_slower_on_easy_and_faster_on_hard() {
+        for skill in [0.88, 0.95] {
+            assert_eq!(Difficulty::Medium.rival_skill(skill), skill);
+            assert!(Difficulty::Easy.rival_skill(skill) < skill - 0.05);
+            assert!(Difficulty::Hard.rival_skill(skill) > skill);
+            assert!(Difficulty::Hard.rival_skill(skill) <= 1.0);
+        }
     }
 
     #[test]
@@ -1024,18 +1677,17 @@ mod tests {
             "D-pad left"
         );
         let controls = Controls::default();
+        assert_eq!(controls.describe_keys(Action::Throttle, es), "W, Arriba");
+        assert_eq!(controls.describe_buttons(Action::Throttle, es), "RT, A");
         assert_eq!(
-            controls.describe(Action::Throttle, es),
-            "W, Arriba   ·   RT, A"
+            controls.describe_keys(Action::Throttle, Language::English),
+            "W, Up"
         );
         assert_eq!(
-            controls.describe(Action::Throttle, Language::English),
-            "W, Up   ·   RT, A"
+            controls.describe_keys(Action::Wheelie, es),
+            "Espacio, Mayús izq."
         );
-        assert_eq!(
-            controls.describe(Action::Wheelie, es),
-            "Espacio, Mayús izq.   ·   B"
-        );
+        assert_eq!(controls.describe_buttons(Action::Wheelie, es), "B");
     }
 
     #[test]
@@ -1046,7 +1698,8 @@ mod tests {
         assert_eq!(saved.wheelie.buttons, [GamepadButton::East]);
         // Unless B already does something else.
         let mut taken = Controls::default();
-        taken.bind_button(Action::Brake, GamepadButton::East);
+        taken.wheelie.buttons.clear();
+        taken.brake.buttons = vec![GamepadButton::East];
         taken.give_the_wheelie_a_button();
         assert!(taken.wheelie.buttons.is_empty());
         assert_eq!(taken.brake.buttons, [GamepadButton::East]);

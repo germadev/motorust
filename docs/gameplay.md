@@ -6,12 +6,13 @@ The game's menus are in Spanish or English: it starts in the system's language a
 
 ## Screens
 
-The game moves through four screens. Between them the camera glides from one place to the next instead of cutting.
+The game moves through five screens. Between them the camera glides from one place to the next instead of cutting; between the welcome screen, the players' lobby and the game modes, which share the same flight over the track, it just flies on.
 
 1. **Welcome.** The game title, while the camera tours the track, over the start menu, which is exactly as wide as the title: two cards side by side, "1P" (one helmet) and "2P" (two helmets facing each other), and two full-width banners below, "OPTIONS" and "EXIT GAME". They are translucent black; the chosen one lights up in its colour (blue, purple, yellow or red) with a faint chequered flag sliding across it: to the right on 1P, to the left on 2P, up on Options and down on Exit. Arrows move around the menu; up or down from the banners comes back to the card last chosen. Esc or B asks whether to quit, with "Exit game" in red. There is no Exit in the browser: close the tab instead.
-2. **Track select** ("SELECT TRACK"). The track is seen from above, slowly turning, with its name, a short description, its length and a map of the layout with the finish line marked. Left and right switch tracks. Enter, Space, A or Start go on to bike select. The screen shows up at once: the other tracks are built in the background meanwhile, so switching to them is instant once they are ready (a track chosen before it is ready is finished on the spot).
-3. **Bike select** ("SELECT BIKE"). The bikes wait on the starting grid, three per row and staggered like a Grand Prix grid. The camera circles the chosen bike, and its name and colours are shown on screen. Left and right change bike. The right stick turns the view around the bike. Enter, Space, A or Start begin the race. The chosen bike idles here and revs each time you switch to it.
-4. **Race.** Your bike starts last, so there is always someone to overtake. The other seven bikes are your rivals. They wait on the grid until you first open the throttle.
+2. **Game mode** ("GAME MODE"). What to play (see [Game modes](#game-modes)), in cards like the start menu's: for one player Arcade big on top (yellow), and below race (blue), elimination (red), checkpoint (purple) and free ride (green); for two players race, elimination and free ride. The arcade goes straight to bike select; the others choose a track first.
+3. **Track select** ("SELECT TRACK"). The track is seen from above, slowly turning, with its name, a short description, its length and a map of the layout with the finish line marked. Left and right switch tracks. Enter, Space, A or Start go on to bike select. The screen shows up at once: the other tracks are built in the background meanwhile, so switching to them is instant once they are ready (a track chosen before it is ready is finished on the spot).
+4. **Bike select** ("SELECT BIKE"). The bikes wait on the starting grid, three per row and staggered like a Grand Prix grid. The camera circles the chosen bike, and its name and colours are shown on screen. Left and right change bike. The right stick turns the view around the bike. Enter, Space, A or Start begin the race. The chosen bike idles here and revs each time you switch to it, over the sounds of the chosen track's surroundings instead of music: the sea and its gulls by the coast, birds in the trees, cicadas and the wind in the desert.
+5. **Race.** Your bike starts last, so there is always someone to overtake. The other seven bikes are your rivals. Everyone waits on the grid for the start lights: a second after the grid is set up, five red lights (from one to five, in Options > Game) come on one by one, a second apart, each with a beep, and a moment after the fifth (never quite the same moment, from 0.3 to 1.3 s) they go out, flash green with a higher beep, and the race is on. Until then you can rev the engine, but the bike does not move. In Options the lights can also leave the bikes free ("Lights, no hold", once the first light is on): you can move off before they go out, but if you do you jump the start. The first false starts in a race (two at first, from none to three in Options > Game) are let off: "FALSE START! 1 of 2", everybody goes back to the grid and the lights start again, a moment later than usual to let go of the throttle. The next one disqualifies you, out of the race ("JUMP START! DISQUALIFIED", "disqualified" in the results, with no points in the arcade; Restart sets the race up again). Or the race can start as it used to: when you first open the throttle.
 
 **Esc** or **B** goes back one screen: from bike select to track select, and from track select to the welcome screen. During the race, Esc pauses (see [Pause menu](#pause-menu)), and the pause menu can take you back to the bike selection or to the welcome screen.
 
@@ -26,6 +27,20 @@ Menus always work the same way, whatever controls you have set:
 ### Controls legend
 
 Every screen has the same legend at the bottom, with no panel behind it: each key or button, as it looks on the device you are using, and what it does there. It follows the last thing you touched: keyboard keycaps, or the buttons of an Xbox, PlayStation (white, with the symbols in their classic colours) or Switch controller, told apart by the controller's name. Moving around a menu goes without saying, so the legend only shows accepting, going back and, in Options, changing section. The symbols the UI font lacks (arrows and the PlayStation symbols) are drawn as icons.
+
+## Game modes
+
+| Mode | Players | What it is |
+|---|---|---|
+| Arcade | 1 | The four tracks in order, five laps each, with points for each place (10, 8, 6, 5, 4, 3, 2, 1) and the standings after each race. It always starts from the first track. |
+| Race | 1 or 2 | A race on the track chosen, of 1 to 9 laps (5 at first), chosen with up and down on the track screen. |
+| Elimination | 1 or 2 | Seven laps on the track chosen. Each lap, as soon as all but the last two still in have crossed the line, the one further back of those two is out: a rival leaves the race, a player's bike rolls to a stop. The last lap is raced by the two left, for the win. |
+| Checkpoint | 1 | Against the clock: the clock starts with the seconds to reach the first checkpoint, and each checkpoint (the track's red "CHECKPOINT" arches, also on the minimap, and the finish line) adds the seconds of the stretch to the next one. At nought it is over; the laps done are the score. |
+| Free ride | 1 or 2 | Ride a track with no end. Y (on a gamepad, the top face button) changes the music, as the line at the bottom of the screen says: the track's song, every track's song one after another from this one's, or three chill songs, a little quieter. Each free ride starts with the track's song. |
+
+The **difficulty** (Options > Game) sets how fast the rivals ride and how much time the checkpoints give. Medium is the rivals as they always were; on easy they use a little less of their bikes, on hard a little more. Against the clock, the time for each stretch is what it takes at 54 m/s on easy, 62 m/s on medium and 66 m/s on hard, plus 3, 2 or 1.5 s, and the start gives 5, 3 or 2 s more for the standing start: a good ride earns a few seconds at each checkpoint, a fall costs more than that.
+
+**The finish.** When you cross the line at the end of the race, the machine takes over your bike and rides it on, as it does a rival's, so you do not crash. A moment later the results come up at the top right of the screen, over the race, which goes on behind them (with "Centre results when all are in" on in Options > Game, they move to the middle, above the bike the camera shows, once everybody is in): the others' times fill in as they cross the line, and the camera follows them in, one after another, from the one nearest to the line (top left, its name, place and lap; in the middle, as it crosses the line, its place and how far behind the winner). Once everybody is in, it shows them riding on, a few seconds on each, cutting to the one in the best spot: round a loop, on a road off the lap, coming up to bends or crests, or riding in a group, not going back to the last ones shown. In split screen this happens once both players are done; until then each half follows its own bike. In the arcade, "Continue" (Enter or A) goes on to the standings (and from there to the next race), and Esc or B to the game modes; in the other modes, "Race again" (Enter or A) sets the same race up again, and "Back" (Esc or B) goes to the track screen. Those still racing then are placed where they are, with the time they would have taken at their pace (marked "~"; in an elimination they are left racing).
 
 ## Bikes
 
@@ -110,6 +125,11 @@ Rivals keep to their own lane. They pull out to pass a bike they catch, or lift 
 
 | Element | Where | What it shows |
 |---|---|---|
+| Race | Top left | Your place and how many race, the lap (of how many), the clock and your best lap. In split screen, each player's in their half. |
+| Start lights | Top middle | The five lights of the start (in split screen, across the line between the halves). |
+| Time left | Top middle | Against the clock: the seconds left (red under 10) and what the last checkpoint gave. |
+| Finished | Top right | In a race or the arcade, those who have crossed the line at the end, as they do: their place, name and time, with no panel behind. |
+| Notices | Middle | Your place as you cross the line at the end, time up, out or disqualified, who has just gone out, a lap record (just after a lap that beats the track's best one kept; the first lap ever ridden on a track sets it without saying so). |
 | Speedometer | Bottom right | A see-through dial, clear in the middle and darker towards its rim, marked from 0 to 360 km/h (red from 300, over a red arc), with a blue pointer and the speed in figures in the middle. With two players, each has their own at the bottom right of their half. |
 | FPS counter | Top right | Frames per second, smoothed so it can be read. |
 | Minimap | Bottom left | The layout seen from above (north up), with the finish line in yellow and one dot per bike in that bike's colour. Your dot is larger, with a white border; with two players, each one's dot carries their number (1 or 2). |
@@ -125,7 +145,7 @@ Release the stick and the camera looks ahead again.
 
 ## Controls
 
-These are the defaults. Every action except the sticks, mute and fullscreen can be changed in **Options > Controls** (see [Rebinding](#rebinding)). Gamepad buttons are named as on an Xbox controller: A is the bottom button, B the right one and X the left one.
+These are the defaults. Every action except the sticks, mute and fullscreen can be changed in **Options > Control > Mapping** (see [Mapping](#mapping)). Gamepad buttons are named as on an Xbox controller: A is the bottom button, B the right one and X the left one.
 
 | Action | Keyboard | Gamepad |
 |---|---|---|
@@ -134,10 +154,12 @@ These are the defaults. Every action except the sticks, mute and fullscreen can 
 | Steer | A, D / ←, → | Left stick (progressive) / D-pad |
 | Wheelie (with throttle) | Space / Left Shift | B, or RT and A together |
 | Look around | | Right stick |
-| Restart the race | R | Select |
+| Restart the race | R | Select (when let go of) |
 | Pause | Esc | Start |
-| Mute or unmute sound | M | |
-| Toggle fullscreen | Cmd+Enter (macOS) / Alt+Enter (Windows, Linux) | |
+| Mute or unmute sound | M | Select + Y |
+| Toggle fullscreen | Cmd+Enter (macOS) / Alt+Enter (Windows, Linux) | Select + Start |
+
+On a gamepad the shortcuts are made holding Select (View on Xbox, Create on PlayStation, − on Switch) and pressing Start or Y (the top face button). That is why Select restarts the race when it is let go of, and only if no shortcut was made while it was held; and Start and Y held with Select neither pause nor accept.
 
 The triggers are analogue: throttle and brake follow how far you squeeze them. The first 15 % of their travel does nothing, so a trigger that does not quite return to zero at rest (as a DualSense can, with its adaptive resistance on) neither opens the throttle nor stops the engine braking. Restart sends every bike back to its grid slot, and the rivals wait again until you accelerate. In the browser, both fullscreen shortcuts work, because the game cannot tell which system the browser runs on.
 
@@ -145,7 +167,12 @@ The triggers are analogue: throttle and brake follow how far you squeeze them. T
 
 "Options", on the welcome screen and in the pause menu, has four sections. Changes apply immediately. The panel is centred above the legend and is as tall in every section, so the section tabs do not move.
 
-- **Game.** The language (Spanish or English) and the steering variants:
+At the foot of the panel, whatever the section, stand "Reset" and "Back" side by side: down from the last option comes Back, and left or right goes to the other one. Reset puts the section's options back as they were at first (in Control, the steering variants and the legend; the keys and buttons are reset in Mapping); it is faint when they already are. In Control, under "Controls legend" and in a lighter hand than the legend (the keys only outlined, the words faint), are the shortcuts for the sound and fullscreen, as the keys or buttons look on the device in use; "Rescan gamepads" stands apart below.
+
+Options that are on or off (fullscreen, the controls legend, pipelined rendering, the results in the middle) end in a box, rounded, ticked when they are on: filled with the colour of the section, or dark on the chosen row, which is already in that colour; empty and outlined when they are off.
+
+- **Game.** The language (Spanish or English), the difficulty (easy, medium or hard, medium by default; see [Game modes](#game-modes)) and the race start ("Lights", the default; "Lights, no hold", the bikes free on the grid and a jump start disqualified; or "Throttle", the race starting when you first open the throttle), how many red lights the start has (one to five, five by default; faint with a start at the throttle), how many false starts are let off with the bikes free (none to three, two by default; faint with any other start) and whether the results go to the middle once everybody is in (off by default).
+- **Control.** "Mapping" (see [Mapping](#mapping)), the steering variants, the race's "Controls legend" (shown or hidden, hidden by default) and "Rescan gamepads". The steering variants:
 
   | Option | Values | Default |
   |---|---|---|
@@ -155,31 +182,31 @@ The triggers are analogue: throttle and brake follow how far you squeeze them. T
   | "Keyboard: return rate released" | slow, medium, fast | medium |
 
   The turn-limit levels apply a share of the speed-dependent limit described under [Steering](#steering): off is no limit, low a third, medium two thirds and high the whole limit (at top speed, holding the input gives 80 % of full lock). The two rates scale how fast keyboard and D-pad steering builds up while a key is held (slow is half as fast as fast, medium three quarters), and how fast it returns to centre once released (medium is half as fast as fast, slow a third).
-- **Control.** One row per action (see [Rebinding](#rebinding)), "Reset controls", the race's "Controls legend" (shown or hidden, hidden by default) and "Rescan gamepads".
 - **Sound.** "FX Volume" and "Music Volume", from 0 to 100 % in steps of 10 (80 % by default), and the music on or off. 80 % is the balance found by ear: the effects at a fifth and the music at nine tenths of the scale the game used before. Volumes saved with that older scale are not carried over: they start again at 80 %.
 - **Graphics.**
   - **Fullscreen.** At any time, Cmd+Enter on macOS or Alt+Enter on Windows and Linux switches to fullscreen and back. The change is saved as if you had picked it here.
-  - **Resolution.** "Dynamic" (the window adapts to the window and screen pixels; the default), a fixed 1280 × 720 window, 1600 × 900, 1920 × 1080 or 2560 × 1440. Sizes are in points, so on a Retina display the window has twice as many pixels. In the browser the game fills the page.
+  - **Resolution.** "Dynamic" (the window adapts to the window and screen pixels; the default), a fixed 1280 × 720 window, 1600 × 900, 1920 × 1080 or 2560 × 1440. Sizes are in points, so on a Retina display the window has twice as many pixels. In fullscreen, "Dynamic" covers the screen as it is, and a fixed resolution switches the screen to its display mode nearest to it, in pixels (the fastest refresh rate of that size). In the browser the game fills the page.
   - **FPS.** The screen's rate (synchronised with it; the default), 30, 60, 120, 144, 240 or unlimited. With a fixed number, the game waits out the rest of each frame and stays synchronised with the screen so the image does not tear. If the screen is slower than the limit, the screen wins. This option is not available in the browser, which paces the frames itself.
+  - **Trees.** "New" (the default): the trees modelled with Meshy, one for each species and firs among the tall trees of the forests; or "Classic": the trees built in code. They change at once, where they are.
+  - **Pipelined rendering.** On (the default), each frame is drawn while the next one is simulated: more frames per second when the processor holds them back, a frame more between the controls and the screen. Off, each frame is drawn right after it is simulated, with less lag.
+  - **Frame latency.** How many frames may wait to go to the graphics card: 1 (least lag), 2 (Bevy's own, the default) or 3 (steadiest).
 
-### Rebinding
+  The last two take effect the next time the game starts; until then the row says "on restart". Neither is shown in the browser.
 
-The Control section has one row per action, each listing its keys and buttons: Throttle, Brake / Reverse, Steer Left, Steer Right, Wheelie, Restart and Pause.
+### Mapping
 
-To rebind an action:
+Control > "Mapping" opens a view of its own, titled "OPTIONS > CONTROL". Instead of the sections it offers the keyboard and the gamepad, each mapped apart; it opens on the one you are using, and follows it if you switch. Left and right on that row, Q and E, or the shoulder buttons change it (the keys or buttons are shown at its ends, as on the sections' row). At the foot, side by side: "Remap", "Test", "Reset" and "Back". The devices' row is in Control's blue, like the section; below it, what stands out (the button chosen, what is held, what a test lights) is a neutral white.
 
-1. Select its row and press Enter or A.
-2. Press a key or a gamepad button. That key or button now performs the action:
-   - A key replaces the action's keys; a button replaces its buttons. The other kind is left as it was.
-   - The new key or button stops doing any other action.
+- **The device, drawn.** A keyboard (with its arrows), or the gamepad in use as it looks: a DualSense, a DualShock 4 or a DualShock 3 for PlayStation pads (told apart by their name), and an Xbox controller for the rest (on a Switch pad, with its own letters on the face buttons); the triggers stand above it. On the gamepad's page the actions are listed beside it. On the keyboard the keys that do something are a lighter grey. The keys and buttons held down light up only while testing or remapping (the keys white, the gamepad's buttons darker), not while you move round the view. Under it, each action with its keys or its buttons.
+- **"Remap".** Press the key (or button) to remap: it turns orange, and its action is named. Then press the new key, or several together: they light up in yellow, and count once all are let go of. The new key or combination does that action instead of the old one (the action keeps its other keys), and stops doing anything else. A key that does nothing says so; Esc, or waiting eight seconds, calls it off. M cannot be mapped, because it always toggles sound, nor Esc, which calls off.
+- **"Test".** Try the keys (or buttons) out: what is held lights up, the actions it does light up in the list, and the line under the device says it ("W > Throttle"); nothing else works meanwhile, not even the menu. Esc or Select+Start ends it (meanwhile Select+Start does not switch fullscreen).
+- **"Reset".** Puts the keys of every action back as they were at first, or the buttons, on the gamepad's page; the other device is left as it is.
 
-Esc cancels, and so does waiting eight seconds without pressing anything. M cannot be bound, because it always toggles sound. "Reset controls" restores the defaults.
-
-Some controls cannot be changed: the left stick (steering), the right stick (look around), M (sound) and the menu navigation. Pulling the left stick back does nothing: it used to pop a wheelie, which was easy to do by mistake while steering. Controls saved without a wheelie button get B, unless B already does something else. The race's controls legend always shows the keys you have chosen.
+Keys or buttons pressed together do the action only when all of them are held. Some controls cannot be changed: the left stick (steering), the right stick (look around), M (sound), the shortcuts held with Select, and the menu navigation. Pulling the left stick back does nothing: it used to pop a wheelie, which was easy to do by mistake while steering. Controls saved without a wheelie button get B, unless B already does something else. The race's controls legend always shows the keys you have chosen.
 
 ### Where settings are saved
 
-Settings (language, fullscreen, resolution, FPS limit, controls and volumes) are saved each time they change, in `ajustes.ron` ("settings") inside the system's settings folder:
+Settings (language, difficulty, race start, fullscreen, resolution, FPS limit, pipelined rendering, frame latency, controls, volumes, and the best lap and most laps against the clock of each track) are saved each time they change, in `ajustes.ron` ("settings") inside the system's settings folder:
 
 | System | File |
 |---|---|
@@ -194,7 +221,7 @@ They are read at startup. If the file is missing or cannot be parsed, the game u
 
 Esc or Start (or whatever you bound to Pause) stops the race and muffles its sound. The "PAUSE" menu offers:
 
-- "Resume" ("Continuar").
+- "Resume" ("Continuar"), the main action, in blue.
 - "Back" ("Volver"): leaves the race for the bike selection, the screen before it.
 - "Options": the same [Options](#options) as on the welcome screen; closing them comes back here.
 - "Return to main menu": returns to the welcome screen.
@@ -216,7 +243,7 @@ Gamepads are read with **gilrs** and fed into Bevy's input, like `bevy::gilrs` d
 
 ## Sound
 
-Every sound effect is synthesised in real time, with no recordings. The synthesiser runs on the audio thread (`src/sound/synth.rs`). The game only decides what plays, how loud, and from where (`src/sound/mod.rs`). The only recordings are the tracks' music.
+Every sound effect is synthesised in real time, with no recordings. The synthesiser runs on the audio thread (`src/sound/synth.rs`). The game only decides what plays, how loud, and from where (`src/sound/mod.rs`). The only recordings are the music.
 
 - **Engines.** Each bike has a 1000 cc Grand Prix V4 that revs to 17,500 rpm. It has a "big bang" firing order: two pairs of explosions close together give it a deep, rough roar.
 - **Gearbox.** A six-speed straight-cut gearbox that whines. You hear:
@@ -229,6 +256,7 @@ Every sound effect is synthesised in real time, with no recordings. The synthesi
 - **Surroundings.** Wind that grows with speed; tyres when you push in corners or brake hard; grass; impacts against walls; landings.
 - **Two players.** Both players' bikes sound as yours: full volume, no Doppler. Every bike, rivals included, is heard from the nearer of the two cameras, and the wind, tyres and grass follow whichever player makes them louder.
 - **Menus.** Moving through menus clicks. On the bike select screen, the chosen bike idles and revs when you switch to it.
-- **Music.** Each track has its own song (`assets/music/`), which loops during the race (`src/sound/music.rs`). Every song is brought to the same loudness above 500 Hz, where the engines' drone does not cover it, so they all sound as loud over the bike (one with heavy bass is not drowned out). It still plays well below the bike, its loudest second at least 10 dB under your engine flat out, so the revs, gear changes, tyres and impacts are always heard over it. It fades in when the race starts and out when you leave it.
+- **The track's surroundings.** On the bike select screen, instead of music, the sounds of the chosen track's surroundings, as much of each as the track has (`src/sound/ambience.rs`): waves that swell, break and wash back, seagulls calling now and then, small birds chirping, cicadas buzzing and the wind. They fade in and out with the screen, about as loud as the bike idling.
+- **Music.** The menus (the welcome screen, the lobby, the modes and the tracks) have their own song, "Asphalt Shift", low in the background; Y (or the top face button) turns the music on or off there, as the legend says, the same as Options > Sound. Each track has its own song (`assets/music/`), which loops during the race (`src/sound/music.rs`); in free ride Y changes it (see [Game modes](#game-modes)), and the chill songs ("Velvet Dashboard", "Sunlight on Still Water" and "Leaves on the Still Pond") play 4 dB quieter. Every song is brought to the same loudness above 500 Hz, where the engines' drone does not cover it, so they all sound as loud over the bike (one with heavy bass is not drowned out). It still plays well below the bike, its loudest second at least 10 dB under your engine flat out, so the revs, gear changes, tyres and impacts are always heard over it. It fades in when the race starts and out when you leave it.
 
 Pausing muffles the race and turns the music down. **M** mutes and unmutes everything, music included. In the browser, sound starts after the first key press or click, because browsers do not allow audio before that.

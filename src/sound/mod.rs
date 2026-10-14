@@ -10,7 +10,8 @@
 //! Each track also has its music ([`music`]), which plays during the race
 //! well below the engines.
 
-mod music;
+pub mod ambience;
+pub mod music;
 mod synth;
 
 use std::sync::Arc;
@@ -19,10 +20,12 @@ use bevy::audio::AddAudioSource;
 use bevy::prelude::*;
 
 use crate::bike::{BikeInput, BikeState, LocalPlayer, Player};
+use crate::circuits::{Ambience, CIRCUITS, CurrentCircuit};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
-use crate::settings::{DEFAULT_VOLUME, Settings};
+use crate::race::lights::StartBeep;
+use crate::settings::{DEFAULT_VOLUME, Settings, ToggleMute};
 use crate::ui::MenuSound;
 pub use synth::Sound;
 use synth::{Controls, Mix, REDLINE, VOICES, pan};
@@ -68,7 +71,11 @@ impl Plugin for SoundPlugin {
         app.add_audio_source::<Mix>()
             .add_audio_source::<music::SongSource>()
             .insert_resource(SoundControls(controls))
+            .add_message::<StartBeep>()
+            .add_message::<ToggleMute>()
             .init_resource::<Blip>()
+            .init_resource::<music::FreeMusic>()
+            .add_systems(OnEnter(GameState::Race), music::reset_free_music)
             .add_systems(Startup, start_mixer)
             .add_systems(
                 Update,
@@ -79,12 +86,26 @@ impl Plugin for SoundPlugin {
                     place_sounds,
                     player_sounds,
                     pause_sounds,
+                    surroundings,
                     menu_sounds,
                     toggle_mute,
                 )
                     .chain(),
             )
-            .add_systems(Update, music::play_music.after(toggle_mute));
+            .add_systems(
+                Update,
+                (
+                    music::change_free_music.run_if(in_state(GameState::Race)),
+                    music::toggle_menu_music.run_if(
+                        in_state(GameState::Welcome)
+                            .or_else(in_state(GameState::Modes))
+                            .or_else(in_state(GameState::Tracks)),
+                    ),
+                    music::play_music,
+                )
+                    .chain()
+                    .after(toggle_mute),
+            );
     }
 }
 
@@ -248,12 +269,23 @@ fn menu_blip(
     }
 }
 
-/// Lo que suena al moverse por los menús.
-fn menu_sounds(mut sounds: MessageReader<MenuSound>, controls: Res<SoundControls>) {
+/// Lo que suena al moverse por los menús, and the beeps of the start
+/// lights.
+fn menu_sounds(
+    mut sounds: MessageReader<MenuSound>,
+    mut beeps: MessageReader<StartBeep>,
+    controls: Res<SoundControls>,
+) {
     for sound in sounds.read() {
         controls.0.play(match sound {
             MenuSound::Move => Sound::Click,
             MenuSound::Confirm => Sound::Confirm,
+        });
+    }
+    for beep in beeps.read() {
+        controls.0.play(match beep {
+            StartBeep::Light => Sound::StartLight,
+            StartBeep::Go => Sound::StartGo,
         });
     }
 }
@@ -457,6 +489,26 @@ fn nearest_listener(listeners: &[(Vec3, Vec3, Vec3)], at: Vec3) -> &(Vec3, Vec3,
         .expect("there is at least one listener")
 }
 
+/// Choosing the bike, the sounds of the chosen track's surroundings;
+/// elsewhere, none (they fade in and out in the synthesiser).
+fn surroundings(
+    state: Res<State<GameState>>,
+    circuit: Res<CurrentCircuit>,
+    controls: Res<SoundControls>,
+) {
+    let ambience = if *state.get() == GameState::Select {
+        CIRCUITS[circuit.0].ambience
+    } else {
+        Ambience::default()
+    };
+    let params = &controls.0.ambience;
+    params.sea.set(ambience.sea);
+    params.gulls.set(ambience.gulls);
+    params.birds.set(ambience.birds);
+    params.cicadas.set(ambience.cicadas);
+    params.wind.set(ambience.wind);
+}
+
 /// En pausa se apaga el ruido de la carrera, y moverse por el menú suena.
 fn pause_sounds(pause: Res<Pause>, controls: Res<SoundControls>) {
     if !pause.is_changed() || pause.is_added() {
@@ -469,9 +521,14 @@ fn pause_sounds(pause: Res<Pause>, controls: Res<SoundControls>) {
     controls.0.play(Sound::Click);
 }
 
-/// M silencia o devuelve el sonido.
-fn toggle_mute(keyboard: Res<ButtonInput<KeyCode>>, controls: Res<SoundControls>) {
-    if keyboard.just_pressed(KeyCode::KeyM) {
+/// M (or Select and Y on a gamepad) silencia o devuelve el sonido.
+fn toggle_mute(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut shortcut: MessageReader<ToggleMute>,
+    controls: Res<SoundControls>,
+) {
+    let pad = shortcut.read().count() % 2 == 1;
+    if keyboard.just_pressed(KeyCode::KeyM) != pad {
         let master = &controls.0.master;
         master.set(if master.get() > 0.0 { 0.0 } else { MASTER });
     }

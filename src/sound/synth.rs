@@ -19,6 +19,9 @@ use std::sync::{Arc, Mutex};
 use bevy::audio::{ChannelCount, Decodable, SampleRate, Source};
 use bevy::prelude::*;
 
+use super::ambience::{Ambience, AmbienceParams};
+use crate::geometry::smoothstep;
+
 pub const SAMPLE_RATE: u32 = 44_100;
 /// Motores que suenan a la vez: uno por moto de la parrilla, para que cada
 /// moto tenga siempre el suyo (si una voz pasara de una moto a otra, el
@@ -99,6 +102,10 @@ pub enum Sound {
     Click,
     /// Confirmar en el menú.
     Confirm,
+    /// A start light coming on: a short beep.
+    StartLight,
+    /// The start lights going out: a longer, higher beep.
+    StartGo,
 }
 
 /// Todo lo que el juego controla del sonido.
@@ -115,6 +122,8 @@ pub struct Controls {
     /// De 0 a 1, cuánto se apagan los motores, el viento, los neumáticos y la
     /// hierba (en pausa); los avisos y clics siguen sonando.
     pub muffle: Param,
+    /// The sounds of the track's surroundings (see [`super::ambience`]).
+    pub ambience: AmbienceParams,
     queue: Mutex<Vec<Sound>>,
 }
 
@@ -128,6 +137,7 @@ impl Default for Controls {
             fx: Param::new(1.0),
             master: Param::default(),
             muffle: Param::default(),
+            ambience: AmbienceParams::default(),
             queue: Mutex::new(Vec::new()),
         }
     }
@@ -157,11 +167,11 @@ impl Decodable for Mix {
 }
 
 /// Generador de números pseudoaleatorios (xorshift), para el ruido.
-struct Noise(u32);
+pub(super) struct Noise(pub(super) u32);
 
 impl Noise {
     /// De -1 a 1.
-    fn next(&mut self) -> f32 {
+    pub(super) fn next(&mut self) -> f32 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 17;
         self.0 ^= self.0 << 5;
@@ -169,19 +179,19 @@ impl Noise {
     }
 
     /// De 0 a 1.
-    fn chance(&mut self) -> f32 {
+    pub(super) fn chance(&mut self) -> f32 {
         self.next() * 0.5 + 0.5
     }
 }
 
 /// Coeficiente de un filtro de un polo con frecuencia de corte `cutoff`.
-fn one_pole(cutoff: f32) -> f32 {
+pub(super) fn one_pole(cutoff: f32) -> f32 {
     1.0 - (-TAU * cutoff / SAMPLE_RATE as f32).exp()
 }
 
 /// Filtro paso banda (biquad de RBJ), para resonancias y chirridos.
 #[derive(Clone, Copy, Default)]
-struct BandPass {
+pub(super) struct BandPass {
     b0: f32,
     a1: f32,
     a2: f32,
@@ -190,7 +200,7 @@ struct BandPass {
 }
 
 impl BandPass {
-    fn tuned(center: f32, q: f32) -> Self {
+    pub(super) fn tuned(center: f32, q: f32) -> Self {
         let mut filter = Self::default();
         filter.tune(center, q);
         filter
@@ -205,7 +215,7 @@ impl BandPass {
         self.a2 = (1.0 - alpha) / a0;
     }
 
-    fn process(&mut self, input: f32) -> f32 {
+    pub(super) fn process(&mut self, input: f32) -> f32 {
         let output = self.b0 * (input - self.x[1]) - self.a1 * self.y[0] - self.a2 * self.y[1];
         self.x = [input, self.x[0]];
         self.y = [output, self.y[0]];
@@ -368,6 +378,8 @@ impl Shot {
             Sound::Landing { .. } => 0.4,
             Sound::Click => 0.08,
             Sound::Confirm => 0.3,
+            Sound::StartLight => 0.2,
+            Sound::StartGo => 0.6,
         }
     }
 
@@ -406,6 +418,17 @@ impl Shot {
                 let value = (TAU * note * t).sin() * (-(t - start) * 18.0).exp() * 0.35;
                 (value, 1.0, 1.0)
             }
+            // Square-ish beeps, like a timing system's, with soft edges.
+            Sound::StartLight | Sound::StartGo => {
+                let (note, length) = match self.sound {
+                    Sound::StartLight => (880.0, 0.16),
+                    _ => (1320.0, 0.5),
+                };
+                let edges = smoothstep(0.0, 0.01, t) * (1.0 - smoothstep(length - 0.04, length, t));
+                let wave = (TAU * note * t).sin();
+                let value = (wave * 3.0).tanh() / 3.0f32.tanh() * edges * 0.3;
+                (value, 1.0, 1.0)
+            }
         };
         (value * left, value * right)
     }
@@ -426,6 +449,7 @@ pub struct Mixer {
     gust: f32,
     skid: (f32, BandPass, f32),
     grass: (f32, f32),
+    surroundings: Ambience,
     ambient: f32,
     fx: f32,
     master: f32,
@@ -448,6 +472,7 @@ impl Mixer {
             gust: 0.0,
             skid: (0.0, BandPass::tuned(1150.0, 9.0), 0.0),
             grass: (0.0, 0.0),
+            surroundings: Ambience::default(),
             ambient: 1.0,
             fx,
             master: 0.0,
@@ -519,6 +544,13 @@ impl Mixer {
             left += grass;
             right += grass;
         }
+
+        // The surroundings of the track.
+        let (l, r) = self
+            .surroundings
+            .sample(&controls.ambience, &mut self.noise);
+        left += l;
+        right += r;
 
         // En pausa, todo lo de la carrera se apaga; los avisos, no.
         self.ambient += (1.0 - controls.muffle.get() - self.ambient) * self.smooth;
@@ -649,6 +681,33 @@ mod tests {
             samples.iter().map(|(l, _)| l * l).sum::<f32>() / samples.len() as f32
         };
         assert!(loudness(1.0) > 1.5 * loudness(0.0));
+    }
+
+    #[test]
+    fn the_start_lights_beep_and_the_go_is_higher_and_longer() {
+        let beep = |sound: Sound| {
+            let controls = Arc::new(Controls::default());
+            controls.master.set(1.0);
+            let mut mixer = Mixer::new(controls.clone());
+            controls.play(sound);
+            let samples: Vec<f32> = (0..SAMPLE_RATE).map(|_| mixer.frame().0).collect();
+            let heard = |s: &f32| s.abs() > 0.05;
+            let length = samples.iter().rposition(heard).unwrap_or(0) as f32 / SAMPLE_RATE as f32;
+            // How often it crosses nought: twice its pitch.
+            let crossings = samples
+                .windows(2)
+                .take((length * SAMPLE_RATE as f32) as usize)
+                .filter(|pair| pair[0] < 0.0 && pair[1] >= 0.0)
+                .count() as f32
+                / length.max(1e-3);
+            assert!(mixer.shots.is_empty(), "and it ends");
+            (length, crossings)
+        };
+        let (light, light_pitch) = beep(Sound::StartLight);
+        let (go, go_pitch) = beep(Sound::StartGo);
+        assert!(light > 0.1 && light < 0.2, "{light} s");
+        assert!(go > 2.0 * light, "{go} s");
+        assert!(go_pitch > 1.3 * light_pitch, "{go_pitch} > {light_pitch}");
     }
 
     #[test]

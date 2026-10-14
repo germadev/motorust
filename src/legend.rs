@@ -11,7 +11,9 @@ use bevy::prelude::*;
 
 use crate::hud::UiFont;
 use crate::locale::Language;
-use crate::settings::{Action, Controls, key_name};
+use crate::settings::{
+    Action, Controls, FULLSCREEN_BUTTON, MUTE_BUTTON, SHORTCUT_HELD, Shortcut, key_name,
+};
 use crate::ui::{ActiveDevice, UiIcons, text_font};
 use crate::vector_art::{Coverage, white_image};
 
@@ -29,9 +31,11 @@ pub enum Glyph {
     Triangle,
     /// A thumbstick.
     Stick,
+    /// The tick of a box that is on, in the options.
+    Check,
 }
 
-pub const GLYPHS: [Glyph; 9] = [
+pub const GLYPHS: [Glyph; 10] = [
     Glyph::Up,
     Glyph::Down,
     Glyph::Left,
@@ -41,6 +45,7 @@ pub const GLYPHS: [Glyph; 9] = [
     Glyph::Square,
     Glyph::Triangle,
     Glyph::Stick,
+    Glyph::Check,
 ];
 
 /// What a badge shows.
@@ -272,10 +277,8 @@ pub fn race_prompts(device: ActiveDevice, lang: Language, controls: &Controls) -
         (first(Action::Restart), lang.restart()),
         (first(Action::Pause), lang.action_pause()),
     ];
-    // M turns the sound off and on; it has no button.
-    if device == ActiveDevice::Keyboard {
-        prompts.push((vec![text(device, "M")], lang.hint_sound()));
-    }
+    // M turns the sound off and on; on a gamepad, Select held with Y.
+    prompts.push((shortcut_badges(device, Shortcut::Mute), lang.hint_sound()));
     prompts
         .into_iter()
         // An action with nothing to do it is left out.
@@ -285,6 +288,194 @@ pub fn race_prompts(device: ActiveDevice, lang: Language, controls: &Controls) -
             action: action.into(),
         })
         .collect()
+}
+
+/// What changes free ride's music, on `device` (Y, or the top face
+/// button), and what it plays (`what`).
+pub fn music_prompt(device: ActiveDevice, lang: Language, what: String) -> KeyPrompt {
+    let badge = match device {
+        ActiveDevice::Keyboard => key_badge(crate::sound::music::MUSIC_KEY, lang),
+        _ => button_badge(device, crate::sound::music::MUSIC_BUTTON),
+    };
+    KeyPrompt {
+        badges: vec![badge],
+        action: what,
+    }
+}
+
+/// What turns the music on or off in the menus (the same as changes free
+/// ride's), and whether it is on.
+pub fn music_toggle_prompt(device: ActiveDevice, lang: Language, on: bool) -> KeyPrompt {
+    let what = match (lang, on) {
+        (Language::Spanish, true) => "Música: sí",
+        (Language::Spanish, false) => "Música: no",
+        (Language::English, true) => "Music: on",
+        (Language::English, false) => "Music: off",
+    };
+    music_prompt(device, lang, what.into())
+}
+
+/// The keys or buttons of a shortcut on `device`: M for the sound and
+/// Cmd+Enter (Alt+Enter) for fullscreen on the keyboard, Select held with Y
+/// or Start on a gamepad.
+pub fn shortcut_badges(device: ActiveDevice, shortcut: Shortcut) -> Vec<Badge> {
+    match (device, shortcut) {
+        (ActiveDevice::Keyboard, Shortcut::Mute) => vec![text(device, "M")],
+        (ActiveDevice::Keyboard, Shortcut::Fullscreen) => {
+            let held = if cfg!(target_os = "macos") {
+                "Cmd"
+            } else {
+                "Alt"
+            };
+            vec![text(device, held), text(device, "Enter")]
+        }
+        (_, Shortcut::Mute) => vec![
+            button_badge(device, SHORTCUT_HELD),
+            button_badge(device, MUTE_BUTTON),
+        ],
+        (_, Shortcut::Fullscreen) => vec![
+            button_badge(device, SHORTCUT_HELD),
+            button_badge(device, FULLSCREEN_BUTTON),
+        ],
+    }
+}
+
+/// The shortcuts that work everywhere: the sound and fullscreen (this one
+/// not in the browser by gamepad, where only a key press may ask for it).
+pub fn shortcut_prompts(device: ActiveDevice, lang: Language) -> Vec<KeyPrompt> {
+    [
+        (Shortcut::Mute, lang.hint_sound()),
+        (
+            Shortcut::Fullscreen,
+            match lang {
+                Language::Spanish => "Pantalla completa",
+                Language::English => "Fullscreen",
+            },
+        ),
+    ]
+    .into_iter()
+    .map(|(shortcut, action)| KeyPrompt {
+        badges: shortcut_badges(device, shortcut),
+        action: action.into(),
+    })
+    .collect()
+}
+
+/// One prompt: its badges and what it does.
+/// `prompts` in a lighter hand than the legend's: the keys or buttons
+/// only outlined, small, and their words faint. For hints that go with
+/// something else, as the shortcuts under an option.
+pub fn spawn_light_prompts(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    icons: &UiIcons,
+    prompts: &[KeyPrompt],
+) {
+    const INK: Color = Color::srgba(1.0, 1.0, 1.0, 0.7);
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            align_items: AlignItems::Center,
+            column_gap: px(20),
+            row_gap: px(4),
+            ..default()
+        })
+        .with_children(|bar| {
+            for prompt in prompts {
+                bar.spawn(Node {
+                    align_items: AlignItems::Center,
+                    column_gap: px(3),
+                    ..default()
+                })
+                .with_children(|item| {
+                    for badge in &prompt.badges {
+                        item.spawn((
+                            Node {
+                                min_width: px(18),
+                                height: px(18),
+                                padding: UiRect::horizontal(px(4)),
+                                border: UiRect::all(px(1)),
+                                border_radius: BorderRadius::all(px(if badge.round {
+                                    9.0
+                                } else {
+                                    4.0
+                                })),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                column_gap: px(1),
+                                ..default()
+                            },
+                            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.35)),
+                        ))
+                        .with_children(|inside| match &badge.label {
+                            Label::Text(label) => {
+                                inside.spawn((
+                                    Text::new(label),
+                                    text_font(font, 11.0),
+                                    TextColor(INK),
+                                ));
+                            }
+                            Label::Glyphs(glyphs) => {
+                                for &glyph in glyphs {
+                                    inside.spawn((
+                                        ImageNode::new(icons.glyph(glyph)).with_color(INK),
+                                        Node {
+                                            width: px(11),
+                                            height: px(11),
+                                            ..default()
+                                        },
+                                    ));
+                                }
+                            }
+                        });
+                    }
+                    item.spawn((
+                        Text::new(&prompt.action),
+                        text_font(font, 13.0),
+                        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.55)),
+                        Node {
+                            margin: UiRect::left(px(3)),
+                            ..default()
+                        },
+                    ));
+                });
+            }
+        });
+}
+
+fn spawn_prompt(
+    bar: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    icons: &UiIcons,
+    look: &Style,
+    device: ActiveDevice,
+    prompt: &KeyPrompt,
+) {
+    bar.spawn(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: px(4),
+        ..default()
+    })
+    .with_children(|item| {
+        for badge in &prompt.badges {
+            spawn_badge(item, font, icons, look, device, badge);
+        }
+        item.spawn((
+            Text::new(&prompt.action),
+            text_font(font, 16.0),
+            TextColor(Color::WHITE),
+            TextShadow {
+                offset: Vec2::splat(1.5),
+                color: Color::srgba(0.0, 0.0, 0.0, 0.85),
+            },
+            Node {
+                margin: UiRect::left(px(4)),
+                ..default()
+            },
+        ));
+    });
 }
 
 /// The keys or buttons that change to the section before and after, on
@@ -339,30 +530,7 @@ pub fn spawn_legend(
         ))
         .with_children(|bar| {
             for prompt in prompts {
-                bar.spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: px(4),
-                    ..default()
-                })
-                .with_children(|item| {
-                    for badge in &prompt.badges {
-                        spawn_badge(item, font, icons, &look, device, badge);
-                    }
-                    item.spawn((
-                        Text::new(&prompt.action),
-                        text_font(font, 16.0),
-                        TextColor(Color::WHITE),
-                        TextShadow {
-                            offset: Vec2::splat(1.5),
-                            color: Color::srgba(0.0, 0.0, 0.0, 0.85),
-                        },
-                        Node {
-                            margin: UiRect::left(px(4)),
-                            ..default()
-                        },
-                    ));
-                });
+                spawn_prompt(bar, font, icons, &look, device, prompt);
             }
         });
 }
@@ -547,6 +715,12 @@ fn glyph_distance(glyph: Glyph, p: Vec2) -> f32 {
             let cap = p.length() - 0.38;
             ring.min(cap)
         }
+        Glyph::Check => {
+            let elbow = Vec2::new(-0.2, -0.5);
+            let short = segment(p, Vec2::new(-0.62, -0.06), elbow);
+            let long = segment(p, elbow, Vec2::new(0.64, 0.5));
+            short.min(long) - 0.16
+        }
     }
 }
 
@@ -651,16 +825,36 @@ mod tests {
             .expect("the wheelie is in the legend");
         assert_eq!(wheelie.badges[0].label, Label::Text("Espacio".into()));
 
-        controls.bind_key(Action::Wheelie, KeyCode::KeyJ);
-        controls.bind_button(Action::Throttle, GamepadButton::RightTrigger);
+        controls.remap(KeyCode::Space, &[KeyCode::KeyJ]);
+        controls.remap(GamepadButton::RightTrigger2, &[GamepadButton::RightTrigger]);
         let keyboard = race_prompts(ActiveDevice::Keyboard, Language::English, &controls);
         let wheelie = keyboard.iter().find(|p| p.action == "Wheelie").unwrap();
         assert_eq!(wheelie.badges[0].label, Label::Text("J".into()));
         let pad = race_prompts(ActiveDevice::PlayStation, Language::English, &controls);
         assert_eq!(pad[0].action, "Throttle");
         assert_eq!(pad[0].badges[0].label, Label::Text("R1".into()));
-        // Sound only has a key.
-        assert!(!pad.iter().any(|p| p.action == "Sound"));
+        // The sound: Select held with the top face button on a gamepad.
+        let sound = pad.iter().find(|p| p.action == "Sound").unwrap();
+        assert_eq!(sound.badges.len(), 2);
+        assert_eq!(sound.badges[0].label, Label::Text("Create".into()));
+        assert_eq!(sound.badges[1].label, Label::Glyphs(vec![Glyph::Triangle]));
+    }
+
+    #[test]
+    fn the_shortcuts_show_their_keys_and_buttons() {
+        for lang in [Language::Spanish, Language::English] {
+            for device in DEVICES {
+                let prompts = shortcut_prompts(device, lang);
+                assert_eq!(prompts.len(), 2);
+                assert!(drawable(&prompts), "{device:?}: {prompts:?}");
+            }
+        }
+        let keys = shortcut_prompts(ActiveDevice::Keyboard, Language::English);
+        assert_eq!(keys[0].badges[0].label, Label::Text("M".into()));
+        assert_eq!(keys[1].badges[1].label, Label::Text("Enter".into()));
+        let xbox = shortcut_prompts(ActiveDevice::Xbox, Language::English);
+        assert_eq!(xbox[1].badges[0].label, Label::Text("View".into()));
+        assert_eq!(xbox[1].badges[1].label, Label::Text("Menu".into()));
     }
 
     #[test]
@@ -679,5 +873,11 @@ mod tests {
         assert!(inside(Glyph::Square, 0.56, 0.0));
         assert!(!inside(Glyph::Triangle, 0.0, 0.0));
         assert!(inside(Glyph::Stick, 0.0, 0.0));
+        // The tick: through its elbow, low left of the middle, and up to
+        // the top right; not in the corners it leaves empty.
+        assert!(inside(Glyph::Check, -0.2, -0.5));
+        assert!(inside(Glyph::Check, 0.6, 0.45));
+        assert!(!inside(Glyph::Check, -0.6, 0.6));
+        assert!(!inside(Glyph::Check, 0.6, -0.6));
     }
 }

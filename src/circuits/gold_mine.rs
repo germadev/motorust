@@ -31,7 +31,7 @@
 
 use bevy::prelude::*;
 
-use super::{Circuit, Song};
+use super::{Ambience, Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{Banking, Branch, Layout, Narrowing, WALL_DISTANCE};
 use crate::world::scenery::*;
@@ -68,8 +68,17 @@ pub const GOLD_MINE: Circuit = Circuit {
     description_en: "Inspired by the mines of Mario Kart and Crash: ore carts,\n\
                      a mountain crossed through and over, and a flooded open pit",
     // "Toll of the Iron Mile".
+    // A mine in the desert: the wind and the cicadas in the heat.
+    ambience: Ambience {
+        sea: 0.0,
+        gulls: 0.0,
+        birds: 0.1,
+        cicadas: 0.75,
+        wind: 0.7,
+    },
     song: Song {
         mp3: include_bytes!("../../assets/music/gold_mine.mp3"),
+        length: 177.9,
         loudness: -16.8,
     },
     layout: Layout {
@@ -200,13 +209,32 @@ pub const GOLD_MINE: Circuit = Circuit {
                 color: GOLD,
                 text: Some("GOLD MINE"),
             },
+            // The checkpoints, about a kilometre apart (none in the
+            // excavation, where the road splits, nor on the bridges): down
+            // the canyon, out on the cliff, off the lake bridge, past the
+            // gully and on the way down to town.
+            Gantry {
+                along: 1200.0,
+                color: RUST,
+                text: Some("CHECKPOINT"),
+            },
             Gantry {
                 along: 2640.0,
                 color: RUST,
                 text: Some("CHECKPOINT"),
             },
             Gantry {
+                along: 3540.0,
+                color: RUST,
+                text: Some("CHECKPOINT"),
+            },
+            Gantry {
                 along: 4440.0,
+                color: RUST,
+                text: Some("CHECKPOINT"),
+            },
+            Gantry {
+                along: 5250.0,
                 color: RUST,
                 text: Some("CHECKPOINT"),
             },

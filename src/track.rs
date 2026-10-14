@@ -1856,13 +1856,17 @@ mod tests {
 
     #[test]
     fn walls_close_in_on_a_narrow_bridge_and_open_out_after_it() {
-        let layout = &crate::circuits::CIRCUITS
+        let narrowed: Vec<_> = crate::circuits::CIRCUITS
             .iter()
-            .find(|circuit| !circuit.layout.narrows.is_empty())
-            .expect("some track has a narrow stretch")
-            .layout;
-        let track = Track::new(layout);
-        for narrow in layout.narrows {
+            .filter(|circuit| !circuit.layout.narrows.is_empty())
+            .collect();
+        // Gold Mine's bridge over the lake and Loop Island's over the inlet.
+        assert!(narrowed.len() >= 2, "{} tracks", narrowed.len());
+        for (layout, narrow) in narrowed.iter().flat_map(|circuit| {
+            let layout = &circuit.layout;
+            layout.narrows.iter().map(move |narrow| (layout, narrow))
+        }) {
+            let track = Track::new(layout);
             let middle = track.index_at((narrow.from + narrow.to) / 2.0);
             // Narrower than the asphalt, and the road ends short of them.
             assert!(narrow.wall < TRACK_WIDTH / 2.0);
