@@ -676,70 +676,86 @@ fn walls(
             let (_, out) = frame(i);
             (out * n.x + Vec3::Y * n.y).normalize_or_zero()
         };
-        for (index, _) in visible.iter().enumerate().filter(|&(_, &shown)| shown) {
-            let next = index + 1;
-            // The sections of this stretch: concrete barriers have a joint
-            // at the start of each section.
-            let joint = style == WallStyle::Concrete && index % BARRIER_SECTION == 0;
-            let split = BARRIER_JOINT / step;
-            let pieces: &[(f32, f32, bool)] = if joint {
-                &[(0.0, split, true), (split, 1.0, false)]
-            } else {
-                &[(0.0, 1.0, false)]
-            };
-            for &(t0, t1, dark) in pieces {
-                let along = |t: f32| (index as f32 + t) * step / profile.tile.x;
-                for k in 0..profile.points.len() - 1 {
-                    let (a, b) = (profile.points[k], profile.points[k + 1]);
-                    let corner = |t: f32, p: Vec2| at(index, p).lerp(at(next, p), t);
+        let points = profile.points.len();
+        let middle = profile.points.iter().sum::<Vec2>() / points as f32;
+        // Each run of wall without a break is one sheet, its corners shared
+        // round the profile and along the road.
+        let mut index = 0;
+        while index < segments {
+            if !visible[index] {
+                index += 1;
+                continue;
+            }
+            let start = index;
+            while index < segments && visible[index] {
+                index += 1;
+            }
+            let end = index;
+            let first = mesh.positions.len() as u32;
+            for i in start..=end {
+                let u = i as f32 * step / profile.tile.x;
+                for (k, &p) in profile.points.iter().enumerate() {
+                    let position = at(i, p);
                     // Shaded smoothly round the profile.
-                    let normal = |t: f32, k: usize| {
-                        let n = point_normal(k);
-                        direction(index, n)
-                            .lerp(direction(next, n), t)
-                            .normalize_or_zero()
-                    };
-                    let corners = [(t0, a, k), (t1, a, k), (t1, b, k + 1), (t0, b, k + 1)].map(
-                        |(t, p, point)| {
-                            let position = corner(t, p);
-                            let n = normal(t, point);
-                            let v = around[point] / profile.tile.y;
-                            let tint = wall_tint(style, position, p.y);
-                            let tint = if dark {
-                                tint.mix(&Color::srgb(0.25, 0.25, 0.25), 0.8)
-                            } else {
-                                tint
-                            };
-                            (position, n, Vec2::new(along(t), v), tint)
-                        },
-                    );
-                    mesh.quad(corners);
+                    let normal = direction(i, point_normal(k));
+                    let uv = Vec2::new(u, around[k] / profile.tile.y);
+                    mesh.push(position, normal, uv, wall_tint(style, position, p.y));
+                }
+            }
+            let corner = |i: usize, k: usize| first + ((i - start) * points + k) as u32;
+            for i in start..end {
+                for k in 0..points - 1 {
+                    mesh.sheet_quad([
+                        corner(i, k),
+                        corner(i + 1, k),
+                        corner(i + 1, k + 1),
+                        corner(i, k + 1),
+                    ]);
+                }
+            }
+            // Concrete barriers come in sections with dark joints between
+            // them, just in front of the barrier.
+            if style == WallStyle::Concrete {
+                let dark = Color::srgb(0.2, 0.2, 0.2);
+                let t = BARRIER_JOINT / step;
+                for i in (start..end).filter(|i| i % BARRIER_SECTION == 0) {
+                    for k in 0..points - 1 {
+                        let corners = [(0.0, k), (t, k), (t, k + 1), (0.0, k + 1)].map(|(t, k)| {
+                            let p = profile.points[k];
+                            let normal = direction(i, point_normal(k));
+                            let position = at(i, p).lerp(at(i + 1, p), t) + normal * 0.004;
+                            (position, normal, Vec2::ZERO, dark)
+                        });
+                        mesh.quad(corners);
+                    }
                 }
             }
             // Ends where the wall starts or stops beside the rock: the
             // profile, filled in from its middle.
-            let middle = profile.points.iter().sum::<Vec2>() / profile.points.len() as f32;
-            for (end, open, facing) in [(index, !before(index), -1.0), (next, !after(index), 1.0)] {
+            for (at_end, open, facing) in
+                [(start, !before(start), -1.0), (end, !after(end - 1), 1.0)]
+            {
                 if !open {
                     continue;
                 }
                 let ahead = {
-                    let (a, b) = (line.offset_point(index, 0.0), line.offset_point(next, 0.0));
+                    let segment = at_end.min(end - 1);
+                    let (a, b) = (
+                        line.offset_point(segment, 0.0),
+                        line.offset_point(segment + 1, 0.0),
+                    );
                     Vec3::new(b.x - a.x, 0.0, b.y - a.y).normalize_or_zero() * facing
                 };
-                let center = at(end, middle);
-                for k in 0..profile.points.len() {
-                    let (a, b) = (
-                        profile.points[k],
-                        profile.points[(k + 1) % profile.points.len()],
-                    );
-                    let uv = |p: Vec2| (p - middle) / profile.tile.y;
-                    let tint = wall_tint(style, center, middle.y);
+                let center = at(at_end, middle);
+                let tint = wall_tint(style, center, middle.y);
+                let uv = |p: Vec2| (p - middle) / profile.tile.y;
+                for k in 0..points {
+                    let (a, b) = (profile.points[k], profile.points[(k + 1) % points]);
                     mesh.triangle(
                         [
                             (center, uv(middle)),
-                            (at(end, a), uv(a)),
-                            (at(end, b), uv(b)),
+                            (at(at_end, a), uv(a)),
+                            (at(at_end, b), uv(b)),
                         ],
                         ahead,
                         tint,
@@ -768,6 +784,28 @@ impl WallMesh {
         self.uvs.push(uv.to_array());
         self.colors.push(color.to_linear().to_f32_array());
         (self.positions.len() - 1) as u32
+    }
+
+    /// A quad between four vertices already pushed, facing the way their
+    /// normals point on average.
+    fn sheet_quad(&mut self, [a, b, c, d]: [u32; 4]) {
+        let position = |i: u32| Vec3::from(self.positions[i as usize]);
+        let facing: Vec3 = [a, b, c, d]
+            .iter()
+            .map(|&i| Vec3::from(self.normals[i as usize]))
+            .sum();
+        let (pa, pb, pc) = (position(a), position(b), position(c));
+        let face = (pb - pa).cross(pc - pa);
+        let face = if face.length_squared() > 1e-12 {
+            face
+        } else {
+            (position(c) - pa).cross(position(d) - pa)
+        };
+        if face.dot(facing) >= 0.0 {
+            self.indices.extend([a, b, c, a, c, d]);
+        } else {
+            self.indices.extend([a, c, b, a, d, c]);
+        }
     }
 
     /// A quad, facing the way its corners' normals point on average.

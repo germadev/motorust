@@ -133,6 +133,8 @@ struct Prepared {
     pieces: Vec<(Mesh, StandardMaterial)>,
     /// The lamps of its tunnels and mine (see [`lamps`]).
     lamps: Vec<lamps::Lamp>,
+    /// Its grass beside the roads, drawn only near the camera.
+    grass: Vec<tufts::GrassPiece>,
     trees: props::TreePlan,
 }
 
@@ -170,13 +172,13 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
     let (structures, lamps) = structures::structure_pieces(&track, &terrain, scenery, textures);
     pieces.extend(structures);
-    pieces.extend(tufts::tuft_pieces(
+    let grass = tufts::tuft_pieces(
         &track,
         &terrain,
         &roadside.shoulders,
         &roadside.edges,
         textures,
-    ));
+    );
     let trees = props::plan_trees(&track, &terrain, scenery);
     structures::draw_signs(scenery);
     Prepared {
@@ -189,6 +191,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         roadside,
         pieces,
         lamps,
+        grass,
         trees,
     }
 }
@@ -348,6 +351,7 @@ fn build(
         roadside,
         pieces,
         lamps,
+        grass,
         trees,
     } = prepared;
     let shore_image = builder.images.add(shore_image);
@@ -393,6 +397,15 @@ fn build(
                 if shadowless {
                     piece.insert(NotShadowCaster);
                 }
+            }
+            for piece in grass {
+                let range = piece.range();
+                world.spawn((
+                    Mesh3d(assets.meshes.add(piece.mesh)),
+                    MeshMaterial3d(assets.materials.add(piece.material)),
+                    range,
+                    NotShadowCaster,
+                ));
             }
             road::spawn_gantries(world, &track, scenery, &mut assets);
             structures::spawn_signs(world, &track, &terrain, scenery, &mut assets);

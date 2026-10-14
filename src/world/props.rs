@@ -3,6 +3,7 @@
 //! mar, según el escenario de cada pista ([`Scenery`]). Todo se coloca al
 //! azar, pero siempre igual, con [`random01`].
 
+use bevy::camera::visibility::VisibilityRange;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::prelude::*;
 
@@ -821,11 +822,27 @@ struct PlannedTree {
 pub struct TreePlan {
     scattered: Vec<PlannedTree>,
     forests: Vec<PlannedTree>,
-    /// The variants of each species, each two meshes: its wood and the
-    /// core of its crowns (see [`merged_variant`]), and its leaves (see
-    /// [`leaf_cards`]).
-    models: Vec<(Species, Vec<(Mesh, Mesh)>)>,
+    /// The meshes of the variants of each species.
+    models: Vec<(Species, Vec<TreeMeshes>)>,
 }
+
+/// The meshes of a tree variant: up close, its wood and the dark core of
+/// its crowns (see [`merged_variant`]) and its leaves (see [`leaf_cards`]);
+/// further away, where the leaves would be too small to make out, its wood
+/// and its crowns solid, which is much cheaper to draw.
+struct TreeMeshes {
+    near: Mesh,
+    leaves: Mesh,
+    far: Mesh,
+}
+
+/// Up to how far from the camera trees are drawn with their leaves (m), and
+/// over how much further they fade into their solid crowns.
+const TREE_NEAR: f32 = 70.0;
+const TREE_FADE: f32 = 12.0;
+/// How much bigger and lighter the solid crowns of the trees far away are
+/// than their dark cores up close: as big and as light as the leaves look.
+const FAR_CROWN: (f32, f32) = (1.06, 1.0);
 
 /// The colour of the bark (sRGB).
 const BARK: Color = Color::srgb(0.32, 0.22, 0.15);
@@ -837,17 +854,19 @@ const CROWN_CORE: f32 = 0.62;
 const CORE_SHADE: f32 = 0.5;
 /// How many times over the cards of leaves cover each crown: the leaves on
 /// them leave gaps, and many are seen edge on.
-const LEAF_COVER: f32 = 5.5;
+const LEAF_COVER: f32 = 3.8;
 /// How deep into each crown its leaves go, from its outside (fraction of
 /// the way to its middle), darker the deeper.
 const LEAF_DEPTH: f32 = 0.3;
 /// How much lighter the leaves are drawn than their colours.
 const LEAF_LIGHT: f32 = 1.3;
 
-/// A tree variant's wood painted the colour of bark and the solid core of
-/// its crowns as one mesh, so each tree is two entities to draw (this and
-/// its leaves, see [`leaf_cards`]), not one per branch and crown.
-fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
+/// A tree variant's wood painted the colour of bark and its crowns as one
+/// mesh, so each tree is one entity to draw (and its leaves another, see
+/// [`leaf_cards`]), not one per branch and crown. The crowns are `crown`
+/// times as big and as light: `(CROWN_CORE, CORE_SHADE)` for the dark core
+/// under the leaves, [`FAR_CROWN`] solid, far away.
+fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant, crown: (f32, f32)) -> Mesh {
     let bark = BARK.to_linear().to_f32_array();
     let mut merged: Option<Mesh> = None;
     for (parts, wood) in [(&variant.wood, true), (&variant.crowns, false)] {
@@ -855,7 +874,7 @@ fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
             let transform = if wood {
                 *transform
             } else {
-                transform.with_scale(transform.scale * CROWN_CORE)
+                transform.with_scale(transform.scale * crown.0)
             };
             let mut part = meshes
                 .get(handle)
@@ -872,7 +891,7 @@ fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
             {
                 for color in colors {
                     for channel in &mut color[..3] {
-                        *channel *= CORE_SHADE;
+                        *channel *= crown.1;
                     }
                 }
             }
@@ -924,7 +943,7 @@ fn leaf_cards(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
         // overlapping.
         let card = (0.6 + 0.35 * size).clamp(0.9, 2.1);
         let area = 4.0 * std::f32::consts::PI * size * size;
-        let count = ((area / (card * card) * LEAF_COVER) as usize).clamp(30, 260);
+        let count = ((area / (card * card) * LEAF_COVER) as usize).clamp(24, 170);
         let seed = variant.seed * 131 + k as u32 * 977;
         for n in 0..count as u32 {
             let random = |j: u32| random01(seed + n * 12 + j);
@@ -1064,11 +1083,10 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
             let variants = build_tree_variants(kind, &mut scratch);
             let merged = variants
                 .iter()
-                .map(|variant| {
-                    (
-                        merged_variant(&scratch, variant),
-                        leaf_cards(&scratch, variant),
-                    )
+                .map(|variant| TreeMeshes {
+                    near: merged_variant(&scratch, variant, (CROWN_CORE, CORE_SHADE)),
+                    leaves: leaf_cards(&scratch, variant),
+                    far: merged_variant(&scratch, variant, FAR_CROWN),
                 })
                 .collect();
             (kind, merged)
@@ -1081,9 +1099,9 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
     }
 }
 
-/// A tree variant's meshes: its wood and the core of its crowns, and its
-/// leaves.
-type TreeModel = (Handle<Mesh>, Handle<Mesh>);
+/// A tree variant's meshes (see [`TreeMeshes`]): up close, its wood and the
+/// core of its crowns, and its leaves; far away, solid.
+type TreeModel = (Handle<Mesh>, Handle<Mesh>, Handle<Mesh>);
 
 /// Plants the trees planned for a circuit, except those in the way of what
 /// is `occupied`: up to [`MAX_TREES`] scattered ones, and the forests.
@@ -1118,10 +1136,11 @@ fn spawn_trees(
                 *kind,
                 variants
                     .iter()
-                    .map(|(body, foliage)| {
+                    .map(|meshes| {
                         (
-                            assets.meshes.add(body.clone()),
-                            assets.meshes.add(foliage.clone()),
+                            assets.meshes.add(meshes.near.clone()),
+                            assets.meshes.add(meshes.leaves.clone()),
+                            assets.meshes.add(meshes.far.clone()),
                         )
                     })
                     .collect(),
@@ -1143,20 +1162,40 @@ fn spawn_trees(
     let plant = |world: &mut ChildSpawnerCommands, tree: &PlannedTree| {
         let random = |k: u32| random01(tree.seed * 8 + k);
         let variants = model(tree.kind);
-        let (body, foliage) = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
+        let (body, foliage, far) =
+            &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
         let scale = 0.75 + 0.60 * random(5);
         let transform = Transform::from_xyz(tree.position.x, tree.height, tree.position.y)
             .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
             .with_scale(Vec3::splat(scale));
+        // Leaves up close, fading into solid crowns further away.
+        let near = VisibilityRange {
+            start_margin: 0.0..0.0,
+            end_margin: TREE_NEAR..TREE_NEAR + TREE_FADE,
+            use_aabb: false,
+        };
+        let distant = VisibilityRange {
+            start_margin: TREE_NEAR..TREE_NEAR + TREE_FADE,
+            end_margin: f32::MAX..f32::MAX,
+            use_aabb: false,
+        };
         world.spawn((
             Mesh3d(body.clone()),
             MeshMaterial3d(material.clone()),
             transform,
+            near.clone(),
         ));
         world.spawn((
             Mesh3d(foliage.clone()),
             MeshMaterial3d(leaves.clone()),
             transform,
+            near,
+        ));
+        world.spawn((
+            Mesh3d(far.clone()),
+            MeshMaterial3d(material.clone()),
+            transform,
+            distant,
         ));
     };
     for tree in plan.scattered.iter().filter(free).take(MAX_TREES) {

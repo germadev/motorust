@@ -9,8 +9,11 @@
 //!   end on a straight line but where the grass begins.
 //!
 //! They are gathered into meshes for every stretch of each road, so the
-//! stretches out of sight are not drawn.
+//! stretches out of sight are not drawn, and they are only drawn near the
+//! camera, where they can be made out, and cast no shadows: they are many,
+//! and see-through, which is dear to draw.
 
+use bevy::camera::visibility::VisibilityRange;
 use bevy::prelude::*;
 
 use super::foliage::ALPHA_CUTOFF;
@@ -23,9 +26,35 @@ use crate::track::{CURB_WIDTH, SURFACE_Y, Surface, Track};
 
 /// How many tufts grow on each side of each stretch of road between two
 /// points of its centre line, at most.
-const PER_STRETCH: u32 = 7;
+const PER_STRETCH: u32 = 6;
 /// How many points of the centre line each mesh gathers.
-const CHUNK: usize = 48;
+const CHUNK: usize = 16;
+/// Up to how far from the camera the tufts and the ragged edges are drawn
+/// (m, from the middle of each mesh), and over how much further they fade
+/// out.
+const TUFTS_REACH: f32 = 55.0;
+const EDGE_REACH: f32 = 170.0;
+const REACH_FADE: f32 = 12.0;
+
+/// A mesh of grass with its material, drawn up to `reach` m from the
+/// camera (from the middle of the mesh), fading out over [`REACH_FADE`]
+/// more, and casting no shadow.
+pub struct GrassPiece {
+    pub mesh: Mesh,
+    pub material: StandardMaterial,
+    pub reach: f32,
+}
+
+impl GrassPiece {
+    /// Up to where it is drawn.
+    pub fn range(&self) -> VisibilityRange {
+        VisibilityRange {
+            start_margin: 0.0..0.0,
+            end_margin: self.reach..self.reach + REACH_FADE,
+            use_aabb: true,
+        }
+    }
+}
 /// How far from the edge of the asphalt (or of its curbs) and from the
 /// walls the tufts keep (m).
 const CLEAR_OF_CURB: f32 = 0.12;
@@ -54,7 +83,7 @@ pub fn tuft_pieces(
     shoulders: &[Vec<[Surface; 2]>],
     edges: &[Vec<[f32; 2]>],
     textures: &WorldTextures,
-) -> Vec<(Mesh, StandardMaterial)> {
+) -> Vec<GrassPiece> {
     let material = StandardMaterial {
         base_color_texture: Some(textures.tuft.clone()),
         alpha_mode: AlphaMode::Mask(ALPHA_CUTOFF),
@@ -71,14 +100,18 @@ pub fn tuft_pieces(
     };
     let tufts = tuft_meshes(track, terrain, shoulders, edges, textures.grass_color);
     let fringes = edge_meshes(track, terrain, shoulders, textures.grass_color);
+    let piece = |material: &StandardMaterial, reach: f32| {
+        let material = material.clone();
+        move |mesh: Mesh| GrassPiece {
+            mesh,
+            material: material.clone(),
+            reach,
+        }
+    };
     tufts
         .into_iter()
-        .map(|mesh| (mesh, material.clone()))
-        .chain(
-            fringes
-                .into_iter()
-                .map(|mesh| (mesh, edge_material.clone())),
-        )
+        .map(piece(&material, TUFTS_REACH))
+        .chain(fringes.into_iter().map(piece(&edge_material, EDGE_REACH)))
         .collect()
 }
 

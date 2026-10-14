@@ -160,7 +160,8 @@ impl Canvas {
             mag_filter: ImageFilterMode::Linear,
             min_filter: ImageFilterMode::Linear,
             mipmap_filter: ImageFilterMode::Linear,
-            anisotropy_clamp: 16,
+            // Masked cards are many and overlap: cheaper filtering for them.
+            anisotropy_clamp: if masked { 4 } else { 16 },
             ..default()
         });
         generate_mipmaps(&mut image);
