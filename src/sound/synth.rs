@@ -19,6 +19,8 @@ use std::sync::{Arc, Mutex};
 use bevy::audio::{ChannelCount, Decodable, SampleRate, Source};
 use bevy::prelude::*;
 
+use crate::geometry::smoothstep;
+
 pub const SAMPLE_RATE: u32 = 44_100;
 /// Motores que suenan a la vez: uno por moto de la parrilla, para que cada
 /// moto tenga siempre el suyo (si una voz pasara de una moto a otra, el
@@ -99,6 +101,10 @@ pub enum Sound {
     Click,
     /// Confirmar en el menú.
     Confirm,
+    /// A start light coming on: a short beep.
+    StartLight,
+    /// The start lights going out: a longer, higher beep.
+    StartGo,
 }
 
 /// Todo lo que el juego controla del sonido.
@@ -368,6 +374,8 @@ impl Shot {
             Sound::Landing { .. } => 0.4,
             Sound::Click => 0.08,
             Sound::Confirm => 0.3,
+            Sound::StartLight => 0.2,
+            Sound::StartGo => 0.6,
         }
     }
 
@@ -404,6 +412,17 @@ impl Shot {
             Sound::Confirm => {
                 let (note, start) = if t < 0.1 { (660.0, 0.0) } else { (990.0, 0.1) };
                 let value = (TAU * note * t).sin() * (-(t - start) * 18.0).exp() * 0.35;
+                (value, 1.0, 1.0)
+            }
+            // Square-ish beeps, like a timing system's, with soft edges.
+            Sound::StartLight | Sound::StartGo => {
+                let (note, length) = match self.sound {
+                    Sound::StartLight => (880.0, 0.16),
+                    _ => (1320.0, 0.5),
+                };
+                let edges = smoothstep(0.0, 0.01, t) * (1.0 - smoothstep(length - 0.04, length, t));
+                let wave = (TAU * note * t).sin();
+                let value = (wave * 3.0).tanh() / 3.0f32.tanh() * edges * 0.3;
                 (value, 1.0, 1.0)
             }
         };
@@ -649,6 +668,33 @@ mod tests {
             samples.iter().map(|(l, _)| l * l).sum::<f32>() / samples.len() as f32
         };
         assert!(loudness(1.0) > 1.5 * loudness(0.0));
+    }
+
+    #[test]
+    fn the_start_lights_beep_and_the_go_is_higher_and_longer() {
+        let beep = |sound: Sound| {
+            let controls = Arc::new(Controls::default());
+            controls.master.set(1.0);
+            let mut mixer = Mixer::new(controls.clone());
+            controls.play(sound);
+            let samples: Vec<f32> = (0..SAMPLE_RATE).map(|_| mixer.frame().0).collect();
+            let heard = |s: &f32| s.abs() > 0.05;
+            let length = samples.iter().rposition(heard).unwrap_or(0) as f32 / SAMPLE_RATE as f32;
+            // How often it crosses nought: twice its pitch.
+            let crossings = samples
+                .windows(2)
+                .take((length * SAMPLE_RATE as f32) as usize)
+                .filter(|pair| pair[0] < 0.0 && pair[1] >= 0.0)
+                .count() as f32
+                / length.max(1e-3);
+            assert!(mixer.shots.is_empty(), "and it ends");
+            (length, crossings)
+        };
+        let (light, light_pitch) = beep(Sound::StartLight);
+        let (go, go_pitch) = beep(Sound::StartGo);
+        assert!(light > 0.1 && light < 0.2, "{light} s");
+        assert!(go > 2.0 * light, "{go} s");
+        assert!(go_pitch > 1.3 * light_pitch, "{go_pitch} > {light_pitch}");
     }
 
     #[test]

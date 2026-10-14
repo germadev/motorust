@@ -408,9 +408,13 @@ fn show_pause_menu(
         Language::Spanish => "PAUSA",
         Language::English => "PAUSE",
     };
+    // Resuming is the main action: in blue.
     let rows: Vec<Row> = items(page, lang)
         .into_iter()
-        .map(|(label, _)| Row::new(label))
+        .map(|(label, action)| match action {
+            Action::Resume => Row::primary(label),
+            _ => Row::new(label),
+        })
         .collect();
     let back = lang.hint_resume();
     let prompts = menu_prompts(

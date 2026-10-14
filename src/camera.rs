@@ -3,6 +3,10 @@
 //! visión con la velocidad. El stick derecho del mando dice hacia dónde mira
 //! respecto a la moto: arriba, hacia delante como siempre; a un lado, a ese
 //! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante.
+//!
+//! Once the players' race is over, it follows the bikes the race watches
+//! come in ([`Watching`]), cutting from one to the next, over the whole
+//! screen in split screen too.
 
 use std::ops::Range;
 
@@ -14,6 +18,7 @@ use crate::bike::{BikeState, BikeTuning, CrashState, Knock, LocalPlayer, Player}
 use crate::geometry::{approach, smoothstep, wrap_angle};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::menu::GameState;
+use crate::race::Watching;
 use crate::welcome::GameMode;
 // The fog is the colour of the sky at the horizon: far away, the land melts
 // into the sky.
@@ -54,20 +59,17 @@ pub struct ChaseCameraPlugin;
 
 impl Plugin for ChaseCameraPlugin {
     fn build(&self, app: &mut App) {
-        // Entre los menús la cámara se desliza de un sitio a otro.
+        // Entre los menús la cámara se desliza de un sitio a otro. The
+        // welcome screen, the lobby and the modes share one flight over the
+        // track (`crate::welcome`): between them it just flies on, with no
+        // glide that would stop it and set it off again.
         for (from, to) in [
             (GameState::Welcome, GameState::Tracks),
             (GameState::Tracks, GameState::Welcome),
-            (GameState::Welcome, GameState::Lobby),
-            (GameState::Lobby, GameState::Welcome),
             (GameState::Lobby, GameState::Tracks),
             (GameState::Tracks, GameState::Lobby),
             (GameState::Tracks, GameState::Select),
             (GameState::Select, GameState::Tracks),
-            (GameState::Welcome, GameState::Modes),
-            (GameState::Modes, GameState::Welcome),
-            (GameState::Lobby, GameState::Modes),
-            (GameState::Modes, GameState::Lobby),
             (GameState::Modes, GameState::Tracks),
             (GameState::Tracks, GameState::Modes),
             (GameState::Modes, GameState::Select),
@@ -118,6 +120,8 @@ struct ChaseCamera {
     /// its own sideways axis: round a loop it goes round with the bike.
     /// `None` is upright.
     tilt: Option<Quat>,
+    /// The bike it watches come in, if it is not the player's.
+    watched: Option<Entity>,
 }
 
 /// El stick derecho del mando que más se esté moviendo (x a la derecha, y
@@ -217,12 +221,15 @@ fn setup_split_cameras(
 
 /// Divide la pantalla en dos viewports horizontales:
 /// Jugador 1 arriba (0 .. alto/2), Jugador 2 abajo (alto/2 .. alto).
+/// While the others are watched come in, the first camera takes the whole
+/// screen.
 fn update_camera_viewports(
     windows: Query<&Window, With<PrimaryWindow>>,
     game_mode: Res<GameMode>,
+    watching: Option<Res<Watching>>,
     mut cameras: Query<(&CameraPlayer, &mut Camera)>,
 ) {
-    if *game_mode == GameMode::SplitScreen {
+    if *game_mode == GameMode::SplitScreen && watching.is_none() {
         let Some(window) = windows.iter().next() else {
             return;
         };
@@ -255,9 +262,11 @@ fn update_camera_viewports(
         for (cam_player, mut camera) in &mut cameras {
             if cam_player.0 == 0 {
                 camera.order = 0;
-                camera.viewport = None;
+                if camera.viewport.is_some() {
+                    camera.viewport = None;
+                }
                 camera.is_active = true;
-            } else {
+            } else if camera.is_active {
                 camera.is_active = false;
             }
         }
@@ -410,6 +419,11 @@ fn follow_player(
         ),
         Without<ChaseCamera>,
     >,
+    every_bike: Query<
+        (&Transform, &BikeState, Option<(&Knock, &CrashState)>),
+        Without<ChaseCamera>,
+    >,
+    watching: Option<Res<Watching>>,
     mut cameras: Query<(
         &mut Transform,
         &mut Projection,
@@ -417,8 +431,20 @@ fn follow_player(
         &CameraPlayer,
     )>,
 ) {
+    let watched = watching.map(|watching| watching.bike);
     for (mut transform, mut projection, mut chase, cam_player) in &mut cameras {
-        let bike_data = if cam_player.0 == 0 {
+        // Watching another bike, or back on the player's: a cut, the camera
+        // right behind it.
+        let watches = watched.filter(|_| cam_player.0 == 0);
+        if chase.watched != watches {
+            *chase = ChaseCamera {
+                watched: watches,
+                ..default()
+            };
+        }
+        let bike_data = if let Some(bike) = watches {
+            every_bike.get(bike).ok()
+        } else if cam_player.0 == 0 {
             player_bikes.iter().next()
         } else {
             other_bikes

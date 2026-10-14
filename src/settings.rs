@@ -10,7 +10,10 @@ use std::time::{Duration, Instant};
 use bevy::prelude::*;
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::{Render, RenderApp, RenderSystems};
-use bevy::window::{MonitorSelection, PresentMode, PrimaryWindow, WindowMode};
+use bevy::window::{
+    Monitor, MonitorSelection, OnMonitor, PresentMode, PrimaryMonitor, PrimaryWindow, VideoMode,
+    VideoModeSelection, WindowMode,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::locale::Language;
@@ -57,9 +60,35 @@ pub struct Settings {
     #[serde(rename = "music_level")]
     pub music_volume: u32,
     pub music_enabled: bool,
-    /// The championship under way and the best of each track (see
-    /// [`crate::race::Records`]).
+    /// How races start: at the lights, or when a player opens the throttle.
+    pub start: RaceStart,
+    /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
+}
+
+/// How a race starts.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum RaceStart {
+    /// At the lights: five red lights come on one by one and the race
+    /// starts when they go out (see [`crate::race::lights`]).
+    #[default]
+    Lights,
+    /// When a player first opens the throttle.
+    Throttle,
+}
+
+/// The starts that can be chosen, in order.
+pub const RACE_STARTS: [RaceStart; 2] = [RaceStart::Lights, RaceStart::Throttle];
+
+impl RaceStart {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (RaceStart::Lights, Language::Spanish) => "Semáforo",
+            (RaceStart::Lights, Language::English) => "Lights",
+            (RaceStart::Throttle, Language::Spanish) => "Acelerando",
+            (RaceStart::Throttle, Language::English) => "Throttle",
+        }
+    }
 }
 
 /// Volume the effects and the music start at (%).
@@ -76,6 +105,7 @@ impl Default for Settings {
             fx_volume: DEFAULT_VOLUME,
             music_volume: DEFAULT_VOLUME,
             music_enabled: true,
+            start: RaceStart::default(),
             records: crate::race::Records::default(),
         }
     }
@@ -602,13 +632,36 @@ impl Settings {
             desired_maximum_frame_latency: NonZero::new(FRAMES_QUEUED),
             ..default()
         };
-        self.configure(&mut window);
+        self.configure(&mut window, None);
         window
     }
 
-    fn configure(&self, window: &mut Window) {
+    /// Whether the screen itself is switched to the resolution chosen: in
+    /// fullscreen with a fixed one, out of the browser. Then the monitor's
+    /// display modes are needed, known only once the window is open.
+    fn exclusive(&self) -> bool {
+        !WEB && self.fullscreen && matches!(self.resolution, Resolution::Window(..))
+    }
+
+    /// Sets `window` as these settings ask. In fullscreen with a fixed
+    /// resolution, the screen is switched to the display mode of `monitor`
+    /// that comes closest to it (in pixels); with a dynamic one, or with no
+    /// monitor known yet, the window covers the screen as it is.
+    fn configure(&self, window: &mut Window, monitor: Option<&Monitor>) {
         if self.fullscreen {
-            window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+            let mode = match (self.resolution, monitor) {
+                (Resolution::Window(width, height), Some(monitor)) if !WEB => {
+                    fitting_mode(&monitor.video_modes, width, height)
+                }
+                _ => None,
+            };
+            window.mode = match mode {
+                Some(mode) => WindowMode::Fullscreen(
+                    MonitorSelection::Current,
+                    VideoModeSelection::Specific(mode),
+                ),
+                None => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+            };
         } else {
             window.mode = WindowMode::Windowed;
             match self.resolution {
@@ -776,26 +829,54 @@ fn toggle_fullscreen(keyboard: Res<ButtonInput<KeyCode>>, mut settings: ResMut<S
     settings.fullscreen = !settings.fullscreen;
 }
 
+/// The display mode of a monitor that comes closest to `width` × `height`
+/// pixels: the nearest size (the same one if there is), then the fastest
+/// refresh rate and the deepest colour.
+pub fn fitting_mode(modes: &[VideoMode], width: u32, height: u32) -> Option<VideoMode> {
+    modes.iter().copied().min_by_key(|mode| {
+        let size = mode.physical_size;
+        (
+            size.x.abs_diff(width) + size.y.abs_diff(height),
+            std::cmp::Reverse(mode.refresh_rate_millihertz),
+            std::cmp::Reverse(mode.bit_depth),
+        )
+    })
+}
+
 /// Al cambiar los ajustes se guardan y, si cambian la pantalla completa, la
 /// resolución o el límite de FPS, la ventana se pone como piden.
+#[allow(clippy::type_complexity)]
 fn apply_settings(
     settings: Res<Settings>,
-    mut window: Query<&mut Window, With<PrimaryWindow>>,
+    mut window: Query<(&mut Window, Option<&OnMonitor>), With<PrimaryWindow>>,
+    monitors: Query<(&Monitor, Has<PrimaryMonitor>)>,
     mut applied: Local<Option<(bool, Resolution, FpsLimit)>>,
 ) {
     let wanted = (settings.fullscreen, settings.resolution, settings.fps);
-    // La ventana ya se abrió con los ajustes guardados.
-    let applied = applied.get_or_insert(wanted);
-    if !settings.is_changed() || settings.is_added() {
-        return;
-    }
+    // La ventana ya se abrió con los ajustes guardados; salvo que la
+    // pantalla deba pasar a la resolución elegida, que espera a conocer los
+    // modos del monitor.
+    let applied = applied.get_or_insert(if settings.exclusive() {
+        (false, Resolution::Dynamic, settings.fps)
+    } else {
+        wanted
+    });
     if *applied != wanted
-        && let Ok(mut window) = window.single_mut()
+        && let Ok((mut window, on)) = window.single_mut()
     {
-        settings.configure(&mut window);
-        *applied = wanted;
+        // The monitor the window is on, or else the main one.
+        let monitor = on
+            .and_then(|on| monitors.get(on.0).ok())
+            .or_else(|| monitors.iter().find(|(_, primary)| *primary))
+            .map(|(monitor, _)| monitor);
+        if monitor.is_some() || !settings.exclusive() {
+            settings.configure(&mut window, monitor);
+            *applied = wanted;
+        }
     }
-    settings.save();
+    if settings.is_changed() && !settings.is_added() {
+        settings.save();
+    }
 }
 
 /// The frame rate cap chosen, if any ([`FpsLimit::Cap`]), copied into the
@@ -887,13 +968,10 @@ mod tests {
         settings
             .controls
             .bind_button(Action::Throttle, GamepadButton::RightTrigger);
-        // The records and the championship under way are kept too.
+        // The records and the start are kept too.
         settings.records.lap("Bahía GP", 71.25);
         settings.records.checkpoint("Bahía GP", 3);
-        settings.records.story = Some(crate::race::Championship {
-            round: 2,
-            points: [10, 8, 6, 5, 4, 3, 2, 1],
-        });
+        settings.start = RaceStart::Throttle;
         let text = ron::ser::to_string_pretty(&settings, default()).unwrap();
         let loaded: Settings = ron::from_str(&text).unwrap();
         assert_eq!(loaded, settings);
@@ -902,6 +980,15 @@ mod tests {
         let partial: Settings = ron::from_str("(fps: Unlimited)").unwrap();
         assert_eq!(partial.fps, FpsLimit::Unlimited);
         assert_eq!(partial.controls, Controls::default());
+        assert_eq!(partial.start, RaceStart::Lights);
+        // One that still keeps a championship under way (the arcade no
+        // longer does) loads without it.
+        let older: Settings = ron::from_str(
+            "(records: (story: Some((round: 2, points: (10, 8, 6, 5, 4, 3, 2, 1))), \
+             best_laps: [(\"Bahía GP\", 71.25)]))",
+        )
+        .unwrap();
+        assert_eq!(older.records.best_lap("Bahía GP"), Some(71.25));
     }
 
     #[test]
@@ -959,6 +1046,69 @@ mod tests {
         assert_eq!(Resolution::Dynamic.name(None, Language::English), "Dynamic");
         assert_eq!(RESOLUTIONS[0], Resolution::Dynamic);
         assert_eq!(Resolution::default(), Resolution::Dynamic);
+    }
+
+    #[test]
+    fn fullscreen_takes_the_display_mode_nearest_the_resolution() {
+        let mode = |width: u32, height: u32, hz: u32| VideoMode {
+            physical_size: UVec2::new(width, height),
+            bit_depth: 32,
+            refresh_rate_millihertz: hz * 1000,
+        };
+        let modes = [
+            mode(2560, 1600, 60),
+            mode(1920, 1200, 60),
+            mode(1280, 720, 60),
+            mode(1280, 720, 120),
+            mode(1024, 768, 60),
+        ];
+        // The same size, at its fastest rate.
+        let found = fitting_mode(&modes, 1280, 720).unwrap();
+        assert_eq!(found, mode(1280, 720, 120));
+        // A size the screen lacks: the nearest one.
+        assert_eq!(
+            fitting_mode(&modes, 1920, 1080).unwrap().physical_size,
+            UVec2::new(1920, 1200)
+        );
+        assert_eq!(fitting_mode(&[], 1920, 1080), None);
+        // Only a fixed resolution in fullscreen switches the screen.
+        let fixed = Settings {
+            fullscreen: true,
+            resolution: Resolution::Window(1280, 720),
+            ..default()
+        };
+        assert!(fixed.exclusive());
+        assert!(
+            !Settings {
+                resolution: Resolution::Dynamic,
+                ..fixed.clone()
+            }
+            .exclusive()
+        );
+        let monitor = Monitor {
+            name: None,
+            physical_height: 1600,
+            physical_width: 2560,
+            physical_position: IVec2::ZERO,
+            refresh_rate_millihertz: Some(60_000),
+            scale_factor: 2.0,
+            video_modes: modes.to_vec(),
+        };
+        let mut window = Window::default();
+        fixed.configure(&mut window, Some(&monitor));
+        assert_eq!(
+            window.mode,
+            WindowMode::Fullscreen(
+                MonitorSelection::Current,
+                VideoModeSelection::Specific(mode(1280, 720, 120))
+            )
+        );
+        // Before the monitor is known, the window covers the screen as it is.
+        fixed.configure(&mut window, None);
+        assert_eq!(
+            window.mode,
+            WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+        );
     }
 
     #[test]

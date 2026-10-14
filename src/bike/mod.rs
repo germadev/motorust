@@ -136,10 +136,15 @@ impl Plugin for BikePlugin {
 pub struct RaceControls;
 
 /// Estado de la carrera: los rivales esperan en la parrilla hasta que el
-/// jugador acelera por primera vez.
+/// jugador acelera por primera vez; or, with a start at the lights, until
+/// they go out.
 #[derive(Resource, Default)]
 pub struct Race {
     pub started: bool,
+    /// The race starts at the lights ([`crate::race::lights`]): until it
+    /// starts, every bike stays on the grid, though the players' engines
+    /// rev, and the throttle does not start it.
+    pub held: bool,
 }
 
 /// A gamepad's throttle and brake only count once they have been seen at
@@ -197,6 +202,33 @@ pub struct Rider(pub usize);
 /// over): it no longer answers the controls and rolls to a stop.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Retired;
+
+/// A player's bike the machine rides once it has crossed the line at the
+/// end of the race, as it would a rival's, so that it does not crash while
+/// the others come in (see [`autopilot`]).
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Autopilot;
+
+/// How much of its bike the autopilot uses: an easy pace, slower than any
+/// rival, on a lap that no longer counts.
+const AUTOPILOT_SKILL: f32 = 0.85;
+/// How far from the middle of the road the autopilot keeps at most (m).
+const AUTOPILOT_LANE: f32 = 4.0;
+
+/// Hands `bike` over to the machine, riding on from `lateral` (m left of the
+/// centre line) in the lane nearest to it, on the lap (no loops).
+pub fn autopilot(bike: &mut EntityCommands, lateral: f32) {
+    let lane = lateral.clamp(-AUTOPILOT_LANE, AUTOPILOT_LANE);
+    bike.insert((
+        Autopilot,
+        Rival {
+            skill: AUTOPILOT_SKILL,
+            lane,
+            loops: false,
+        },
+        ai::Line(lane),
+    ));
+}
 
 /// Marca los jugadores locales en modo multijugador (0 para Player 1, 1 para Player 2).
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
@@ -1231,7 +1263,7 @@ fn read_controller_binding(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn read_player_input(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -1242,14 +1274,25 @@ fn read_player_input(
     active_controller: Option<ResMut<crate::gamepads::ActiveController>>,
     mut race: ResMut<Race>,
     options: Res<DebugOptions>,
-    player: Single<(&mut BikeInput, &BikeState), With<Player>>,
-    mut other_players: Query<(&mut BikeInput, &BikeState, &LocalPlayer), Without<Player>>,
+    player: Single<(&mut BikeInput, &BikeState, Has<Autopilot>), With<Player>>,
+    mut other_players: Query<
+        (&mut BikeInput, &BikeState, &LocalPlayer),
+        (Without<Player>, Without<Autopilot>),
+    >,
     mut digital: Local<[DigitalSteer; 2]>,
     mut analog: Local<[AnalogSteer; 2]>,
     mut arming: Local<PadArming>,
     names: Query<&Name, With<Gamepad>>,
 ) {
-    let (mut input, state) = player.into_inner();
+    let (input, state, autopilot) = player.into_inner();
+    // On autopilot the machine rides the bike: what the player presses is
+    // read (to keep the steering's state) but not used.
+    let mut ignored = BikeInput::default();
+    let input: &mut BikeInput = if autopilot {
+        &mut ignored
+    } else {
+        input.into_inner()
+    };
     let dt = time.delta_secs();
     arming.track(race.started);
     let [digital_p1, digital_p2] = &mut *digital;
@@ -1376,7 +1419,7 @@ fn read_player_input(
             steer_direct,
             wheelie,
         };
-        if throttle > 0.0 && !race.started {
+        if throttle > 0.0 && !race.started && !race.held {
             info!(
                 "Empieza la carrera: acelerador {throttle:.2} ({})",
                 throttle_from.as_deref().unwrap_or("?")
@@ -1385,7 +1428,7 @@ fn read_player_input(
     }
 
     let p2_throttles = other_players.iter().any(|(inp, _, _)| inp.throttle > 0.0);
-    if (input.throttle > 0.0 || p2_throttles) && !race.started {
+    if (input.throttle > 0.0 || p2_throttles) && !race.started && !race.held {
         race.started = true;
     }
 }
@@ -1527,6 +1570,7 @@ fn restart_race(
         &mut CrashState,
     )>,
     particles: Query<Entity, Or<KickedUp>>,
+    autopiloted: Query<Entity, With<Autopilot>>,
     mut commands: Commands,
 ) {
     if !settings
@@ -1536,6 +1580,12 @@ fn restart_race(
         return;
     }
     race.started = false;
+    // The players ride their bikes again.
+    for bike in &autopiloted {
+        commands
+            .entity(bike)
+            .remove::<(Autopilot, Rival, ai::Line)>();
+    }
     for (grid, mut state, mut previous, mut knock, mut crash) in &mut bikes {
         *state = BikeState::parked_on(&track, track.grid_slot(grid.0));
         // Sin estado anterior distinto, la interpolación no dibuja un "viaje".
@@ -1553,6 +1603,7 @@ fn simulate_bikes(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
     track: Res<Track>,
+    race: Res<Race>,
     mut bikes: Query<(
         Entity,
         &BikeInput,
@@ -1577,6 +1628,10 @@ fn simulate_bikes(
         // Out of the race, a player's bike rolls to a stop.
         let input = if retired { &idle } else { input };
         previous.0 = *state;
+        // Waiting for the lights, nobody moves.
+        if race.held && !race.started {
+            continue;
+        }
         if let Some(ride) = state.ride.filter(|_| !crash.is_down()) {
             let outcome;
             let looped = &track.loops()[ride.index];

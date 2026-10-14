@@ -10,8 +10,8 @@
 //!    upside down at the top, before it joins the lap again on the S-bends.
 //! 3. The road climbs into a tunnel through a checkerboard ridge and comes
 //!    out by a waterfall, high above the sea, into a long banked right-hander.
-//! 4. Down past a second waterfall, a wooden bridge crosses an inlet where
-//!    the sea runs in under the road.
+//! 4. Down past a second waterfall, a wooden bridge, narrower than the road,
+//!    crosses an inlet where the sea runs in under it.
 //! 5. Rolling S-bends with totem poles lead down to the south shore: a
 //!    beach road with palms, back to the start.
 
@@ -21,13 +21,16 @@ use super::{Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
 use std::f32::consts::FRAC_PI_4;
 
-use crate::track::{Banking, Branch, Layout, VerticalLoop, WALL_DISTANCE};
+use crate::track::{Banking, Branch, Layout, Narrowing, VerticalLoop, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 /// Where things are, in metres from the finish line.
 const START: Span = span(2060.0, 290.0);
 const TUNNEL: Span = span(770.0, 870.0);
 const BRIDGE: Span = span(1230.0, 1310.0);
+/// How far from the centre line the fences of the wooden bridge stand (m):
+/// the bridge is narrower than the asphalt of the road.
+const BRIDGE_WALL: f32 = 6.0;
 const SHORE: Span = span(1660.0, 1960.0);
 /// The stretch of lap the branch with the loop leaves out: it forks off on
 /// the climb to the crest of the start straight, so the turn off the lap is
@@ -67,8 +70,13 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 factor: 1.5,
             },
         ],
+        // The wooden bridge, narrower than the road.
+        narrows: &[Narrowing {
+            from: BRIDGE.from,
+            to: BRIDGE.to,
+            wall: BRIDGE_WALL,
+        }],
         // Inside the first long corner, round the loop.
-        narrows: &[],
         branches: &[Branch {
             from: SHORTCUT.from,
             to: SHORTCUT.to,

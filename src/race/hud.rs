@@ -1,11 +1,12 @@
 //! What the race shows on the screen for each player: their place, their
 //! lap, the clock and their best lap; against the clock, the time left and
 //! what each checkpoint gives; in elimination, who is out; and their place
-//! when they cross the line at the end.
+//! when they cross the line at the end. Once the players' race is over,
+//! which bike the camera watches come in, and its place when it does.
 
 use bevy::prelude::*;
 
-use super::{Mode, Progress, Rules, Standing};
+use super::{Mode, Outcome, Progress, Rules, Standing, Watching};
 use crate::bike::{LocalPlayer, Player, ROSTER, Retired, Rider};
 use crate::hud::UiFont;
 use crate::locale::Language;
@@ -23,7 +24,10 @@ pub struct RaceHudPlugin;
 impl Plugin for RaceHudPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::Race), spawn_race_info)
-            .add_systems(Update, show_race_info.run_if(in_state(GameState::Race)));
+            .add_systems(
+                Update,
+                (show_race_info, show_watched).run_if(in_state(GameState::Race)),
+            );
     }
 }
 
@@ -45,6 +49,14 @@ enum InfoKind {
     Notice,
 }
 
+/// A text about the bike the camera watches come in: who it is and how it
+/// is getting on, or, as it crosses the line, its place.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+enum WatchInfo {
+    Caption,
+    Notice,
+}
+
 fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
     let players = if *game_mode == GameMode::SplitScreen {
         2
@@ -56,6 +68,52 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
         font_size: FontSize::Px(size),
         ..default()
     };
+    // Over the whole screen, left of the results: the bike watched.
+    commands
+        .spawn((
+            DespawnOnExit(GameState::Race),
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(0),
+                top: px(0),
+                width: percent(60),
+                height: percent(100),
+                ..default()
+            },
+        ))
+        .with_children(|left| {
+            left.spawn(Node {
+                position_type: PositionType::Absolute,
+                left: px(18),
+                top: px(14),
+                ..default()
+            })
+            .with_child((
+                WatchInfo::Caption,
+                Text::new(""),
+                text(26.0),
+                TextColor(Color::WHITE),
+                TextShadow::default(),
+            ));
+            left.spawn(Node {
+                position_type: PositionType::Absolute,
+                top: percent(30),
+                width: percent(100),
+                justify_content: JustifyContent::Center,
+                ..default()
+            })
+            .with_child((
+                WatchInfo::Notice,
+                Text::new(""),
+                text(44.0),
+                TextColor(GOLD),
+                TextLayout::justify(Justify::Center),
+                TextShadow {
+                    offset: Vec2::splat(3.0),
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.7),
+                },
+            ));
+        });
     for player in 0..players {
         // Each player's half of the screen (or all of it).
         let (top, height) = if players == 1 {
@@ -172,6 +230,7 @@ fn show_race_info(
     rules: Res<Rules>,
     standing: Res<Standing>,
     settings: Res<Settings>,
+    outcome: Option<Res<Outcome>>,
     bikes: Query<(
         &Rider,
         &Progress,
@@ -199,6 +258,8 @@ fn show_race_info(
             .position(|r| *r == rider.0)
             .map_or(racers, |p| p + 1);
         let (wanted, tint) = match info.kind {
+            // Over for the players: the results say it all.
+            _ if outcome.is_some() => (String::new(), color.0),
             InfoKind::Place if rules.mode != Mode::Checkpoint => {
                 (format!("{} / {racers}", ordinal(place, lang)), color.0)
             }
@@ -246,6 +307,77 @@ fn show_race_info(
         }
         if color.0 != tint {
             color.0 = tint;
+        }
+    }
+}
+
+/// Who the camera watches come in: their place and lap, and as they cross
+/// the line, their place and how far behind the winner.
+#[allow(clippy::type_complexity)]
+fn show_watched(
+    rules: Res<Rules>,
+    standing: Res<Standing>,
+    settings: Res<Settings>,
+    watching: Option<Res<Watching>>,
+    bikes: Query<&Progress>,
+    mut texts: Query<(&WatchInfo, &mut Text)>,
+) {
+    let lang = settings.language;
+    let watched = watching
+        .as_deref()
+        .and_then(|watching| Some((watching, bikes.get(watching.bike).ok()?)));
+    let place = watched.and_then(|(watching, _)| {
+        standing
+            .order
+            .iter()
+            .position(|&rider| rider == watching.rider)
+            .map(|index| index + 1)
+    });
+    // When the first one crossed the line.
+    let winner = bikes
+        .iter()
+        .filter_map(|progress| progress.finished)
+        .min_by(f32::total_cmp);
+    for (info, mut text) in &mut texts {
+        let wanted = match (info, watched, place) {
+            (WatchInfo::Caption, Some((watching, progress)), Some(place)) => {
+                let name = ROSTER[watching.rider].name;
+                let lap = match lang {
+                    Language::Spanish => "VUELTA",
+                    Language::English => "LAP",
+                };
+                match rules.mode.laps(rules.laps) {
+                    Some(laps) if progress.finished.is_none() => format!(
+                        "{name}  ·  {}  ·  {lap} {}/{laps}",
+                        ordinal(place, lang),
+                        (progress.laps + 1).min(laps)
+                    ),
+                    _ => format!("{name}  ·  {}", ordinal(place, lang)),
+                }
+            }
+            (WatchInfo::Notice, Some((watching, progress)), Some(place)) => {
+                match progress.finished {
+                    Some(at) if standing.clock - at < NOTICE => {
+                        let gap = winner
+                            .filter(|first| at - first > 0.05)
+                            .map_or(String::new(), |first| format!("  +{:.1} s", at - first));
+                        let finish = match lang {
+                            Language::Spanish => "¡META!",
+                            Language::English => "FINISH!",
+                        };
+                        format!(
+                            "{finish}  {}  {}{gap}",
+                            ROSTER[watching.rider].name,
+                            ordinal(place, lang)
+                        )
+                    }
+                    _ => String::new(),
+                }
+            }
+            _ => String::new(),
+        };
+        if text.0 != wanted {
+            text.0 = wanted;
         }
     }
 }

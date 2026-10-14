@@ -486,6 +486,70 @@ mod tests {
         }
     }
 
+    /// Rides a rival of `skill` round `circuit` from the grid for `laps`
+    /// laps: the seconds it takes over each stretch between checkpoints
+    /// (see [`crate::race::checkpoints`]), the first from the start.
+    fn checkpoint_times(circuit: &crate::circuits::Circuit, skill: f32, laps: usize) -> Vec<f32> {
+        let track = Track::new(&circuit.layout);
+        let lap = track.lap_length();
+        let points = crate::race::checkpoints(&circuit.checkpoints(), lap);
+        let tuning = BikeTuning::default();
+        let rival = Rival {
+            skill,
+            lane: 0.0,
+            loops: false,
+        };
+        let mut state = BikeState::parked_on(&track, track.grid_pose(0, rival.lane));
+        let mut progress = crate::race::Progress::default();
+        let dt = 1.0 / 120.0;
+        // From a standing start on the grid, as against the clock.
+        let (mut clock, mut since) = (0.0, 0.0);
+        let mut times = Vec::new();
+        while times.len() < laps * points.len() && clock < 600.0 {
+            let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
+            state = advance(&state, &input, &track, &tuning, dt);
+            clock += dt;
+            let nearest = track.nearest_at(state.position, state.elevation);
+            if progress
+                .pass(track.along(&nearest), lap, &points)
+                .checkpoint
+            {
+                times.push(clock - since);
+                since = clock;
+            }
+        }
+        times
+    }
+
+    #[test]
+    fn against_the_clock_a_good_ride_earns_a_little_time_at_each_checkpoint() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let lap = Track::new(&circuit.layout).lap_length();
+            let points = crate::race::checkpoints(&circuit.checkpoints(), lap);
+            let times = checkpoint_times(circuit, 0.9, 1);
+            assert_eq!(times.len(), points.len(), "{}", circuit.name);
+            let mut left = crate::race::starting_time(&points);
+            for (index, time) in times.iter().enumerate() {
+                let name = circuit.name;
+                // A rival's ride (a good one) never runs short of time...
+                left -= time;
+                assert!(left > 1.0, "{name}: {left} s left at checkpoint {index}");
+                // ...but it earns only a few seconds at each checkpoint: what
+                // the stretch to the next one takes it, and a little more.
+                let bonus =
+                    crate::race::checkpoint_bonus(crate::race::stretch_after(&points, index));
+                left += bonus;
+                if let Some(next) = times.get(index + 1) {
+                    let earned = bonus - next;
+                    assert!(
+                        (1.0..5.0).contains(&earned),
+                        "{name}: {earned} s earned at checkpoint {index}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn rivals_that_take_the_branches_ride_round_the_loops_and_back() {
         for circuit in &crate::circuits::CIRCUITS {

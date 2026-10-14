@@ -200,13 +200,32 @@ pub const GOLD_MINE: Circuit = Circuit {
                 color: GOLD,
                 text: Some("GOLD MINE"),
             },
+            // The checkpoints, about a kilometre apart (none in the
+            // excavation, where the road splits, nor on the bridges): down
+            // the canyon, out on the cliff, off the lake bridge, past the
+            // gully and on the way down to town.
+            Gantry {
+                along: 1200.0,
+                color: RUST,
+                text: Some("CHECKPOINT"),
+            },
             Gantry {
                 along: 2640.0,
                 color: RUST,
                 text: Some("CHECKPOINT"),
             },
             Gantry {
+                along: 3540.0,
+                color: RUST,
+                text: Some("CHECKPOINT"),
+            },
+            Gantry {
                 along: 4440.0,
+                color: RUST,
+                text: Some("CHECKPOINT"),
+            },
+            Gantry {
+                along: 5250.0,
                 color: RUST,
                 text: Some("CHECKPOINT"),
             },

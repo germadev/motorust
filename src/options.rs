@@ -10,7 +10,8 @@ use crate::legend::{Keys, menu_prompts, section_badges, spawn_legend, spawn_lone
 use crate::locale::{LANGUAGES, Language};
 use crate::pause::DebugOptions;
 use crate::settings::{
-    ACTIONS, Action, Controls, FPS_LIMITS, FULLSCREEN_KEYS, RESOLUTIONS, Settings, WEB, cycle,
+    ACTIONS, Action, Controls, FPS_LIMITS, FULLSCREEN_KEYS, RACE_STARTS, RESOLUTIONS, Settings,
+    WEB, cycle,
 };
 use crate::ui::{
     InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
@@ -167,6 +168,7 @@ pub struct Capture {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum GameItem {
     Language,
+    RaceStart,
     StickTurnLimit,
     KeyboardTurnLimit,
     KeyboardTurnRate,
@@ -202,6 +204,7 @@ enum GraphicsItem {
 fn game_items() -> Vec<GameItem> {
     vec![
         GameItem::Language,
+        GameItem::RaceStart,
         GameItem::StickTurnLimit,
         GameItem::KeyboardTurnLimit,
         GameItem::KeyboardTurnRate,
@@ -338,6 +341,10 @@ fn use_options_menu(
             match item {
                 GameItem::Language if change != 0 => {
                     settings.language = cycle(&LANGUAGES, settings.language, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GameItem::RaceStart if change != 0 => {
+                    settings.start = cycle(&RACE_STARTS, settings.start, change);
                     sounds.write(MenuSound::Move);
                 }
                 GameItem::StickTurnLimit if change != 0 => {
@@ -536,6 +543,13 @@ fn show_options_menu(
                 GameItem::Language => {
                     Row::with_value(lang.language(), format!("<  {}  >", lang.name()))
                 }
+                GameItem::RaceStart => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Salida",
+                        Language::English => "Race start",
+                    },
+                    format!("<  {}  >", settings.start.name(lang)),
+                ),
                 GameItem::StickTurnLimit => Row::with_value(
                     match lang {
                         Language::Spanish => "Stick: limitar giro con velocidad",

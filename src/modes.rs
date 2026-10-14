@@ -3,7 +3,7 @@
 //! cards that light up in their colour, a chequered flag sliding across
 //! the one chosen ([`CardMaterial`]), and slanted lettering.
 //!
-//! One player: the championship (story) on its own, big, and below it free
+//! One player: the arcade championship on its own, big, and below it free
 //! riding, a race, elimination and against the clock. Two players: free
 //! riding, a race and elimination.
 
@@ -16,7 +16,9 @@ use crate::hud::UiFont;
 use crate::legend::{Keys, menu_prompts, spawn_legend};
 use crate::locale::Language;
 use crate::menu::GameState;
-use crate::race::{CHAMPIONSHIP_LAPS, Championship, Mode, Rules, start_championship};
+use crate::race::{
+    CHAMPIONSHIP_LAPS, Championship, ELIMINATION_LAPS, Mode, Rules, start_championship,
+};
 use crate::settings::Settings;
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, UiIcons, current_active_device, spawn_title,
@@ -47,7 +49,7 @@ pub fn rows(two_players: bool) -> Vec<Vec<Mode>> {
         vec![vec![Mode::Free, Mode::Race, Mode::Elimination]]
     } else {
         vec![
-            vec![Mode::Story],
+            vec![Mode::Arcade],
             vec![Mode::Free, Mode::Race],
             vec![Mode::Elimination, Mode::Checkpoint],
         ]
@@ -83,7 +85,7 @@ impl ModesMenu {
 /// The colour each mode lights up in.
 pub fn lit(mode: Mode) -> Color {
     match mode {
-        Mode::Story => Color::srgb(0.98, 0.7, 0.0),
+        Mode::Arcade => Color::srgb(0.98, 0.7, 0.0),
         Mode::Free => Color::srgb(0.04, 0.4, 1.0),
         Mode::Race => Color::srgb(0.88, 0.16, 0.16),
         Mode::Elimination => Color::srgb(0.5, 0.19, 0.88),
@@ -94,14 +96,14 @@ pub fn lit(mode: Mode) -> Color {
 /// Where the chequered flag slides on each card in a period (units).
 fn flow(mode: Mode) -> Vec2 {
     match mode {
-        Mode::Story => Vec2::new(51.615, -180.0),
+        Mode::Arcade => Vec2::new(51.615, -180.0),
         Mode::Free | Mode::Elimination => Vec2::new(180.0, 0.0),
         Mode::Race | Mode::Checkpoint => Vec2::new(-180.0, 0.0),
     }
 }
 
 const MODES: [Mode; 5] = [
-    Mode::Story,
+    Mode::Arcade,
     Mode::Free,
     Mode::Race,
     Mode::Elimination,
@@ -126,8 +128,7 @@ impl FromWorld for ModeCards {
 /// The name of a mode, as on its card.
 pub fn name(mode: Mode, lang: Language) -> &'static str {
     match (mode, lang) {
-        (Mode::Story, Language::Spanish) => "HISTORIA",
-        (Mode::Story, Language::English) => "STORY",
+        (Mode::Arcade, _) => "ARCADE",
         (Mode::Free, Language::Spanish) => "LIBRE",
         (Mode::Free, Language::English) => "FREE RIDE",
         (Mode::Race, Language::Spanish) => "CARRERA",
@@ -178,31 +179,26 @@ pub fn spawn_mode_badge(
         });
 }
 
-/// What a mode is, under its name; the championship says where it was left.
-fn description(mode: Mode, lang: Language, settings: &Settings) -> String {
+/// What a mode is, under its name.
+fn description(mode: Mode, lang: Language) -> String {
     let tracks = CIRCUITS.len();
     match (mode, lang) {
-        (Mode::Story, _) if settings.records.story.is_some() => {
-            let round = settings.records.story.as_ref().map_or(0, |c| c.round) + 1;
-            match lang {
-                Language::Spanish => {
-                    format!("Continuar el campeonato: carrera {round} de {tracks}")
-                }
-                Language::English => format!("Carry on the championship: race {round} of {tracks}"),
-            }
-        }
-        (Mode::Story, Language::Spanish) => format!(
+        (Mode::Arcade, Language::Spanish) => format!(
             "Las {tracks} pistas, una tras otra, a {CHAMPIONSHIP_LAPS} vueltas: puntos en cada carrera"
         ),
-        (Mode::Story, Language::English) => format!(
+        (Mode::Arcade, Language::English) => format!(
             "All {tracks} tracks, one after another, {CHAMPIONSHIP_LAPS} laps each: points in every race"
         ),
         (Mode::Free, Language::Spanish) => "Elige pista y corre, sin más".into(),
         (Mode::Free, Language::English) => "Choose a track and ride".into(),
         (Mode::Race, Language::Spanish) => "Elige pista y número de vueltas".into(),
         (Mode::Race, Language::English) => "Choose the track and the laps".into(),
-        (Mode::Elimination, Language::Spanish) => "Cada vuelta, el último queda fuera".into(),
-        (Mode::Elimination, Language::English) => "Each lap, the last one is out".into(),
+        (Mode::Elimination, Language::Spanish) => {
+            format!("Elige pista: {ELIMINATION_LAPS} vueltas, cada una cae el último")
+        }
+        (Mode::Elimination, Language::English) => {
+            format!("Choose a track: {ELIMINATION_LAPS} laps, the last one out on each")
+        }
         (Mode::Checkpoint, Language::Spanish) => "Contra el reloj: cada control da segundos".into(),
         (Mode::Checkpoint, Language::English) => {
             "Against the clock: checkpoints give seconds".into()
@@ -218,7 +214,6 @@ fn open(mut menu: ResMut<ModesMenu>) {
 fn use_modes(
     mut input: MenuInput,
     game_mode: Res<GameMode>,
-    settings: Res<Settings>,
     mut menu: ResMut<ModesMenu>,
     mut rules: ResMut<Rules>,
     mut championship: ResMut<Championship>,
@@ -251,7 +246,7 @@ fn use_modes(
     rules.mode = mode;
     if mode.is_championship() {
         // The tracks come in order: straight to choosing the bike.
-        start_championship(mode, &settings, &mut championship, &mut current);
+        start_championship(&mut championship, &mut current);
         next.set(GameState::Select);
     } else {
         next.set(GameState::Tracks);
@@ -269,7 +264,6 @@ struct Shown {
     device: ActiveDevice,
     width: f32,
     scale_factor: f32,
-    story: Option<usize>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -297,7 +291,6 @@ fn show_modes(
         device: active_dev,
         width: window.map_or(1280.0, Window::width),
         scale_factor: window.map_or(1.0, Window::scale_factor),
-        story: settings.records.story.as_ref().map(|c| c.round),
     };
     if last.as_ref() == Some(&now) && !shown.is_empty() {
         return;
@@ -419,7 +412,7 @@ fn show_modes(
                                     },
                                 ));
                                 card.spawn((
-                                    Text::new(description(mode, lang, &settings)),
+                                    Text::new(description(mode, lang)),
                                     text_font(&font, if big { 20.0 } else { 15.0 }),
                                     TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
                                     TextLayout::justify(Justify::Center),
@@ -479,7 +472,7 @@ mod tests {
     #[test]
     fn one_player_gets_the_championship_big_and_four_below() {
         let rows = rows(false);
-        assert_eq!(rows[0], [Mode::Story]);
+        assert_eq!(rows[0], [Mode::Arcade]);
         assert_eq!(rows[1..].iter().flatten().count(), 4);
         let two = rows_flat(true);
         assert_eq!(two, [Mode::Free, Mode::Race, Mode::Elimination]);
@@ -493,7 +486,7 @@ mod tests {
     fn the_cards_are_walked_row_by_row() {
         let rows = rows(false);
         let mut menu = ModesMenu::default();
-        assert_eq!(menu.chosen(&rows), Mode::Story);
+        assert_eq!(menu.chosen(&rows), Mode::Arcade);
         menu.navigate(1, 0, &rows);
         assert_eq!(menu.chosen(&rows), Mode::Free);
         menu.navigate(0, 1, &rows);
@@ -502,9 +495,9 @@ mod tests {
         assert_eq!(menu.chosen(&rows), Mode::Checkpoint);
         // Up to the championship and back down: the same side.
         menu.navigate(1, 0, &rows);
-        assert_eq!(menu.chosen(&rows), Mode::Story);
+        assert_eq!(menu.chosen(&rows), Mode::Arcade);
         menu.navigate(0, 1, &rows);
-        assert_eq!(menu.chosen(&rows), Mode::Story);
+        assert_eq!(menu.chosen(&rows), Mode::Arcade);
         menu.navigate(-1, 0, &rows);
         assert_eq!(menu.chosen(&rows), Mode::Elimination);
         // Two players: one row, left and right.
@@ -518,11 +511,10 @@ mod tests {
 
     #[test]
     fn every_mode_has_a_name_and_a_description_in_each_language() {
-        let settings = Settings::default();
         for mode in MODES {
             for lang in [Language::Spanish, Language::English] {
                 assert!(!name(mode, lang).is_empty());
-                assert!(!description(mode, lang, &settings).is_empty());
+                assert!(!description(mode, lang).is_empty());
             }
         }
     }

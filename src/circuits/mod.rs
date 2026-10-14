@@ -89,5 +89,9 @@ mod tests {
         assert_eq!(CIRCUITS[0].checkpoints(), vec![780.0]);
         assert_eq!(CIRCUITS[1].checkpoints(), vec![960.0, 1980.0]);
         assert_eq!(CIRCUITS[2].checkpoints(), vec![700.0, 1420.0]);
+        assert_eq!(
+            CIRCUITS[3].checkpoints(),
+            vec![1200.0, 2640.0, 3540.0, 4440.0, 5250.0]
+        );
     }
 }

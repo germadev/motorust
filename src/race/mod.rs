@@ -1,54 +1,76 @@
 //! The race: what is being played ([`Mode`]), each bike's progress round
 //! its laps ([`Progress`]), the order they are in, the clock, the
-//! checkpoints, who is eliminated and when it is over; and the
-//! championships, in which the tracks are raced one after another
+//! checkpoints, who is eliminated and when it is over; and the arcade
+//! championship, in which the tracks are raced one after another
 //! ([`Championship`]).
 //!
-//! What it shows: the laps, places and times on the screen ([`hud`]) and
-//! the results when the race is over ([`results`]).
+//! When the players have crossed the line at the end, the machine rides
+//! their bikes ([`crate::bike::Autopilot`]) and the camera watches the
+//! others come in ([`Watching`]), while the results fill in.
+//!
+//! What it shows: the start lights ([`lights`]), the laps, places and times
+//! on the screen ([`hud`]) and the results when the race is over
+//! ([`results`]).
 
 pub mod hud;
+pub mod lights;
 pub mod results;
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::bike::{BikeState, LocalPlayer, Player, ROSTER, Race, RaceControls, Retired, Rider};
+use crate::bike::{
+    Autopilot, BikeState, LocalPlayer, Player, ROSTER, Race, RaceControls, Retired, Rider,
+    autopilot,
+};
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
 use crate::pause;
 use crate::settings::{Action, Settings};
 use crate::track::Track;
 
-/// How many laps a race of a championship has.
+/// How many laps a race of the arcade championship has.
 pub const CHAMPIONSHIP_LAPS: u32 = 5;
+/// How many laps an elimination has: one fewer than the bikes, so that one
+/// goes out each lap but the last, which the last two race for.
+pub const ELIMINATION_LAPS: u32 = ROSTER.len() as u32 - 1;
 /// The laps a race can be set to, and how many it has at first.
 pub const LAPS: std::ops::RangeInclusive<u32> = 1..=9;
-pub const DEFAULT_LAPS: u32 = 3;
+pub const DEFAULT_LAPS: u32 = 5;
 /// The points for each place in a race of a championship.
 pub const POINTS: [u32; 8] = [10, 8, 6, 5, 4, 3, 2, 1];
-/// Against the clock: the seconds at the start and each checkpoint gives,
-/// for every metre of track to the next one at this pace (m/s), and a few
-/// more to spare.
-const CHECKPOINT_PACE: f32 = 36.0;
-const CHECKPOINT_SPARE: f32 = 4.0;
+/// Against the clock: the seconds the start and each checkpoint give are
+/// those the stretch to the next checkpoint takes at this pace (m/s), about
+/// 220 km/h, a little slower than a good rival rides it, and a couple more
+/// to spare; the start gives a few more, as the bike sets off from a
+/// standstill. A rival's ride earns two to four seconds at each checkpoint;
+/// a fall costs more than that.
+const CHECKPOINT_PACE: f32 = 62.0;
+const CHECKPOINT_SPARE: f32 = 2.0;
+const START_SPARE: f32 = 3.0;
+/// How far past a checkpoint a bike still goes through it (m), in case a
+/// step jumps it.
+const CHECKPOINT_REACH: f32 = 150.0;
 /// Seconds between the last player crossing the line (or being out) and
 /// the results.
 const RESULTS_AFTER: f32 = 2.5;
+/// Seconds the camera stays on a bike it watched come in before it goes to
+/// the next one.
+const WATCH_ARRIVAL: f32 = 2.5;
 
 /// What is being played.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Mode {
     /// The championship: the tracks one after another, five laps each,
     /// with points for each place.
-    Story,
+    Arcade,
     /// Riding round a track with no end.
     #[default]
     Free,
     /// A race of the laps chosen, on the track chosen.
     Race,
-    /// Like the championship, but at the end of each lap the last one is
-    /// out.
+    /// A race on the track chosen in which, each lap, the last one is out,
+    /// until two are left to race the last lap.
     Elimination,
     /// Against the clock: from a few seconds, each checkpoint passed gives
     /// more; at nought it is over.
@@ -58,7 +80,7 @@ pub enum Mode {
 impl Mode {
     /// Whether the tracks are raced one after another.
     pub fn is_championship(self) -> bool {
-        matches!(self, Mode::Story | Mode::Elimination)
+        self == Mode::Arcade
     }
 
     /// How many laps a race has, if it ends after some.
@@ -66,7 +88,8 @@ impl Mode {
         match self {
             Mode::Free | Mode::Checkpoint => None,
             Mode::Race => Some(chosen),
-            Mode::Story | Mode::Elimination => Some(CHAMPIONSHIP_LAPS),
+            Mode::Arcade => Some(CHAMPIONSHIP_LAPS),
+            Mode::Elimination => Some(ELIMINATION_LAPS),
         }
     }
 }
@@ -87,9 +110,9 @@ impl Default for Rules {
     }
 }
 
-/// A championship under way: the race it is on (the index of its track in
-/// [`CIRCUITS`]) and the points of each bike of the [`ROSTER`] so far.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// The championship under way: the race it is on (the index of its track
+/// in [`CIRCUITS`]) and the points of each bike of the [`ROSTER`] so far.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct Championship {
     pub round: usize,
     pub points: [u32; 8],
@@ -119,18 +142,17 @@ impl Championship {
     }
 }
 
-/// What is kept between sessions of the races: the championship under way
-/// (to go on with it) and the best of each track.
+/// What is kept between sessions of the races: the best of each track. (A
+/// championship is not: the arcade starts from the first track each time,
+/// and files that still keep one load without it.)
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Records {
-    pub story: Option<Championship>,
     /// Best lap on each track (s), by its name.
     pub best_laps: Vec<(String, f32)>,
     /// Most laps against the clock on each track, by its name.
     pub checkpoint_laps: Vec<(String, u32)>,
 }
-
 impl Records {
     pub fn best_lap(&self, track: &str) -> Option<f32> {
         self.best_laps
@@ -183,9 +205,46 @@ impl Records {
 }
 
 /// The gates round a lap, as fractions of it: a lap only counts once a bike
-/// has gone through the first two (so riding back and forth over the line
-/// does not), and against the clock each of the three is a checkpoint.
+/// has gone through both (so riding back and forth over the line does
+/// not).
 const GATES: [f32; 2] = [1.0 / 3.0, 2.0 / 3.0];
+
+/// Against the clock, the checkpoints of a lap `lap` m long, in m from the
+/// line: the track's checkpoint gantries (`gantries`), in order, and the
+/// line itself, last, at the end of the lap.
+pub fn checkpoints(gantries: &[f32], lap: f32) -> Vec<f32> {
+    let mut points: Vec<f32> = gantries
+        .iter()
+        .copied()
+        .filter(|&along| along > 0.0 && along < lap)
+        .collect();
+    points.sort_by(f32::total_cmp);
+    points.push(lap);
+    points
+}
+
+/// The length of the stretch (m) from checkpoint `index` of `points` (see
+/// [`checkpoints`]) to the next one: from the line, the first.
+pub fn stretch_after(points: &[f32], index: usize) -> f32 {
+    let next = index.checked_add(1).and_then(|next| points.get(next));
+    match (points.get(index), next) {
+        (Some(from), Some(to)) => to - from,
+        _ => points.first().copied().unwrap_or(0.0),
+    }
+}
+
+/// The seconds the clock gives against the clock for a stretch of `stretch`
+/// m to the next checkpoint.
+pub fn checkpoint_bonus(stretch: f32) -> f32 {
+    stretch / CHECKPOINT_PACE + CHECKPOINT_SPARE
+}
+
+/// The seconds on the clock at the start against the clock, for the
+/// stretch to the first checkpoint of `points` (see [`checkpoints`]) from a
+/// standstill.
+pub fn starting_time(points: &[f32]) -> f32 {
+    checkpoint_bonus(stretch_after(points, usize::MAX)) + START_SPARE
+}
 
 /// How a bike is getting on in the race.
 #[derive(Component, Clone, Debug, Default, PartialEq)]
@@ -201,23 +260,25 @@ pub struct Progress {
     /// When the lap under way began (s on the clock), and the best lap.
     lap_start: f32,
     pub best_lap: Option<f32>,
-    /// Checkpoints gone through (against the clock).
+    /// Against the clock: checkpoints gone through, and the next one of
+    /// the lap (an index of [`checkpoints`]).
     pub checkpoints: u32,
+    next_checkpoint: usize,
 }
 
 /// What a bike went through in a step.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Passed {
-    /// A gate on the way round (a checkpoint against the clock).
-    pub gate: bool,
+    /// A checkpoint gantry on the way round (against the clock), or the line.
+    pub checkpoint: bool,
     /// The finish line, at the end of a lap.
     pub lap: bool,
 }
 
 impl Progress {
-    /// The bike is now `along` m into a lap `lap` m long: what it went
-    /// through.
-    pub fn pass(&mut self, along: f32, lap: f32) -> Passed {
+    /// The bike is now `along` m into a lap `lap` m long, whose checkpoints
+    /// are `points` (see [`checkpoints`]): what it went through.
+    pub fn pass(&mut self, along: f32, lap: f32, points: &[f32]) -> Passed {
         let before = self.along;
         self.along = along;
         let mut passed = Passed::default();
@@ -226,16 +287,34 @@ impl Progress {
             let at = gate * lap;
             if (at..at + lap / 6.0).contains(&along) {
                 self.gates += 1;
-                passed.gate = true;
+            }
+        }
+        // So does a checkpoint gantry; the line is the lap's.
+        if self.next_checkpoint + 1 < points.len() {
+            let at = points[self.next_checkpoint];
+            if (at..at + CHECKPOINT_REACH.min(lap / 6.0)).contains(&along) {
+                self.next_checkpoint += 1;
+                self.checkpoints += 1;
+                passed.checkpoint = true;
             }
         }
         if self.gates == GATES.len() && before > lap * 5.0 / 6.0 && along < lap / 6.0 {
             self.gates = 0;
             self.laps += 1;
+            self.next_checkpoint = 0;
+            self.checkpoints += 1;
             passed.lap = true;
-            passed.gate = true;
+            passed.checkpoint = true;
         }
         passed
+    }
+
+    /// The checkpoint just gone through (an index of [`checkpoints`]).
+    pub fn last_checkpoint(&self, points: &[f32]) -> usize {
+        match self.next_checkpoint {
+            0 => points.len().saturating_sub(1),
+            next => next - 1,
+        }
     }
 
     /// How far it has gone in the race (m): laps done and how far into
@@ -274,10 +353,15 @@ pub fn order<T: Copy>(racing: &[(T, &Progress)], out: &[T], lap: f32) -> Vec<T> 
         .collect()
 }
 
-/// The seconds the clock gives against the clock for the stretch from the
-/// gate a bike just went through to the next (m).
-pub fn checkpoint_bonus(stretch: f32) -> f32 {
-    stretch / CHECKPOINT_PACE + CHECKPOINT_SPARE
+/// When a bike still racing at `clock` (s), having gone `distance` m of a
+/// race `total` m long, would cross the line at the pace it has kept.
+pub fn estimate_finish(clock: f32, distance: f32, total: f32) -> f32 {
+    let pace = if clock > 0.0 && distance > 0.0 {
+        distance / clock
+    } else {
+        CHECKPOINT_PACE
+    };
+    clock + (total - distance).max(0.0) / pace.max(1.0)
 }
 
 /// The state of the race under way.
@@ -293,7 +377,7 @@ pub struct Standing {
     pub out: Vec<usize>,
     /// The order of the race now (bikes of the roster), first to last.
     pub order: Vec<usize>,
-    /// Laps the leader has done that have already put someone out.
+    /// The laps whose last one has already gone out.
     eliminations: u32,
     /// The last one put out and when (s on the clock), to show it.
     pub last_out: Option<(usize, f32)>,
@@ -303,7 +387,8 @@ pub struct Standing {
     pub record: Option<f32>,
 }
 
-/// The race is over: what is shown on the results.
+/// The race is over for the players: what is shown on the results. Until
+/// they go on from them, the places fill in as the others come in.
 #[derive(Resource, Clone, Debug, PartialEq)]
 pub struct Outcome {
     pub mode: Mode,
@@ -316,6 +401,24 @@ pub struct Outcome {
     /// Against the clock: the laps done and whether they are a record.
     pub laps: u32,
     pub record: bool,
+    /// Whether the places are final: the players went on from them (those
+    /// still racing then are placed where they were, with the time they
+    /// would have taken), and a championship has scored them.
+    pub settled: bool,
+}
+
+impl Outcome {
+    /// The places as they are, final: a championship scores them.
+    pub fn settle(&mut self, championship: &mut Championship) {
+        if self.settled {
+            return;
+        }
+        self.settled = true;
+        if self.mode.is_championship() {
+            let order: Vec<usize> = self.places.iter().map(|place| place.rider).collect();
+            championship.score(&order);
+        }
+    }
 }
 
 /// A bike's place in a race.
@@ -324,6 +427,19 @@ pub struct Place {
     pub rider: usize,
     pub time: Option<f32>,
     pub out: bool,
+    /// Whether `time` is when it would have crossed the line: it was still
+    /// racing.
+    pub estimated: bool,
+}
+
+/// After the players' race is over, the bike the camera watches come in,
+/// and since when (s on the clock). In split screen the first camera takes
+/// the whole screen for it.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct Watching {
+    pub bike: Entity,
+    pub rider: usize,
+    pub since: f32,
 }
 
 pub struct RacePlugin;
@@ -333,7 +449,11 @@ impl Plugin for RacePlugin {
         app.init_resource::<Rules>()
             .init_resource::<Championship>()
             .init_resource::<Standing>()
-            .add_plugins((hud::RaceHudPlugin, results::ResultsPlugin))
+            .add_plugins((
+                hud::RaceHudPlugin,
+                lights::StartLightsPlugin,
+                results::ResultsPlugin,
+            ))
             // Over, the players' controls no longer drive the bikes nor
             // restart the race: they work the results.
             .configure_sets(
@@ -349,28 +469,50 @@ impl Plugin for RacePlugin {
                         .and_then(not(resource_exists::<Outcome>)),
                 ),
             )
+            // The race goes on behind the results, until the players go on.
             .add_systems(
                 Update,
-                (attach_progress, follow_the_race, eliminate, finish_the_race)
+                (
+                    attach_progress,
+                    follow_the_race,
+                    eliminate,
+                    autopilot_the_finished,
+                    finish_the_race.run_if(not(resource_exists::<Outcome>)),
+                    (fill_in_the_results, watch_them_come_in)
+                        .chain()
+                        .run_if(resource_exists::<Outcome>),
+                )
                     .chain()
-                    .run_if(in_state(GameState::Race).and_then(not(resource_exists::<Outcome>))),
+                    .run_if(in_state(GameState::Race)),
             )
             .add_systems(OnExit(GameState::Race), clear_outcome);
     }
 }
 
+/// The checkpoints of the track under way (see [`checkpoints`]).
+fn track_checkpoints(current: &CurrentCircuit, track: &Track) -> Vec<f32> {
+    checkpoints(&current.get().checkpoints(), track.lap_length())
+}
+
 /// A new race: the clock at nought and nobody out.
-fn start_race(mut commands: Commands, rules: Res<Rules>, track: Res<Track>) {
+fn start_race(
+    mut commands: Commands,
+    rules: Res<Rules>,
+    track: Res<Track>,
+    current: Res<CurrentCircuit>,
+) {
     let mut standing = Standing::default();
     if rules.mode == Mode::Checkpoint {
-        standing.time_left = checkpoint_bonus(track.lap_length() * GATES[0]);
+        standing.time_left = starting_time(&track_checkpoints(&current, &track));
     }
     commands.insert_resource(standing);
     commands.remove_resource::<Outcome>();
+    commands.remove_resource::<Watching>();
 }
 
 fn clear_outcome(mut commands: Commands) {
     commands.remove_resource::<Outcome>();
+    commands.remove_resource::<Watching>();
 }
 
 /// Restarting an elimination once someone is out sets the race up again
@@ -426,9 +568,10 @@ fn follow_the_race(
     )>,
 ) {
     let lap = track.lap_length();
+    let points = track_checkpoints(&current, &track);
     // Restarted: everyone back to the grid.
     if *was_started && !race.started {
-        let left = (rules.mode == Mode::Checkpoint).then(|| checkpoint_bonus(lap * GATES[0]));
+        let left = (rules.mode == Mode::Checkpoint).then(|| starting_time(&points));
         *standing = Standing {
             time_left: left.unwrap_or(0.0),
             ..default()
@@ -448,27 +591,26 @@ fn follow_the_race(
     let mut record = None;
     for (state, _, mut progress, player, local) in &mut bikes {
         let nearest = track.nearest_at(state.position, state.elevation);
-        let passed = progress.pass(track.along(&nearest), lap);
+        let passed = progress.pass(track.along(&nearest), lap, &points);
         let human = player || local;
         if passed.lap {
             let lap_time = clock - progress.lap_start;
             progress.lap_start = clock;
-            if progress.best_lap.is_none_or(|best| lap_time < best) {
-                progress.best_lap = Some(lap_time);
-            }
-            if human && settings.records.lap(name, lap_time) {
-                record = Some(lap_time);
+            if progress.finished.is_none() {
+                if progress.best_lap.is_none_or(|best| lap_time < best) {
+                    progress.best_lap = Some(lap_time);
+                }
+                if human && settings.records.lap(name, lap_time) {
+                    record = Some(lap_time);
+                }
             }
             if target.is_some_and(|laps| progress.laps >= laps) && progress.finished.is_none() {
                 progress.finished = Some(clock);
             }
         }
-        if human && passed.gate && rules.mode == Mode::Checkpoint {
-            progress.checkpoints += 1;
-            let next = progress.checkpoints as usize % 3;
-            let from = if next == 0 { 0.0 } else { GATES[next - 1] };
-            let to = GATES.get(next).copied().unwrap_or(1.0);
-            let bonus = checkpoint_bonus((to - from) * lap);
+        if human && passed.checkpoint && rules.mode == Mode::Checkpoint {
+            let reached = progress.last_checkpoint(&points);
+            let bonus = checkpoint_bonus(stretch_after(&points, reached));
             standing.time_left += bonus;
             standing.bonus = Some((bonus, clock));
         }
@@ -489,9 +631,10 @@ fn follow_the_race(
     standing.order = order(&racing, &standing.out, lap);
 }
 
-/// In elimination, each time the leader starts a new lap (but the last) the
-/// last one is out: a rival leaves the race; a player stops where they
-/// are.
+/// In elimination, each lap the last one is out, as soon as all but the
+/// last two still in have crossed the line at its end: of the two left
+/// behind, the one further back goes. A rival leaves the race; a player
+/// stops where they are. With two left, they race the last lap for the win.
 #[allow(clippy::type_complexity)]
 fn eliminate(
     mut commands: Commands,
@@ -503,24 +646,38 @@ fn eliminate(
         return;
     }
     let target = rules.mode.laps(rules.laps).unwrap_or(u32::MAX);
-    let leader = bikes.iter().map(|(_, _, p, ..)| p.laps).max().unwrap_or(0);
-    if leader <= standing.eliminations || leader >= target || bikes.iter().count() <= 1 {
+    let still_in: Vec<(Entity, usize, u32, bool)> = bikes
+        .iter()
+        .filter(|(_, rider, ..)| !standing.out.contains(&rider.0))
+        .map(|(bike, rider, progress, player, local)| {
+            (bike, rider.0, progress.laps, player || local)
+        })
+        .collect();
+    let lap = standing.eliminations + 1;
+    if still_in.len() < 3 || lap >= target {
         return;
     }
-    standing.eliminations = leader;
+    // Has the third from last crossed the line at the end of this lap?
+    let crossed = still_in
+        .iter()
+        .filter(|(_, _, laps, _)| *laps >= lap)
+        .count();
+    if crossed < still_in.len() - 2 {
+        return;
+    }
+    standing.eliminations = lap;
     let Some(&last) = standing
         .order
         .iter()
         .rev()
-        .find(|rider| !standing.out.contains(rider))
+        .find(|rider| still_in.iter().any(|(_, r, ..)| r == *rider))
     else {
         return;
     };
-    let Some((bike, _, _, player, local)) = bikes.iter().find(|(_, rider, ..)| rider.0 == last)
-    else {
+    let Some(&(bike, _, _, human)) = still_in.iter().find(|(_, rider, ..)| *rider == last) else {
         return;
     };
-    if player || local {
+    if human {
         commands.entity(bike).insert(Retired);
     } else {
         commands.entity(bike).despawn();
@@ -529,18 +686,85 @@ fn eliminate(
     standing.last_out = Some((last, standing.clock));
 }
 
-/// The race is over when every player has crossed the line at the end of
-/// it, or is out, or against the clock has no time left; a moment later the
-/// results are shown, the players' bikes roll to a stop, and a
-/// championship scores it.
+/// A player who crosses the line at the end of the race hands the bike to
+/// the machine, which rides it on without crashing.
+#[allow(clippy::type_complexity)]
+fn autopilot_the_finished(
+    mut commands: Commands,
+    track: Res<Track>,
+    bikes: Query<
+        (Entity, &BikeState, &Progress),
+        (
+            Or<(With<Player>, With<LocalPlayer>)>,
+            Without<Autopilot>,
+            Without<Retired>,
+        ),
+    >,
+) {
+    for (bike, state, progress) in &bikes {
+        if progress.finished.is_some() {
+            let lateral = track.nearest_at(state.position, state.elevation).lateral;
+            autopilot(&mut commands.entity(bike), lateral);
+        }
+    }
+}
+
+/// The places of the race now: those in by when, those still racing by how
+/// far they have gone, with the time they would take at their pace (in a
+/// race of laps, but for an elimination, where they may still go out),
+/// and those out.
+fn places_now(
+    standing: &Standing,
+    rules: &Rules,
+    lap: f32,
+    progress_of: impl Fn(usize) -> Option<Progress>,
+) -> Vec<Place> {
+    let total = rules
+        .mode
+        .laps(rules.laps)
+        .filter(|_| rules.mode != Mode::Elimination)
+        .map(|laps| laps as f32 * lap);
+    let mut latest = 0.0f32;
+    standing
+        .order
+        .iter()
+        .map(|&rider| {
+            let progress = progress_of(rider);
+            let out = standing.out.contains(&rider);
+            let finished = progress.as_ref().and_then(|p| p.finished);
+            let estimate = match (&progress, total) {
+                (Some(progress), Some(total)) if finished.is_none() && !out => Some(
+                    estimate_finish(standing.clock, progress.distance(lap), total)
+                        .max(latest + 0.1),
+                ),
+                _ => None,
+            };
+            let time = finished.or(estimate);
+            if let Some(time) = time {
+                latest = latest.max(time);
+            }
+            Place {
+                rider,
+                time,
+                out,
+                estimated: estimate.is_some(),
+            }
+        })
+        .collect()
+}
+
+/// The race is over for the players when every one has crossed the line at
+/// the end of it, or is out, or against the clock has no time left; a
+/// moment later the results are shown, and a player whose time is up rolls
+/// to a stop.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn finish_the_race(
     mut commands: Commands,
     rules: Res<Rules>,
+    track: Res<Track>,
     current: Res<CurrentCircuit>,
     mut settings: ResMut<Settings>,
     mut standing: ResMut<Standing>,
-    mut championship: ResMut<Championship>,
     bikes: Query<(
         Entity,
         &Rider,
@@ -575,21 +799,13 @@ fn finish_the_race(
     if clock - done_at < RESULTS_AFTER {
         return;
     }
-    let places: Vec<Place> = standing
-        .order
-        .iter()
-        .map(|&rider| {
-            let progress = bikes
-                .iter()
-                .find(|(_, r, ..)| r.0 == rider)
-                .map(|(_, _, progress, ..)| progress);
-            Place {
-                rider,
-                time: progress.and_then(|p| p.finished),
-                out: standing.out.contains(&rider),
-            }
-        })
-        .collect();
+    let lap = track.lap_length();
+    let places = places_now(&standing, &rules, lap, |rider| {
+        bikes
+            .iter()
+            .find(|(_, r, ..)| r.0 == rider)
+            .map(|(_, _, progress, ..)| progress.clone())
+    });
     let name = current.get().name;
     let laps = bikes
         .iter()
@@ -597,15 +813,15 @@ fn finish_the_race(
         .map_or(0, |(_, _, progress, ..)| progress.laps);
     let record =
         rules.mode == Mode::Checkpoint && laps > 0 && settings.records.checkpoint(name, laps);
-    if rules.mode.is_championship() {
-        let order: Vec<usize> = places.iter().map(|place| place.rider).collect();
-        championship.score(&order);
-        if rules.mode == Mode::Story {
-            settings.records.story = (!championship.is_over()).then(|| championship.clone());
-        }
-    }
+    // Those who did not cross the line (their time is up) roll to a stop;
+    // those who did ride on, on autopilot.
     for (_, bike, ..) in &players {
-        commands.entity(*bike).insert(Retired);
+        let finished = bikes
+            .get(*bike)
+            .is_ok_and(|(_, _, progress, ..)| progress.finished.is_some());
+        if !finished {
+            commands.entity(*bike).insert(Retired);
+        }
     }
     commands.insert_resource(Outcome {
         mode: rules.mode,
@@ -614,21 +830,82 @@ fn finish_the_race(
         players: players.iter().map(|(_, _, rider, _)| *rider).collect(),
         laps,
         record,
+        settled: false,
     });
 }
 
-/// Puts a championship on its first race, or on the one it was left on.
-pub fn start_championship(
-    mode: Mode,
-    settings: &Settings,
-    championship: &mut Championship,
-    current: &mut CurrentCircuit,
+/// Until the players go on from the results, the places fill in as the
+/// others come in.
+fn fill_in_the_results(
+    rules: Res<Rules>,
+    track: Res<Track>,
+    standing: Res<Standing>,
+    mut outcome: ResMut<Outcome>,
+    bikes: Query<(&Rider, &Progress)>,
 ) {
-    *championship = match (mode, &settings.records.story) {
-        (Mode::Story, Some(saved)) if !saved.is_over() => saved.clone(),
-        _ => Championship::default(),
-    };
-    current.0 = championship.round.min(CIRCUITS.len() - 1);
+    if outcome.settled || rules.mode == Mode::Checkpoint {
+        return;
+    }
+    let places = places_now(&standing, &rules, track.lap_length(), |rider| {
+        bikes
+            .iter()
+            .find(|(r, _)| r.0 == rider)
+            .map(|(_, progress)| progress.clone())
+    });
+    if outcome.places != places {
+        outcome.places = places;
+    }
+}
+
+/// After the players' race, the camera watches the others come in: the one
+/// nearest to the line of those still racing; once it is in, it stays on it
+/// a moment before going to the next. Once everybody is in, it stays on
+/// the last one.
+fn watch_them_come_in(
+    mut commands: Commands,
+    rules: Res<Rules>,
+    standing: Res<Standing>,
+    watching: Option<Res<Watching>>,
+    bikes: Query<(Entity, &Rider, &Progress)>,
+) {
+    if rules.mode == Mode::Checkpoint {
+        return;
+    }
+    let clock = standing.clock;
+    let watched = watching.as_deref().filter(|w| bikes.contains(w.bike));
+    // Still on its way, or just in: the camera stays on it.
+    if let Some(current) = watched
+        && let Ok((_, _, progress)) = bikes.get(current.bike)
+    {
+        match progress.finished {
+            None if !standing.out.contains(&current.rider) => return,
+            Some(at) if clock - at < WATCH_ARRIVAL => return,
+            _ => {}
+        }
+    }
+    let next = standing.order.iter().find_map(|&rider| {
+        if standing.out.contains(&rider) {
+            return None;
+        }
+        bikes
+            .iter()
+            .find(|(_, r, progress)| r.0 == rider && progress.finished.is_none())
+    });
+    if let Some((bike, rider, _)) = next {
+        commands.insert_resource(Watching {
+            bike,
+            rider: rider.0,
+            since: clock,
+        });
+    } else if watched.is_none() && watching.is_some() {
+        commands.remove_resource::<Watching>();
+    }
+}
+
+/// Puts the arcade championship on its first race.
+pub fn start_championship(championship: &mut Championship, current: &mut CurrentCircuit) {
+    *championship = Championship::default();
+    current.0 = 0;
 }
 
 #[cfg(test)]
@@ -636,14 +913,16 @@ mod tests {
     use super::*;
 
     const LAP: f32 = 3000.0;
+    /// Checkpoint gantries at 1000 and 2000 m, and the line.
+    const POINTS: [f32; 3] = [1000.0, 2000.0, LAP];
 
     /// Rides `progress` from `from` to `to` m along (forward, round the
     /// line if need be) in steps of 10 m.
     fn ride(progress: &mut Progress, from: f32, to: f32) -> Vec<Passed> {
         let length = (to - from).rem_euclid(LAP);
         (0..=(length / 10.0) as usize)
-            .map(|k| progress.pass((from + k as f32 * 10.0).rem_euclid(LAP), LAP))
-            .filter(|passed| passed.gate || passed.lap)
+            .map(|k| progress.pass((from + k as f32 * 10.0).rem_euclid(LAP), LAP, &POINTS))
+            .filter(|passed| passed.checkpoint || passed.lap)
             .collect()
     }
 
@@ -654,11 +933,13 @@ mod tests {
         let passed = ride(&mut progress, LAP - 40.0, 100.0);
         assert!(passed.is_empty());
         assert_eq!(progress.laps, 0);
-        // Round to the line: the two gates and the line.
+        // Round to the line: the two checkpoints and the line.
         let passed = ride(&mut progress, 100.0, 20.0);
         assert_eq!(passed.len(), 3);
-        assert!(passed[2].lap);
+        assert!(!passed[0].lap && !passed[1].lap && passed[2].lap);
         assert_eq!(progress.laps, 1);
+        assert_eq!(progress.checkpoints, 3);
+        assert_eq!(progress.last_checkpoint(&POINTS), 2);
     }
 
     #[test]
@@ -667,13 +948,51 @@ mod tests {
         ride(&mut progress, 100.0, LAP - 10.0);
         // Now back and forth over the line.
         for _ in 0..5 {
-            progress.pass(LAP - 20.0, LAP);
-            progress.pass(15.0, LAP);
+            progress.pass(LAP - 20.0, LAP, &POINTS);
+            progress.pass(15.0, LAP, &POINTS);
         }
         assert_eq!(progress.laps, 1, "only the first time");
-        progress.pass(LAP - 20.0, LAP);
-        progress.pass(15.0, LAP);
+        progress.pass(LAP - 20.0, LAP, &POINTS);
+        progress.pass(15.0, LAP, &POINTS);
         assert_eq!(progress.laps, 1);
+    }
+
+    #[test]
+    fn the_checkpoints_are_the_gantries_and_the_line() {
+        let points = checkpoints(&[1980.0, 0.0, 960.0], 3068.0);
+        assert_eq!(points, [960.0, 1980.0, 3068.0]);
+        // Each gives the seconds of the stretch to the next; the line, of
+        // the stretch to the first.
+        assert_eq!(stretch_after(&points, 0), 1020.0);
+        assert_eq!(stretch_after(&points, 1), 1088.0);
+        assert_eq!(stretch_after(&points, 2), 960.0);
+        assert_eq!(stretch_after(&points, usize::MAX), 960.0);
+        // A track with no gantries: the line, once a lap.
+        assert_eq!(checkpoints(&[], 1600.0), [1600.0]);
+        assert_eq!(stretch_after(&[1600.0], 0), 1600.0);
+    }
+
+    #[test]
+    fn every_track_has_its_checkpoints_evenly_spread() {
+        for circuit in &CIRCUITS {
+            let lap = Track::new(&circuit.layout).lap_length();
+            let points = checkpoints(&circuit.checkpoints(), lap);
+            assert!(points.len() >= 2, "{}: {points:?}", circuit.name);
+            for index in 0..points.len() {
+                let stretch = stretch_after(&points, index);
+                // Some 30 s apart at race pace, never much more.
+                assert!(
+                    (550.0..=1500.0).contains(&stretch),
+                    "{}: {stretch} m after checkpoint {index}",
+                    circuit.name
+                );
+                // The seconds given are a little more than a ride at
+                // 60 m/s takes, and a lot less than one at 30 m/s.
+                let bonus = checkpoint_bonus(stretch);
+                assert!(bonus > stretch / 60.0 && bonus < stretch / 30.0);
+                assert!(starting_time(&points) > checkpoint_bonus(points[0]));
+            }
+        }
     }
 
     #[test]
@@ -707,6 +1026,58 @@ mod tests {
     }
 
     #[test]
+    fn those_still_racing_are_placed_with_the_time_they_would_take() {
+        // Half way round the second of two laps after 90 s: 1.5 laps at
+        // its pace, 30 s more.
+        assert!((estimate_finish(90.0, 1.5 * LAP, 2.0 * LAP) - 120.0).abs() < 1e-3);
+        let standing = Standing {
+            clock: 90.0,
+            order: vec![2, 0, 1, 3],
+            out: vec![3],
+            ..default()
+        };
+        let rules = Rules {
+            mode: Mode::Race,
+            laps: 2,
+        };
+        let progress = |rider: usize| {
+            Some(match rider {
+                2 => Progress {
+                    laps: 2,
+                    finished: Some(85.0),
+                    ..default()
+                },
+                0 => Progress {
+                    laps: 1,
+                    along: LAP / 2.0,
+                    gates: 1,
+                    ..default()
+                },
+                _ => Progress {
+                    laps: 1,
+                    along: LAP / 4.0,
+                    ..default()
+                },
+            })
+        };
+        let places = places_now(&standing, &rules, LAP, progress);
+        assert_eq!(places[0].time, Some(85.0));
+        assert!(!places[0].estimated);
+        assert!(places[1].estimated && places[2].estimated);
+        // Behind, never in before the one ahead.
+        assert!(places[2].time > places[1].time);
+        assert!(places[3].out && places[3].time.is_none());
+        // In an elimination, nobody racing is given a time: they may still
+        // go out.
+        let rules = Rules {
+            mode: Mode::Elimination,
+            ..rules
+        };
+        let places = places_now(&standing, &rules, LAP, progress);
+        assert!(places[1].time.is_none() && !places[1].estimated);
+    }
+
+    #[test]
     fn a_championship_adds_up_points_race_after_race() {
         let mut championship = Championship::default();
         championship.score(&[3, 1, 0, 2, 4, 5, 6, 7]);
@@ -717,6 +1088,42 @@ mod tests {
         assert_eq!(&championship.standings()[..3], &[1, 3, 0]);
         championship.round = CIRCUITS.len();
         assert!(championship.is_over());
+    }
+
+    #[test]
+    fn the_results_are_scored_once_when_the_players_go_on() {
+        let place = |rider: usize, time: f32, estimated: bool| Place {
+            rider,
+            time: Some(time),
+            out: false,
+            estimated,
+        };
+        let mut outcome = Outcome {
+            mode: Mode::Arcade,
+            track: 0,
+            places: vec![place(4, 100.0, false), place(7, 104.0, true)],
+            players: vec![7],
+            laps: 0,
+            record: false,
+            settled: false,
+        };
+        let mut championship = Championship::default();
+        outcome.settle(&mut championship);
+        outcome.settle(&mut championship);
+        assert_eq!(championship.round, 1);
+        assert_eq!((championship.points[4], championship.points[7]), (10, 8));
+    }
+
+    #[test]
+    fn the_arcade_always_starts_from_the_first_track() {
+        let mut championship = Championship {
+            round: 2,
+            points: [5; 8],
+        };
+        let mut current = CurrentCircuit(3);
+        start_championship(&mut championship, &mut current);
+        assert_eq!(championship, Championship::default());
+        assert_eq!(current.0, 0);
     }
 
     #[test]
@@ -736,18 +1143,20 @@ mod tests {
         assert_eq!(Mode::Free.laps(3), None);
         assert_eq!(Mode::Checkpoint.laps(3), None);
         assert_eq!(Mode::Race.laps(7), Some(7));
-        assert_eq!(Mode::Story.laps(7), Some(CHAMPIONSHIP_LAPS));
-        assert_eq!(Mode::Elimination.laps(2), Some(CHAMPIONSHIP_LAPS));
-        assert!(Mode::Story.is_championship() && Mode::Elimination.is_championship());
-        assert!(!Mode::Race.is_championship());
+        assert_eq!(Mode::Arcade.laps(7), Some(CHAMPIONSHIP_LAPS));
+        // An elimination: one lap for each bike but the winner.
+        assert_eq!(Mode::Elimination.laps(2), Some(7));
+        assert_eq!(ELIMINATION_LAPS as usize, ROSTER.len() - 1);
+        assert_eq!(DEFAULT_LAPS, 5);
+        assert!(Mode::Arcade.is_championship());
+        assert!(!Mode::Race.is_championship() && !Mode::Elimination.is_championship());
         // The time against the clock grows with the stretch.
         assert!(checkpoint_bonus(1000.0) > checkpoint_bonus(500.0));
-        assert!(checkpoint_bonus(1000.0) > 1000.0 / 80.0);
     }
 
     /// An elimination with four bikes of the roster (0, 1, 2 and 3), the
-    /// player on 2, in the order 0, 1, 2, 3, the leader on `laps`.
-    fn elimination(laps: u32) -> (App, Vec<Entity>) {
+    /// player on 2, in the order 0, 1, 2, 3, having done `laps`.
+    fn elimination(laps: [u32; 4]) -> (App, Vec<Entity>) {
         let mut app = App::new();
         app.insert_resource(Rules {
             mode: Mode::Elimination,
@@ -763,7 +1172,7 @@ mod tests {
                 let mut bike = app.world_mut().spawn((
                     Rider(rider),
                     Progress {
-                        laps: if rider == 0 { laps } else { 0 },
+                        laps: laps[rider],
                         ..default()
                     },
                 ));
@@ -777,13 +1186,14 @@ mod tests {
     }
 
     #[test]
-    fn each_lap_of_the_leader_puts_the_last_one_out() {
-        // Nobody has finished a lap: nobody out.
-        let (mut app, _) = elimination(0);
+    fn the_last_one_is_out_when_the_third_from_last_crosses_the_line() {
+        // Only the leader has finished the lap: nobody out yet.
+        let (mut app, _) = elimination([1, 0, 0, 0]);
         app.update();
         assert!(app.world().resource::<Standing>().out.is_empty());
-        // The leader finishes a lap: the last rival leaves the race...
-        let (mut app, bikes) = elimination(1);
+        // The third from last (of four, the second) crosses it: of the two
+        // behind, the one further back leaves the race...
+        let (mut app, bikes) = elimination([1, 1, 0, 0]);
         app.update();
         let standing = app.world().resource::<Standing>();
         assert_eq!(standing.out, [3]);
@@ -792,14 +1202,16 @@ mod tests {
         // ...and only once for that lap.
         app.update();
         assert_eq!(app.world().resource::<Standing>().out, [3]);
-        // On the next, the last is the player: out, but the bike stays,
+        // Next lap, three left: the leader crossing the line is the third
+        // from last, and the player, last, is out, but the bike stays,
         // rolling to a stop.
         app.world_mut().get_mut::<Progress>(bikes[0]).unwrap().laps = 2;
         app.update();
         assert_eq!(app.world().resource::<Standing>().out, [3, 2]);
         assert!(app.world().get::<Retired>(bikes[2]).is_some());
-        // No one goes out on the last lap: the finish decides it.
-        app.world_mut().get_mut::<Progress>(bikes[0]).unwrap().laps = CHAMPIONSHIP_LAPS;
+        // Two left: they race the last lap, and the finish decides it.
+        app.world_mut().get_mut::<Progress>(bikes[0]).unwrap().laps = 6;
+        app.world_mut().get_mut::<Progress>(bikes[1]).unwrap().laps = 6;
         app.update();
         assert_eq!(app.world().resource::<Standing>().out, [3, 2]);
     }

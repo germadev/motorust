@@ -22,6 +22,7 @@ use crate::bike::{BikeInput, BikeState, LocalPlayer, Player};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
+use crate::race::lights::StartBeep;
 use crate::settings::{DEFAULT_VOLUME, Settings};
 use crate::ui::MenuSound;
 pub use synth::Sound;
@@ -68,6 +69,7 @@ impl Plugin for SoundPlugin {
         app.add_audio_source::<Mix>()
             .add_audio_source::<music::SongSource>()
             .insert_resource(SoundControls(controls))
+            .add_message::<StartBeep>()
             .init_resource::<Blip>()
             .add_systems(Startup, start_mixer)
             .add_systems(
@@ -248,12 +250,23 @@ fn menu_blip(
     }
 }
 
-/// Lo que suena al moverse por los menús.
-fn menu_sounds(mut sounds: MessageReader<MenuSound>, controls: Res<SoundControls>) {
+/// Lo que suena al moverse por los menús, and the beeps of the start
+/// lights.
+fn menu_sounds(
+    mut sounds: MessageReader<MenuSound>,
+    mut beeps: MessageReader<StartBeep>,
+    controls: Res<SoundControls>,
+) {
     for sound in sounds.read() {
         controls.0.play(match sound {
             MenuSound::Move => Sound::Click,
             MenuSound::Confirm => Sound::Confirm,
+        });
+    }
+    for beep in beeps.read() {
+        controls.0.play(match beep {
+            StartBeep::Light => Sound::StartLight,
+            StartBeep::Go => Sound::StartGo,
         });
     }
 }
