@@ -251,6 +251,9 @@ pub struct Row {
     /// Whether it is the main action of its menu, like resuming the race:
     /// it shows in blue, faintly when it is not chosen.
     pub primary: bool,
+    /// Whether it is something on or off, a box ticked or not after its
+    /// value (if any). Drawn by the options menu.
+    pub check: Option<bool>,
 }
 
 impl Row {
@@ -261,6 +264,15 @@ impl Row {
             disabled: false,
             danger: false,
             primary: false,
+            check: None,
+        }
+    }
+
+    /// Something on or off, with a box ticked or not.
+    pub fn check(label: impl Into<String>, on: bool) -> Self {
+        Self {
+            check: Some(on),
+            ..Self::new(label)
         }
     }
 

@@ -31,9 +31,11 @@ pub enum Glyph {
     Triangle,
     /// A thumbstick.
     Stick,
+    /// The tick of a box that is on, in the options.
+    Check,
 }
 
-pub const GLYPHS: [Glyph; 9] = [
+pub const GLYPHS: [Glyph; 10] = [
     Glyph::Up,
     Glyph::Down,
     Glyph::Left,
@@ -43,6 +45,7 @@ pub const GLYPHS: [Glyph; 9] = [
     Glyph::Square,
     Glyph::Triangle,
     Glyph::Stick,
+    Glyph::Check,
 ];
 
 /// What a badge shows.
@@ -358,33 +361,89 @@ pub fn shortcut_prompts(device: ActiveDevice, lang: Language) -> Vec<KeyPrompt> 
     .collect()
 }
 
-/// A row of prompts in place, as in the legend but where it is put.
-pub fn spawn_prompts(
+/// One prompt: its badges and what it does.
+/// `prompts` in a lighter hand than the legend's: the keys or buttons
+/// only outlined, small, and their words faint. For hints that go with
+/// something else, as the shortcuts under an option.
+pub fn spawn_light_prompts(
     parent: &mut ChildSpawnerCommands,
     font: &UiFont,
     icons: &UiIcons,
-    device: ActiveDevice,
     prompts: &[KeyPrompt],
 ) {
-    let look = style(device);
+    const INK: Color = Color::srgba(1.0, 1.0, 1.0, 0.7);
     parent
         .spawn(Node {
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::Wrap,
-            justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            column_gap: px(24),
-            row_gap: px(8),
+            column_gap: px(20),
+            row_gap: px(4),
             ..default()
         })
         .with_children(|bar| {
             for prompt in prompts {
-                spawn_prompt(bar, font, icons, &look, device, prompt);
+                bar.spawn(Node {
+                    align_items: AlignItems::Center,
+                    column_gap: px(3),
+                    ..default()
+                })
+                .with_children(|item| {
+                    for badge in &prompt.badges {
+                        item.spawn((
+                            Node {
+                                min_width: px(18),
+                                height: px(18),
+                                padding: UiRect::horizontal(px(4)),
+                                border: UiRect::all(px(1)),
+                                border_radius: BorderRadius::all(px(if badge.round {
+                                    9.0
+                                } else {
+                                    4.0
+                                })),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                column_gap: px(1),
+                                ..default()
+                            },
+                            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.35)),
+                        ))
+                        .with_children(|inside| match &badge.label {
+                            Label::Text(label) => {
+                                inside.spawn((
+                                    Text::new(label),
+                                    text_font(font, 11.0),
+                                    TextColor(INK),
+                                ));
+                            }
+                            Label::Glyphs(glyphs) => {
+                                for &glyph in glyphs {
+                                    inside.spawn((
+                                        ImageNode::new(icons.glyph(glyph)).with_color(INK),
+                                        Node {
+                                            width: px(11),
+                                            height: px(11),
+                                            ..default()
+                                        },
+                                    ));
+                                }
+                            }
+                        });
+                    }
+                    item.spawn((
+                        Text::new(&prompt.action),
+                        text_font(font, 13.0),
+                        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.55)),
+                        Node {
+                            margin: UiRect::left(px(3)),
+                            ..default()
+                        },
+                    ));
+                });
             }
         });
 }
 
-/// One prompt: its badges and what it does.
 fn spawn_prompt(
     bar: &mut ChildSpawnerCommands,
     font: &UiFont,
@@ -656,6 +715,12 @@ fn glyph_distance(glyph: Glyph, p: Vec2) -> f32 {
             let cap = p.length() - 0.38;
             ring.min(cap)
         }
+        Glyph::Check => {
+            let elbow = Vec2::new(-0.2, -0.5);
+            let short = segment(p, Vec2::new(-0.62, -0.06), elbow);
+            let long = segment(p, elbow, Vec2::new(0.64, 0.5));
+            short.min(long) - 0.16
+        }
     }
 }
 
@@ -808,5 +873,11 @@ mod tests {
         assert!(inside(Glyph::Square, 0.56, 0.0));
         assert!(!inside(Glyph::Triangle, 0.0, 0.0));
         assert!(inside(Glyph::Stick, 0.0, 0.0));
+        // The tick: through its elbow, low left of the middle, and up to
+        // the top right; not in the corners it leaves empty.
+        assert!(inside(Glyph::Check, -0.2, -0.5));
+        assert!(inside(Glyph::Check, 0.6, 0.45));
+        assert!(!inside(Glyph::Check, -0.6, 0.6));
+        assert!(!inside(Glyph::Check, 0.6, -0.6));
     }
 }

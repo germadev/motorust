@@ -84,6 +84,9 @@ pub struct Settings {
     /// holds them back, a frame more between the controls and the screen.
     /// Applied when the game starts.
     pub pipelined_rendering: bool,
+    /// Whether the trees are the ones modelled with Meshy, or the classic
+    /// ones built in code (see [`crate::world`]).
+    pub modelled_trees: bool,
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
@@ -221,6 +224,7 @@ impl Default for Settings {
             centre_results: false,
             difficulty: Difficulty::default(),
             pipelined_rendering: true,
+            modelled_trees: true,
             frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
         }
@@ -1337,6 +1341,7 @@ mod tests {
         assert_eq!(partial.start_lights, DEFAULT_START_LIGHTS);
         assert_eq!(partial.false_starts, DEFAULT_FALSE_STARTS);
         assert!(!partial.centre_results);
+        assert!(partial.modelled_trees);
         // At the lights, held or not; or at the throttle.
         assert!(RaceStart::Lights.at_lights() && RaceStart::Lights.holds());
         assert!(RaceStart::LightsUnheld.at_lights() && !RaceStart::LightsUnheld.holds());

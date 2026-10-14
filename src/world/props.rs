@@ -15,6 +15,7 @@ use super::scenery::{
 };
 use super::terrain::{Ground, SEA_LEVEL, Terrain};
 use super::textures::WorldTextures;
+use super::trees::{Tree, TreeModel};
 use crate::geometry::{heading_of, random01, smoothstep, value_noise};
 use crate::shapes::{between, tube};
 use crate::track::{Track, WALL_DISTANCE};
@@ -977,12 +978,18 @@ fn spawn_trees(
             .iter()
             .any(|&(at, radius)| at.distance(tree.position) < radius)
     };
+    // Planted classic; dressed as the options say (see [`super::trees`]).
     let plant = |world: &mut ChildSpawnerCommands, tree: &PlannedTree| {
         let random = |k: u32| random01(tree.seed * 8 + k);
         let variants = model(tree.kind);
         let variant = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
         let scale = 0.75 + 0.60 * random(5);
         world.spawn((
+            Tree {
+                classic: variant.clone(),
+                classic_material: material.clone(),
+                model: TreeModel::of(tree.kind, random(7)),
+            },
             Mesh3d(variant.clone()),
             MeshMaterial3d(material.clone()),
             Transform::from_xyz(tree.position.x, tree.height, tree.position.y)

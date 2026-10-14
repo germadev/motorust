@@ -9,7 +9,7 @@ mod chassis;
 mod crash;
 mod grass_kickup;
 mod loop_ride;
-mod model;
+pub(crate) mod model;
 
 #[cfg(test)]
 use crash::{Body, carry, collide};

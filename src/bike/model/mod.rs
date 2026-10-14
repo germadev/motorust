@@ -17,7 +17,7 @@
 //! las dos ruedas.
 
 mod designs;
-mod imported;
+pub(crate) mod imported;
 mod livery;
 mod pilot;
 mod rider;

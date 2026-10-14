@@ -7,8 +7,8 @@ use bevy::window::PrimaryWindow;
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
 use crate::legend::{
-    Keys, menu_prompts, section_badges, shortcut_prompts, spawn_legend, spawn_lone_badge,
-    spawn_prompts,
+    Glyph, Keys, menu_prompts, section_badges, shortcut_prompts, spawn_legend, spawn_light_prompts,
+    spawn_lone_badge,
 };
 use crate::locale::{LANGUAGES, Language};
 use crate::mapping::{
@@ -242,6 +242,8 @@ enum GraphicsItem {
     Fullscreen,
     Resolution,
     Fps,
+    /// The trees modelled or the classic ones.
+    Trees,
     PipelinedRendering,
     FrameLatency,
 }
@@ -261,14 +263,23 @@ fn game_items() -> Vec<GameItem> {
 const GROUP_GAP: f32 = 14.0;
 
 /// Whether the row at `index` of `tab` begins a group of its own, with
-/// room above: on Control, the steering after the mapping, and the legend
-/// and the gamepads after the steering.
+/// room above: on Control, the steering after the mapping, the legend
+/// after the steering, and looking for the gamepads after the legend and
+/// its shortcuts.
 fn starts_group(tab: OptionsTab, index: usize) -> bool {
     tab == OptionsTab::Control
         && matches!(
             control_items().get(index),
-            Some(ControlItem::StickTurnLimit | ControlItem::ShowLegend)
+            Some(
+                ControlItem::StickTurnLimit | ControlItem::ShowLegend | ControlItem::RescanGamepads
+            )
         )
+}
+
+/// Whether the shortcuts for the sound and fullscreen go under the row at
+/// `index` of `tab`: under Control's legend.
+fn shortcuts_after(tab: OptionsTab, index: usize) -> bool {
+    tab == OptionsTab::Control && control_items().get(index) == Some(&ControlItem::ShowLegend)
 }
 
 /// The mapping of the controls, and how the stick and the keyboard steer.
@@ -294,12 +305,17 @@ fn sound_items() -> Vec<SoundItem> {
 
 fn graphics_items() -> Vec<GraphicsItem> {
     if WEB {
-        vec![GraphicsItem::Fullscreen, GraphicsItem::Resolution]
+        vec![
+            GraphicsItem::Fullscreen,
+            GraphicsItem::Resolution,
+            GraphicsItem::Trees,
+        ]
     } else {
         vec![
             GraphicsItem::Fullscreen,
             GraphicsItem::Resolution,
             GraphicsItem::Fps,
+            GraphicsItem::Trees,
             GraphicsItem::PipelinedRendering,
             GraphicsItem::FrameLatency,
         ]
@@ -379,12 +395,14 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.fullscreen,
                 settings.resolution,
                 settings.fps,
+                settings.modelled_trees,
                 settings.pipelined_rendering,
                 settings.frame_latency,
             ) == (
                 first.fullscreen,
                 first.resolution,
                 first.fps,
+                first.modelled_trees,
                 first.pipelined_rendering,
                 first.frame_latency,
             )
@@ -415,6 +433,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.fullscreen = first.fullscreen;
             settings.resolution = first.resolution;
             settings.fps = first.fps;
+            settings.modelled_trees = first.modelled_trees;
             settings.pipelined_rendering = first.pipelined_rendering;
             settings.frame_latency = first.frame_latency;
         }
@@ -616,6 +635,10 @@ fn use_options_menu(
                     settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
                     sounds.write(MenuSound::Move);
                 }
+                GraphicsItem::Trees if change != 0 => {
+                    settings.modelled_trees = !settings.modelled_trees;
+                    sounds.write(MenuSound::Move);
+                }
                 GraphicsItem::PipelinedRendering if change != 0 => {
                     settings.pipelined_rendering = !settings.pipelined_rendering;
                     sounds.write(MenuSound::Move);
@@ -724,6 +747,72 @@ fn spawn_foot_button(
     .with_child((Text::new(&row.label), text_font(font, 19.0), TextColor(ink)));
 }
 
+/// Side of the box of an option on or off (px).
+const CHECK_SIZE: f32 = 22.0;
+
+/// The colours of the box of an option on or off: its frame, its fill and
+/// its tick. On, it is filled with the colour of the section; on the
+/// chosen row, which is already in that colour, it goes dark instead.
+fn check_colors(on: bool, chosen: bool, disabled: bool, accent: Color) -> (Color, Color, Color) {
+    let faint = |color: Color| {
+        if disabled {
+            color.with_alpha(color.alpha() * 0.4)
+        } else {
+            color
+        }
+    };
+    let (frame, fill, tick) = match (on, chosen) {
+        (true, false) => (accent, accent, INK),
+        (true, true) => (INK, INK, accent),
+        (false, false) => (
+            Color::srgba(1.0, 1.0, 1.0, 0.55),
+            Color::srgba(1.0, 1.0, 1.0, 0.06),
+            Color::NONE,
+        ),
+        (false, true) => (INK.with_alpha(0.7), INK.with_alpha(0.08), Color::NONE),
+    };
+    (faint(frame), faint(fill), faint(tick))
+}
+
+/// The box of an option on or off, ticked when it is on.
+fn spawn_check(
+    parent: &mut ChildSpawnerCommands,
+    icons: &UiIcons,
+    on: bool,
+    chosen: bool,
+    disabled: bool,
+    accent: Color,
+) {
+    let (frame, fill, tick) = check_colors(on, chosen, disabled, accent);
+    parent
+        .spawn((
+            Node {
+                width: px(CHECK_SIZE),
+                height: px(CHECK_SIZE),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border: UiRect::all(px(2)),
+                border_radius: BorderRadius::all(px(6)),
+                ..default()
+            },
+            BackgroundColor(fill),
+            BorderColor::all(frame),
+        ))
+        .with_children(|square| {
+            if on {
+                square.spawn((
+                    ImageNode::new(icons.glyph(Glyph::Check)).with_color(tick),
+                    Node {
+                        width: px(CHECK_SIZE - 6.0),
+                        height: px(CHECK_SIZE - 6.0),
+                        ..default()
+                    },
+                ));
+            }
+        });
+}
+
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn show_options_menu(
     mut commands: Commands,
@@ -810,16 +899,12 @@ fn show_options_menu(
                         format!("<  {}  >", settings.false_starts),
                     )
                 },
-                GameItem::CentreResults => Row::with_value(
+                GameItem::CentreResults => Row::check(
                     match lang {
                         Language::Spanish => "Centrar resultados al llegar todos",
                         Language::English => "Centre results when all are in",
                     },
-                    if settings.centre_results {
-                        "[X]"
-                    } else {
-                        "[ ]"
-                    },
+                    settings.centre_results,
                 ),
             })
             .collect(),
@@ -864,14 +949,9 @@ fn show_options_menu(
                     },
                     format!("<  {}  >", debug_options.keyboard_return.name(lang)),
                 ),
-                ControlItem::ShowLegend => Row::with_value(
-                    lang.show_legend(),
-                    if debug_options.show_legend {
-                        "[X]"
-                    } else {
-                        "[ ]"
-                    },
-                ),
+                ControlItem::ShowLegend => {
+                    Row::check(lang.show_legend(), debug_options.show_legend)
+                }
                 ControlItem::RescanGamepads => {
                     if now < options_menu.rescan_msg_until {
                         Row::with_value(
@@ -911,10 +991,7 @@ fn show_options_menu(
         OptionsTab::Graphics => graphics_items()
             .into_iter()
             .map(|item| match item {
-                GraphicsItem::Fullscreen => Row::with_value(
-                    lang.fullscreen(),
-                    if settings.fullscreen { "[X]" } else { "[ ]" },
-                ),
+                GraphicsItem::Fullscreen => Row::check(lang.fullscreen(), settings.fullscreen),
                 GraphicsItem::Resolution => {
                     let name = settings.resolution.name(window_inner, lang);
                     if WEB {
@@ -926,28 +1003,34 @@ fn show_options_menu(
                 GraphicsItem::Fps => {
                     Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang)))
                 }
-                // These two take effect when the game starts again.
-                GraphicsItem::PipelinedRendering => Row::with_value(
+                GraphicsItem::Trees => Row::with_value(
                     match lang {
-                        Language::Spanish => "Renderizado en paralelo",
-                        Language::English => "Pipelined rendering",
+                        Language::Spanish => "Árboles",
+                        Language::English => "Trees",
                     },
                     format!(
-                        "{}{}",
-                        if started
-                            .is_some_and(|s| s.pipelined_rendering != settings.pipelined_rendering)
-                        {
-                            restart
-                        } else {
-                            ""
-                        },
-                        if settings.pipelined_rendering {
-                            "[X]"
-                        } else {
-                            "[ ]"
+                        "<  {}  >",
+                        match (settings.modelled_trees, lang) {
+                            (true, Language::Spanish) => "Nuevos",
+                            (true, Language::English) => "New",
+                            (false, Language::Spanish) => "Clásicos",
+                            (false, Language::English) => "Classic",
                         }
                     ),
                 ),
+                // These two take effect when the game starts again.
+                GraphicsItem::PipelinedRendering => Row {
+                    value: started
+                        .is_some_and(|s| s.pipelined_rendering != settings.pipelined_rendering)
+                        .then(|| restart.trim_end().to_string()),
+                    ..Row::check(
+                        match lang {
+                            Language::Spanish => "Renderizado en paralelo",
+                            Language::English => "Pipelined rendering",
+                        },
+                        settings.pipelined_rendering,
+                    )
+                },
                 GraphicsItem::FrameLatency => Row::with_value(
                     match lang {
                         Language::Spanish => "Fotogramas en cola",
@@ -1042,7 +1125,10 @@ fn show_options_menu(
         debug_options.show_legend,
         rows.iter()
             .chain(&footer)
-            .map(|row| format!("{}={:?}{}", row.label, row.value, row.disabled))
+            .map(|row| format!(
+                "{}={:?}{:?}{}",
+                row.label, row.value, row.check, row.disabled
+            ))
             .collect::<Vec<_>>()
             .join("|"),
     );
@@ -1229,7 +1315,9 @@ fn show_options_menu(
                                 items_container
                                     .spawn((
                                         Node {
-                                            justify_content: if row.value.is_some() {
+                                            justify_content: if row.value.is_some()
+                                                || row.check.is_some()
+                                            {
                                                 JustifyContent::SpaceBetween
                                             } else {
                                                 JustifyContent::Center
@@ -1257,14 +1345,49 @@ fn show_options_menu(
                                             text_font(&font, size),
                                             color,
                                         ));
-                                        if let Some(value) = &row.value {
-                                            line.spawn((
-                                                Text::new(value),
-                                                text_font(&font, size),
-                                                color,
-                                            ));
-                                        }
+                                        // The value and the box, together
+                                        // on the right.
+                                        line.spawn(Node {
+                                            align_items: AlignItems::Center,
+                                            column_gap: px(14),
+                                            ..default()
+                                        })
+                                        .with_children(
+                                            |right| {
+                                                if let Some(value) = &row.value {
+                                                    right.spawn((
+                                                        Text::new(value),
+                                                        text_font(&font, size),
+                                                        color,
+                                                    ));
+                                                }
+                                                if let Some(on) = row.check {
+                                                    spawn_check(
+                                                        right,
+                                                        &icons,
+                                                        on,
+                                                        chosen,
+                                                        row.disabled,
+                                                        accent,
+                                                    );
+                                                }
+                                            },
+                                        );
                                     });
+                                // Under the legend, in a lighter hand: the
+                                // shortcuts for the sound and fullscreen,
+                                // on the device in use.
+                                if shortcuts_after(options_menu.tab, index) {
+                                    items_container
+                                        .spawn(Node {
+                                            padding: UiRect::axes(px(ROW_INSET), px(2)),
+                                            ..default()
+                                        })
+                                        .with_children(|note| {
+                                            let prompts = shortcut_prompts(active_dev, lang);
+                                            spawn_light_prompts(note, &font, &icons, &prompts);
+                                        });
+                                }
                             }
                             // The foot, side by side.
                             items_container
@@ -1282,26 +1405,6 @@ fn show_options_menu(
                                     }
                                 });
                         });
-                });
-
-            // Under the panel, outside it, on the controls' tab: the
-            // shortcuts for the sound and fullscreen, on the device in use.
-            // The room is kept on every tab, so the panel does not move.
-            modal
-                .spawn((
-                    Node {
-                        margin: UiRect::top(px(14)),
-                        ..default()
-                    },
-                    if options_menu.tab == OptionsTab::Control {
-                        Visibility::Inherited
-                    } else {
-                        Visibility::Hidden
-                    },
-                ))
-                .with_children(|note| {
-                    let prompts = shortcut_prompts(active_dev, lang);
-                    spawn_prompts(note, &font, &icons, active_dev, &prompts);
                 });
 
             // Leyenda de controles al pie
@@ -1322,8 +1425,20 @@ mod tests {
             .collect();
         assert_eq!(
             starts,
-            [ControlItem::StickTurnLimit, ControlItem::ShowLegend]
+            [
+                ControlItem::StickTurnLimit,
+                ControlItem::ShowLegend,
+                ControlItem::RescanGamepads
+            ]
         );
+        // The shortcuts under the legend, on Control only.
+        let legend = items
+            .iter()
+            .position(|&item| item == ControlItem::ShowLegend)
+            .unwrap();
+        assert!(shortcuts_after(OptionsTab::Control, legend));
+        assert!(!shortcuts_after(OptionsTab::Control, legend + 1));
+        assert!(!shortcuts_after(OptionsTab::Game, legend));
         assert!((0..8).all(|index| !starts_group(OptionsTab::Game, index)));
     }
 
@@ -1427,5 +1542,21 @@ mod tests {
                 assert_ne!(a, b);
             }
         }
+    }
+
+    #[test]
+    fn a_box_on_is_in_the_colour_of_its_section_and_dark_when_chosen() {
+        let accent = OptionsTab::Graphics.accent();
+        let (frame, fill, tick) = check_colors(true, false, false, accent);
+        assert_eq!((frame, fill, tick), (accent, accent, INK));
+        // On the chosen row, already in the colour of the section.
+        assert_eq!(check_colors(true, true, false, accent), (INK, INK, accent));
+        // Off, empty: no tick, and only a faint fill.
+        let (_, fill, tick) = check_colors(false, false, false, accent);
+        assert_eq!(tick.alpha(), 0.0);
+        assert!(fill.alpha() < 0.1);
+        // Faint when it cannot be changed.
+        let (frame, ..) = check_colors(true, false, true, accent);
+        assert!(frame.alpha() < accent.alpha());
     }
 }

@@ -32,6 +32,12 @@ repository's [model releases](https://github.com/germadev/motorust/releases);
 `tools/import_models.py` splits them into parts, scales them to the game's
 measurements and downsizes their textures.
 
+The trees (`models/trees/`: stone pine, cypress, olive, tall forest tree,
+leafy broadleaf, maritime pine, poplar, almond and Nordmann fir) were made by
+the project's author with [Meshy](https://www.meshy.ai);
+`tools/import_trees.py` stands them on the ground at the game's sizes and puts
+their colour textures together.
+
 ## Font
 
 `fonts/RussoOne-Regular.ttf` is [Russo One](https://fonts.google.com/specimen/Russo+One)

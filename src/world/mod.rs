@@ -19,12 +19,14 @@ pub mod sky;
 mod structures;
 mod terrain;
 mod textures;
+mod trees;
 mod tufts;
 
 use bevy::asset::embedded_asset;
 use bevy::pbr::PbrPlugin;
 use bevy::tasks::{Task, TaskPool, TaskPoolBuilder, block_on, poll_once};
 use bevy::{
+    camera::visibility::VisibilitySystems,
     light::{CascadeShadowConfigBuilder, NotShadowCaster},
     prelude::*,
     transform::TransformSystems,
@@ -55,6 +57,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<Roadsides>()
             .init_resource::<Preparing>()
             .init_resource::<textures::WorldTextures>()
+            .init_resource::<trees::ModelledTrees>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
@@ -78,7 +81,10 @@ impl Plugin for WorldPlugin {
             .add_systems(OnEnter(GameState::Race), unload_unused_circuits)
             .add_systems(
                 PostUpdate,
-                sky::follow_camera.before(TransformSystems::Propagate),
+                (
+                    sky::follow_camera.before(TransformSystems::Propagate),
+                    trees::dress_trees.before(VisibilitySystems::CalculateBounds),
+                ),
             );
     }
 }
