@@ -5,8 +5,8 @@
 //! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante.
 //!
 //! Once the players' race is over, it follows the bikes the race watches
-//! come in ([`Watching`]), cutting from one to the next, over the whole
-//! screen in split screen too.
+//! come in ([`Watching`]), and then the shots of them riding on, cutting
+//! from one to the next, over the whole screen in split screen too.
 
 use std::ops::Range;
 

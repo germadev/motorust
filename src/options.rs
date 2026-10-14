@@ -14,11 +14,11 @@ use crate::locale::{LANGUAGES, Language};
 use crate::mapping::{
     Held, MapDevice, Mapping, MappingLook, PAD_HEIGHT, spawn_mapping, use_mapping,
 };
-use crate::pad_art::{PadArt, PadArts};
-use crate::pause::DebugOptions;
+use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
+use crate::pause::{DebugOptions, ReturnRate, SteerRate, TurnLimit};
 use crate::settings::{
     DEFAULT_FRAME_LATENCY, DIFFICULTIES, FPS_LIMITS, FRAME_LATENCIES, RACE_STARTS, RESOLUTIONS,
-    Settings, StartedWith, WEB, cycle,
+    START_LIGHTS, Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
@@ -41,6 +41,7 @@ impl Plugin for OptionsPlugin {
                     use_options_menu
                         .run_if(|menu: Res<OptionsMenu>| menu.is_open)
                         .in_set(OptionsInput),
+                    finish_pad_arts,
                     show_options_menu,
                 )
                     .chain(),
@@ -136,10 +137,12 @@ impl OptionsMenu {
     }
 
     /// Moves round the menu: up and down (`step`) through the row of
-    /// sections and the options of the section, round and round; across
-    /// (`side`) on the row of sections changes the section, and confirming
-    /// there goes down to its first option. `count` is how many options
-    /// the section has. Whether it did anything.
+    /// sections, the options of the section and its foot (Reset and Back,
+    /// side by side: down to it, Back), round and round; across (`side`) on
+    /// the row of sections changes the section, and confirming there goes
+    /// down to its first option; across on the foot, its other button.
+    /// `count` is how many options the section has, the foot's included.
+    /// Whether it did anything.
     fn navigate(&mut self, step: i32, side: i32, confirm: bool, count: usize) -> bool {
         if self.on_tabs {
             if side != 0 {
@@ -154,10 +157,29 @@ impl OptionsMenu {
             }
             return false;
         }
+        let foot = count - FOOTER;
+        let on_foot = self.selected >= foot;
         if step == 0 {
+            if on_foot && side != 0 {
+                self.selected = if self.selected == foot {
+                    foot + 1
+                } else {
+                    foot
+                };
+                return true;
+            }
             return false;
         }
-        let next = self.selected as i32 + step;
+        let next = if on_foot && step < 0 {
+            foot as i32 - 1
+        } else if on_foot {
+            count as i32
+        } else if self.selected as i32 + step == foot as i32 {
+            // Onto the foot: Back.
+            count as i32 - 1
+        } else {
+            self.selected as i32 + step
+        };
         if next < 0 || next >= count as i32 {
             self.on_tabs = true;
         } else {
@@ -172,7 +194,10 @@ enum GameItem {
     Language,
     Difficulty,
     RaceStart,
-    Back,
+    /// How many red lights the start has.
+    StartLights,
+    /// Whether the results go to the middle once everybody is in.
+    CentreResults,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -185,7 +210,6 @@ enum ControlItem {
     KeyboardReturnRate,
     ShowLegend,
     RescanGamepads,
-    Back,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -193,7 +217,6 @@ enum SoundItem {
     FxVolume,
     MusicVolume,
     MusicEnabled,
-    Back,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -203,7 +226,6 @@ enum GraphicsItem {
     Fps,
     PipelinedRendering,
     FrameLatency,
-    Back,
 }
 
 fn game_items() -> Vec<GameItem> {
@@ -211,8 +233,23 @@ fn game_items() -> Vec<GameItem> {
         GameItem::Language,
         GameItem::Difficulty,
         GameItem::RaceStart,
-        GameItem::Back,
+        GameItem::StartLights,
+        GameItem::CentreResults,
     ]
+}
+
+/// Room above a row that begins a group of its own (px).
+const GROUP_GAP: f32 = 14.0;
+
+/// Whether the row at `index` of `tab` begins a group of its own, with
+/// room above: on Control, the steering after the mapping, and the legend
+/// and the gamepads after the steering.
+fn starts_group(tab: OptionsTab, index: usize) -> bool {
+    tab == OptionsTab::Control
+        && matches!(
+            control_items().get(index),
+            Some(ControlItem::StickTurnLimit | ControlItem::ShowLegend)
+        )
 }
 
 /// The mapping of the controls, and how the stick and the keyboard steer.
@@ -225,7 +262,6 @@ fn control_items() -> Vec<ControlItem> {
         ControlItem::KeyboardReturnRate,
         ControlItem::ShowLegend,
         ControlItem::RescanGamepads,
-        ControlItem::Back,
     ]
 }
 
@@ -234,17 +270,12 @@ fn sound_items() -> Vec<SoundItem> {
         SoundItem::FxVolume,
         SoundItem::MusicVolume,
         SoundItem::MusicEnabled,
-        SoundItem::Back,
     ]
 }
 
 fn graphics_items() -> Vec<GraphicsItem> {
     if WEB {
-        vec![
-            GraphicsItem::Fullscreen,
-            GraphicsItem::Resolution,
-            GraphicsItem::Back,
-        ]
+        vec![GraphicsItem::Fullscreen, GraphicsItem::Resolution]
     } else {
         vec![
             GraphicsItem::Fullscreen,
@@ -252,17 +283,119 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Fps,
             GraphicsItem::PipelinedRendering,
             GraphicsItem::FrameLatency,
-            GraphicsItem::Back,
         ]
     }
 }
 
-fn tab_items_count(tab: OptionsTab) -> usize {
+/// How many options `tab` has, besides Reset and Back.
+fn options_count(tab: OptionsTab) -> usize {
     match tab {
         OptionsTab::Game => game_items().len(),
         OptionsTab::Control => control_items().len(),
         OptionsTab::Sound => sound_items().len(),
         OptionsTab::Graphics => graphics_items().len(),
+    }
+}
+
+/// At the foot of every section, side by side: Reset, which puts its
+/// options back as they were at first, and Back. They are its last two
+/// options.
+const FOOTER: usize = 2;
+
+/// How many options `tab` has, Reset and Back at its foot included.
+fn tab_items_count(tab: OptionsTab) -> usize {
+    options_count(tab) + FOOTER
+}
+
+/// The settings as they are at first.
+fn first_settings() -> &'static Settings {
+    static FIRST: std::sync::OnceLock<Settings> = std::sync::OnceLock::new();
+    FIRST.get_or_init(Settings::default)
+}
+
+/// How the stick and the keyboard steer, and whether the legend is shown:
+/// the options of Control.
+fn steering(debug: &DebugOptions) -> (TurnLimit, TurnLimit, SteerRate, ReturnRate, bool) {
+    (
+        debug.stick_limit,
+        debug.keyboard_limit,
+        debug.keyboard_rate,
+        debug.keyboard_return,
+        debug.show_legend,
+    )
+}
+
+/// Whether the options of `tab` are as they are at first (the keys and
+/// buttons aside: the mapping of Control resets those).
+fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions) -> bool {
+    let first = first_settings();
+    match tab {
+        OptionsTab::Game => {
+            (
+                settings.language,
+                settings.difficulty,
+                settings.start,
+                settings.start_lights,
+                settings.centre_results,
+            ) == (
+                first.language,
+                first.difficulty,
+                first.start,
+                first.start_lights,
+                first.centre_results,
+            )
+        }
+        OptionsTab::Control => steering(debug) == steering(&DebugOptions::default()),
+        OptionsTab::Sound => {
+            (
+                settings.fx_volume,
+                settings.music_volume,
+                settings.music_enabled,
+            ) == (first.fx_volume, first.music_volume, first.music_enabled)
+        }
+        OptionsTab::Graphics => {
+            (
+                settings.fullscreen,
+                settings.resolution,
+                settings.fps,
+                settings.pipelined_rendering,
+                settings.frame_latency,
+            ) == (
+                first.fullscreen,
+                first.resolution,
+                first.fps,
+                first.pipelined_rendering,
+                first.frame_latency,
+            )
+        }
+    }
+}
+
+/// Puts the options of `tab` back as they are at first (see
+/// [`section_is_default`]).
+fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOptions) {
+    let first = first_settings();
+    match tab {
+        OptionsTab::Game => {
+            settings.language = first.language;
+            settings.difficulty = first.difficulty;
+            settings.start = first.start;
+            settings.start_lights = first.start_lights;
+            settings.centre_results = first.centre_results;
+        }
+        OptionsTab::Control => *debug = DebugOptions::default(),
+        OptionsTab::Sound => {
+            settings.fx_volume = first.fx_volume;
+            settings.music_volume = first.music_volume;
+            settings.music_enabled = first.music_enabled;
+        }
+        OptionsTab::Graphics => {
+            settings.fullscreen = first.fullscreen;
+            settings.resolution = first.resolution;
+            settings.fps = first.fps;
+            settings.pipelined_rendering = first.pipelined_rendering;
+            settings.frame_latency = first.frame_latency;
+        }
     }
 }
 
@@ -332,6 +465,19 @@ fn use_options_menu(
         return;
     }
 
+    // Reset and Back, at the foot of every section.
+    let foot = count - FOOTER;
+    if options_menu.selected >= foot {
+        if request.confirm && options_menu.selected == foot {
+            reset_section(options_menu.tab, &mut settings, &mut debug_options);
+            sounds.write(MenuSound::Confirm);
+        } else if request.confirm {
+            options_menu.close();
+            sounds.write(MenuSound::Move);
+        }
+        return;
+    }
+
     let change = if request.side != 0 {
         request.side
     } else {
@@ -355,8 +501,12 @@ fn use_options_menu(
                     settings.start = cycle(&RACE_STARTS, settings.start, change);
                     sounds.write(MenuSound::Move);
                 }
-                GameItem::Back if request.confirm => {
-                    options_menu.close();
+                GameItem::StartLights if change != 0 => {
+                    settings.start_lights = cycle(&START_LIGHTS, settings.start_lights, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GameItem::CentreResults if change != 0 => {
+                    settings.centre_results = !settings.centre_results;
                     sounds.write(MenuSound::Move);
                 }
                 _ => {}
@@ -396,10 +546,6 @@ fn use_options_menu(
                     options_menu.rescan_msg_until = now + 3.0;
                     sounds.write(MenuSound::Confirm);
                 }
-                ControlItem::Back if request.confirm => {
-                    options_menu.close();
-                    sounds.write(MenuSound::Move);
-                }
                 _ => {}
             }
         }
@@ -419,10 +565,6 @@ fn use_options_menu(
                 }
                 SoundItem::MusicEnabled if change != 0 => {
                     settings.music_enabled = !settings.music_enabled;
-                    sounds.write(MenuSound::Move);
-                }
-                SoundItem::Back if request.confirm => {
-                    options_menu.close();
                     sounds.write(MenuSound::Move);
                 }
                 _ => {}
@@ -453,10 +595,6 @@ fn use_options_menu(
                 GraphicsItem::FrameLatency if change != 0 => {
                     settings.frame_latency =
                         cycle(&FRAME_LATENCIES, settings.frame_latency, change);
-                    sounds.write(MenuSound::Move);
-                }
-                GraphicsItem::Back if request.confirm => {
-                    options_menu.close();
                     sounds.write(MenuSound::Move);
                 }
                 _ => {}
@@ -515,11 +653,47 @@ fn spawn_tab(
         Text::new(tab.name(lang)),
         text_font(font, 18.0),
         TextColor(if active {
-            Color::srgb(0.06, 0.05, 0.04)
+            INK
         } else {
             color.mix(&Color::WHITE, 0.55)
         }),
     ));
+}
+
+/// The ink of an option chosen, on the colour of its section.
+const INK: Color = Color::srgb(0.06, 0.05, 0.04);
+
+/// A button at the foot of a section (see [`FOOTER`]): filled in the
+/// section's colour when chosen; its words faint if it has nothing to do.
+fn spawn_foot_button(
+    foot: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    row: &Row,
+    accent: Color,
+    chosen: bool,
+) {
+    let (fill, ink) = match (chosen, row.disabled) {
+        (true, true) => row.chosen_colors(),
+        (true, false) => (accent, INK),
+        (false, true) => (
+            Color::srgba(1.0, 1.0, 1.0, 0.04),
+            Color::srgba(1.0, 1.0, 1.0, 0.4),
+        ),
+        (false, false) => (Color::srgba(1.0, 1.0, 1.0, 0.08), Color::WHITE),
+    };
+    foot.spawn((
+        Node {
+            min_width: px(150),
+            justify_content: JustifyContent::Center,
+            padding: UiRect::axes(px(20), px(6)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(8)),
+            ..default()
+        },
+        BackgroundColor(fill),
+        BorderColor::all(accent.with_alpha(0.5)),
+    ))
+    .with_child((Text::new(&row.label), text_font(font, 19.0), TextColor(ink)));
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -542,8 +716,8 @@ fn show_options_menu(
         Query<&Gamepad>,
         Query<&Name, With<Gamepad>>,
     ),
-    // Where the mapping's gamepads are drawn.
-    (mut pad_arts, mut images): (ResMut<PadArts>, ResMut<Assets<Image>>),
+    // The mapping's gamepads, drawn.
+    mut pad_arts: ResMut<PadArts>,
     mut last: Local<Option<String>>,
 ) {
     let started = started.as_deref();
@@ -586,7 +760,28 @@ fn show_options_menu(
                     },
                     format!("<  {}  >", settings.start.name(lang)),
                 ),
-                GameItem::Back => Row::new(lang.back()),
+                // Faint when the race starts at the throttle, with no lights.
+                GameItem::StartLights => Row {
+                    disabled: !settings.start.at_lights(),
+                    ..Row::with_value(
+                        match lang {
+                            Language::Spanish => "Luces rojas del semáforo",
+                            Language::English => "Red start lights",
+                        },
+                        format!("<  {}  >", settings.start_lights),
+                    )
+                },
+                GameItem::CentreResults => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Centrar resultados al llegar todos",
+                        Language::English => "Centre results when all are in",
+                    },
+                    if settings.centre_results {
+                        "[X]"
+                    } else {
+                        "[ ]"
+                    },
+                ),
             })
             .collect(),
         OptionsTab::Control => control_items()
@@ -651,7 +846,6 @@ fn show_options_menu(
                         Row::new(lang.rescan_gamepads())
                     }
                 }
-                ControlItem::Back => Row::new(lang.back()),
             })
             .collect(),
         OptionsTab::Sound => sound_items()
@@ -673,7 +867,6 @@ fn show_options_menu(
                         format!("<  {}  >", lang.disabled())
                     },
                 ),
-                SoundItem::Back => Row::new(lang.back()),
             })
             .collect(),
         OptionsTab::Graphics => graphics_items()
@@ -736,10 +929,19 @@ fn show_options_menu(
                         }
                     ),
                 ),
-                GraphicsItem::Back => Row::new(lang.back()),
             })
             .collect(),
     };
+
+    // The foot of the section: Reset, faint when there is nothing to put
+    // back, and Back.
+    let footer = [
+        Row {
+            disabled: section_is_default(options_menu.tab, &settings, &debug_options),
+            ..Row::new(lang.reset())
+        },
+        Row::new(lang.back()),
+    ];
 
     let active_dev = current_active_device(*device, active_controller.as_deref());
     // The mapping view lights the keys and buttons held down.
@@ -766,10 +968,29 @@ fn show_options_menu(
         .and_then(|pad| names.get(pad).ok())
         .map(|name| name.as_str().to_string());
     let art = PadArt::of(pad_style, pad_name.as_deref());
+    let scale_factor = window_inner.map_or(1.0, Window::scale_factor);
+    // It is drawn in the background from the Control tab on, to be ready
+    // by the time it is shown (on the web the background is this same
+    // thread: only once it is shown).
+    let pad_shown = options_menu
+        .mapping
+        .as_ref()
+        .is_some_and(|mapping| mapping.device == MapDevice::Gamepad);
+    let pad_drawn = (pad_shown || (!WEB && options_menu.tab == OptionsTab::Control)).then(|| {
+        pad_arts
+            .get(
+                art,
+                pad_style == ActiveDevice::Switch,
+                PAD_HEIGHT,
+                scale_factor,
+            )
+            .is_some()
+    });
     // Built again only when something shown changes (the window, for
-    // example, changes with every move of the mouse).
+    // example, changes with every move of the mouse; its scale factor
+    // changes the gamepad's pixels).
     let wanted = format!(
-        "{:?} {art:?} {:?} {:?} {held_down:?} {:?} {} {} {:?} {:?} {:?} {}",
+        "{:?} {art:?} {scale_factor} {pad_drawn:?} {:?} {:?} {held_down:?} {:?} {} {} {:?} {:?} {:?} {}",
         options_menu.mapping,
         settings.controls,
         current_active_device(InputDevice::Gamepad, active_controller.as_deref()),
@@ -780,7 +1001,8 @@ fn show_options_menu(
         active_dev,
         debug_options.show_legend,
         rows.iter()
-            .map(|row| format!("{}={:?}", row.label, row.value))
+            .chain(&footer)
+            .map(|row| format!("{}={:?}{}", row.label, row.value, row.disabled))
             .collect::<Vec<_>>()
             .join("|"),
     );
@@ -845,20 +1067,23 @@ fn show_options_menu(
                 .with_children(|panel| {
                     // The mapping of the controls, in place of the sections.
                     if let Some(mapping) = &options_menu.mapping {
-                        let drawn = (mapping.device == MapDevice::Gamepad).then(|| {
-                            pad_arts.get(
-                                art,
-                                pad_style == ActiveDevice::Switch,
-                                PAD_HEIGHT,
-                                window_inner.map_or(1.0, Window::scale_factor),
-                                &mut images,
-                            )
-                        });
+                        let drawn = pad_shown
+                            .then(|| {
+                                pad_arts.get(
+                                    art,
+                                    pad_style == ActiveDevice::Switch,
+                                    PAD_HEIGHT,
+                                    scale_factor,
+                                )
+                            })
+                            .flatten();
                         let look = MappingLook {
                             font: &font,
                             icons: &icons,
                             lang,
+                            using: active_dev,
                             pad: pad_style,
+                            art,
                             drawn,
                             letters: pad_style == ActiveDevice::Switch,
                             controls: &settings.controls,
@@ -932,7 +1157,7 @@ fn show_options_menu(
                     ));
 
                     // Lista de opciones de la pestaña. It fills the panel, and
-                    // Back, always last, stands at its foot on every tab.
+                    // Reset and Back stand at its foot on every tab.
                     let (size, padding, gap) = (20.0, 5.0, 3.0);
                     panel
                         .spawn((Node {
@@ -944,7 +1169,6 @@ fn show_options_menu(
                         },))
                         .with_children(|items_container| {
                             for (index, row) in rows.iter().enumerate() {
-                                let last = index + 1 == rows.len();
                                 let chosen =
                                     !options_menu.on_tabs && index == options_menu.selected;
                                 // Chosen, in the colour of the section.
@@ -952,7 +1176,7 @@ fn show_options_menu(
                                 {
                                     row.chosen_colors()
                                 } else {
-                                    (accent, Color::srgb(0.06, 0.05, 0.04))
+                                    (accent, INK)
                                 };
                                 let color = TextColor(if chosen {
                                     chosen_text
@@ -973,8 +1197,8 @@ fn show_options_menu(
                                             align_items: AlignItems::Center,
                                             column_gap: px(30),
                                             padding: UiRect::axes(px(ROW_INSET), px(padding)),
-                                            margin: if last {
-                                                UiRect::top(Val::Auto)
+                                            margin: if starts_group(options_menu.tab, index) {
+                                                UiRect::top(px(GROUP_GAP))
                                             } else {
                                                 UiRect::ZERO
                                             },
@@ -1002,6 +1226,21 @@ fn show_options_menu(
                                         }
                                     });
                             }
+                            // The foot, side by side.
+                            items_container
+                                .spawn(Node {
+                                    justify_content: JustifyContent::Center,
+                                    column_gap: px(16),
+                                    margin: UiRect::top(Val::Auto),
+                                    ..default()
+                                })
+                                .with_children(|foot| {
+                                    for (place, row) in footer.iter().enumerate() {
+                                        let chosen = !options_menu.on_tabs
+                                            && options_menu.selected == rows.len() + place;
+                                        spawn_foot_button(foot, &font, row, accent, chosen);
+                                    }
+                                });
                         });
                 });
 
@@ -1035,6 +1274,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn on_control_the_steering_and_the_legend_stand_apart() {
+        let items = control_items();
+        let starts: Vec<ControlItem> = (0..items.len())
+            .filter(|&index| starts_group(OptionsTab::Control, index))
+            .map(|index| items[index])
+            .collect();
+        assert_eq!(
+            starts,
+            [ControlItem::StickTurnLimit, ControlItem::ShowLegend]
+        );
+        assert!((0..8).all(|index| !starts_group(OptionsTab::Game, index)));
+    }
+
+    #[test]
     fn the_arrows_reach_the_row_of_sections_and_change_section_there() {
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
@@ -1066,6 +1319,64 @@ mod tests {
         // Across on an option is left to the option.
         assert!(!menu.navigate(0, 1, false, count));
         assert_eq!(menu.tab, OptionsTab::Graphics);
+    }
+
+    use crate::settings::{Controls, Difficulty};
+
+    #[test]
+    fn reset_and_back_stand_side_by_side_at_the_foot() {
+        let mut menu = OptionsMenu::default();
+        menu.open(OptionsReturn::Welcome);
+        menu.tab = OptionsTab::Sound;
+        let count = tab_items_count(menu.tab);
+        assert_eq!(count, sound_items().len() + FOOTER);
+        // Down from the last option: Back.
+        menu.selected = count - FOOTER - 1;
+        assert!(menu.navigate(1, 0, false, count));
+        assert_eq!(menu.selected, count - 1);
+        // Across: Reset, and Back again.
+        assert!(menu.navigate(0, -1, false, count));
+        assert_eq!(menu.selected, count - 2);
+        assert!(menu.navigate(0, 1, false, count));
+        assert_eq!(menu.selected, count - 1);
+        // Up from either: the last option; down: the row of sections.
+        menu.selected = count - 2;
+        assert!(menu.navigate(-1, 0, false, count));
+        assert_eq!(menu.selected, count - FOOTER - 1);
+        menu.selected = count - 2;
+        assert!(menu.navigate(1, 0, false, count));
+        assert!(menu.on_tabs);
+    }
+
+    #[test]
+    fn reset_puts_back_the_options_of_its_section_only() {
+        let mut settings = Settings::default();
+        let mut debug = DebugOptions::default();
+        for tab in TABS {
+            assert!(section_is_default(tab, &settings, &debug), "{tab:?}");
+        }
+        settings.difficulty = Difficulty::Hard;
+        settings.music_volume = 10;
+        settings.fps = FPS_LIMITS[FPS_LIMITS.len() - 1];
+        settings.frame_latency = 3;
+        debug.show_legend = true;
+        settings.controls.remap(KeyCode::KeyW, &[KeyCode::KeyI]);
+        for tab in TABS {
+            assert!(!section_is_default(tab, &settings, &debug), "{tab:?}");
+        }
+        reset_section(OptionsTab::Sound, &mut settings, &mut debug);
+        assert_eq!(settings.music_volume, Settings::default().music_volume);
+        assert!(section_is_default(OptionsTab::Sound, &settings, &debug));
+        assert_eq!(settings.difficulty, Difficulty::Hard);
+        reset_section(OptionsTab::Control, &mut settings, &mut debug);
+        assert!(!debug.show_legend);
+        // The keys and buttons are reset in the mapping, not here.
+        assert_ne!(settings.controls, Controls::default());
+        reset_section(OptionsTab::Game, &mut settings, &mut debug);
+        reset_section(OptionsTab::Graphics, &mut settings, &mut debug);
+        for tab in TABS {
+            assert!(section_is_default(tab, &settings, &debug), "{tab:?}");
+        }
     }
 
     #[test]

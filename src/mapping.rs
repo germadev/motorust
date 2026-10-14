@@ -1,18 +1,21 @@
 //! The mapping of the controls, a view of Options > Control: the keyboard
 //! or the gamepad (the one in use when it opens, or chosen with the keys
-//! that change section), drawn with the keys or buttons that do something
-//! tinted and the ones held down lit, each action with its keys or buttons
-//! underneath, and two buttons: "Remap" waits for the key or button to
-//! remap and then for the new one, or several pressed together, that is to
-//! do its action instead; "Reset" puts the device's back as they were at
-//! first. The keyboard and the gamepad are mapped apart.
+//! that change section), drawn with the keys or buttons held down lit (and,
+//! on the keyboard, the ones that do something tinted), each action with
+//! its keys or buttons underneath, and at its foot, beside Back: "Remap"
+//! waits for the key or button to remap and then for the new one, or
+//! several pressed together, that is to do its action instead; "Test" lets
+//! the keys or buttons be tried out, lighting what they do, without working
+//! the menu; "Reset" puts the device's back as they were at first. The
+//! keyboard and the gamepad are mapped apart. The header (the devices) is
+//! in Control's colour, what stands out below it in a neutral one.
 
 use bevy::prelude::*;
 
 use crate::hud::UiFont;
-use crate::legend::{Glyph, Label, button_badge};
+use crate::legend::{Glyph, Label, button_badge, section_badges, spawn_lone_badge};
 use crate::locale::Language;
-use crate::pad_art::DrawnPad;
+use crate::pad_art::{DrawnPad, PadArt};
 use crate::settings::{ACTIONS, Action, Controls, key_name};
 use crate::ui::{ActiveDevice, MenuSound, Request, UiIcons, text_font};
 
@@ -20,6 +23,8 @@ use crate::ui::{ActiveDevice, MenuSound, Request, UiIcons, text_font};
 const CAPTURE_TIME: f32 = 8.0;
 /// Seconds what was done is shown.
 const NOTE_TIME: f32 = 3.0;
+/// Seconds with nothing pressed before a test ends (a gamepad has no Esc).
+const TEST_IDLE: f32 = 5.0;
 
 /// Which device is being mapped.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -55,9 +60,18 @@ pub enum MapFocus {
     /// The row of devices: across, the other one.
     Devices,
     Remap,
+    Test,
     Reset,
     Back,
 }
+
+/// The buttons at the foot of the view, side by side.
+const BUTTONS: [MapFocus; 4] = [
+    MapFocus::Remap,
+    MapFocus::Test,
+    MapFocus::Reset,
+    MapFocus::Back,
+];
 
 /// A key or a gamepad button.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -81,6 +95,11 @@ pub enum Step {
         action: Action,
         from: Pressed,
         held: Vec<Pressed>,
+    },
+    /// Trying the keys or buttons out: each one held lit, with what it
+    /// does. Since one was last pressed or let go of (s).
+    Test {
+        since: f32,
     },
 }
 
@@ -124,34 +143,25 @@ impl Mapping {
         self.step != Step::Idle
     }
 
-    /// Moves round the view: up and down through the devices, the buttons
-    /// and Back; across, the other device or the other button. Whether it
-    /// did anything.
+    /// Moves round the view: up and down between the devices and the
+    /// buttons at its foot (Back among them); across, the other device or
+    /// another button. Whether it did anything.
     fn navigate(&mut self, request: &Request) -> bool {
-        use MapFocus::*;
         let before = (self.focus, self.device);
         if request.tab != 0 {
             self.device = crate::settings::cycle(&DEVICES, self.device, request.tab);
         }
         if request.step != 0 {
-            let row = |focus| match focus {
-                Devices => 0,
-                Remap | Reset => 1,
-                Back => 2,
-            };
-            self.focus = match (row(self.focus) + request.step).rem_euclid(3) {
-                0 => Devices,
-                1 => Remap,
-                _ => Back,
+            self.focus = if self.focus == MapFocus::Devices {
+                MapFocus::Remap
+            } else {
+                MapFocus::Devices
             };
         } else if request.side != 0 {
-            match self.focus {
-                Devices => {
-                    self.device = crate::settings::cycle(&DEVICES, self.device, request.side);
-                }
-                Remap => self.focus = Reset,
-                Reset => self.focus = Remap,
-                Back => {}
+            if self.focus == MapFocus::Devices {
+                self.device = crate::settings::cycle(&DEVICES, self.device, request.side);
+            } else {
+                self.focus = crate::settings::cycle(&BUTTONS, self.focus, request.side);
             }
         }
         (self.focus, self.device) != before
@@ -181,6 +191,49 @@ impl Held<'_> {
                 .flat_map(|gamepad| gamepad.get_just_pressed())
                 .map(|&button| Pressed::Button(button))
                 .collect(),
+        }
+    }
+
+    /// Whether a key or button of `device` was just pressed or let go of.
+    fn changed(&self, device: MapDevice) -> bool {
+        match device {
+            MapDevice::Keyboard => {
+                self.keyboard.get_just_pressed().next().is_some()
+                    || self.keyboard.get_just_released().next().is_some()
+            }
+            MapDevice::Gamepad => self.gamepads.iter().any(|gamepad| {
+                gamepad.get_just_pressed().next().is_some()
+                    || gamepad.get_just_released().next().is_some()
+            }),
+        }
+    }
+
+    /// The keys or buttons of `device` held down.
+    fn all_held(&self, device: MapDevice) -> Vec<Pressed> {
+        match device {
+            MapDevice::Keyboard => self
+                .keyboard
+                .get_pressed()
+                .map(|&key| Pressed::Key(key))
+                .collect(),
+            MapDevice::Gamepad => self
+                .gamepads
+                .iter()
+                .flat_map(|gamepad| gamepad.get_pressed())
+                .map(|&button| Pressed::Button(button))
+                .collect(),
+        }
+    }
+
+    /// Whether what is held of `device` does `action` (a key or button of
+    /// it, or all of one of its combinations).
+    fn does(&self, controls: &Controls, device: MapDevice, action: Action) -> bool {
+        match device {
+            MapDevice::Keyboard => controls.key_value(action, self.keyboard) > 0.0,
+            MapDevice::Gamepad => self
+                .gamepads
+                .iter()
+                .any(|gamepad| controls.button_value(action, gamepad) > 0.5),
         }
     }
 
@@ -305,6 +358,17 @@ pub fn use_mapping(
             }
             false
         }
+        Step::Test { since } => {
+            if input.changed(mapping.device) && !cancel {
+                mapping.step = Step::Test { since: now };
+            } else if cancel
+                || (now - since > TEST_IDLE && input.all_held(mapping.device).is_empty())
+            {
+                mapping.step = Step::Idle;
+                sounds.write(MenuSound::Move);
+            }
+            false
+        }
         Step::Idle => {
             if request.back {
                 sounds.write(MenuSound::Move);
@@ -324,6 +388,11 @@ pub fn use_mapping(
                 }
                 MapFocus::Remap => {
                     mapping.step = Step::Choose { since: now };
+                    mapping.note = None;
+                    sounds.write(MenuSound::Confirm);
+                }
+                MapFocus::Test => {
+                    mapping.step = Step::Test { since: now };
                     mapping.note = None;
                     sounds.write(MenuSound::Confirm);
                 }
@@ -347,8 +416,14 @@ pub fn use_mapping(
 
 // The view.
 
-/// The colour of Control, whose view this is.
+/// The colour of Control, whose view this is: its header, the devices.
 const ACCENT: Color = Color::srgb(0.22, 0.76, 1.0);
+/// What stands out in its content (the keys and buttons held, the button
+/// chosen, the actions done in a test): neutral, as in every view under a
+/// section, the section's colour being the header's.
+const HIGHLIGHT: Color = Color::srgb(0.9, 0.91, 0.93);
+/// A button held, tinted over the light drawing of the gamepad.
+const HELD_ON_PAD: Color = Color::srgb(0.3, 0.32, 0.36);
 /// The key or button being remapped, and the new ones pressed.
 const FROM: Color = Color::srgb(1.0, 0.55, 0.2);
 const NEW: Color = Color::srgb(1.0, 0.82, 0.2);
@@ -359,19 +434,29 @@ pub struct MappingLook<'a> {
     pub font: &'a UiFont,
     pub icons: &'a UiIcons,
     pub lang: Language,
+    /// The device in use, for the keys or buttons that change the device.
+    pub using: ActiveDevice,
     /// How the buttons are marked on the gamepad (Xbox, PlayStation...).
     pub pad: ActiveDevice,
-    /// The gamepad drawn, [`PAD_HEIGHT`] tall (see [`crate::pad_art`]), and
-    /// whether its face buttons' letters are to be put on it (they are not
-    /// printed on the drawing: a Switch pad's are not an Xbox pad's).
+    /// The gamepad's illustration; drawn, [`PAD_HEIGHT`] tall (see
+    /// [`crate::pad_art`]), once it is; and whether its face buttons'
+    /// letters are to be put on it (they are not printed on the drawing: a
+    /// Switch pad's are not an Xbox pad's).
+    pub art: PadArt,
     pub drawn: Option<&'a DrawnPad>,
     pub letters: bool,
     pub controls: &'a Controls,
     pub held: &'a Held<'a>,
 }
 
+/// How far the keys that change the device are from the sides (px), as
+/// the ones that change the section of the options.
+const BADGE_INSET: f32 = 20.0;
+
 /// How tall the gamepad is drawn (logical px).
 pub const PAD_HEIGHT: f32 = 270.0;
+/// Room above it, under the devices (px).
+const PAD_GAP: f32 = 16.0;
 
 /// What a key or button says on it.
 enum Mark {
@@ -508,47 +593,25 @@ pub fn spawn_mapping(panel: &mut ChildSpawnerCommands, mapping: &Mapping, look: 
             ..default()
         },
     ));
-    // The devices, as the sections of the options.
+    // The devices, as the sections of the options: the keys or buttons
+    // that change the device at the ends.
+    let [previous, next] = section_badges(look.using);
     panel
         .spawn(Node {
-            justify_content: JustifyContent::Center,
-            column_gap: px(10),
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Center,
+            padding: UiRect::horizontal(px(BADGE_INSET)),
             ..default()
         })
-        .with_children(|row| {
-            for device in DEVICES {
-                let active = device == mapping.device;
-                let edge = if active && mapping.focus == MapFocus::Devices {
-                    ACCENT.mix(&Color::WHITE, 0.6)
-                } else if active {
-                    ACCENT
-                } else {
-                    ACCENT.with_alpha(0.16)
-                };
-                row.spawn((
-                    Node {
-                        padding: UiRect::axes(px(18), px(5)),
-                        border: UiRect::all(px(2)),
-                        border_radius: BorderRadius::all(px(8)),
-                        ..default()
-                    },
-                    BackgroundColor(if active {
-                        ACCENT
-                    } else {
-                        ACCENT.with_alpha(0.16)
-                    }),
-                    BorderColor::all(edge),
-                ))
-                .with_child((
-                    Text::new(device.name(lang)),
-                    text_font(look.font, 18.0),
-                    TextColor(if active {
-                        INK
-                    } else {
-                        ACCENT.mix(&Color::WHITE, 0.55)
-                    }),
-                ));
-            }
+        .with_children(|bar| {
+            spawn_lone_badge(bar, look.font, look.icons, look.using, &previous);
+            bar.spawn(Node {
+                justify_content: JustifyContent::Center,
+                column_gap: px(10),
+                ..default()
+            })
+            .with_children(|row| spawn_devices(row, mapping, look));
+            spawn_lone_badge(bar, look.font, look.icons, look.using, &next);
         });
     panel.spawn((
         Node {
@@ -596,6 +659,7 @@ pub fn spawn_mapping(panel: &mut ChildSpawnerCommands, mapping: &Mapping, look: 
                     column_gap: px(28),
                     height: px(PAD_HEIGHT + 8.0),
                     flex_shrink: 0.0,
+                    margin: UiRect::top(px(PAD_GAP)),
                     ..default()
                 })
                 .with_children(|row| {
@@ -609,28 +673,33 @@ pub fn spawn_mapping(panel: &mut ChildSpawnerCommands, mapping: &Mapping, look: 
             status_line(panel);
         }
     }
-    // Remap and reset, side by side.
+    // At the foot, side by side: remap, test, reset and back.
     panel
         .spawn(Node {
             justify_content: JustifyContent::Center,
-            column_gap: px(16),
-            margin: UiRect::top(px(6)),
+            column_gap: px(12),
+            margin: UiRect::top(Val::Auto),
             ..default()
         })
-        .with_children(|row| {
-            let remap = match (&mapping.step, lang) {
-                (Step::Idle, Language::Spanish) => "Reasignar",
-                (Step::Idle, Language::English) => "Remap",
-                (_, Language::Spanish) => "Esperando...",
-                (_, Language::English) => "Waiting...",
+        .with_children(|foot| {
+            let remapping = matches!(mapping.step, Step::Choose { .. } | Step::Assign { .. });
+            let testing = matches!(mapping.step, Step::Test { .. });
+            let remap = match (remapping, lang) {
+                (false, Language::Spanish) => "Reasignar",
+                (false, Language::English) => "Remap",
+                (true, Language::Spanish) => "Esperando...",
+                (true, Language::English) => "Waiting...",
             };
-            let reset = match lang {
-                Language::Spanish => "Restablecer",
-                Language::English => "Reset",
+            let test = match (testing, lang) {
+                (false, Language::Spanish) => "Probar",
+                (false, Language::English) => "Test",
+                (true, Language::Spanish) => "Probando...",
+                (true, Language::English) => "Testing...",
             };
-            for (focus, label) in [(MapFocus::Remap, remap), (MapFocus::Reset, reset)] {
+            let labels = [remap, test, lang.reset(), lang.back()];
+            for (focus, label) in BUTTONS.into_iter().zip(labels) {
                 spawn_button(
-                    row,
+                    foot,
                     look,
                     label,
                     mapping.focus == focus,
@@ -638,24 +707,44 @@ pub fn spawn_mapping(panel: &mut ChildSpawnerCommands, mapping: &Mapping, look: 
                 );
             }
         });
-    // Back, at the foot.
-    let chosen = mapping.focus == MapFocus::Back && !mapping.capturing();
-    panel
-        .spawn((
+}
+
+/// The devices, as tabs: the one mapped filled, edged lighter when the
+/// row is chosen.
+fn spawn_devices(row: &mut ChildSpawnerCommands, mapping: &Mapping, look: &MappingLook) {
+    for device in DEVICES {
+        let active = device == mapping.device;
+        let edge = if active && mapping.focus == MapFocus::Devices {
+            ACCENT.mix(&Color::WHITE, 0.6)
+        } else if active {
+            ACCENT
+        } else {
+            ACCENT.with_alpha(0.16)
+        };
+        row.spawn((
             Node {
-                justify_content: JustifyContent::Center,
-                padding: UiRect::vertical(px(5)),
-                margin: UiRect::top(Val::Auto),
+                padding: UiRect::axes(px(18), px(5)),
+                border: UiRect::all(px(2)),
                 border_radius: BorderRadius::all(px(8)),
                 ..default()
             },
-            BackgroundColor(if chosen { ACCENT } else { Color::NONE }),
+            BackgroundColor(if active {
+                ACCENT
+            } else {
+                ACCENT.with_alpha(0.16)
+            }),
+            BorderColor::all(edge),
         ))
         .with_child((
-            Text::new(lang.back()),
-            text_font(look.font, 20.0),
-            TextColor(if chosen { INK } else { Color::WHITE }),
+            Text::new(device.name(look.lang)),
+            text_font(look.font, 18.0),
+            TextColor(if active {
+                INK
+            } else {
+                ACCENT.mix(&Color::WHITE, 0.55)
+            }),
         ));
+    }
 }
 
 /// A button of the view: filled in the colour of Control when chosen.
@@ -668,12 +757,12 @@ fn spawn_button(
 ) {
     let fill = match (chosen, waiting) {
         (true, true) => NEW,
-        (true, false) => ACCENT,
+        (true, false) => HIGHLIGHT,
         _ => Color::srgba(1.0, 1.0, 1.0, 0.08),
     };
     row.spawn((
         Node {
-            min_width: px(170),
+            min_width: px(140),
             justify_content: JustifyContent::Center,
             padding: UiRect::axes(px(20), px(6)),
             border: UiRect::all(px(1)),
@@ -681,7 +770,7 @@ fn spawn_button(
             ..default()
         },
         BackgroundColor(fill),
-        BorderColor::all(ACCENT.with_alpha(0.5)),
+        BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.3)),
     ))
     .with_child((
         Text::new(label),
@@ -702,11 +791,11 @@ fn shade(input: Pressed, mapping: &Mapping, look: &MappingLook) -> (Color, Color
     } else if from == Some(input) {
         (FROM, FROM, INK)
     } else if look.held.is_held(input) {
-        (Color::WHITE, Color::WHITE, INK)
+        (HIGHLIGHT, HIGHLIGHT, INK)
     } else if action_of(look.controls, input).is_some() {
         (
-            ACCENT.with_alpha(0.32),
-            ACCENT.with_alpha(0.75),
+            Color::srgba(1.0, 1.0, 1.0, 0.22),
+            Color::srgba(1.0, 1.0, 1.0, 0.55),
             Color::WHITE,
         )
     } else {
@@ -831,7 +920,7 @@ fn spawn_keyboard(area: &mut ChildSpawnerCommands, mapping: &Mapping, look: &Map
 
 /// Every action with its keys (or buttons, on the gamepad's page), in
 /// `columns`: the one being remapped in orange, the one just remapped in
-/// yellow.
+/// yellow, while testing the ones done lit.
 fn spawn_actions(
     parent: &mut ChildSpawnerCommands,
     mapping: &Mapping,
@@ -846,7 +935,6 @@ fn spawn_actions(
             column_gap: px(28),
             row_gap: px(if columns == 1 { 6 } else { 2 }),
             padding: UiRect::horizontal(px(if columns == 1 { 0 } else { 20 })),
-            flex_grow: 1.0,
             ..default()
         })
         .with_children(|grid| {
@@ -856,10 +944,14 @@ fn spawn_actions(
                     &mapping.note,
                     Some((Note::Remapped { action: a, .. }, _)) if *a == action
                 );
+                let tried = matches!(mapping.step, Step::Test { .. })
+                    && look.held.does(look.controls, mapping.device, action);
                 let color = if busy {
                     FROM
                 } else if done {
                     NEW
+                } else if tried {
+                    INK
                 } else {
                     Color::srgba(1.0, 1.0, 1.0, 0.85)
                 };
@@ -867,11 +959,16 @@ fn spawn_actions(
                     MapDevice::Keyboard => look.controls.describe_keys(action, lang),
                     MapDevice::Gamepad => look.controls.describe_buttons(action, lang),
                 };
-                grid.spawn(Node {
-                    justify_content: JustifyContent::SpaceBetween,
-                    column_gap: px(12),
-                    ..default()
-                })
+                grid.spawn((
+                    Node {
+                        justify_content: JustifyContent::SpaceBetween,
+                        column_gap: px(12),
+                        padding: UiRect::axes(px(6), px(1)),
+                        border_radius: BorderRadius::all(px(4)),
+                        ..default()
+                    },
+                    BackgroundColor(if tried { HIGHLIGHT } else { Color::NONE }),
+                ))
                 .with_children(|line| {
                     line.spawn((
                         Text::new(action.name(lang)),
@@ -889,7 +986,8 @@ fn spawn_actions(
 }
 
 /// The tint over a button of the drawn gamepad: lit while held (or new, or
-/// the one being remapped), faint if it does something, none otherwise.
+/// the one being remapped), none otherwise; what the buttons do is listed
+/// beside it.
 fn tint(input: Pressed, mapping: &Mapping, look: &MappingLook) -> Option<Color> {
     let (from, new) = match &mapping.step {
         Step::Assign { from, held, .. } => (Some(*from), held.contains(&input)),
@@ -900,9 +998,7 @@ fn tint(input: Pressed, mapping: &Mapping, look: &MappingLook) -> Option<Color> 
     } else if from == Some(input) {
         Some(FROM)
     } else if look.held.is_held(input) {
-        Some(ACCENT)
-    } else if action_of(look.controls, input).is_some() {
-        Some(ACCENT.with_alpha(0.42))
+        Some(HIGHLIGHT)
     } else {
         None
     }
@@ -913,6 +1009,14 @@ fn tint(input: Pressed, mapping: &Mapping, look: &MappingLook) -> Option<Color> 
 /// letters of the face buttons.
 fn spawn_gamepad(area: &mut ChildSpawnerCommands, mapping: &Mapping, look: &MappingLook) {
     let Some(drawn) = look.drawn else {
+        // Still being drawn: its room, kept.
+        let size = look.art.size(PAD_HEIGHT);
+        area.spawn(Node {
+            width: px(size.x),
+            height: px(size.y),
+            flex_shrink: 0.0,
+            ..default()
+        });
         return;
     };
     area.spawn((
@@ -950,6 +1054,12 @@ fn spawn_gamepad(area: &mut ChildSpawnerCommands, mapping: &Mapping, look: &Mapp
             }
             let mut spawned = pad.spawn(place(*rect));
             if let Some(color) = tinted {
+                // White on the light drawing would not show: held, darker.
+                let color = if color == HIGHLIGHT {
+                    HELD_ON_PAD
+                } else {
+                    color
+                };
                 spawned.insert(ImageNode::new(image.clone()).with_color(color));
             }
             if face
@@ -969,8 +1079,7 @@ fn spawn_gamepad(area: &mut ChildSpawnerCommands, mapping: &Mapping, look: &Mapp
             let height = rect.height().max(15.0);
             let bar = Rect::new(rect.min.x, rect.max.y - height, rect.max.x, rect.max.y);
             let (fill, edge, ink) = match tint(input, mapping, look) {
-                Some(color) if color.alpha() >= 1.0 => (color, color, INK),
-                Some(color) => (color, ACCENT, Color::WHITE),
+                Some(color) => (color, color, INK),
                 None => (
                     Color::srgba(1.0, 1.0, 1.0, 0.12),
                     Color::srgba(1.0, 1.0, 1.0, 0.3),
@@ -1048,6 +1157,38 @@ fn status(mapping: &Mapping, look: &MappingLook) -> (String, Color) {
             },
             NEW,
         ),
+        Step::Test { .. } => {
+            let held = look.held.all_held(mapping.device);
+            if held.is_empty() {
+                let text = match (lang, keyboard) {
+                    (Language::Spanish, true) => {
+                        "Pulsa teclas, también a la vez, para probarlas   (Esc: terminar)"
+                    }
+                    (Language::English, true) => {
+                        "Press keys, together too, to try them out   (Esc: done)"
+                    }
+                    (Language::Spanish, false) => {
+                        "Pulsa botones, también a la vez, para probarlos   (5 s sin pulsar: terminar)"
+                    }
+                    (Language::English, false) => {
+                        "Press buttons, together too, to try them out   (5 s untouched: done)"
+                    }
+                };
+                (text.into(), Color::srgba(1.0, 1.0, 1.0, 0.8))
+            } else {
+                let done: Vec<&str> = ACTIONS
+                    .into_iter()
+                    .filter(|&action| look.held.does(look.controls, mapping.device, action))
+                    .map(|action| action.name(lang))
+                    .collect();
+                let done = if done.is_empty() {
+                    "—".to_string()
+                } else {
+                    done.join(", ")
+                };
+                (format!("{}  >  {done}", names(&held)), HIGHLIGHT)
+            }
+        }
         Step::Idle => match &mapping.note {
             Some((Note::Remapped { action, from, to }, _)) => (
                 format!(
@@ -1081,28 +1222,16 @@ fn status(mapping: &Mapping, look: &MappingLook) -> (String, Color) {
             ),
             // What the keys or buttons held down do.
             None => {
-                let held: Vec<String> = match mapping.device {
-                    MapDevice::Keyboard => look
-                        .held
-                        .keyboard
-                        .get_pressed()
-                        .map(|&key| Pressed::Key(key))
-                        .collect::<Vec<_>>(),
-                    MapDevice::Gamepad => look
-                        .held
-                        .gamepads
-                        .iter()
-                        .flat_map(|pad| pad.get_pressed())
-                        .map(|&button| Pressed::Button(button))
-                        .collect(),
-                }
-                .into_iter()
-                .map(|input| {
-                    let does =
-                        action_of(look.controls, input).map_or("—", |action| action.name(lang));
-                    format!("{}: {does}", input_name(input, look))
-                })
-                .collect();
+                let held: Vec<String> = look
+                    .held
+                    .all_held(mapping.device)
+                    .into_iter()
+                    .map(|input| {
+                        let does = action_of(look.controls, input)
+                            .map_or("—", |action| action.name(lang));
+                        format!("{}: {does}", input_name(input, look))
+                    })
+                    .collect();
                 (held.join("    "), Color::srgba(1.0, 1.0, 1.0, 0.8))
             }
         },
@@ -1249,15 +1378,14 @@ mod tests {
     fn the_view_is_walked_and_resets_its_device() {
         let mut bench = Bench::new();
         bench.controls.remap(KeyCode::KeyW, &[KeyCode::KeyI]);
-        // Across from Remap: Reset.
-        bench.frame(
-            Request {
-                side: 1,
-                ..request()
-            },
-            &[],
-            &[],
-        );
+        // Across from Remap: Test, then Reset.
+        let across = Request {
+            side: 1,
+            ..request()
+        };
+        bench.frame(across, &[], &[]);
+        assert_eq!(bench.mapping.focus, MapFocus::Test);
+        bench.frame(across, &[], &[]);
         assert_eq!(bench.mapping.focus, MapFocus::Reset);
         bench.frame(
             Request {
@@ -1296,5 +1424,68 @@ mod tests {
             &[],
             &[],
         ));
+    }
+
+    #[test]
+    fn a_test_lights_what_is_pressed_and_works_nothing_until_esc() {
+        let mut bench = Bench::new();
+        bench.mapping.focus = MapFocus::Test;
+        let confirm = Request {
+            confirm: true,
+            ..request()
+        };
+        bench.frame(confirm, &[KeyCode::Enter], &[]);
+        assert!(matches!(bench.mapping.step, Step::Test { .. }));
+        // W held: the throttle is done; the menu is not worked, even by
+        // what would go back or confirm, and nothing is remapped.
+        bench.frame(request(), &[KeyCode::KeyW], &[KeyCode::Enter]);
+        let held = Held {
+            keyboard: &bench.keyboard,
+            gamepads: Vec::new(),
+        };
+        assert!(held.does(&bench.controls, MapDevice::Keyboard, Action::Throttle));
+        assert!(!held.does(&bench.controls, MapDevice::Keyboard, Action::Brake));
+        let back = Request {
+            back: true,
+            ..request()
+        };
+        assert!(!bench.frame(back, &[], &[KeyCode::KeyW]));
+        assert!(!bench.frame(confirm, &[KeyCode::Enter], &[]));
+        assert!(matches!(bench.mapping.step, Step::Test { .. }));
+        assert_eq!(bench.controls, Controls::default());
+        // Esc ends it, and Back works again.
+        bench.frame(request(), &[KeyCode::Escape], &[KeyCode::Enter]);
+        assert_eq!(bench.mapping.step, Step::Idle);
+        assert!(bench.frame(back, &[], &[KeyCode::Escape]));
+    }
+
+    #[test]
+    fn a_test_ends_a_while_after_the_last_key_is_let_go_of() {
+        let mut bench = Bench::new();
+        bench.mapping.focus = MapFocus::Test;
+        bench.frame(
+            Request {
+                confirm: true,
+                ..request()
+            },
+            &[KeyCode::Enter],
+            &[],
+        );
+        // Held a long while: still on.
+        bench.frame(request(), &[KeyCode::KeyA], &[KeyCode::Enter]);
+        for _ in 0..80 {
+            bench.frame(request(), &[], &[]);
+        }
+        assert!(matches!(bench.mapping.step, Step::Test { .. }));
+        // Let go of: it ends once nothing has been pressed for a while.
+        bench.frame(request(), &[], &[KeyCode::KeyA]);
+        for _ in 0..(TEST_IDLE * 10.0) as usize - 2 {
+            bench.frame(request(), &[], &[]);
+        }
+        assert!(matches!(bench.mapping.step, Step::Test { .. }));
+        for _ in 0..3 {
+            bench.frame(request(), &[], &[]);
+        }
+        assert_eq!(bench.mapping.step, Step::Idle);
     }
 }

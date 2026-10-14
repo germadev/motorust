@@ -67,6 +67,12 @@ pub struct Settings {
     pub music_enabled: bool,
     /// How races start: at the lights, or when a player opens the throttle.
     pub start: RaceStart,
+    /// How many red lights the start has (see [`crate::race::lights`]).
+    pub start_lights: u32,
+    /// Whether a race's results go to the middle of the screen once
+    /// everybody is in (see [`crate::race::results`]); otherwise they stay
+    /// at the top right.
+    pub centre_results: bool,
     /// How fast the rivals ride, and how much time the checkpoints give.
     pub difficulty: Difficulty,
     /// Whether each frame is drawn while the next one is simulated
@@ -145,21 +151,45 @@ pub enum RaceStart {
     /// starts when they go out (see [`crate::race::lights`]).
     #[default]
     Lights,
+    /// At the lights, but with nothing holding the bikes on the grid: a
+    /// player who moves off before they go out is disqualified.
+    LightsUnheld,
     /// When a player first opens the throttle.
     Throttle,
 }
 
+/// How many red lights the start can have, and how many it has at first,
+/// as in a Grand Prix.
+pub const START_LIGHTS: [u32; 5] = [1, 2, 3, 4, 5];
+pub const DEFAULT_START_LIGHTS: u32 = 5;
+
 /// The starts that can be chosen, in order.
-pub const RACE_STARTS: [RaceStart; 2] = [RaceStart::Lights, RaceStart::Throttle];
+pub const RACE_STARTS: [RaceStart; 3] = [
+    RaceStart::Lights,
+    RaceStart::LightsUnheld,
+    RaceStart::Throttle,
+];
 
 impl RaceStart {
     pub fn name(self, lang: Language) -> &'static str {
         match (self, lang) {
             (RaceStart::Lights, Language::Spanish) => "Semáforo",
             (RaceStart::Lights, Language::English) => "Lights",
+            (RaceStart::LightsUnheld, Language::Spanish) => "Semáforo sin bloqueo",
+            (RaceStart::LightsUnheld, Language::English) => "Lights, no hold",
             (RaceStart::Throttle, Language::Spanish) => "Acelerando",
             (RaceStart::Throttle, Language::English) => "Throttle",
         }
+    }
+
+    /// Whether the race starts at the lights.
+    pub fn at_lights(self) -> bool {
+        self != RaceStart::Throttle
+    }
+
+    /// Whether the bikes are held on the grid until the lights go out.
+    pub fn holds(self) -> bool {
+        self == RaceStart::Lights
     }
 }
 
@@ -178,6 +208,8 @@ impl Default for Settings {
             music_volume: DEFAULT_VOLUME,
             music_enabled: true,
             start: RaceStart::default(),
+            start_lights: DEFAULT_START_LIGHTS,
+            centre_results: false,
             difficulty: Difficulty::default(),
             pipelined_rendering: true,
             frame_latency: DEFAULT_FRAME_LATENCY,
@@ -1280,6 +1312,12 @@ mod tests {
         assert_eq!(partial.fps, FpsLimit::Unlimited);
         assert_eq!(partial.controls, Controls::default());
         assert_eq!(partial.start, RaceStart::Lights);
+        assert_eq!(partial.start_lights, DEFAULT_START_LIGHTS);
+        assert!(!partial.centre_results);
+        // At the lights, held or not; or at the throttle.
+        assert!(RaceStart::Lights.at_lights() && RaceStart::Lights.holds());
+        assert!(RaceStart::LightsUnheld.at_lights() && !RaceStart::LightsUnheld.holds());
+        assert!(!RaceStart::Throttle.at_lights() && !RaceStart::Throttle.holds());
         // Medium, pipelined rendering and Bevy's frame latency at first.
         assert_eq!(partial.difficulty, Difficulty::Medium);
         assert!(partial.pipelined_rendering);

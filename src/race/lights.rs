@@ -1,24 +1,27 @@
 //! The start lights, as in a Grand Prix: a moment after the grid is set
-//! up, five red lights come on one by one, a second apart, and a moment
-//! after the last one (never quite the same) they go out and the race
-//! starts. Until then every bike waits on the grid, though the players can
+//! up, five red lights (or as many as the options say) come on one by one,
+//! a second apart, and a moment after the last one (never quite the same)
+//! they go out and the race starts. Until then every bike waits on the grid, though the players can
 //! rev their engines ([`Race::held`]). Each light beeps as it comes on, and
 //! going out beeps higher, while the lights flash green.
 //!
-//! In the options ([`RaceStart`]) the race can start as it used to
-//! instead, when a player first opens the throttle, with no lights.
+//! In the options ([`crate::settings::RaceStart`]) the lights can also leave the bikes free
+//! on the grid: a player who moves off before they go out jumps the start
+//! and is disqualified. Or the race can start as it used to, when a player
+//! first opens the throttle, with no lights.
 
 use std::ops::Range;
 
 use bevy::prelude::*;
 
-use crate::bike::Race;
+use super::Standing;
+use crate::bike::{BikeState, LocalPlayer, Player, Race, Retired, Rider};
 use crate::menu::GameState;
 use crate::pause;
-use crate::settings::{RaceStart, Settings};
+use crate::settings::Settings;
 use crate::welcome::GameMode;
 
-/// How many red lights there are.
+/// How many red lights there can be.
 pub const LIGHTS: u32 = 5;
 /// Seconds from the grid being set up to the first light, and between one
 /// light and the next.
@@ -29,6 +32,9 @@ const BETWEEN: f32 = 1.0;
 const HOLD: Range<f32> = 0.3..1.3;
 /// Seconds the lights show green once they are out.
 const GREEN_FOR: f32 = 0.8;
+/// How fast a bike goes (m/s) once it has moved off the grid: before the
+/// lights go out, a jump start.
+const JUMP_SPEED: f32 = 1.0;
 
 const RED: Color = Color::srgb(1.0, 0.1, 0.06);
 const GREEN: Color = Color::srgb(0.15, 0.95, 0.3);
@@ -40,10 +46,16 @@ impl Plugin for StartLightsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StartLights>()
             .add_message::<StartBeep>()
-            .add_systems(OnEnter(GameState::Race), (set_the_lights, spawn_lights))
+            .add_systems(
+                OnEnter(GameState::Race),
+                (set_the_lights, spawn_lights).chain(),
+            )
             .add_systems(
                 Update,
-                (run_lights.run_if(pause::running), show_lights)
+                (
+                    (run_lights, jump_starts).chain().run_if(pause::running),
+                    show_lights,
+                )
                     .chain()
                     .run_if(in_state(GameState::Race)),
             );
@@ -66,24 +78,33 @@ pub struct StartLights {
     out_at: f32,
     /// Seconds since they went out, once they have.
     since_out: Option<f32>,
+    /// How many there are.
+    count: u32,
 }
 
 impl Default for StartLights {
     fn default() -> Self {
-        Self::new(0.5)
+        Self::new(0.5, LIGHTS)
     }
 }
 
 impl StartLights {
-    /// The lights of a new start, staying on for a share `chance` (0 to 1)
-    /// of [`HOLD`] once all five are lit.
-    pub fn new(chance: f32) -> Self {
-        let last = FIRST_LIGHT + (LIGHTS - 1) as f32 * BETWEEN;
+    /// The `count` lights of a new start (1 to [`LIGHTS`]), staying on for
+    /// a share `chance` (0 to 1) of [`HOLD`] once all are lit.
+    pub fn new(chance: f32, count: u32) -> Self {
+        let count = count.clamp(1, LIGHTS);
+        let last = FIRST_LIGHT + (count - 1) as f32 * BETWEEN;
         Self {
             elapsed: 0.0,
             out_at: last + HOLD.start + (HOLD.end - HOLD.start) * chance.clamp(0.0, 1.0),
             since_out: None,
+            count,
         }
+    }
+
+    /// How many lights there are.
+    pub fn count(&self) -> u32 {
+        self.count
     }
 
     /// How many lights are on.
@@ -91,7 +112,7 @@ impl StartLights {
         if self.elapsed >= self.out_at || self.elapsed < FIRST_LIGHT {
             return 0;
         }
-        (((self.elapsed - FIRST_LIGHT) / BETWEEN) as u32 + 1).min(LIGHTS)
+        (((self.elapsed - FIRST_LIGHT) / BETWEEN) as u32 + 1).min(self.count)
     }
 
     /// Whether they have gone out: the race is on.
@@ -124,9 +145,9 @@ fn chance(time: &Time<Real>) -> f32 {
     (mixed % 1000) as f32 / 1000.0
 }
 
-/// A new race: new lights.
-fn set_the_lights(mut lights: ResMut<StartLights>, time: Res<Time<Real>>) {
-    *lights = StartLights::new(chance(&time));
+/// A new race: new lights, as many as the options say.
+fn set_the_lights(mut lights: ResMut<StartLights>, time: Res<Time<Real>>, settings: Res<Settings>) {
+    *lights = StartLights::new(chance(&time), settings.start_lights);
 }
 
 /// With a start at the lights, the bikes wait for them; once out, the race
@@ -139,16 +160,19 @@ fn run_lights(
     mut lights: ResMut<StartLights>,
     mut beeps: MessageWriter<StartBeep>,
 ) {
-    let held = settings.start == RaceStart::Lights;
+    let (lights_on, held) = (settings.start.at_lights(), settings.start.holds());
+    if race.lights != lights_on {
+        race.lights = lights_on;
+    }
     if race.held != held {
         race.held = held;
     }
-    if !held {
+    if !lights_on {
         return;
     }
     // Restarted (see `crate::bike`): back on the grid, the lights again.
     if !race.started && lights.out() {
-        *lights = StartLights::new(chance(&real));
+        *lights = StartLights::new(chance(&real), lights.count());
     }
     if let Some(beep) = lights.advance(time.delta_secs()) {
         beeps.write(beep);
@@ -156,6 +180,41 @@ fn run_lights(
     if lights.out() && !race.started {
         race.started = true;
         info!("Empieza la carrera: semáforo");
+    }
+}
+
+/// Whether a bike going at `speed` (m/s) has moved off the grid.
+fn moved_off(speed: f32) -> bool {
+    speed.abs() > JUMP_SPEED
+}
+
+/// At the lights with the bikes free
+/// ([`crate::settings::RaceStart::LightsUnheld`]), a
+/// player who moves off the grid before they go out jumps the start: they
+/// are disqualified, out of the race (their bike rolls to a stop).
+#[allow(clippy::type_complexity)]
+fn jump_starts(
+    mut commands: Commands,
+    race: Res<Race>,
+    standing: Option<ResMut<Standing>>,
+    bikes: Query<
+        (Entity, &Rider, &BikeState),
+        (Or<(With<Player>, With<LocalPlayer>)>, Without<Retired>),
+    >,
+) {
+    let Some(mut standing) = standing else {
+        return;
+    };
+    if race.started || !race.lights || race.held {
+        return;
+    }
+    for (bike, rider, state) in &bikes {
+        if moved_off(state.speed) && !standing.out.contains(&rider.0) {
+            info!("Salida anticipada: {} descalificado", rider.0);
+            commands.entity(bike).insert(Retired);
+            standing.out.push(rider.0);
+            standing.disqualified.push(rider.0);
+        }
     }
 }
 
@@ -167,7 +226,7 @@ struct LightsPanel;
 #[derive(Component)]
 struct Lamp(u32);
 
-fn spawn_lights(mut commands: Commands, game_mode: Res<GameMode>) {
+fn spawn_lights(mut commands: Commands, game_mode: Res<GameMode>, lights: Res<StartLights>) {
     let two = *game_mode == GameMode::SplitScreen;
     let size = if two { 34.0 } else { 46.0 };
     commands
@@ -203,7 +262,7 @@ fn spawn_lights(mut commands: Commands, game_mode: Res<GameMode>) {
                 BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.15)),
             ))
             .with_children(|gantry| {
-                for index in 0..LIGHTS {
+                for index in 0..lights.count() {
                     gantry.spawn((
                         Lamp(index),
                         Node {
@@ -229,7 +288,7 @@ fn show_lights(
     mut lamps: Query<(&Lamp, &mut BackgroundColor)>,
 ) {
     let green = lights.since_out.is_some_and(|since| since < GREEN_FOR);
-    let shown = settings.start == RaceStart::Lights && (!race.started || green);
+    let shown = settings.start.at_lights() && (!race.started || green);
     for mut visibility in &mut panel {
         let wanted = if shown {
             Visibility::Inherited
@@ -261,7 +320,7 @@ mod tests {
 
     #[test]
     fn five_red_lights_come_on_a_second_apart_and_go_out() {
-        let mut lights = StartLights::new(0.0);
+        let mut lights = StartLights::new(0.0, LIGHTS);
         let mut beeps = Vec::new();
         let mut lit = Vec::new();
         let dt = 0.01;
@@ -294,10 +353,97 @@ mod tests {
     }
 
     #[test]
+    fn with_fewer_lights_they_go_out_sooner() {
+        let mut lights = StartLights::new(0.0, 3);
+        let mut beeps = Vec::new();
+        for _ in 0..800 {
+            if let Some(beep) = lights.advance(0.01) {
+                beeps.push(beep);
+            }
+            assert!(lights.lit() <= 3);
+        }
+        assert_eq!(
+            beeps,
+            [
+                StartBeep::Light,
+                StartBeep::Light,
+                StartBeep::Light,
+                StartBeep::Go
+            ]
+        );
+        assert!(StartLights::new(0.0, 3).out_at < StartLights::new(0.0, 5).out_at - 1.9);
+        // However many the settings say, one to five.
+        assert_eq!(StartLights::new(0.0, 0).count(), 1);
+        assert_eq!(StartLights::new(0.0, 9).count(), LIGHTS);
+    }
+
+    #[test]
     fn the_wait_after_the_fifth_light_varies() {
-        let soon = StartLights::new(0.0).out_at;
-        let late = StartLights::new(1.0).out_at;
+        let soon = StartLights::new(0.0, LIGHTS).out_at;
+        let late = StartLights::new(1.0, LIGHTS).out_at;
         assert!(late - soon > 0.9);
         assert!(soon > FIRST_LIGHT + 4.0 * BETWEEN);
+    }
+
+    /// A grid at the lights, the bikes free or `held`: a rival and the
+    /// players' bikes going at `speeds` (m/s).
+    fn grid(held: bool, speeds: [f32; 3]) -> (App, Vec<Entity>) {
+        let mut app = App::new();
+        app.insert_resource(Race {
+            started: false,
+            lights: true,
+            held,
+        })
+        .insert_resource(Standing::default())
+        .add_systems(Update, jump_starts);
+        let bikes = speeds
+            .iter()
+            .enumerate()
+            .map(|(rider, &speed)| {
+                let state = BikeState {
+                    speed,
+                    ..BikeState::parked_at((Vec2::ZERO, 0.0))
+                };
+                let mut bike = app.world_mut().spawn((Rider(rider), state));
+                match rider {
+                    1 => bike.insert(Player),
+                    2 => bike.insert(LocalPlayer(1)),
+                    _ => &mut bike,
+                };
+                bike.id()
+            })
+            .collect();
+        (app, bikes)
+    }
+
+    #[test]
+    fn a_player_who_moves_off_before_the_lights_go_out_is_disqualified() {
+        // The rival and the second player keep still; the first moves off.
+        let (mut app, bikes) = grid(false, [3.0, 2.0, 0.2]);
+        app.update();
+        let standing = app.world().resource::<Standing>();
+        assert_eq!(standing.disqualified, [1]);
+        assert_eq!(standing.out, [1]);
+        assert!(app.world().get::<Retired>(bikes[1]).is_some());
+        assert!(app.world().get::<Retired>(bikes[2]).is_none());
+        assert!(app.world().get::<Retired>(bikes[0]).is_none());
+        // Once.
+        app.update();
+        assert_eq!(app.world().resource::<Standing>().out, [1]);
+        // Out, the second one may move: the race is on.
+        app.world_mut().resource_mut::<Race>().started = true;
+        app.world_mut()
+            .get_mut::<BikeState>(bikes[2])
+            .unwrap()
+            .speed = 5.0;
+        app.update();
+        assert_eq!(app.world().resource::<Standing>().disqualified, [1]);
+    }
+
+    #[test]
+    fn with_the_bikes_held_nobody_jumps_the_start() {
+        let (mut app, _) = grid(true, [0.0, 2.0, 2.0]);
+        app.update();
+        assert!(app.world().resource::<Standing>().out.is_empty());
     }
 }

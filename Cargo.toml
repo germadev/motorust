@@ -23,6 +23,11 @@ rodio = { version = "0.22", default-features = false, features = ["mp3"] }
 # slanted lettering and the helmet's SVG curves (see src/vector_art.rs).
 swash = "0.2"
 
+# Draws the gamepads of the controls' mapping from their SVG illustrations
+# (see src/pad_art.rs), on the tiny-skia Bevy already has; their few words in
+# the game's own font, so no system fonts.
+resvg = { version = "0.45", default-features = false, features = ["text"] }
+
 # En macOS, los mandos que conoce el sistema se leen con GameController, el
 # framework de Apple (ver src/gamepads/apple.rs).
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -45,4 +45,4 @@ The gamepads drawn in Options > Control > Mapping (`ui/pads/dualsense.svg`,
 designed by the project's author, with Claude, for
 [anygamepad](https://github.com/anygamepad/anygamepad.github.io)
 (`apps/web/src/art`), licensed under either the MIT or the Apache-2.0 licence.
-They are used as they are; the game draws them itself (`src/pad_art.rs`).
+They are used as they are; the game draws them with resvg (`src/pad_art.rs`).

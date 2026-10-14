@@ -141,9 +141,12 @@ pub struct RaceControls;
 #[derive(Resource, Default)]
 pub struct Race {
     pub started: bool,
-    /// The race starts at the lights ([`crate::race::lights`]): until it
-    /// starts, every bike stays on the grid, though the players' engines
-    /// rev, and the throttle does not start it.
+    /// The race starts at the lights ([`crate::race::lights`]): the
+    /// throttle does not start it.
+    pub lights: bool,
+    /// And until it starts every bike stays on the grid, though the
+    /// players' engines rev. Unheld, a player who moves off before the
+    /// lights go out is disqualified.
     pub held: bool,
 }
 
@@ -1423,7 +1426,7 @@ fn read_player_input(
             steer_direct,
             wheelie,
         };
-        if throttle > 0.0 && !race.started && !race.held {
+        if throttle > 0.0 && !race.started && !race.lights {
             info!(
                 "Empieza la carrera: acelerador {throttle:.2} ({})",
                 throttle_from.as_deref().unwrap_or("?")
@@ -1432,7 +1435,7 @@ fn read_player_input(
     }
 
     let p2_throttles = other_players.iter().any(|(inp, _, _)| inp.throttle > 0.0);
-    if (input.throttle > 0.0 || p2_throttles) && !race.started && !race.held {
+    if (input.throttle > 0.0 || p2_throttles) && !race.started && !race.lights {
         race.started = true;
     }
 }

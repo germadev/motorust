@@ -46,12 +46,12 @@ impl Plugin for ModesPlugin {
 /// The modes on the screen, row by row, for one player or two.
 pub fn rows(two_players: bool) -> Vec<Vec<Mode>> {
     if two_players {
-        vec![vec![Mode::Free, Mode::Race, Mode::Elimination]]
+        vec![vec![Mode::Race, Mode::Elimination, Mode::Free]]
     } else {
         vec![
             vec![Mode::Arcade],
-            vec![Mode::Free, Mode::Race],
-            vec![Mode::Elimination, Mode::Checkpoint],
+            vec![Mode::Race, Mode::Elimination],
+            vec![Mode::Checkpoint, Mode::Free],
         ]
     }
 }
@@ -86,10 +86,10 @@ impl ModesMenu {
 pub fn lit(mode: Mode) -> Color {
     match mode {
         Mode::Arcade => Color::srgb(0.98, 0.7, 0.0),
-        Mode::Free => Color::srgb(0.04, 0.4, 1.0),
-        Mode::Race => Color::srgb(0.88, 0.16, 0.16),
-        Mode::Elimination => Color::srgb(0.5, 0.19, 0.88),
-        Mode::Checkpoint => Color::srgb(0.08, 0.66, 0.34),
+        Mode::Race => Color::srgb(0.04, 0.4, 1.0),
+        Mode::Elimination => Color::srgb(0.88, 0.16, 0.16),
+        Mode::Checkpoint => Color::srgb(0.5, 0.19, 0.88),
+        Mode::Free => Color::srgb(0.08, 0.66, 0.34),
     }
 }
 
@@ -97,17 +97,17 @@ pub fn lit(mode: Mode) -> Color {
 fn flow(mode: Mode) -> Vec2 {
     match mode {
         Mode::Arcade => Vec2::new(51.615, -180.0),
-        Mode::Free | Mode::Elimination => Vec2::new(180.0, 0.0),
-        Mode::Race | Mode::Checkpoint => Vec2::new(-180.0, 0.0),
+        Mode::Race | Mode::Checkpoint => Vec2::new(180.0, 0.0),
+        Mode::Elimination | Mode::Free => Vec2::new(-180.0, 0.0),
     }
 }
 
 const MODES: [Mode; 5] = [
     Mode::Arcade,
-    Mode::Free,
     Mode::Race,
     Mode::Elimination,
     Mode::Checkpoint,
+    Mode::Free,
 ];
 
 fn index(mode: Mode) -> usize {
@@ -475,7 +475,7 @@ mod tests {
         assert_eq!(rows[0], [Mode::Arcade]);
         assert_eq!(rows[1..].iter().flatten().count(), 4);
         let two = rows_flat(true);
-        assert_eq!(two, [Mode::Free, Mode::Race, Mode::Elimination]);
+        assert_eq!(two, [Mode::Race, Mode::Elimination, Mode::Free]);
     }
 
     fn rows_flat(two: bool) -> Vec<Mode> {
@@ -488,25 +488,25 @@ mod tests {
         let mut menu = ModesMenu::default();
         assert_eq!(menu.chosen(&rows), Mode::Arcade);
         menu.navigate(1, 0, &rows);
-        assert_eq!(menu.chosen(&rows), Mode::Free);
-        menu.navigate(0, 1, &rows);
         assert_eq!(menu.chosen(&rows), Mode::Race);
+        menu.navigate(0, 1, &rows);
+        assert_eq!(menu.chosen(&rows), Mode::Elimination);
         menu.navigate(1, 0, &rows);
-        assert_eq!(menu.chosen(&rows), Mode::Checkpoint);
+        assert_eq!(menu.chosen(&rows), Mode::Free);
         // Up to the championship and back down: the same side.
         menu.navigate(1, 0, &rows);
         assert_eq!(menu.chosen(&rows), Mode::Arcade);
         menu.navigate(0, 1, &rows);
         assert_eq!(menu.chosen(&rows), Mode::Arcade);
         menu.navigate(-1, 0, &rows);
-        assert_eq!(menu.chosen(&rows), Mode::Elimination);
+        assert_eq!(menu.chosen(&rows), Mode::Checkpoint);
         // Two players: one row, left and right.
         let two = super::rows(true);
         let mut menu = ModesMenu::default();
         menu.navigate(0, -1, &two);
-        assert_eq!(menu.chosen(&two), Mode::Elimination);
+        assert_eq!(menu.chosen(&two), Mode::Free);
         menu.navigate(1, 0, &two);
-        assert_eq!(menu.chosen(&two), Mode::Elimination);
+        assert_eq!(menu.chosen(&two), Mode::Free);
     }
 
     #[test]

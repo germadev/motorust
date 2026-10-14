@@ -51,20 +51,31 @@ fn forget_the_page(mut commands: Commands) {
 }
 
 /// What comes after the results: the standings of a championship, its next
-/// race, the menu after the last one, or choosing a track again.
+/// race, the menu after the last one, or, out of a championship, the same
+/// race again.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Next {
     Standings,
     Race(usize),
     Menu,
-    Tracks,
+    Again,
+}
+
+/// Where going back from the results of a race of `mode` goes: out of a
+/// championship to the game modes; otherwise to choosing the track.
+pub fn back_from(mode: Mode) -> GameState {
+    if mode.is_championship() {
+        GameState::Modes
+    } else {
+        GameState::Tracks
+    }
 }
 
 /// What comes after the page `standings` (or not) of the results of a race
 /// of `mode`, with the championship as it is now.
 pub fn next_after(mode: Mode, standings: bool, championship: &Championship) -> Next {
     if !mode.is_championship() {
-        return Next::Tracks;
+        return Next::Again;
     }
     if !standings {
         return Next::Standings;
@@ -95,7 +106,7 @@ fn use_results(
     if request.back {
         sounds.write(MenuSound::Move);
         commands.insert_resource(ResultsPage::Leaving);
-        next.set(GameState::Modes);
+        next.set(back_from(outcome.mode));
         return;
     }
     if !(request.confirm || request.start) {
@@ -118,9 +129,9 @@ fn use_results(
             commands.insert_resource(ResultsPage::Leaving);
             next.set(GameState::Welcome);
         }
-        Next::Tracks => {
+        Next::Again => {
             commands.insert_resource(ResultsPage::Leaving);
-            next.set(GameState::Tracks);
+            next.set(GameState::Race);
         }
     }
 }
@@ -146,8 +157,8 @@ fn show_results(
     let page = page.map_or(ResultsPage::Race, |page| *page);
     let active_dev = current_active_device(*device, active_controller.as_deref());
     let wanted = format!(
-        "{page:?} {lang:?} {active_dev:?} {:?} {}",
-        outcome.places, outcome.settled
+        "{page:?} {lang:?} {active_dev:?} {:?} {} {}",
+        outcome.places, outcome.settled, settings.centre_results
     );
     if last.as_ref() == Some(&wanted) && !shown.is_empty() {
         return;
@@ -196,8 +207,8 @@ fn show_results(
         (Next::Race(_), Language::English) => "Next race",
         (Next::Menu, Language::Spanish) => "Terminar",
         (Next::Menu, Language::English) => "Finish",
-        (Next::Tracks, Language::Spanish) => "Elegir pista",
-        (Next::Tracks, Language::English) => "Choose track",
+        (Next::Again, Language::Spanish) => "Repetir",
+        (Next::Again, Language::English) => "Race again",
     };
     let prompts = menu_prompts(
         active_dev,
@@ -205,16 +216,27 @@ fn show_results(
             (Keys::Confirm, go_on),
             (
                 Keys::Back,
-                match lang {
-                    Language::Spanish => "Modos de juego",
-                    Language::English => "Game modes",
+                match (back_from(outcome.mode), lang) {
+                    (GameState::Modes, Language::Spanish) => "Modos de juego",
+                    (GameState::Modes, Language::English) => "Game modes",
+                    (_, Language::Spanish) => "Volver",
+                    (_, Language::English) => "Back",
                 },
             ),
         ],
     );
 
-    // The race's results stand on the right, over the race that goes on
-    // behind them; the standings, in the middle, over a darker screen.
+    // The race's results stand at the top right, over the race that goes
+    // on behind them; if the options say so, once everybody is in, in the
+    // middle, above the bike the camera shows. The standings, in the
+    // middle, over a darker screen.
+    let stand = if standings {
+        Stand::Middle
+    } else if settings.centre_results && everyone_in(&outcome) {
+        Stand::Above
+    } else {
+        Stand::Corner
+    };
     commands
         .spawn((
             ResultsScreen,
@@ -224,16 +246,23 @@ fn show_results(
                 width: percent(100),
                 height: percent(100),
                 flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::Center,
-                align_items: if standings {
-                    AlignItems::Center
-                } else {
-                    AlignItems::FlexEnd
+                justify_content: match stand {
+                    Stand::Corner => JustifyContent::FlexStart,
+                    _ => JustifyContent::Center,
                 },
-                padding: UiRect {
-                    right: px(if standings { 0 } else { 28 }),
-                    bottom: px(56),
-                    ..default()
+                align_items: match stand {
+                    Stand::Corner => AlignItems::FlexEnd,
+                    _ => AlignItems::Center,
+                },
+                padding: match stand {
+                    Stand::Middle => UiRect::bottom(px(56)),
+                    // (A share of the height: one in per cent is of the width.)
+                    Stand::Above => UiRect::bottom(Val::Vh(26.0)),
+                    Stand::Corner => UiRect {
+                        top: px(40),
+                        right: px(28),
+                        ..default()
+                    },
                 },
                 ..default()
             },
@@ -311,6 +340,28 @@ fn show_results(
         });
 }
 
+/// Where the results stand on the screen.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Stand {
+    /// At the top right, while the others come in.
+    Corner,
+    /// In the middle, above the bike the camera shows, once all are in (if
+    /// the options say so).
+    Above,
+    /// In the middle: the standings.
+    Middle,
+}
+
+/// Whether every bike of the race is in: crossed the line or out (against
+/// the clock, nobody comes in: it is over when the time is).
+fn everyone_in(outcome: &Outcome) -> bool {
+    outcome.mode == Mode::Checkpoint
+        || outcome
+            .places
+            .iter()
+            .all(|place| place.out || (place.time.is_some() && !place.estimated))
+}
+
 /// A line of the results: what goes on the left and on the right, whether
 /// it is a player's, and whether it is still to come in (shown fainter).
 struct Line {
@@ -351,7 +402,12 @@ fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
         .map(|(index, place)| {
             let (name, player) = rider_name(place.rider, outcome, lang);
             let pending = place.estimated && !outcome.settled;
-            let result = if place.out {
+            let result = if place.disqualified {
+                match lang {
+                    Language::Spanish => "descalificado".to_string(),
+                    Language::English => "disqualified".to_string(),
+                }
+            } else if place.out {
                 match lang {
                     Language::Spanish => "eliminado".to_string(),
                     Language::English => "out".to_string(),
@@ -376,7 +432,12 @@ fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
                 }
             };
             let points = if outcome.mode.is_championship() {
-                format!("   +{}", POINTS.get(index).copied().unwrap_or(0))
+                let points = if place.disqualified {
+                    0
+                } else {
+                    POINTS.get(index).copied().unwrap_or(0)
+                };
+                format!("   +{points}")
             } else {
                 String::new()
             };
@@ -470,13 +531,80 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_results_go_to_the_middle_once_everybody_is_in() {
+        let place = |rider: usize, time: Option<f32>, estimated: bool| super::super::Place {
+            rider,
+            time,
+            out: false,
+            disqualified: false,
+            estimated,
+        };
+        let mut outcome = Outcome {
+            mode: Mode::Race,
+            track: 0,
+            places: vec![place(0, Some(90.0), false), place(7, Some(95.0), true)],
+            players: vec![0],
+            laps: 0,
+            record: false,
+            settled: false,
+        };
+        // One still racing (its time a guess): not yet.
+        assert!(!everyone_in(&outcome));
+        outcome.places[1] = place(7, None, false);
+        assert!(!everyone_in(&outcome));
+        // In, or out.
+        outcome.places[1] = place(7, Some(96.0), false);
+        assert!(everyone_in(&outcome));
+        outcome.places[1].time = None;
+        outcome.places[1].out = true;
+        assert!(everyone_in(&outcome));
+    }
+
+    #[test]
+    fn a_player_disqualified_says_so_in_the_results() {
+        let place = |rider: usize, time: Option<f32>, out: bool| super::super::Place {
+            rider,
+            time,
+            out,
+            disqualified: out,
+            estimated: false,
+        };
+        let mut outcome = Outcome {
+            mode: Mode::Race,
+            track: 0,
+            places: vec![place(0, Some(90.0), false), place(7, None, true)],
+            players: vec![7],
+            laps: 0,
+            record: false,
+            settled: true,
+        };
+        let lines = race_lines(&outcome, Language::Spanish);
+        assert!(
+            lines[1].right.starts_with("descalificado"),
+            "{}",
+            lines[1].right
+        );
+        assert!(lines[1].player && !lines[1].pending);
+        let lines = race_lines(&outcome, Language::English);
+        assert!(lines[1].right.starts_with("disqualified"));
+        // In the arcade, with no points.
+        outcome.mode = Mode::Arcade;
+        let lines = race_lines(&outcome, Language::English);
+        assert!(lines[1].right.ends_with("+0"), "{}", lines[1].right);
+    }
+
+    #[test]
     fn after_the_results_comes_what_the_mode_says() {
         let mut championship = Championship::default();
-        assert_eq!(next_after(Mode::Race, false, &championship), Next::Tracks);
+        // Out of a championship: the same race again, or back to the
+        // tracks.
+        assert_eq!(next_after(Mode::Race, false, &championship), Next::Again);
         assert_eq!(
             next_after(Mode::Checkpoint, false, &championship),
-            Next::Tracks
+            Next::Again
         );
+        assert_eq!(back_from(Mode::Race), GameState::Tracks);
+        assert_eq!(back_from(Mode::Arcade), GameState::Modes);
         // A championship: the standings, then its next race...
         assert_eq!(
             next_after(Mode::Arcade, false, &championship),
@@ -490,7 +618,7 @@ mod tests {
         // An elimination is on the track chosen, like a race.
         assert_eq!(
             next_after(Mode::Elimination, false, &championship),
-            Next::Tracks
+            Next::Again
         );
     }
 
@@ -523,6 +651,7 @@ mod tests {
             rider,
             time: Some(time),
             out: false,
+            disqualified: false,
             estimated: false,
         };
         app.insert_resource(Outcome {

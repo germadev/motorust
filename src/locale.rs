@@ -507,10 +507,10 @@ impl Language {
         }
     }
 
-    pub fn reset_controls(self) -> &'static str {
+    pub fn reset(self) -> &'static str {
         match self {
-            Language::Spanish => "Restablecer controles",
-            Language::English => "Reset controls",
+            Language::Spanish => "Restablecer",
+            Language::English => "Reset",
         }
     }
 

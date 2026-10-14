@@ -27,7 +27,7 @@ use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
 use crate::pause;
 use crate::settings::{Action, Difficulty, Settings};
-use crate::track::Track;
+use crate::track::{Nearest, Track};
 
 /// How many laps a race of the arcade championship has.
 pub const CHAMPIONSHIP_LAPS: u32 = 5;
@@ -88,6 +88,16 @@ const RESULTS_AFTER: f32 = 2.5;
 /// Seconds the camera stays on a bike it watched come in before it goes to
 /// the next one.
 const WATCH_ARRIVAL: f32 = 2.5;
+/// Once everybody is in, seconds the camera stays on a bike before it cuts
+/// to another (see [`spot_worth`]).
+const SHOT: f32 = 6.0;
+/// How far ahead of a bike (m) its spot is judged.
+const SPOT_AHEAD: f32 = 120.0;
+/// Bikes this close together (m) ride in a group, worth watching.
+const TOGETHER: f32 = 20.0;
+/// The last bikes shown, which the camera does not go back to while there
+/// are others.
+const RECENT_SHOTS: usize = 3;
 
 /// What is being played.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -393,6 +403,9 @@ pub struct Standing {
     pub bonus: Option<(f32, f32)>,
     /// The bikes out, in the order they went out (bikes of the roster).
     pub out: Vec<usize>,
+    /// Of those, the players disqualified for jumping the start (see
+    /// [`lights`]).
+    pub disqualified: Vec<usize>,
     /// The order of the race now (bikes of the roster), first to last.
     pub order: Vec<usize>,
     /// The laps whose last one has already gone out.
@@ -401,8 +414,9 @@ pub struct Standing {
     pub last_out: Option<(usize, f32)>,
     /// When all the players were done (s on the clock).
     done_at: Option<f32>,
-    /// The best lap of this race on this track, if it was a record.
-    pub record: Option<f32>,
+    /// The last lap of this race that beat the track's record, and when it
+    /// did (s on the clock), to say so for a moment.
+    pub record: Option<(f32, f32)>,
 }
 
 /// The race is over for the players: what is shown on the results. Until
@@ -426,14 +440,20 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    /// The places as they are, final: a championship scores them.
+    /// The places as they are, final: a championship scores them (but
+    /// those disqualified, last, who get nothing).
     pub fn settle(&mut self, championship: &mut Championship) {
         if self.settled {
             return;
         }
         self.settled = true;
         if self.mode.is_championship() {
-            let order: Vec<usize> = self.places.iter().map(|place| place.rider).collect();
+            let order: Vec<usize> = self
+                .places
+                .iter()
+                .filter(|place| !place.disqualified)
+                .map(|place| place.rider)
+                .collect();
             championship.score(&order);
         }
     }
@@ -445,6 +465,8 @@ pub struct Place {
     pub rider: usize,
     pub time: Option<f32>,
     pub out: bool,
+    /// Out for jumping the start.
+    pub disqualified: bool,
     /// Whether `time` is when it would have crossed the line: it was still
     /// racing.
     pub estimated: bool,
@@ -481,7 +503,7 @@ impl Plugin for RacePlugin {
             .add_systems(OnEnter(GameState::Race), start_race)
             .add_systems(
                 Update,
-                restart_elimination.run_if(
+                restart_with_some_out.run_if(
                     in_state(GameState::Race)
                         .and_then(pause::running)
                         .and_then(not(resource_exists::<Outcome>)),
@@ -535,19 +557,19 @@ fn clear_outcome(mut commands: Commands) {
     commands.remove_resource::<Watching>();
 }
 
-/// Restarting an elimination once someone is out sets the race up again
-/// from the start, those out back on the grid: the rivals out have left
-/// it, so parking the bikes there (as [`crate::bike`] does) is not enough.
-fn restart_elimination(
+/// Restarting a race once someone is out (an elimination, or a player
+/// disqualified at the start) sets it up again from the start, those out
+/// back on the grid: the rivals out have left it, and the race keeps who
+/// is out, so parking the bikes there (as [`crate::bike`] does) is not
+/// enough.
+fn restart_with_some_out(
     keyboard: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     settings: Res<Settings>,
-    rules: Res<Rules>,
     standing: Res<Standing>,
     mut next: ResMut<NextState<GameState>>,
 ) {
-    if rules.mode == Mode::Elimination
-        && !standing.out.is_empty()
+    if !standing.out.is_empty()
         && settings
             .controls
             .just_pressed(Action::Restart, &keyboard, gamepads.iter())
@@ -603,16 +625,19 @@ fn follow_the_race(
     }
     *was_started = race.started;
     if !race.started {
-        // On the grid, waiting: the order they start in.
+        // On the grid, waiting: the order they start in, those
+        // disqualified last.
         for (state, _, mut progress, ..) in &mut bikes {
             let nearest = track.nearest_at(state.position, state.elevation);
             progress.pass(track.along(&nearest), lap, &points);
         }
         let grid: Vec<(usize, &Progress)> = bikes
             .iter()
+            .filter(|(_, rider, ..)| !standing.out.contains(&rider.0))
             .map(|(_, rider, progress, ..)| (rider.0, progress))
             .collect();
-        standing.order = order(&grid, &[], lap);
+        let order = order(&grid, &standing.out, lap);
+        standing.order = order;
         return;
     }
     standing.clock += time.delta_secs();
@@ -631,8 +656,11 @@ fn follow_the_race(
                 if progress.best_lap.is_none_or(|best| lap_time < best) {
                     progress.best_lap = Some(lap_time);
                 }
-                if human && settings.records.lap(name, lap_time) {
-                    record = Some(lap_time);
+                // A record if it beats the one kept (the first lap ever
+                // ridden on a track is kept, but beats nothing).
+                let kept = settings.records.best_lap(name).is_some();
+                if human && settings.records.lap(name, lap_time) && kept {
+                    record = Some((lap_time, clock));
                 }
             }
             if target.is_some_and(|laps| progress.laps >= laps) && progress.finished.is_none() {
@@ -778,6 +806,7 @@ fn places_now(
                 rider,
                 time,
                 out,
+                disqualified: standing.disqualified.contains(&rider),
                 estimated: estimate.is_some(),
             }
         })
@@ -890,14 +919,18 @@ fn fill_in_the_results(
 
 /// After the players' race, the camera watches the others come in: the one
 /// nearest to the line of those still racing; once it is in, it stays on it
-/// a moment before going to the next. Once everybody is in, it stays on
-/// the last one.
+/// a moment before going to the next. Once everybody is in, it shows them
+/// riding on, a shot of each in turn: the one whose spot is most worth
+/// watching (see [`spot_worth`]) of those not shown lately.
+#[allow(clippy::type_complexity)]
 fn watch_them_come_in(
     mut commands: Commands,
     rules: Res<Rules>,
+    track: Res<Track>,
     standing: Res<Standing>,
     watching: Option<Res<Watching>>,
-    bikes: Query<(Entity, &Rider, &Progress)>,
+    bikes: Query<(Entity, &Rider, &Progress, &BikeState)>,
+    mut shown: Local<Vec<usize>>,
 ) {
     if rules.mode == Mode::Checkpoint {
         return;
@@ -906,7 +939,7 @@ fn watch_them_come_in(
     let watched = watching.as_deref().filter(|w| bikes.contains(w.bike));
     // Still on its way, or just in: the camera stays on it.
     if let Some(current) = watched
-        && let Ok((_, _, progress)) = bikes.get(current.bike)
+        && let Ok((_, _, progress, _)) = bikes.get(current.bike)
     {
         match progress.finished {
             None if !standing.out.contains(&current.rider) => return,
@@ -920,17 +953,100 @@ fn watch_them_come_in(
         }
         bikes
             .iter()
-            .find(|(_, r, progress)| r.0 == rider && progress.finished.is_none())
+            .find(|(_, r, progress, _)| r.0 == rider && progress.finished.is_none())
     });
-    if let Some((bike, rider, _)) = next {
+    if let Some((bike, rider, ..)) = next {
+        shown.clear();
         commands.insert_resource(Watching {
             bike,
             rider: rider.0,
             since: clock,
         });
+        return;
+    }
+    // Everybody in: the shots of them riding on.
+    if watched.is_some_and(|current| clock - current.since < SHOT) {
+        return;
+    }
+    let riding: Vec<(Entity, usize, &BikeState)> = bikes
+        .iter()
+        .filter(|(_, rider, ..)| !standing.out.contains(&rider.0))
+        .map(|(bike, rider, _, state)| (bike, rider.0, state))
+        .collect();
+    let worth: Vec<(usize, f32)> = riding
+        .iter()
+        .map(|&(_, rider, state)| {
+            let together = riding
+                .iter()
+                .filter(|(_, other, them)| {
+                    *other != rider
+                        && them.position.distance(state.position) < TOGETHER
+                        && (them.elevation - state.elevation).abs() < 5.0
+                })
+                .count();
+            (rider, spot_worth(&track, state, together))
+        })
+        .collect();
+    let current = watched.map(|current| current.rider);
+    if let Some(rider) = next_shot(&worth, current, &shown)
+        && let Some(&(bike, ..)) = riding.iter().find(|(_, r, _)| *r == rider)
+    {
+        shown.push(rider);
+        commands.insert_resource(Watching {
+            bike,
+            rider,
+            since: clock,
+        });
     } else if watched.is_none() && watching.is_some() {
         commands.remove_resource::<Watching>();
     }
+}
+
+/// How worth watching the spot of a bike riding as `state` is, with
+/// `together` others close by: round a loop most, then on a road off the
+/// lap, the bends and crests coming up in the next [`SPOT_AHEAD`] m, and
+/// riding in a group. A bike hardly moving is not.
+pub fn spot_worth(track: &Track, state: &BikeState, together: usize) -> f32 {
+    let nearest = track.nearest_at(state.position, state.elevation);
+    let road = track.road(nearest.road);
+    let ahead = (SPOT_AHEAD / road.step_length()).ceil() as usize;
+    let (mut bend, mut crest) = (0.0f32, 0.0f32);
+    for step in 0..ahead {
+        let index = nearest.index + step;
+        if !road.is_closed() && index >= road.sample_count() {
+            break;
+        }
+        let index = index % road.sample_count();
+        bend = bend.max(road.smoothed_curvature(index, 3));
+        crest = crest.max(road.crest(&Nearest { index, ..nearest }));
+    }
+    let mut worth = (bend * 40.0).min(1.5) + (crest * 60.0).min(1.5);
+    worth += (together as f32 * 0.5).min(1.5);
+    if nearest.road != 0 {
+        worth += 1.5;
+    }
+    if state.ride.is_some() {
+        worth += 3.0;
+    }
+    if state.speed.abs() < 5.0 {
+        worth *= 0.2;
+    }
+    worth
+}
+
+/// The bike for the next shot, of those riding (`worth`: each one and how
+/// worth watching its spot is): the most worth watching but the one
+/// `current`ly watched, and but the last ones `shown` if there are others.
+pub fn next_shot(worth: &[(usize, f32)], current: Option<usize>, shown: &[usize]) -> Option<usize> {
+    let lately = &shown[shown.len().saturating_sub(RECENT_SHOTS)..];
+    let best = |skip: &dyn Fn(usize) -> bool| {
+        worth
+            .iter()
+            .filter(|(rider, _)| Some(*rider) != current && !skip(*rider))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(rider, _)| *rider)
+    };
+    best(&|rider| lately.contains(&rider)).or_else(|| best(&|_| false))
 }
 
 /// Puts the arcade championship on its first race.
@@ -1128,11 +1244,60 @@ mod tests {
     }
 
     #[test]
+    fn the_camera_goes_where_there_is_something_to_see() {
+        let track = Track::default();
+        let ahead = (SPOT_AHEAD / track.step_length()) as usize;
+        let count = track.sample_count();
+        let bendiest_ahead = |index: usize| {
+            (0..ahead)
+                .map(|step| track.smoothed_curvature((index + step) % count, 3))
+                .fold(0.0, f32::max)
+        };
+        // The straightest stretch, and a little before the tightest bend.
+        let straight = (0..count)
+            .min_by(|a, b| bendiest_ahead(*a).total_cmp(&bendiest_ahead(*b)))
+            .unwrap();
+        let tightest = (0..count)
+            .max_by(|a, b| {
+                track
+                    .smoothed_curvature(*a, 3)
+                    .total_cmp(&track.smoothed_curvature(*b, 3))
+            })
+            .unwrap();
+        let before_bend = (tightest + count - ahead / 2) % count;
+        let riding = |index: usize, speed: f32| BikeState {
+            speed,
+            ..BikeState::parked_on(&track, track.pose_at(index))
+        };
+        let on_straight = spot_worth(&track, &riding(straight, 40.0), 0);
+        let into_bend = spot_worth(&track, &riding(before_bend, 40.0), 0);
+        assert!(into_bend > on_straight, "{into_bend} > {on_straight}");
+        // In a group, more; hardly moving, hardly anything.
+        assert!(spot_worth(&track, &riding(straight, 40.0), 2) > on_straight);
+        assert!(spot_worth(&track, &riding(before_bend, 1.0), 0) < into_bend * 0.5);
+    }
+
+    #[test]
+    fn the_shots_go_round_the_bikes_most_worth_watching_first() {
+        let worth = [(0, 1.0), (1, 3.0), (2, 2.0), (3, 0.5), (4, 0.2)];
+        // The best, but not the one watched.
+        assert_eq!(next_shot(&worth, None, &[]), Some(1));
+        assert_eq!(next_shot(&worth, Some(1), &[1]), Some(2));
+        // Not the last ones shown while there are others.
+        assert_eq!(next_shot(&worth, Some(2), &[1, 2]), Some(0));
+        assert_eq!(next_shot(&worth, Some(0), &[1, 2, 0]), Some(3));
+        // Only those shown left: the best of them again.
+        assert_eq!(next_shot(&worth[..2], Some(0), &[1, 0]), Some(1));
+        assert_eq!(next_shot(&[], None, &[]), None);
+    }
+
+    #[test]
     fn the_results_are_scored_once_when_the_players_go_on() {
         let place = |rider: usize, time: f32, estimated: bool| Place {
             rider,
             time: Some(time),
             out: false,
+            disqualified: false,
             estimated,
         };
         let mut outcome = Outcome {
@@ -1149,6 +1314,21 @@ mod tests {
         outcome.settle(&mut championship);
         assert_eq!(championship.round, 1);
         assert_eq!((championship.points[4], championship.points[7]), (10, 8));
+        // Disqualified, last: no points.
+        let mut outcome = Outcome {
+            places: vec![
+                place(4, 100.0, false),
+                Place {
+                    out: true,
+                    disqualified: true,
+                    ..place(7, 0.0, false)
+                },
+            ],
+            settled: false,
+            ..outcome
+        };
+        outcome.settle(&mut championship);
+        assert_eq!((championship.points[4], championship.points[7]), (20, 8));
     }
 
     #[test]

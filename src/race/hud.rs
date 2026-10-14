@@ -323,7 +323,14 @@ fn show_race_info(
                     if left < 10.0 { RED } else { GOLD },
                 )
             }
-            InfoKind::Notice => notice(&rules, &standing, progress, retired, place, lang),
+            InfoKind::Notice => {
+                let out = match (retired, standing.disqualified.contains(&rider.0)) {
+                    (_, true) => Out::Disqualified,
+                    (true, false) => Out::Retired,
+                    (false, false) => Out::In,
+                };
+                notice(&rules, &standing, progress, out, place, lang)
+            }
             _ => (String::new(), color.0),
         };
         if text.0 != wanted {
@@ -461,17 +468,35 @@ fn arrival_lines(
         .join("\n")
 }
 
+/// Whether a player is still in the race.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Out {
+    In,
+    Retired,
+    /// For jumping the start.
+    Disqualified,
+}
+
 /// The big notice in the middle for a player at `place`: their place when
-/// they cross the line at the end, that their time is up or they are out,
-/// who has just gone out, or a lap record.
+/// they cross the line at the end, that their time is up, they are out or
+/// disqualified, who has just gone out, or a lap record.
 fn notice(
     rules: &Rules,
     standing: &Standing,
     progress: &Progress,
-    retired: bool,
+    out: Out,
     place: usize,
     lang: Language,
 ) -> (String, Color) {
+    if out == Out::Disqualified {
+        return (
+            match lang {
+                Language::Spanish => "¡SALIDA ANTICIPADA!  DESCALIFICADO".into(),
+                Language::English => "JUMP START!  DISQUALIFIED".into(),
+            },
+            RED,
+        );
+    }
     if progress.finished.is_some() {
         return (
             match lang {
@@ -490,7 +515,7 @@ fn notice(
             RED,
         );
     }
-    if retired {
+    if out == Out::Retired {
         return (
             match lang {
                 Language::Spanish => "¡ELIMINADO!".into(),
@@ -511,9 +536,10 @@ fn notice(
             RED,
         );
     }
-    if let Some(best) = standing.record.filter(|_| progress.laps > 0)
+    // Just after the lap that beat it, to the player who rode it.
+    if let Some((best, at)) = standing.record
         && progress.best_lap == Some(best)
-        && standing.clock - progress_lap_start(progress) < NOTICE
+        && standing.clock - at < NOTICE
     {
         return (
             match lang {
@@ -524,11 +550,6 @@ fn notice(
         );
     }
     (String::new(), Color::WHITE)
-}
-
-/// When the lap under way began (s on the clock).
-fn progress_lap_start(progress: &Progress) -> f32 {
-    progress.lap_start
 }
 
 #[cfg(test)]
@@ -558,6 +579,43 @@ mod tests {
             )
         );
         assert_eq!(arrival_lines(&[0, 2], Language::Spanish, finished), "");
+    }
+
+    #[test]
+    fn a_lap_record_is_told_once_just_after_the_lap_that_beat_it() {
+        let rules = Rules {
+            mode: Mode::Race,
+            laps: 5,
+        };
+        let mut standing = Standing {
+            clock: 72.0,
+            record: Some((70.0, 71.0)),
+            ..default()
+        };
+        let progress = Progress {
+            laps: 1,
+            best_lap: Some(70.0),
+            ..default()
+        };
+        let told = |standing: &Standing, progress: &Progress| {
+            notice(&rules, standing, progress, Out::In, 8, Language::English)
+                .0
+                .starts_with("LAP RECORD")
+        };
+        assert!(told(&standing, &progress));
+        // Not to the other player, whose best is another.
+        let other = Progress {
+            best_lap: Some(74.0),
+            ..progress.clone()
+        };
+        assert!(!told(&standing, &other));
+        // Laps later, slower ones: no more.
+        standing.clock = 150.0;
+        let later = Progress {
+            laps: 2,
+            ..progress.clone()
+        };
+        assert!(!told(&standing, &later));
     }
 
     #[test]
