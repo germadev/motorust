@@ -401,6 +401,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        japan: None,
     },
 };
 

@@ -305,6 +305,7 @@ pub const GOLD_MINE: Circuit = Circuit {
         loops: &[],
         rings: &[],
         waterfalls: &[],
+        japan: None,
         sky: SkyStyle::Dusk,
         // The great lake is the bottom of an open pit, flooded with red water.
         water: Water::Iron,

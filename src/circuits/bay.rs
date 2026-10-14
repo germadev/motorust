@@ -225,6 +225,7 @@ pub const BAY: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        japan: None,
     },
 };
 

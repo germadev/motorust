@@ -85,6 +85,7 @@ pub const TURBO_BAY: Circuit = Circuit {
                 center: Vec2::new(410.0, -237.0),
                 radius: 32.0,
                 height: 15.0,
+                skirt: 15.0,
             },
         ],
         mountains,
@@ -182,7 +183,7 @@ pub const TURBO_BAY: Circuit = Circuit {
             Species::Poplar,
             Species::Almond,
         ],
-        forests: &[FOREST],
+        forests: &[forest(FOREST, &[Species::Tall])],
         houses: Houses {
             max: 9,
             paints: &[
@@ -345,6 +346,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        japan: None,
     },
 };
 

@@ -311,7 +311,7 @@ fn add_tuft(mesh: &mut MeshBuilder, root: Vec3, grass: Color, random: impl Fn(u3
 }
 
 /// Points every normal of a mesh up.
-fn normals_up(mesh: &mut Mesh) {
+pub(super) fn normals_up(mesh: &mut Mesh) {
     let count = mesh.count_vertices();
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 1.0, 0.0]; count]);
 }

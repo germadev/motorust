@@ -1,6 +1,6 @@
-# Bikes, riders and textures
+# Bikes, riders, trees, props and textures
 
-Where the bikes, riders and textures come from, how the Meshy models are prepared for the game and how to add a new bike. For how the model code fits into the rest of the game see [architecture.md](architecture.md); for racing them see [gameplay.md](gameplay.md).
+Where the bikes, riders, trees, props of feudal Japan and textures come from, how the Meshy models are prepared for the game and how to add a new bike. For how the model code fits into the rest of the game see [architecture.md](architecture.md); for racing them see [gameplay.md](gameplay.md).
 
 ## The race bikes
 
@@ -105,20 +105,41 @@ Upload the original GLB files to a model release of the repository so they can b
 
 ## Trees
 
-The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`src/world/props.rs`).
+The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond, and Tsushima Isle's momiji, ginkgo, sakura, Japanese black pine, sugi and bamboo) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`src/world/props.rs`).
 
 `tools/import_trees.py` turns the GLB files into what the game embeds (`assets/models/trees/`):
 
 ```sh
 python3 tools/import_trees.py umbrella_pine=PINE.glb cypress=CYPRESS.glb olive=OLIVE.glb \
     tall=TALL.glb broadleaf=LEAFY.glb maritime_pine=MARITIME.glb poplar=POPLAR.glb \
-    almond=ALMOND.glb fir=FIR.glb
+    almond=ALMOND.glb fir=FIR.glb momiji=MOMIJI.glb ginkgo=GINKGO.glb sakura=SAKURA.glb \
+    black_pine=BLACK_PINE.glb sugi=SUGI.glb bamboo=BAMBOO.glb
 ```
 
-- `trees.bin`: each tree standing with the foot of its trunk at the origin, as tall as the classic trees of its species (`HEIGHTS`: from 4.8 m for the almond to 16.1 m for the tall forest tree; 14 m for the fir), in the bikes' pack format.
-- `color.jpg`: their colour textures together, 512 × 512 each with a 2-pixel margin, in a 3 × 3 grid, so every tree shares one texture and one material.
+With `--keep`, the trees already in the pack stay as they are (their meshes, and their cells of the texture moved to the new grid) and only those given are added or replaced, so the GLBs of the others need not be at hand: `python3 tools/import_trees.py --keep sakura=SAKURA.glb`. Some models are mended as they are read (`MENDS`): Meshy's black pine came nearly flat, a quarter as deep as it is wide, so its foliage (its green texels, above its roots) is spread out three times as deep round its trunk, which keeps its shape.
 
-All nine take about 560 KB. `cargo test` checks that every tree is in the pack, standing on the ground, with a few hundred triangles and its texture coordinates in its own cell.
+- `trees.bin`: each tree standing with the foot of its trunk at the origin, as tall as the classic trees of its species (`HEIGHTS`: from 4.8 m for the almond to 16.1 m for the tall forest tree; 14 m for the fir, 16 m for the sugi), in the bikes' pack format.
+- `color.jpg`: their colour textures together, 512 × 512 each with a 2-pixel margin, in a 4 × 4 grid, so every tree shares one texture and one material.
+
+All fifteen take about 1.1 MB. `cargo test` checks that every tree is in the pack, standing on the ground, with a few hundred triangles and its texture coordinates in its own cell.
+
+## The props of feudal Japan
+
+Tsushima Isle's buildings, landmarks, statues, lanterns and gates were made with Meshy by the author too: the great torii in the sea, the castle keep, the temple hall and its pagoda, the shrine on stilts, an ancient maple and the great maple over its clearing, the two torii of the corridor (a wide one over the road and a narrow one over the corridor), a log torii, a wayside shrine (hokora), a Jizō, a komainu, bronze and stone lanterns, a memorial stone, a brazier, a pile of rice bales and barrels, a fishing boat, a thatched minka and a water wheel. Where each stands is in the track's data (see [tracks.md](tracks.md#scenery), `japan`), and `src/world/japan.rs` places them.
+
+`tools/import_props.py` turns the GLB files into what the game embeds (`assets/models/props/`), each by its name in `SIZES`:
+
+```sh
+python3 tools/import_props.py o_torii=O_TORII.glb castle_keep=KEEP.glb temple_hall=TEMPLE.glb \
+    pagoda=PAGODA.glb torii_wide=WIDE_FUSHIMI.glb torii_road=FUSHIMI_ROAD.glb ...
+```
+
+- `props.bin`: every prop as a piece named after it, centred on the origin with its lowest point on the ground, up along +Y, facing +Z, at the game's size (`SIZES`): by its height, its length (the boat) or, for the gates, the opening between the feet of their pillars, so that they stand round the road's walls (11.63 m for the wide torii) or the corridor's (6.6 m for the narrow one); the great maple stands with its trunk, not its spreading crown, at the origin.
+- `color.jpg`: their colour textures together, 512 × 512 each, in a 5 × 5 grid: one texture and one material for every prop.
+
+Some came out of Meshy wrong, and are mended as they are read: the great torii stood on a slab of blue water, which is cut away (the game has its own sea); the torii over the road came so stout that one after another they read as a wall, so their pillars are made slimmer and the gates shallower (`SLIM`); and the water wheel came in one piece with its post, so it is split into the wheel and its axle, which turns, and the post (`water_wheel_frame`), both with their origin at the middle of the axle. All of them take about 3.7 MB. `cargo test` checks that every prop is in the pack, standing on the ground, and not too heavy to draw.
+
+The flowers of Tsushima Isle are not models: they are cards cut out of an atlas painted at startup (`src/world/foliage.rs`), see [tracks.md](tracks.md#scenery).
 
 ## Textures
 

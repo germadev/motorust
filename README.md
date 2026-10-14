@@ -112,8 +112,8 @@ or English: the system's language at first, changed in Options.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions.
-- [Bikes, riders and textures](docs/models.md): the 3D models and the import
-  pipeline.
+- [Bikes, riders, trees, props and textures](docs/models.md): the 3D models
+  and the import pipelines.
 - [Development record](RECORD/): what was asked and what was done, request by
   request.
 

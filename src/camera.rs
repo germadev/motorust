@@ -22,7 +22,7 @@ use crate::race::Watching;
 use crate::welcome::GameMode;
 // The fog is the colour of the sky at the horizon: far away, the land melts
 // into the sky.
-use crate::world::sky::HORIZON;
+use crate::world::sky::{FOG, HORIZON};
 
 /// Hasta dónde se ve (m): más allá del cielo, que está a 4,5 km.
 const FAR: f32 = 6000.0;
@@ -165,8 +165,8 @@ fn spawn_camera(mut commands: Commands) {
         DistanceFog {
             color: HORIZON,
             falloff: FogFalloff::Linear {
-                start: 450.0,
-                end: 3800.0,
+                start: FOG.0,
+                end: FOG.1,
             },
             ..default()
         },
@@ -208,8 +208,8 @@ fn setup_split_cameras(
             DistanceFog {
                 color: HORIZON,
                 falloff: FogFalloff::Linear {
-                    start: 450.0,
-                    end: 3800.0,
+                    start: FOG.0,
+                    end: FOG.1,
                 },
                 ..default()
             },

@@ -34,6 +34,8 @@ const HEDGE_HEIGHT: f32 = 1.3;
 /// La barandilla: alto (un poste en cada punto del trazado) y color.
 const RAILING_HEIGHT: f32 = 1.05;
 const RAILING_GREEN: Color = Color::srgb(0.08, 0.42, 0.28);
+/// The lacquered vermilion of a shrine's fence.
+const SHRINE_VERMILION: Color = Color::srgb(0.8, 0.17, 0.07);
 const WALL_THICKNESS: f32 = 0.6;
 /// Lo que se hunde el muro en el suelo, para que no flote en las cuestas.
 const WALL_FOOTING: f32 = 0.5;
@@ -333,16 +335,24 @@ fn spawn_surface(
             spawn(mesh, material);
         }
     }
-    if let Some(mesh) = railing(road, |index, side| {
-        style(index, side) == Some(WallStyle::Railing)
-    }) {
-        spawn(
-            mesh,
-            StandardMaterial {
-                perceptual_roughness: 0.5,
-                ..default()
-            },
-        );
+    // The see-through ones: the seafront's painted railing, a shrine's
+    // lacquered fence.
+    for (wanted, color, roughness) in [
+        (WallStyle::Railing, RAILING_GREEN, 0.5),
+        (WallStyle::ShrineFence, SHRINE_VERMILION, 0.7),
+    ] {
+        let mesh = railing(road, color, |index, side| {
+            style(index, side) == Some(wanted)
+        });
+        if let Some(mesh) = mesh {
+            spawn(
+                mesh,
+                StandardMaterial {
+                    perceptual_roughness: roughness,
+                    ..default()
+                },
+            );
+        }
     }
 }
 
@@ -495,7 +505,7 @@ fn profile(style: WallStyle) -> Profile {
             3,
             Vec2::splat(WALL_TILE),
         ),
-        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing => (
+        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing | WallStyle::ShrineFence => (
             &[
                 (0.0, foot),
                 (0.0, WALL_HEIGHT),
@@ -848,9 +858,10 @@ impl WallMesh {
     }
 }
 
-/// Barandilla de paseo marítimo donde diga `wanted`: postes y dos barras
-/// verdes, sobre el sitio de los muros.
-fn railing(road: Road, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
+/// A railing where `wanted` says, where the walls would stand: a post at
+/// every point of the road and two rails, all of `color` (the seafront's
+/// green, a shrine's vermilion).
+fn railing(road: Road, color: Color, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
     let line = road.line();
     let segments = line.segment_count();
     let mut mesh = MeshBuilder::default();
@@ -869,17 +880,11 @@ fn railing(road: Road, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
                 at(index, RAILING_HEIGHT),
                 0.12,
                 0.12,
-                RAILING_GREEN,
+                color,
             );
             if wanted(next, side) {
                 for height in [RAILING_HEIGHT, RAILING_HEIGHT * 0.55] {
-                    mesh.beam(
-                        at(index, height),
-                        at(next, height),
-                        0.08,
-                        0.08,
-                        RAILING_GREEN,
-                    );
+                    mesh.beam(at(index, height), at(next, height), 0.08, 0.08, color);
                 }
             }
         }

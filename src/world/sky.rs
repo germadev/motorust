@@ -43,6 +43,11 @@ const SUN_AZIMUTH: f32 = 0.75 * std::f32::consts::PI;
 const ZENITH: Color = Color::srgb(0.16, 0.42, 0.88);
 const ABOVE_HORIZON: Color = Color::srgb(0.36, 0.62, 0.95);
 pub const HORIZON: Color = Color::srgb(0.68, 0.8, 0.94);
+/// Where the fog begins and where it hides everything (m from the camera):
+/// on most days, and on a clear one (`SkyStyle::Clear`), whose mountains
+/// stand out from across the sea.
+pub const FOG: (f32, f32) = (450.0, 3800.0);
+const CLEAR_FOG: (f32, f32) = (1100.0, 6500.0);
 
 /// The light of a track ([`SkyStyle`]): the sky's colours, where the sun
 /// is and the colour of its light, the light of the sky on the shade, and
@@ -65,11 +70,19 @@ pub struct Palette {
     ambient: Color,
     ambient_brightness: f32,
     clouds: Color,
+    /// Where the fog begins and where it hides everything (m from the
+    /// camera).
+    fog: (f32, f32),
 }
 
 impl Palette {
     pub fn of(style: SkyStyle) -> Self {
         match style {
+            // As a summer day, with the haze much further off.
+            SkyStyle::Clear => Self {
+                fog: CLEAR_FOG,
+                ..Self::of(SkyStyle::Day)
+            },
             SkyStyle::Day => Self {
                 zenith: ZENITH,
                 above_horizon: ABOVE_HORIZON,
@@ -84,6 +97,7 @@ impl Palette {
                 ambient: Color::srgb(0.75, 0.82, 1.0),
                 ambient_brightness: 700.0,
                 clouds: Color::WHITE,
+                fog: FOG,
             },
             // The sun low in the west-north-west, in front on the start
             // straight: violet overhead, rose above the horizon and orange
@@ -103,6 +117,7 @@ impl Palette {
                 ambient: Color::srgb(0.72, 0.58, 0.82),
                 ambient_brightness: 520.0,
                 clouds: Color::srgb(1.0, 0.76, 0.66),
+                fog: FOG,
             },
         }
     }
@@ -360,6 +375,10 @@ pub fn light_the_sky(
     for mut fog in &mut fogs {
         if changed || fog.is_added() {
             fog.color = palette.horizon;
+            fog.falloff = FogFalloff::Linear {
+                start: palette.fog.0,
+                end: palette.fog.1,
+            };
         }
     }
     if !changed {
@@ -957,7 +976,7 @@ mod tests {
 
     #[test]
     fn the_sky_meets_the_fog_at_the_horizon() {
-        for style in [SkyStyle::Day, SkyStyle::Dusk] {
+        for style in [SkyStyle::Day, SkyStyle::Clear, SkyStyle::Dusk] {
             let palette = Palette::of(style);
             // Away from the sun, the horizon is the colour of the fog.
             let away = -palette.sun_direction() * Vec3::new(1.0, 0.0, 1.0);
@@ -996,6 +1015,12 @@ mod tests {
         let day = Palette::of(SkyStyle::Day);
         assert_eq!(day.horizon, HORIZON);
         assert_eq!(day.sky_color(Vec3::Y), ZENITH);
+        // A clear day is a day with the haze further off, but nearer than
+        // the sky.
+        let clear = Palette::of(SkyStyle::Clear);
+        assert_eq!(clear.horizon, day.horizon);
+        assert!(clear.fog.0 > day.fog.0 && clear.fog.1 > day.fog.1);
+        assert!(clear.fog.1 < super::super::sea::SEA_EXTENT);
     }
 
     /// The lowest row of cloud `data` thicker than half in column `x`, if

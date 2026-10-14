@@ -12,8 +12,10 @@
 //!    across an inlet, with a crest in the middle where the bike takes off.
 //! 4. Up the susuki hills in esses at up to 10 %, south over their rolling
 //!    top, two crests where the bike takes off, and down at 10 % to the lake.
-//! 5. Round the lake, clockwise, three sides of it, between the walls and
-//!    its flowers.
+//! 5. Round the lake, clockwise, three sides of it, along a shrine's
+//!    vermilion fence on the lake's side: fields of flowers down to the
+//!    water and, on its south shore, the great maple over its clearing of
+//!    red leaves.
 //! 6. North from the lake past the temple, where the road splits three ways:
 //!    the lap snakes through its courtyard, a way to the left swings out
 //!    early over a hump and one to the right runs straight on and out
@@ -25,6 +27,8 @@
 //!    the other way round, and over the tunnel through the castle hill.
 //! 9. Down through the bamboo in esses, and round to the left into the
 //!    castle street.
+
+use std::f32::consts::{FRAC_PI_2, PI};
 
 use bevy::prelude::*;
 
@@ -153,10 +157,17 @@ pub const TSUSHIMA: Circuit = Circuit {
     },
     scenery: Scenery {
         coast: Coast::OutlineWithLakes(&SHORE, lakes),
-        hills: 14.0,
+        hills: 22.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
-        terraces: &[],
+        // Level ground for the clearing under the great maple, at the
+        // height of the road beside it.
+        terraces: &[Terrace {
+            center: MAPLE_GROUND,
+            radius: 16.0,
+            height: 7.9,
+            skirt: 10.0,
+        }],
         mountains,
         curbs: [VERMILION, WHITE],
         // Stone walls along the castle street, the coast and the castle
@@ -187,10 +198,13 @@ pub const TSUSHIMA: Circuit = Circuit {
                 side: Side::Left,
                 style: WallStyle::Hedge,
             },
+            // On the lake's side, a shrine's vermilion fence, low and open:
+            // the flowers, the great maple's clearing and the water show
+            // through it.
             WallRun {
                 span: LAKE_SHORE,
                 side: Side::Right,
-                style: WallStyle::Hedge,
+                style: WallStyle::ShrineFence,
             },
             WallRun {
                 span: span(CASTLE_SPLIT.0, CROSSING.to),
@@ -245,7 +259,7 @@ pub const TSUSHIMA: Circuit = Circuit {
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 4150.0,
+                along: 4230.0,
                 color: VERMILION,
                 text: Some("CHECKPOINT"),
             },
@@ -263,28 +277,31 @@ pub const TSUSHIMA: Circuit = Circuit {
             accent: Some((4, crate::ui::RUST_ORANGE)),
         }],
         lamps: &[],
-        // Cherry (the almond's pink blossom), pines, maples (the broadleaf)
-        // and cedars (the tall trees) until the island has trees of its own.
+        // Maples, ginkgos, cherries, black pines and cedars.
         trees: &[
-            Species::Almond,
-            Species::MaritimePine,
-            Species::Broadleaf,
-            Species::Tall,
+            Species::Momiji,
+            Species::Ginkgo,
+            Species::Sakura,
+            Species::BlackPine,
+            Species::Sugi,
         ],
-        // Dense forest up the red ridge, which the corridor of torii climbs
-        // through, as on Mount Inari, and the bamboo, on both sides of the
-        // road down from the castle.
-        forests: &[RED_RIDGE, BAMBOO],
-        // The castle town and a fishing village on the coast: white plaster
-        // under tiled roofs.
+        // Dense forest of cedars and maples up the red ridge, which the
+        // corridor of torii climbs through, as on Mount Inari, and the
+        // bamboo, on both sides of the road down from the castle.
+        forests: &[
+            forest(RED_RIDGE, &[Species::Sugi, Species::Momiji]),
+            forest(BAMBOO, &[Species::Bamboo]),
+        ],
+        // The castle town: white plaster under tiled roofs (the fishing
+        // village on the coast is of thatched farmhouses, see `PROPS`).
         houses: Houses {
-            max: 12,
+            max: 8,
             paints: &[
                 Color::srgb(0.94, 0.92, 0.86),
                 Color::srgb(0.88, 0.84, 0.76),
                 Color::srgb(0.55, 0.42, 0.32),
             ],
-            spans: &[CASTLE_STREET, span(700.0, 1000.0)],
+            spans: &[CASTLE_STREET],
             style: HouseStyle::Cottage,
         },
         palms: &[],
@@ -303,33 +320,219 @@ pub const TSUSHIMA: Circuit = Circuit {
         beach_parasols: &[],
         brake_markers: &[],
         soil: Soil::Rock,
-        // Yellow flowers all round the lake, between the road and the water
-        // (on the right, the inside of the bend).
-        sunflowers: &[
-            Row {
-                span: span(2830.0, 3350.0),
-                side: Side::Right,
-                lateral: WALL_DISTANCE + 6.0,
-                every: 7.0,
-            },
-            Row {
-                span: span(2840.0, 3340.0),
-                side: Side::Right,
-                lateral: WALL_DISTANCE + 13.0,
-                every: 9.0,
-            },
-        ],
+        sunflowers: &[],
         totems: &[],
         loops: &[],
         rings: &[],
         waterfalls: &[],
-        sky: SkyStyle::Day,
+        sky: SkyStyle::Clear,
         water: Water::Sea,
         pit: None,
         desert: None,
         mine: None,
+        japan: Some(Japan {
+            // Up the red ridge, as at Fushimi Inari: a gate every 6 m where
+            // the walls close in, and wide ones before and after.
+            corridors: &[ToriiCorridor {
+                span: TORII_CORRIDOR,
+                every: 6.0,
+                approach: 30.0,
+                approach_every: 15.0,
+            }],
+            props: &PROPS,
+            // Under the great maple, beside the road round the lake.
+            maple_grounds: &[MapleGround {
+                center: MAPLE_GROUND,
+                radius: 14.0,
+            }],
+            // Red maple leaves blowing down up the red ridge, through the
+            // corridor of torii, and round the great maple; white cherry
+            // petals down the castle street.
+            petals: &[
+                Petals {
+                    area: PetalArea::Road {
+                        span: RED_RIDGE,
+                        reach: 24.0,
+                    },
+                    kind: PetalKind::Maple,
+                },
+                Petals {
+                    area: PetalArea::Round {
+                        center: MAPLE_GROUND,
+                        radius: 30.0,
+                    },
+                    kind: PetalKind::Maple,
+                },
+                Petals {
+                    area: PetalArea::Road {
+                        span: CASTLE_STREET,
+                        reach: 24.0,
+                    },
+                    kind: PetalKind::Cherry,
+                },
+            ],
+            flowers: &FLOWERS,
+        }),
     },
 };
+
+/// The fields of flowers, as on the hills of Tsushima and round the lakes at
+/// the foot of Mount Fuji, over most of the island; where they overlap, the
+/// first one listed.
+const FLOWERS: [FlowerField; 7] = [
+    // White round the great maple, for its reds to stand out.
+    FlowerField {
+        area: FlowerArea::Round {
+            center: MAPLE_GROUND,
+            inner: 0.0,
+            outer: 60.0,
+        },
+        kinds: &[FlowerKind::White],
+    },
+    // Red spider lilies on the lake's open shore, seen across the water.
+    FlowerField {
+        area: FlowerArea::Round {
+            center: Vec2::new(845.0, 140.0),
+            inner: 0.0,
+            outer: 60.0,
+        },
+        kinds: &[FlowerKind::SpiderLily],
+    },
+    // All round the lake, from its water up to the road's fence: carpets of
+    // moss phlox in bands of magenta, pink, lavender and white.
+    FlowerField {
+        area: FlowerArea::Round {
+            center: LAKE,
+            inner: LAKE_RADIUS - LAKE_WANDER - 4.0,
+            outer: 175.0,
+        },
+        kinds: &[FlowerKind::Phlox],
+    },
+    // A meadow of red spider lilies beside the castle street.
+    FlowerField {
+        area: FlowerArea::Round {
+            center: Vec2::new(110.0, -150.0),
+            inner: 0.0,
+            outer: 110.0,
+        },
+        kinds: &[FlowerKind::SpiderLily],
+    },
+    // The susuki hills, golden with susuki either side of the road.
+    FlowerField {
+        area: FlowerArea::Road {
+            span: span(1800.0, 2650.0),
+            near: WALL_DISTANCE,
+            far: 150.0,
+        },
+        kinds: &[FlowerKind::Susuki],
+    },
+    // Yellow rape blossom and white flowers up the slopes over the coast.
+    FlowerField {
+        area: FlowerArea::Road {
+            span: span(700.0, 1400.0),
+            near: WALL_DISTANCE,
+            far: 120.0,
+        },
+        kinds: &[FlowerKind::Yellow, FlowerKind::White],
+    },
+    // And everywhere else, in broad swathes.
+    FlowerField {
+        area: FlowerArea::Everywhere,
+        kinds: &[
+            FlowerKind::Phlox,
+            FlowerKind::SpiderLily,
+            FlowerKind::Yellow,
+            FlowerKind::White,
+            FlowerKind::Iris,
+        ],
+    },
+];
+
+/// The props of feudal Japan, made with Meshy: landmarks out in the open,
+/// and statues, lanterns, shrines and houses by the road.
+const PROPS: [Prop; 43] = [
+    // The great torii standing in the sea off the coast road, facing it.
+    standing(PropModel::GreatTorii, 430.0, -945.0, PI).scaled(1.4),
+    // The castle keep on its hill, over the mouth of the tunnel, looking
+    // down the castle street.
+    standing(PropModel::CastleKeep, -55.0, -455.0, PI).scaled(1.6),
+    // The temple and its pagoda, beside its split, facing the road.
+    standing(PropModel::TempleHall, 575.0, 60.0, -FRAC_PI_2),
+    standing(PropModel::Pagoda, 585.0, -15.0, -FRAC_PI_2),
+    // The shrine on stilts in the inlet, beside the boardwalk.
+    standing(PropModel::StiltShrine, 760.0, -755.0, 0.0),
+    // The great maple beside the road round the lake, on the water's edge
+    // of its clearing of red leaves, its crown spreading over it towards
+    // the road, and a stone lantern either side of the clearing; a wayside
+    // shrine on the islet.
+    standing(
+        PropModel::GreatMaple,
+        MAPLE_GROUND.x + 1.7,
+        MAPLE_GROUND.y - 11.9,
+        -1.72,
+    ),
+    standing(
+        PropModel::StoneLantern,
+        MAPLE_GROUND.x + 17.7,
+        MAPLE_GROUND.y + 5.4,
+        PI,
+    ),
+    standing(
+        PropModel::StoneLantern,
+        MAPLE_GROUND.x - 19.1,
+        MAPLE_GROUND.y + 0.2,
+        PI,
+    ),
+    standing(PropModel::Hokora, ISLET.x, ISLET.y, 2.36),
+    // A water wheel on the lake's shore.
+    standing(PropModel::WaterWheel, 776.5, 348.4, -0.9),
+    // Fishing boats off the coast.
+    standing(PropModel::FishingBoat, 250.0, -925.0, 1.2),
+    standing(PropModel::FishingBoat, 560.0, -935.0, -0.4),
+    standing(PropModel::FishingBoat, 700.0, -870.0, 2.0),
+    // Stone lanterns along the castle street, before the temple, by the
+    // lake, at the top of the red ridge and at the castle.
+    by_road(PropModel::StoneLantern, 60.0, 14.5),
+    by_road(PropModel::StoneLantern, 200.0, -14.5),
+    by_road(PropModel::StoneLantern, 330.0, 14.5),
+    by_road(PropModel::StoneLantern, 3395.0, 14.5),
+    by_road(PropModel::StoneLantern, 3395.0, -14.5),
+    by_road(PropModel::StoneLantern, 3300.0, -16.0),
+    by_road(PropModel::StoneLantern, 4280.0, 15.0),
+    by_road(PropModel::StoneLantern, 4740.0, 14.5),
+    // The castle town's stores.
+    by_road(PropModel::SupplyPile, 130.0, 22.0),
+    by_road(PropModel::SupplyPile, 320.0, -22.0),
+    // The fishing village: thatched farmhouses inland of the coast road.
+    by_road(PropModel::Minka, 760.0, -40.0),
+    by_road(PropModel::Minka, 850.0, -42.0),
+    by_road(PropModel::Minka, 930.0, -36.0),
+    // Bronze lanterns at either end of the boardwalk.
+    by_road(PropModel::BronzeLantern, 1395.0, 14.5),
+    by_road(PropModel::BronzeLantern, 1395.0, -14.5),
+    by_road(PropModel::BronzeLantern, 1655.0, 14.5),
+    by_road(PropModel::BronzeLantern, 1655.0, -14.5),
+    // A torii of logs on the top of the susuki hills.
+    by_road(PropModel::LogTorii, 2350.0, 30.0),
+    // Guardians at the foot of the corridor of torii.
+    by_road(PropModel::Komainu, 3800.0, 19.0),
+    by_road(PropModel::Komainu, 3800.0, -19.0),
+    // An ancient maple on its boulders with a wayside shrine beside it, and
+    // a memorial stone, at the top of the red ridge.
+    by_road(PropModel::AncientMaple, 4190.0, -34.0),
+    by_road(PropModel::Hokora, 4205.0, -24.0),
+    by_road(PropModel::Stele, 4250.0, -26.0),
+    // Braziers at the castle.
+    by_road(PropModel::Brazier, 4700.0, 14.5),
+    by_road(PropModel::Brazier, 4700.0, -14.5),
+    // Jizō by the road down through the bamboo.
+    by_road(PropModel::Jizo, 4960.0, 14.5),
+    by_road(PropModel::Jizo, 5160.0, -14.5),
+    by_road(PropModel::Jizo, 5360.0, 14.5),
+    by_road(PropModel::Jizo, 5520.0, -14.5),
+    // And one more by the castle street.
+    by_road(PropModel::Jizo, 5800.0, 14.5),
+];
 
 const CONTROL_POINTS: [Vec2; 81] = [
     // 1. The castle street, north (-Z), and the tunnel under the castle hill.
@@ -841,13 +1044,17 @@ const SHORE: [Vec2; 49] = [
 ];
 
 /// The lake the road goes round: its middle, the radius of its shore (m)
-/// and how far the shore wanders (m); and the islet in it, where a tree of
-/// its own will stand.
+/// and how far the shore wanders (m); and the islet in it, with a wayside
+/// shrine.
 const LAKE: Vec2 = Vec2::new(870.0, 270.0);
 const LAKE_RADIUS: f32 = 100.0;
 const LAKE_WANDER: f32 = 8.0;
 const ISLET: Vec2 = Vec2::new(885.0, 255.0);
 const ISLET_RADIUS: f32 = 16.0;
+/// The clearing of red leaves under the great maple: beside the road round
+/// the lake, 31 m from its centre line on the lake's side, between the road
+/// and the water.
+const MAPLE_GROUND: Vec2 = Vec2::new(851.2, 412.6);
 
 /// How far `point` is from the lake's shore: negative in its water, and
 /// positive on the islet.
@@ -895,22 +1102,28 @@ const CUTTINGS: [Cutting; 2] = [
     },
 ];
 
-/// The volcano across the strait to the south-west: its middle, its radius
-/// and its height (m).
-const VOLCANO: Vec2 = Vec2::new(-600.0, 1900.0);
-const VOLCANO_RADIUS: f32 = 1150.0;
-const VOLCANO_HEIGHT: f32 = 620.0;
+/// The volcano across the strait to the north, as Mount Yōtei over Hokkaido
+/// or Fuji over its lakes: its middle, its radius and its height (m). Its
+/// foot rises out of the sea just behind the great torii, and from the
+/// castle street it stands over the castle; its top is under snow (see
+/// `SNOW_LINE` in `crate::world::terrain`), the sky clear enough to see it
+/// sharp from across the island.
+const VOLCANO: Vec2 = Vec2::new(430.0, -2750.0);
+const VOLCANO_RADIUS: f32 = 1650.0;
+const VOLCANO_HEIGHT: f32 = 900.0;
 
-/// Across the sea: a volcano to the south-west, a broad cone with a crater
-/// at its top, and mountains round the rest of the horizon.
+/// Across the sea: the volcano to the north, a lone cone with its flanks
+/// sweeping up ever steeper to a crater at its top, and lower mountains
+/// round the rest of the horizon, clear of it.
 fn mountains(point: Vec2) -> f32 {
     const CENTER: Vec2 = Vec2::new(450.0, -150.0);
+    let reach = point.distance(VOLCANO) / VOLCANO_RADIUS;
     let ranges = smoothstep(1900.0, 2800.0, point.distance(CENTER))
+        * smoothstep(1.1, 1.7, reach)
         * 220.0
         * (0.35 + 0.65 * fbm(point / 300.0, 4));
-    let reach = point.distance(VOLCANO) / VOLCANO_RADIUS;
-    let cone = VOLCANO_HEIGHT * (1.0 - reach).max(0.0).powf(1.6);
-    let crater = 45.0 * (1.0 - smoothstep(0.0, 0.07, reach));
+    let cone = VOLCANO_HEIGHT * (1.0 - reach).max(0.0).powf(1.7);
+    let crater = 40.0 * (1.0 - smoothstep(0.0, 0.08, reach));
     ranges.max(cone - crater)
 }
 
@@ -1018,6 +1231,24 @@ mod tests {
         let track = Track::new(&TSUSHIMA.layout);
         assert!(mountains(VOLCANO) > 0.85 * VOLCANO_HEIGHT);
         assert!(mountains(VOLCANO) < VOLCANO_HEIGHT, "a crater at its top");
+        // Under snow at its top, with its rim, and alone: no mountain
+        // beside it reaches a third of its height.
+        let rim = VOLCANO + Vec2::X * 0.1 * VOLCANO_RADIUS;
+        assert!(mountains(rim) > 600.0, "{}", mountains(rim));
+        for k in 0..36 {
+            let away = Vec2::from_angle(k as f32 / 36.0 * std::f32::consts::TAU);
+            let beside = VOLCANO + away * 1.3 * VOLCANO_RADIUS;
+            assert!(mountains(beside) < VOLCANO_HEIGHT / 3.0, "{beside}");
+        }
+        // Straight ahead, over the castle, down the castle street.
+        let street = track.centerline()[track.index_at(100.0)];
+        let ahead = track.centerline()[track.index_at(300.0)] - street;
+        let toward = VOLCANO - street;
+        assert!(
+            ahead.angle_to(toward).abs() < 0.3,
+            "{}",
+            ahead.angle_to(toward)
+        );
         for &point in track.centerline() {
             assert!(mountains(point) < 1e-3, "{point}");
         }
