@@ -136,6 +136,8 @@ pub const LOOP_ISLAND: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::AroundTrack(&COAST),
         hills: 20.0,
+        greens: Greens::Lawn,
+        grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         terraces: &[],
@@ -168,6 +170,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         bridges: &[Bridge {
             span: BRIDGE,
             style: BridgeStyle::Wooden,
+            fence: WOODEN_FENCE,
         }],
         gantries: &[
             Gantry {
@@ -401,6 +404,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        japan: None,
     },
 };
 

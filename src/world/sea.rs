@@ -24,7 +24,7 @@ use super::terrain::{SEA_LEVEL, Terrain};
 use crate::track::Track;
 
 /// How far the sea reaches from the centre of the circuit (m): past the fog.
-const SEA_EXTENT: f32 = 7000.0;
+pub(super) const SEA_EXTENT: f32 = 7000.0;
 /// The shore map covers the track and this much around it (m)...
 const SHORE_MARGIN: f32 = 700.0;
 /// ...with at most this many texels along its longest side, and texels no

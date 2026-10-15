@@ -151,6 +151,8 @@ pub const GOLD_MINE: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::Function(water),
         hills: 8.0,
+        greens: Greens::Lawn,
+        grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         terraces: &[],
@@ -197,10 +199,12 @@ pub const GOLD_MINE: Circuit = Circuit {
             Bridge {
                 span: BRIDGE,
                 style: BridgeStyle::Wooden,
+                fence: WOODEN_FENCE,
             },
             Bridge {
                 span: GULLY,
                 style: BridgeStyle::Truss,
+                fence: 0.0,
             },
         ],
         gantries: &[
@@ -305,6 +309,7 @@ pub const GOLD_MINE: Circuit = Circuit {
         loops: &[],
         rings: &[],
         waterfalls: &[],
+        japan: None,
         sky: SkyStyle::Dusk,
         // The great lake is the bottom of an open pit, flooded with red water.
         water: Water::Iron,

@@ -107,12 +107,33 @@ pub struct Cutting {
     pub height: f32,
 }
 
+/// The greens of a track's grass.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Greens {
+    /// The arcade lawn: a bright green, a little lighter or deeper here and
+    /// there.
+    Lawn,
+    /// A countryside's: swathes of many greens, lusher by the water, drier
+    /// up high and towards the sun, and dark conifer forest up the hills,
+    /// far from the roads and on the mountains across the sea.
+    Countryside,
+}
+
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un
-/// círculo, para poner encima un edificio grande.
+/// círculo, para poner encima un edificio grande; or sloping, facing one
+/// way.
 pub struct Terrace {
     pub center: Vec2,
     pub radius: f32,
+    /// How high its middle stands.
     pub height: f32,
+    /// How much higher it stands for each metre along x and along z: zero
+    /// for level ground.
+    pub tilt: Vec2,
+    /// How far past its edge the ground blends back into the land (m):
+    /// wider where the land round it stands far above or below it, so the
+    /// bank stays grass instead of breaking into a cliff.
+    pub skirt: f32,
 }
 
 /// Dónde está el mar.
@@ -130,6 +151,11 @@ pub enum Coast {
     /// the land drops to the sea right beyond the walls where the shore is
     /// near; an inlet drawn under a bridge brings the sea in under it.
     Outline(&'static [Vec2]),
+    /// An island drawn as with `Outline`, with lakes inside it: the function
+    /// gives the signed distance to their shores, negative in the water, as
+    /// `Function` does to the sea's. The land drops to them right beyond the
+    /// walls where their shores are near, as it does to the sea.
+    OutlineWithLakes(&'static [Vec2], fn(Vec2) -> f32),
 }
 
 /// Cómo se cierra la carretera por los lados.
@@ -147,6 +173,9 @@ pub enum WallStyle {
     Checkered,
     /// A fence of heavy timber planks, as round a mine.
     Timber,
+    /// A low vermilion fence of posts and rails, as round a shrine: like
+    /// the railing, the ground beyond it shows through.
+    ShrineFence,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -162,11 +191,13 @@ pub enum Soil {
     Mine,
 }
 
-/// The light of a track: a summer day, or a low sun setting in a warm,
-/// hazy sky.
+/// The light of a track: a summer day; the last hours of a clear autumn
+/// afternoon, the sun low and golden; or a low sun setting in a warm, hazy
+/// sky.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SkyStyle {
     Day,
+    GoldenHour,
     Dusk,
 }
 
@@ -197,7 +228,14 @@ pub struct Pit {
 pub struct Bridge {
     pub span: Span,
     pub style: BridgeStyle,
+    /// How high a wooden bridge's fence stands over its deck (m): most as
+    /// high as [`WOODEN_FENCE`], a boardwalk low over the water lower. The
+    /// other bridges have walls of their own, and leave it unused.
+    pub fence: f32,
 }
+
+/// How high the fence of a wooden bridge usually stands over its deck (m).
+pub const WOODEN_FENCE: f32 = 1.2;
 
 /// How a bridge is built.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -261,6 +299,29 @@ pub enum Species {
     Poplar,
     /// Almond / Mediterranean flowering tree with warm pink-tinted blossom.
     Almond,
+    /// Japanese maple, crimson in autumn.
+    Momiji,
+    /// Ginkgo, golden yellow in autumn.
+    Ginkgo,
+    /// Japanese cherry in pale pink blossom.
+    Sakura,
+    /// Japanese black pine, windswept, its foliage in flat pads.
+    BlackPine,
+    /// Japanese cedar, tall and narrow.
+    Sugi,
+    /// A clump of tall bamboo.
+    Bamboo,
+}
+
+/// A forest: a stretch with trees close together on both sides of the road,
+/// of these species.
+pub struct Forest {
+    pub span: Span,
+    pub species: &'static [Species],
+}
+
+pub const fn forest(span: Span, species: &'static [Species]) -> Forest {
+    Forest { span, species }
 }
 
 /// Las casas: cuántas como mucho, de qué colores y, si hace falta, solo en
@@ -288,6 +349,13 @@ pub struct Scenery {
     pub coast: Coast,
     /// Altura de las colinas (m).
     pub hills: f32,
+    /// How the grass is coloured: one track's greens never change
+    /// another's.
+    pub greens: Greens,
+    /// How light the grass is: 1 as painted, less for darker, less vivid
+    /// greens (the grass in flower darkens half as much, the flowers being
+    /// lighter; the hedges as much as the grass).
+    pub grass_shade: f32,
     pub massifs: &'static [Massif],
     pub cuttings: &'static [Cutting],
     pub terraces: &'static [Terrace],
@@ -305,7 +373,7 @@ pub struct Scenery {
     /// Especies de los árboles sueltos, y bosques: tramos con árboles altos
     /// muy juntos a los dos lados.
     pub trees: &'static [Species],
-    pub forests: &'static [Span],
+    pub forests: &'static [Forest],
     pub houses: Houses,
     pub palms: &'static [Row],
     /// Hoteles altos en fila, de colores.
@@ -350,6 +418,230 @@ pub struct Scenery {
     /// The roadside of a desert of the American West, if the road runs
     /// through one.
     pub desert: Option<Desert>,
+    /// The scenery of feudal Japan, from models made with Meshy, or `None`:
+    /// see [`Japan`].
+    pub japan: Option<Japan>,
+}
+
+/// The scenery of feudal Japan, as at Ghost Island (see
+/// [`crate::world::japan`]): corridors of torii over the road, props made
+/// with Meshy standing about, and fields of flowers.
+pub struct Japan {
+    pub corridors: &'static [ToriiCorridor],
+    pub props: &'static [Prop],
+    pub maple_grounds: &'static [MapleGround],
+    pub petals: &'static [Petals],
+    pub flowers: &'static [FlowerField],
+}
+
+/// A field of flowers (see [`crate::world::flowers`]): the ground in
+/// flower, of one kind or, in patches, of several, with gaps of grass among
+/// them and a ragged edge, and, near the road, clumps standing up. Where
+/// fields overlap, the first one decides.
+pub struct FlowerField {
+    pub area: FlowerArea,
+    pub kinds: &'static [FlowerKind],
+}
+
+/// Where a field of flowers grows: beside a stretch of the lap, on both
+/// sides, from `near` to `far` metres from its centre line; round a point,
+/// from `inner` to `outer` metres from it (a ring round a lake, or, from 0,
+/// a round meadow, which nothing else is put in); or everywhere else.
+pub enum FlowerArea {
+    Road {
+        span: Span,
+        near: f32,
+        far: f32,
+    },
+    Round {
+        center: Vec2,
+        inner: f32,
+        outer: f32,
+    },
+    Everywhere,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FlowerKind {
+    /// Red spider lilies (higanbana): bare stems crowned with curling
+    /// petals and long stamens.
+    SpiderLily,
+    /// White flowers with yellow hearts among their leaves.
+    White,
+    /// Yellow rape blossom (nanohana), in clusters on branching stems.
+    Yellow,
+    /// Purple irises among their sword-shaped leaves, as by the water.
+    Iris,
+    /// Susuki, the pampas grass of the autumn hills: arching blades under
+    /// silvery gold plumes, taller than the others.
+    Susuki,
+    /// Shibazakura, moss phlox: a carpet of tiny flowers hugging the ground,
+    /// in bands of magenta, pink, lavender and white, as round the lakes at
+    /// the foot of Mount Fuji.
+    Phlox,
+}
+
+/// Petals, or leaves, drifting down through the air over an area, falling
+/// and swaying, over and over.
+pub struct Petals {
+    pub area: PetalArea,
+    pub kind: PetalKind,
+}
+
+/// Where petals drift: over a stretch of the lap, out to `reach` metres
+/// either side of its centre line, or round a point.
+pub enum PetalArea {
+    Road { span: Span, reach: f32 },
+    Round { center: Vec2, radius: f32 },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PetalKind {
+    /// Red maple leaves.
+    Maple,
+    /// White cherry petals.
+    Cherry,
+}
+
+/// A clearing carpeted with red maple leaves, ringed with low logs, as
+/// under a great maple by a lake: its middle (x, z) and the radius of its
+/// ring of logs (m). Its leaves spill a little past the ring. Lay it on
+/// level ground (a [`Terrace`]).
+pub struct MapleGround {
+    pub center: Vec2,
+    pub radius: f32,
+}
+
+/// A corridor of torii over the road, as at Fushimi Inari: where the walls
+/// close in on the road along `span` (see [`crate::track::Narrowing`]), a
+/// narrow gate every `every` metres; and over the `approach` metres before
+/// and after it, where the road is as wide as ever, a wide gate every
+/// `approach_every` metres.
+pub struct ToriiCorridor {
+    pub span: Span,
+    pub every: f32,
+    pub approach: f32,
+    pub approach_every: f32,
+}
+
+/// One of the props of feudal Japan, made with Meshy (see
+/// [`crate::world::japan`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PropModel {
+    /// The great torii standing in the sea, as at Itsukushima.
+    GreatTorii,
+    CastleKeep,
+    TempleHall,
+    /// A shrine hall on stilts, over the water.
+    StiltShrine,
+    /// An ancient, gnarled maple on its boulders, with a straw rope round
+    /// its trunk.
+    AncientMaple,
+    /// A great maple, its crown spreading far to one side over the ground,
+    /// as over a clearing of its leaves.
+    GreatMaple,
+    /// A five-storey pagoda.
+    Pagoda,
+    /// A torii of bare logs, with a straw rope and bells.
+    LogTorii,
+    /// A tiny wayside shrine with its small torii.
+    Hokora,
+    /// A stone Jizō in a red bib and cap.
+    Jizo,
+    /// A stone guardian lion-dog.
+    Komainu,
+    BronzeLantern,
+    /// A stone lantern (ishidōrō), mossy.
+    StoneLantern,
+    /// A memorial stone.
+    Stele,
+    /// A fire basket on a tripod.
+    Brazier,
+    /// Rice bales, sake barrels and crates.
+    SupplyPile,
+    FishingBoat,
+    /// A thatched farmhouse.
+    Minka,
+    /// A wooden water wheel on its post, turning.
+    WaterWheel,
+}
+
+impl PropModel {
+    /// Whether it is one of the island's landmarks, to be seen from afar:
+    /// no tree stands in the way of it (see [`crate::world::japan`]).
+    pub fn landmark(self) -> bool {
+        matches!(
+            self,
+            PropModel::GreatTorii
+                | PropModel::CastleKeep
+                | PropModel::TempleHall
+                | PropModel::StiltShrine
+                | PropModel::AncientMaple
+                | PropModel::GreatMaple
+                | PropModel::Pagoda
+                | PropModel::LogTorii
+                | PropModel::Minka
+                | PropModel::WaterWheel
+        )
+    }
+}
+
+/// A prop and where it stands, facing: by the road, `along` metres from the
+/// finish line and `lateral` metres to the left of its centre line (to the
+/// right if negative), facing the road; or anywhere, at `position` (x, z)
+/// facing `heading` (see [`crate::geometry`]). It stands on the ground, or
+/// in the sea, with its foot a little under the water; `scale` times as big
+/// as made (see [`Prop::scaled`]), and leaning `lean` radians towards its
+/// side that was -X as made (see [`Prop::leaning`]).
+#[derive(Clone, Copy, Debug)]
+pub struct Prop {
+    pub model: PropModel,
+    pub spot: Spot,
+    pub scale: f32,
+    pub lean: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Spot {
+    Road { along: f32, lateral: f32 },
+    At { position: Vec2, heading: f32 },
+}
+
+/// A prop by the road (see [`Prop`]).
+pub const fn by_road(model: PropModel, along: f32, lateral: f32) -> Prop {
+    Prop {
+        model,
+        spot: Spot::Road { along, lateral },
+        scale: 1.0,
+        lean: 0.0,
+    }
+}
+
+impl Prop {
+    /// The same prop, `scale` times as big.
+    pub const fn scaled(self, scale: f32) -> Self {
+        Prop { scale, ..self }
+    }
+
+    /// The same prop leaning `lean` radians about its foot, towards its side
+    /// that was -X as made: a tree leaning out over what its crown spreads
+    /// over.
+    pub const fn leaning(self, lean: f32) -> Self {
+        Prop { lean, ..self }
+    }
+}
+
+/// A prop anywhere (see [`Prop`]).
+pub const fn standing(model: PropModel, x: f32, z: f32, heading: f32) -> Prop {
+    Prop {
+        model,
+        spot: Spot::At {
+            position: Vec2::new(x, z),
+            heading,
+        },
+        scale: 1.0,
+        lean: 0.0,
+    }
 }
 
 /// The roadside of a desert of the American West, as in West Way (Moto

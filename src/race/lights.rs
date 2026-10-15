@@ -1,7 +1,8 @@
 //! The start lights, as in a Grand Prix: a moment after the grid is set
 //! up, five red lights (or as many as the options say) come on one by one,
-//! a second apart, and a moment after the last one (never quite the same)
-//! they go out and the race starts. Until then every bike waits on the grid, though the players can
+//! a second apart, and a moment after the last one (never quite the same,
+//! or, as the options say, a second, on their beat) they go out and the
+//! race starts. Until then every bike waits on the grid, though the players can
 //! rev their engines ([`Race::held`]). Each light beeps as it comes on, and
 //! going out beeps higher, while the lights flash green.
 //!
@@ -20,7 +21,7 @@ use super::Standing;
 use crate::bike::{BikeState, LocalPlayer, Player, Race, RecallToGrid, Retired, Rider};
 use crate::menu::GameState;
 use crate::pause;
-use crate::settings::{RaceStart, Settings};
+use crate::settings::{LightsHold, RaceStart, Settings};
 use crate::welcome::GameMode;
 
 /// How many red lights there can be.
@@ -29,11 +30,15 @@ pub const LIGHTS: u32 = 5;
 /// light and the next.
 const FIRST_LIGHT: f32 = 1.0;
 const BETWEEN: f32 = 1.0;
-/// Seconds the five lights stay on before they go out: somewhere in this
-/// range, so that the start cannot be timed.
+/// Seconds the five lights stay on before they go out, held at random
+/// ([`LightsHold::Random`]): somewhere in this range, so that the start
+/// cannot be timed.
 const HOLD: Range<f32> = 0.3..1.3;
 /// Seconds the lights show green once they are out.
 const GREEN_FOR: f32 = 0.8;
+/// The longest step (s) the lights take in one frame: after a hitch they
+/// carry on where they were, instead of skipping ahead (or past a light).
+const MAX_STEP: f32 = 0.1;
 /// After a false start, seconds more before the first light: to read the
 /// notice and let go of the throttle.
 const RECALL_PAUSE: f32 = 1.5;
@@ -89,19 +94,29 @@ pub struct StartLights {
 
 impl Default for StartLights {
     fn default() -> Self {
-        Self::new(0.5, LIGHTS)
+        Self::new(hold(LightsHold::Random, 0.5), LIGHTS)
+    }
+}
+
+/// Seconds the lights stay on once all are lit, held as `kind` says: a
+/// share `chance` (0 to 1) of the way through [`HOLD`], or as long as
+/// between one light and the next.
+pub fn hold(kind: LightsHold, chance: f32) -> f32 {
+    match kind {
+        LightsHold::Random => HOLD.start + (HOLD.end - HOLD.start) * chance.clamp(0.0, 1.0),
+        LightsHold::Fixed => BETWEEN,
     }
 }
 
 impl StartLights {
     /// The `count` lights of a new start (1 to [`LIGHTS`]), staying on for
-    /// a share `chance` (0 to 1) of [`HOLD`] once all are lit.
-    pub fn new(chance: f32, count: u32) -> Self {
+    /// `hold` s once all are lit (see [`hold`]).
+    pub fn new(hold: f32, count: u32) -> Self {
         let count = count.clamp(1, LIGHTS);
         let last = FIRST_LIGHT + (count - 1) as f32 * BETWEEN;
         Self {
             elapsed: 0.0,
-            out_at: last + HOLD.start + (HOLD.end - HOLD.start) * chance.clamp(0.0, 1.0),
+            out_at: last + hold.max(0.0),
             since_out: None,
             count,
         }
@@ -125,19 +140,28 @@ impl StartLights {
         self.elapsed >= self.out_at
     }
 
-    /// `dt` s later: what beeps.
+    /// `dt` s later (at most [`MAX_STEP`]): what beeps. The lights go out
+    /// their hold after the last one is seen to come on, however late a
+    /// slow frame showed it.
     pub fn advance(&mut self, dt: f32) -> Option<StartBeep> {
+        let dt = dt.clamp(0.0, MAX_STEP);
         if let Some(since) = &mut self.since_out {
             *since += dt;
             return None;
         }
         let (lit, out) = (self.lit(), self.out());
+        let last = FIRST_LIGHT + (self.count - 1) as f32 * BETWEEN;
         self.elapsed += dt;
         if self.out() && !out {
             self.since_out = Some(0.0);
             Some(StartBeep::Go)
+        } else if self.lit() > lit {
+            if self.lit() == self.count {
+                self.out_at = self.elapsed + (self.out_at - last);
+            }
+            Some(StartBeep::Light)
         } else {
-            (self.lit() > lit).then_some(StartBeep::Light)
+            None
         }
     }
 }
@@ -152,7 +176,10 @@ fn chance(time: &Time<Real>) -> f32 {
 
 /// A new race: new lights, as many as the options say.
 fn set_the_lights(mut lights: ResMut<StartLights>, time: Res<Time<Real>>, settings: Res<Settings>) {
-    *lights = StartLights::new(chance(&time), settings.start_lights);
+    *lights = StartLights::new(
+        hold(settings.lights_hold, chance(&time)),
+        settings.start_lights,
+    );
 }
 
 /// With a start at the lights, the bikes wait for them; once out, the race
@@ -178,7 +205,7 @@ fn run_lights(
     }
     // Restarted (see `crate::bike`): back on the grid, the lights again.
     if !race.started && lights.out() {
-        *lights = StartLights::new(chance(&real), lights.count());
+        *lights = StartLights::new(hold(settings.lights_hold, chance(&real)), lights.count());
     }
     if let Some(beep) = lights.advance(time.delta_secs()) {
         beeps.write(beep);
@@ -255,7 +282,7 @@ fn jump_starts(
     }
     if recall {
         recalls.write(RecallToGrid);
-        *lights = StartLights::new(chance(&real), lights.count());
+        *lights = StartLights::new(hold(settings.lights_hold, chance(&real)), lights.count());
         lights.elapsed = -RECALL_PAUSE;
     }
 }
@@ -362,7 +389,7 @@ mod tests {
 
     #[test]
     fn five_red_lights_come_on_a_second_apart_and_go_out() {
-        let mut lights = StartLights::new(0.0, LIGHTS);
+        let mut lights = StartLights::new(HOLD.start, LIGHTS);
         let mut beeps = Vec::new();
         let mut lit = Vec::new();
         let dt = 0.01;
@@ -396,7 +423,7 @@ mod tests {
 
     #[test]
     fn with_fewer_lights_they_go_out_sooner() {
-        let mut lights = StartLights::new(0.0, 3);
+        let mut lights = StartLights::new(HOLD.start, 3);
         let mut beeps = Vec::new();
         for _ in 0..800 {
             if let Some(beep) = lights.advance(0.01) {
@@ -413,18 +440,77 @@ mod tests {
                 StartBeep::Go
             ]
         );
-        assert!(StartLights::new(0.0, 3).out_at < StartLights::new(0.0, 5).out_at - 1.9);
+        assert!(
+            StartLights::new(HOLD.start, 3).out_at < StartLights::new(HOLD.start, 5).out_at - 1.9
+        );
         // However many the settings say, one to five.
-        assert_eq!(StartLights::new(0.0, 0).count(), 1);
-        assert_eq!(StartLights::new(0.0, 9).count(), LIGHTS);
+        assert_eq!(StartLights::new(HOLD.start, 0).count(), 1);
+        assert_eq!(StartLights::new(HOLD.start, 9).count(), LIGHTS);
+    }
+
+    #[test]
+    fn the_wait_after_the_last_light_holds_through_slow_frames() {
+        // Whatever the frames take, hitches and all, the lights go out
+        // their hold after the last one came on, give or take a step.
+        let hold = HOLD.start;
+        for frames in [
+            vec![1.0 / 144.0],
+            vec![1.0 / 60.0],
+            vec![1.0 / 24.0],
+            vec![1.0 / 60.0, 0.4, 1.0 / 60.0, 1.0 / 30.0],
+        ] {
+            let mut lights = StartLights::new(HOLD.start, LIGHTS);
+            let (mut on, mut lit, mut go) = (0, None, None);
+            for dt in frames.iter().cycle().take(2000) {
+                match lights.advance(*dt) {
+                    Some(StartBeep::Light) => {
+                        on += 1;
+                        lit = Some(lights.elapsed);
+                    }
+                    Some(StartBeep::Go) => go = Some(lights.elapsed),
+                    None => {}
+                }
+            }
+            assert_eq!(on, LIGHTS, "{frames:?}");
+            let wait = go.expect("they go out") - lit.expect("the last one comes on");
+            assert!(
+                (hold - 1e-4..hold + MAX_STEP).contains(&wait),
+                "{frames:?}: {wait}"
+            );
+        }
+        // A frame stuck for seconds moves them on a step, no more.
+        let mut lights = StartLights::new(HOLD.start, LIGHTS);
+        assert_eq!(lights.advance(3.0), None);
+        assert_eq!(lights.lit(), 0);
+        assert_eq!(lights.elapsed, MAX_STEP);
     }
 
     #[test]
     fn the_wait_after_the_fifth_light_varies() {
-        let soon = StartLights::new(0.0, LIGHTS).out_at;
-        let late = StartLights::new(1.0, LIGHTS).out_at;
+        let soon = StartLights::new(hold(LightsHold::Random, 0.0), LIGHTS).out_at;
+        let late = StartLights::new(hold(LightsHold::Random, 1.0), LIGHTS).out_at;
         assert!(late - soon > 0.9);
         assert!(soon > FIRST_LIGHT + 4.0 * BETWEEN);
+    }
+
+    #[test]
+    fn a_fixed_wait_keeps_the_beat_of_the_lights() {
+        // Whatever the chance, a second, as between one light and the next.
+        for chance in [0.0, 0.37, 1.0] {
+            assert_eq!(hold(LightsHold::Fixed, chance), BETWEEN);
+        }
+        let mut lights = StartLights::new(hold(LightsHold::Fixed, 0.9), LIGHTS);
+        let mut beeps = Vec::new();
+        let dt = 1.0 / 120.0;
+        for _ in 0..1000 {
+            if lights.advance(dt).is_some() {
+                beeps.push(lights.elapsed);
+            }
+        }
+        assert_eq!(beeps.len(), LIGHTS as usize + 1, "five lights and the go");
+        for pair in beeps.windows(2) {
+            assert!((pair[1] - pair[0] - BETWEEN).abs() < 2.0 * dt, "{beeps:?}");
+        }
     }
 
     /// A grid at the lights, the bikes free or `held`: a rival and the
@@ -532,9 +618,11 @@ mod tests {
 
     #[test]
     fn free_or_not_nobody_moves_before_the_first_light() {
-        let mut lights = StartLights::new(0.5, LIGHTS);
+        let mut lights = StartLights::new(hold(LightsHold::Random, 0.5), LIGHTS);
         assert!(holds_now(RaceStart::LightsUnheld, &lights));
-        lights.advance(FIRST_LIGHT + 0.1);
+        for _ in 0..12 {
+            lights.advance(0.1);
+        }
         assert!(!holds_now(RaceStart::LightsUnheld, &lights));
         assert!(holds_now(RaceStart::Lights, &lights));
         assert!(!holds_now(RaceStart::Throttle, &StartLights::default()));

@@ -55,6 +55,13 @@ impl Language {
         }
     }
 
+    pub fn fullscreen_kind(self) -> &'static str {
+        match self {
+            Language::Spanish => "Tipo de pantalla completa",
+            Language::English => "Fullscreen type",
+        }
+    }
+
     pub fn resolution(self) -> &'static str {
         match self {
             Language::Spanish => "Resolución",

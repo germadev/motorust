@@ -65,6 +65,15 @@ and a wooden bridge nearly half a kilometre long, narrower than the road, over
 the red water of a flooded open pit, its benches stepping down to the water
 all round.
 
+**Ghost Island**, after Ghost of Tsushima, is a winding, steep figure of eight
+on an island of feudal Japan that crosses the castle hill twice: first through
+it, by a tunnel at the end of the castle street, and at the end of the lap
+over it, through the castle. On the way: a coast road in esses, a boardwalk
+across an inlet, the susuki hills at up to 12 %, a lake ringed with flowers,
+a temple and the castle ridge where the road splits three ways, a red ridge
+and a bamboo hill it winds down in tight esses, under a volcano across the
+strait.
+
 More about each one in [docs/tracks.md](docs/tracks.md).
 
 ## Quick start
@@ -100,12 +109,12 @@ or English: the system's language at first, changed in Options.
 ## Documentation
 
 - [Playing](docs/gameplay.md): handling, bikes, menus, options and sound.
-- [Tracks](docs/tracks.md): the four tracks, and how to edit one or add a new one.
+- [Tracks](docs/tracks.md): the five tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions.
-- [Bikes, riders and textures](docs/models.md): the 3D models and the import
-  pipeline.
+- [Bikes, riders, trees, props and textures](docs/models.md): the 3D models
+  and the import pipelines.
 - [Development record](RECORD/): what was asked and what was done, request by
   request.
 

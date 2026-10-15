@@ -7,6 +7,7 @@ use bevy::mesh::Indices;
 use bevy::prelude::*;
 
 use super::Assets3d;
+use super::flowers::FlowerPlan;
 use super::landmarks;
 use super::quads::MeshBuilder;
 use super::scenery::{
@@ -41,6 +42,7 @@ pub fn spawn_props(
     terrain: &Terrain,
     scenery: &Scenery,
     trees: &TreePlan,
+    flowers: FlowerPlan,
     assets: &mut Assets3d,
 ) {
     let mut occupied: Vec<Footprint> = Vec::new();
@@ -60,6 +62,9 @@ pub fn spawn_props(
     }
     occupied.extend(super::desert::spawn_desert(
         world, track, terrain, scenery, assets,
+    ));
+    occupied.extend(super::japan::spawn_japan(
+        world, track, terrain, scenery, flowers, assets,
     ));
     let houses = place_houses(track, terrain, &scenery.houses, &occupied);
     for house in &houses {
@@ -476,6 +481,25 @@ fn foliage(species: Species) -> (Color, Color) {
         Species::MaritimePine => (Color::srgb(0.04, 0.16, 0.06), Color::srgb(0.22, 0.44, 0.16)),
         Species::Poplar => (Color::srgb(0.11, 0.28, 0.06), Color::srgb(0.42, 0.66, 0.20)),
         Species::Almond => (Color::srgb(0.40, 0.26, 0.30), Color::srgb(0.92, 0.74, 0.78)),
+        Species::Momiji => (Color::srgb(0.32, 0.04, 0.03), Color::srgb(0.86, 0.16, 0.08)),
+        Species::Ginkgo => (Color::srgb(0.42, 0.30, 0.03), Color::srgb(0.96, 0.78, 0.16)),
+        Species::Sakura => (Color::srgb(0.52, 0.36, 0.42), Color::srgb(0.98, 0.80, 0.86)),
+        Species::BlackPine => (Color::srgb(0.03, 0.12, 0.06), Color::srgb(0.16, 0.36, 0.18)),
+        Species::Sugi => (Color::srgb(0.03, 0.10, 0.05), Color::srgb(0.13, 0.30, 0.12)),
+        Species::Bamboo => (Color::srgb(0.12, 0.30, 0.06), Color::srgb(0.46, 0.70, 0.22)),
+    }
+}
+
+/// The species whose shape a classic tree of `kind` takes (in its own
+/// colours): the trees of Japan look like the nearest of the others.
+fn classic_shape(kind: Species) -> Species {
+    match kind {
+        Species::Momiji => Species::Broadleaf,
+        Species::Ginkgo | Species::Bamboo => Species::Poplar,
+        Species::Sakura => Species::Almond,
+        Species::BlackPine => Species::UmbrellaPine,
+        Species::Sugi => Species::Tall,
+        other => other,
     }
 }
 
@@ -497,7 +521,7 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
     let mut variants = Vec::with_capacity(VARIANTS as usize);
     for variant in 0..VARIANTS {
         let seed = variant * 47 + kind as u32 * 17;
-        let (wood, crowns) = match kind {
+        let (wood, crowns) = match classic_shape(kind) {
             Species::UmbrellaPine => {
                 let (dx, dz) = match variant {
                     0 => (0.3, 0.0),
@@ -778,6 +802,12 @@ fn build_tree_variants(kind: Species, meshes: &mut Assets<Mesh>) -> Vec<TreeVari
                 ];
                 (wood, crowns)
             }
+            Species::Momiji
+            | Species::Ginkgo
+            | Species::Sakura
+            | Species::BlackPine
+            | Species::Sugi
+            | Species::Bamboo => unreachable!("they take the shape of another"),
         };
         variants.push(TreeVariant { wood, crowns });
     }
@@ -897,28 +927,32 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
     let mut forests = Vec::new();
     let mut seed = 50_000;
     for forest in scenery.forests {
-        let count = (forest.length(lap) / FOREST_EVERY) as usize;
+        let count = (forest.span.length(lap) / FOREST_EVERY) as usize;
         for k in 0..count {
             for side in [1.0, -1.0] {
                 for depth in 0..FOREST_DEPTH {
                     seed += 1;
                     let random = |n: u32| random01(seed * 8 + n);
-                    let along = forest.from + (k as f32 + random(0)) * FOREST_EVERY;
+                    let along = forest.span.from + (k as f32 + random(0)) * FOREST_EVERY;
                     let lateral = side * (WALL_DISTANCE + 4.0 + 9.0 * (depth as f32 + random(1)));
                     let position = track.offset_point(track.index_at(along), lateral);
                     let distance = track.distance_to_centerline(position);
                     if distance < WALL_DISTANCE + 3.0 || !fits(position, distance) {
                         continue;
                     }
-                    forests.push(planned(Species::Tall, position, seed));
+                    let kind = forest.species
+                        [(random(2) * forest.species.len() as f32) as usize % forest.species.len()];
+                    forests.push(planned(kind, position, seed));
                 }
             }
         }
     }
     // The models of the species planted, built here too.
     let mut species: Vec<Species> = scenery.trees.to_vec();
-    if !scenery.forests.is_empty() && !species.contains(&Species::Tall) {
-        species.push(Species::Tall);
+    for &kind in scenery.forests.iter().flat_map(|forest| forest.species) {
+        if !species.contains(&kind) {
+            species.push(kind);
+        }
     }
     let mut scratch = Assets::<Mesh>::default();
     let models = species
@@ -2114,6 +2148,12 @@ mod tests {
             Species::MaritimePine,
             Species::Poplar,
             Species::Almond,
+            Species::Momiji,
+            Species::Ginkgo,
+            Species::Sakura,
+            Species::BlackPine,
+            Species::Sugi,
+            Species::Bamboo,
         ] {
             for variant in build_tree_variants(species, &mut meshes) {
                 let tree = merged_variant(&meshes, &variant);

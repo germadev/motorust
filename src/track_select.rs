@@ -36,6 +36,10 @@ const AERIAL_SPEED: f32 = 0.06;
 const AERIAL_DISTANCE: f32 = 0.7;
 const AERIAL_HEIGHT: f32 = 0.5;
 const AERIAL_FOV: f32 = 0.8;
+/// The track's card is always this wide (px), whatever its text, so that
+/// its map never moves from one track to the next: its padding, the map,
+/// the gap and room for the widest line of any description (about 713 px).
+const CARD_WIDTH: f32 = 1020.0;
 
 pub struct TrackSelectPlugin;
 
@@ -156,6 +160,10 @@ fn spawn_screen(
             screen
                 .spawn((
                     Node {
+                        // As wide on every track; in a narrow window, as
+                        // wide as it, its text wrapping.
+                        width: px(CARD_WIDTH),
+                        max_width: percent(100),
                         align_items: AlignItems::Center,
                         column_gap: px(28),
                         padding: UiRect::axes(px(28), px(18)),
@@ -170,13 +178,18 @@ fn spawn_screen(
                         Node {
                             width: px(190),
                             height: px(190),
+                            flex_shrink: 0.0,
                             ..default()
                         },
                     ));
+                    // The text takes the rest of the card, however long.
                     card.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Start,
                         row_gap: px(10),
+                        flex_grow: 1.0,
+                        flex_basis: px(0),
+                        min_width: px(0),
                         ..default()
                     })
                     .with_children(|text| {
@@ -198,6 +211,12 @@ fn spawn_screen(
                             Text::new(""),
                             text_font(&font, 18.0),
                             TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                            // As tall without a record as with one: the card
+                            // and its map stay put.
+                            Node {
+                                min_height: px(22),
+                                ..default()
+                            },
                         ));
                         if mode == Mode::Race {
                             spawn_laps_chooser(text, &font, lang);

@@ -3,6 +3,8 @@
 //! incrustadas en el ejecutable y sus mipmaps se calculan al arrancar, así no
 //! parpadean a lo lejos.
 
+use std::sync::Arc;
+
 use crate::geometry::{fbm, random01, smoothstep, value_noise};
 use bevy::{
     asset::RenderAssetUsages,
@@ -51,6 +53,10 @@ pub struct WorldTextures {
     /// The average colour of the grass texture: the tufts of grass are
     /// painted it (see [`super::tufts`]).
     pub grass_color: Color,
+    /// The lawn as painted, kept to paint it in flower for the circuits with
+    /// fields of flowers, as they are prepared (see
+    /// [`super::foliage::meadow`]).
+    pub lawn: Arc<Image>,
 }
 
 impl FromWorld for WorldTextures {
@@ -63,7 +69,8 @@ impl FromWorld for WorldTextures {
             TextureEnhance::Grass,
         ));
         let grass_color = average_color(&lawn);
-        let grass = images.add(lawn);
+        let grass = images.add(lawn.clone());
+        let lawn = Arc::new(lawn);
         // The stones of the walls, with the photo's grain.
         let wall = images.add(stone_wall(&embedded(
             include_bytes!("../../assets/textures/wall.jpg"),
@@ -122,6 +129,7 @@ impl FromWorld for WorldTextures {
             grass_edge,
             light_pool,
             grass_color,
+            lawn,
         }
     }
 }

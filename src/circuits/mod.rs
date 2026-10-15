@@ -2,6 +2,7 @@
 //! está usando.
 
 mod bay;
+mod ghost_island;
 mod gold_mine;
 mod loop_island;
 mod turbo_bay;
@@ -82,11 +83,12 @@ impl Circuit {
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista.
-pub static CIRCUITS: [Circuit; 4] = [
+pub static CIRCUITS: [Circuit; 5] = [
     bay::BAY,
     turbo_bay::TURBO_BAY,
     loop_island::LOOP_ISLAND,
     gold_mine::GOLD_MINE,
+    ghost_island::GHOST_ISLAND,
 ];
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
@@ -112,6 +114,10 @@ mod tests {
         assert_eq!(
             CIRCUITS[3].checkpoints(),
             vec![1200.0, 2640.0, 3540.0, 4440.0, 5250.0]
+        );
+        assert_eq!(
+            CIRCUITS[4].checkpoints(),
+            vec![1000.0, 2200.0, 3150.0, 4230.0, 5100.0]
         );
     }
 }

@@ -77,6 +77,8 @@ pub const TURBO_BAY: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::Outline(&COAST),
         hills: 22.0,
+        greens: Greens::Lawn,
+        grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         terraces: &[
@@ -85,6 +87,8 @@ pub const TURBO_BAY: Circuit = Circuit {
                 center: Vec2::new(410.0, -237.0),
                 radius: 32.0,
                 height: 15.0,
+                tilt: Vec2::ZERO,
+                skirt: 15.0,
             },
         ],
         mountains,
@@ -126,6 +130,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         bridges: &[Bridge {
             span: BRIDGE,
             style: BridgeStyle::RedArches,
+            fence: 0.0,
         }],
         gantries: &[
             Gantry {
@@ -182,7 +187,7 @@ pub const TURBO_BAY: Circuit = Circuit {
             Species::Poplar,
             Species::Almond,
         ],
-        forests: &[FOREST],
+        forests: &[forest(FOREST, &[Species::Tall])],
         houses: Houses {
             max: 9,
             paints: &[
@@ -345,6 +350,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        japan: None,
     },
 };
 

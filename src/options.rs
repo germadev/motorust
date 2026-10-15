@@ -17,8 +17,9 @@ use crate::mapping::{
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
 use crate::pause::{DebugOptions, ReturnRate, SteerRate, TurnLimit};
 use crate::settings::{
-    ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES,
-    RACE_STARTS, RESOLUTIONS, RaceStart, START_LIGHTS, Settings, StartedWith, WEB, cycle,
+    CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FALSE_STARTS, FPS_LIMITS,
+    FRAME_LATENCIES, FULLSCREEN_KINDS, LIGHTS_HOLDS, RACE_STARTS, RESOLUTIONS, RaceStart,
+    START_LIGHTS, Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
@@ -212,6 +213,8 @@ enum GameItem {
     RaceStart,
     /// How many red lights the start has.
     StartLights,
+    /// How long they stay on once all are lit.
+    LightsHold,
     /// How many false starts are let off, with the bikes free.
     FalseStarts,
     /// Whether the results go to the middle once everybody is in.
@@ -240,6 +243,9 @@ enum SoundItem {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum GraphicsItem {
     Fullscreen,
+    /// The kind of fullscreen, where it can be chosen (see
+    /// [`CHOOSE_FULLSCREEN`]).
+    FullscreenKind,
     Resolution,
     Fps,
     /// The trees modelled or the classic ones.
@@ -254,6 +260,7 @@ fn game_items() -> Vec<GameItem> {
         GameItem::Difficulty,
         GameItem::RaceStart,
         GameItem::StartLights,
+        GameItem::LightsHold,
         GameItem::FalseStarts,
         GameItem::CentreResults,
     ]
@@ -311,14 +318,18 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Trees,
         ]
     } else {
-        vec![
-            GraphicsItem::Fullscreen,
+        let mut items = vec![GraphicsItem::Fullscreen];
+        if CHOOSE_FULLSCREEN {
+            items.push(GraphicsItem::FullscreenKind);
+        }
+        items.extend([
             GraphicsItem::Resolution,
             GraphicsItem::Fps,
             GraphicsItem::Trees,
             GraphicsItem::PipelinedRendering,
             GraphicsItem::FrameLatency,
-        ]
+        ]);
+        items
     }
 }
 
@@ -371,6 +382,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.difficulty,
                 settings.start,
                 settings.start_lights,
+                settings.lights_hold,
                 settings.false_starts,
                 settings.centre_results,
             ) == (
@@ -378,6 +390,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 first.difficulty,
                 first.start,
                 first.start_lights,
+                first.lights_hold,
                 first.false_starts,
                 first.centre_results,
             )
@@ -393,6 +406,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
         OptionsTab::Graphics => {
             (
                 settings.fullscreen,
+                settings.fullscreen_kind,
                 settings.resolution,
                 settings.fps,
                 settings.modelled_trees,
@@ -400,6 +414,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.frame_latency,
             ) == (
                 first.fullscreen,
+                first.fullscreen_kind,
                 first.resolution,
                 first.fps,
                 first.modelled_trees,
@@ -420,6 +435,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.difficulty = first.difficulty;
             settings.start = first.start;
             settings.start_lights = first.start_lights;
+            settings.lights_hold = first.lights_hold;
             settings.false_starts = first.false_starts;
             settings.centre_results = first.centre_results;
         }
@@ -431,6 +447,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
         }
         OptionsTab::Graphics => {
             settings.fullscreen = first.fullscreen;
+            settings.fullscreen_kind = first.fullscreen_kind;
             settings.resolution = first.resolution;
             settings.fps = first.fps;
             settings.modelled_trees = first.modelled_trees;
@@ -548,6 +565,10 @@ fn use_options_menu(
                     settings.start_lights = cycle(&START_LIGHTS, settings.start_lights, change);
                     sounds.write(MenuSound::Move);
                 }
+                GameItem::LightsHold if change != 0 => {
+                    settings.lights_hold = cycle(&LIGHTS_HOLDS, settings.lights_hold, change);
+                    sounds.write(MenuSound::Move);
+                }
                 GameItem::FalseStarts if change != 0 => {
                     settings.false_starts = cycle(&FALSE_STARTS, settings.false_starts, change);
                     sounds.write(MenuSound::Move);
@@ -623,6 +644,11 @@ fn use_options_menu(
             match item {
                 GraphicsItem::Fullscreen if change != 0 => {
                     settings.fullscreen = !settings.fullscreen;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::FullscreenKind if change != 0 => {
+                    settings.fullscreen_kind =
+                        cycle(&FULLSCREEN_KINDS, settings.fullscreen_kind, change);
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Resolution if change != 0 => {
@@ -888,6 +914,17 @@ fn show_options_menu(
                         format!("<  {}  >", settings.start_lights),
                     )
                 },
+                // Faint, as the lights, when the race starts at the throttle.
+                GameItem::LightsHold => Row {
+                    disabled: !settings.start.at_lights(),
+                    ..Row::with_value(
+                        match lang {
+                            Language::Spanish => "Espera tras la última luz",
+                            Language::English => "Wait after the last light",
+                        },
+                        format!("<  {}  >", settings.lights_hold.name(lang)),
+                    )
+                },
                 // Faint unless the bikes are free at the lights.
                 GameItem::FalseStarts => Row {
                     disabled: settings.start != RaceStart::LightsUnheld,
@@ -992,6 +1029,10 @@ fn show_options_menu(
             .into_iter()
             .map(|item| match item {
                 GraphicsItem::Fullscreen => Row::check(lang.fullscreen(), settings.fullscreen),
+                GraphicsItem::FullscreenKind => Row::with_value(
+                    lang.fullscreen_kind(),
+                    format!("<  {}  >", settings.fullscreen_kind.name(lang)),
+                ),
                 GraphicsItem::Resolution => {
                     let name = settings.resolution.name(window_inner, lang);
                     if WEB {

@@ -167,7 +167,8 @@ pub fn spawn_mode_badge(
             .with_child((
                 Text::new(name(mode, lang)),
                 text_font(font, 20.0),
-                TextColor(Color::srgb(0.06, 0.05, 0.04)),
+                TextColor(Color::WHITE),
+                TextShadow::default(),
             ));
             if let Some(beside) = beside {
                 row.spawn((

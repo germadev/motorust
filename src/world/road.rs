@@ -10,7 +10,7 @@ use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
 use super::scenery::{BridgeStyle, Gantry, Scenery, Side, WallStyle};
-use super::terrain::Terrain;
+use super::terrain::{Terrain, shaded};
 use super::textures::{STONE_WALL, WorldTextures};
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{CURB_WIDTH, SURFACE_Y, Track, WALL_DISTANCE};
@@ -28,12 +28,16 @@ const PAINT_LIFT: f32 = 0.012;
 const CURB_RADIUS: f32 = 130.0;
 
 const WALL_HEIGHT: f32 = 1.1;
+/// The leaves of a hedge where the grass is as painted.
+const HEDGE: Color = Color::srgb(0.55, 0.85, 0.4);
 /// Las barreras de hormigón son algo más bajas, y los setos, más altos.
 const CONCRETE_HEIGHT: f32 = 1.0;
 const HEDGE_HEIGHT: f32 = 1.3;
 /// La barandilla: alto (un poste en cada punto del trazado) y color.
 const RAILING_HEIGHT: f32 = 1.05;
 const RAILING_GREEN: Color = Color::srgb(0.08, 0.42, 0.28);
+/// The lacquered vermilion of a shrine's fence.
+const SHRINE_VERMILION: Color = Color::srgb(0.8, 0.17, 0.07);
 const WALL_THICKNESS: f32 = 0.6;
 /// Lo que se hunde el muro en el suelo, para que no flote en las cuestas.
 const WALL_FOOTING: f32 = 0.5;
@@ -302,7 +306,7 @@ fn spawn_surface(
         (
             WallStyle::Hedge,
             StandardMaterial {
-                base_color: Color::srgb(0.55, 0.85, 0.4),
+                base_color: hedge_color(scenery.grass_shade),
                 base_color_texture: Some(textures.grass.clone()),
                 perceptual_roughness: 1.0,
                 ..default()
@@ -333,16 +337,24 @@ fn spawn_surface(
             spawn(mesh, material);
         }
     }
-    if let Some(mesh) = railing(road, |index, side| {
-        style(index, side) == Some(WallStyle::Railing)
-    }) {
-        spawn(
-            mesh,
-            StandardMaterial {
-                perceptual_roughness: 0.5,
-                ..default()
-            },
-        );
+    // The see-through ones: the seafront's painted railing, a shrine's
+    // lacquered fence.
+    for (wanted, color, roughness) in [
+        (WallStyle::Railing, RAILING_GREEN, 0.5),
+        (WallStyle::ShrineFence, SHRINE_VERMILION, 0.7),
+    ] {
+        let mesh = railing(road, color, |index, side| {
+            style(index, side) == Some(wanted)
+        });
+        if let Some(mesh) = mesh {
+            spawn(
+                mesh,
+                StandardMaterial {
+                    perceptual_roughness: roughness,
+                    ..default()
+                },
+            );
+        }
     }
 }
 
@@ -495,7 +507,7 @@ fn profile(style: WallStyle) -> Profile {
             3,
             Vec2::splat(WALL_TILE),
         ),
-        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing => (
+        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing | WallStyle::ShrineFence => (
             &[
                 (0.0, foot),
                 (0.0, WALL_HEIGHT),
@@ -521,6 +533,14 @@ fn profile(style: WallStyle) -> Profile {
         top,
         tile,
     }
+}
+
+/// The leaves of a hedge on a track whose grass is `grass_shade` as light
+/// (`Scenery::grass_shade`): as dark and as dull as the grass round it, not
+/// a bright green strip over a dark verge.
+fn hedge_color(grass_shade: f32) -> Color {
+    let [red, green, blue, alpha] = shaded(HEDGE, grass_shade);
+    Color::linear_rgba(red, green, blue, alpha)
 }
 
 /// The points of a profile with its corners (all but its two ends) rounded
@@ -848,9 +868,10 @@ impl WallMesh {
     }
 }
 
-/// Barandilla de paseo marítimo donde diga `wanted`: postes y dos barras
-/// verdes, sobre el sitio de los muros.
-fn railing(road: Road, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
+/// A railing where `wanted` says, where the walls would stand: a post at
+/// every point of the road and two rails, all of `color` (the seafront's
+/// green, a shrine's vermilion).
+fn railing(road: Road, color: Color, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
     let line = road.line();
     let segments = line.segment_count();
     let mut mesh = MeshBuilder::default();
@@ -869,17 +890,11 @@ fn railing(road: Road, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
                 at(index, RAILING_HEIGHT),
                 0.12,
                 0.12,
-                RAILING_GREEN,
+                color,
             );
             if wanted(next, side) {
                 for height in [RAILING_HEIGHT, RAILING_HEIGHT * 0.55] {
-                    mesh.beam(
-                        at(index, height),
-                        at(next, height),
-                        0.08,
-                        0.08,
-                        RAILING_GREEN,
-                    );
+                    mesh.beam(at(index, height), at(next, height), 0.08, 0.08, color);
                 }
             }
         }
@@ -1155,6 +1170,25 @@ fn skid_marks(track: &Track) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hedge_is_as_dull_as_the_grass_round_it() {
+        let painted = hedge_color(1.0).to_srgba();
+        let hedge = HEDGE.to_srgba();
+        for (a, b) in [
+            (painted.red, hedge.red),
+            (painted.green, hedge.green),
+            (painted.blue, hedge.blue),
+        ] {
+            assert!((a - b).abs() < 1e-4, "{painted:?} is not {hedge:?}");
+        }
+        // Ghost Island's grass: darker and less vivid.
+        let dull = hedge_color(0.36);
+        let (dull_srgb, painted_hsl) = (dull.to_srgba(), Hsla::from(hedge_color(1.0)));
+        assert!(dull_srgb.red < painted.red && dull_srgb.green < painted.green);
+        assert!(Hsla::from(dull).saturation < painted_hsl.saturation - 0.1);
+        assert!(Hsla::from(dull).lightness < painted_hsl.lightness - 0.15);
+    }
 
     #[test]
     fn curbs_only_in_the_corners() {

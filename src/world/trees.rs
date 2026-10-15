@@ -21,8 +21,9 @@ pub enum TreeModel {
     Fir,
 }
 
-/// Every model, in the order of their indices.
-const MODELS: [TreeModel; 9] = [
+/// Every model, in the order of their indices (and of their cells in the
+/// texture, four to a row).
+const MODELS: [TreeModel; 15] = [
     TreeModel::Of(Species::UmbrellaPine),
     TreeModel::Of(Species::Cypress),
     TreeModel::Of(Species::Olive),
@@ -32,7 +33,16 @@ const MODELS: [TreeModel; 9] = [
     TreeModel::Of(Species::Poplar),
     TreeModel::Of(Species::Almond),
     TreeModel::Fir,
+    TreeModel::Of(Species::Momiji),
+    TreeModel::Of(Species::Ginkgo),
+    TreeModel::Of(Species::Sakura),
+    TreeModel::Of(Species::BlackPine),
+    TreeModel::Of(Species::Sugi),
+    TreeModel::Of(Species::Bamboo),
 ];
+/// How many cells of the texture to a row.
+#[cfg(test)]
+const COLUMNS: usize = 4;
 
 impl TreeModel {
     /// The model of a tree of `kind` planted with `chance` (0 to 1): half
@@ -57,6 +67,12 @@ impl TreeModel {
             TreeModel::Of(Species::Poplar) => "poplar",
             TreeModel::Of(Species::Almond) => "almond",
             TreeModel::Fir => "fir",
+            TreeModel::Of(Species::Momiji) => "momiji",
+            TreeModel::Of(Species::Ginkgo) => "ginkgo",
+            TreeModel::Of(Species::Sakura) => "sakura",
+            TreeModel::Of(Species::BlackPine) => "black_pine",
+            TreeModel::Of(Species::Sugi) => "sugi",
+            TreeModel::Of(Species::Bamboo) => "bamboo",
         }
     }
 
@@ -210,10 +226,12 @@ mod tests {
                 Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) => uvs,
                 _ => panic!("{model:?} has texture coordinates"),
             };
-            let cell = |uv: &[f32; 2]| ((uv[0] * 3.0) as usize, (uv[1] * 3.0) as usize);
+            let rows = MODELS.len().div_ceil(COLUMNS) as f32;
+            let cell = |uv: &[f32; 2]| ((uv[0] * COLUMNS as f32) as usize, (uv[1] * rows) as usize);
             let index = model.index();
             assert!(
-                uvs.iter().all(|uv| cell(uv) == (index % 3, index / 3)),
+                uvs.iter()
+                    .all(|uv| cell(uv) == (index % COLUMNS, index / COLUMNS)),
                 "{model:?} in its cell"
             );
         }

@@ -1,11 +1,12 @@
 //! Procedural textures of plants, painted at startup like the other
 //! procedural textures: the lawn the grass is drawn with, tufts of blades
-//! standing up beside the road, and the ragged edge of the grass along it.
+//! standing up beside the road, the ragged edge of the grass along it, and
+//! clumps of flowers.
 //!
-//! The ones with see-through gaps (tufts and the edge) are drawn with alpha
-//! masking: their mipmaps keep as much of them solid as the full-size
-//! image has (see [`keep_coverage`]), so the grass does not thin out and
-//! vanish in the distance.
+//! The ones with see-through gaps (tufts, the edge, the flowers) are drawn
+//! with alpha masking: their mipmaps keep as much of them solid as the
+//! full-size image has (see [`keep_coverage`]), so the grass does not thin
+//! out and vanish in the distance.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -14,6 +15,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
+use super::scenery::FlowerKind;
 use super::textures::generate_mipmaps;
 use crate::geometry::{fbm, random01, smoothstep};
 
@@ -22,11 +24,14 @@ pub const ALPHA_CUTOFF: f32 = 0.5;
 
 /// A canvas of linear RGB colours with straight alpha, painted with
 /// anti-aliased strokes. If it wraps, what goes past one edge comes back
-/// in at the other, so the texture repeats without seams.
+/// in at the other, so the texture repeats without seams. If not, only
+/// what is inside its clip (the corners of a rectangle of pixels: all of
+/// it, unless narrowed) is painted.
 struct Canvas {
     width: u32,
     height: u32,
     wrap: bool,
+    clip: (IVec2, IVec2),
     pixels: Vec<Vec4>,
 }
 
@@ -39,6 +44,7 @@ impl Canvas {
             width,
             height,
             wrap,
+            clip: (IVec2::ZERO, IVec2::new(width as i32, height as i32)),
             pixels: vec![pixel; (width * height) as usize],
         }
     }
@@ -48,7 +54,8 @@ impl Canvas {
         let (w, h) = (self.width as i32, self.height as i32);
         let (x, y) = if self.wrap {
             (x.rem_euclid(w), y.rem_euclid(h))
-        } else if x < 0 || y < 0 || x >= w || y >= h {
+        } else if x < self.clip.0.x || y < self.clip.0.y || x >= self.clip.1.x || y >= self.clip.1.y
+        {
             return;
         } else {
             (x, y)
@@ -373,6 +380,658 @@ pub fn grass_edge() -> Image {
         descriptor.address_mode_v = ImageAddressMode::ClampToEdge;
     }
     image
+}
+
+/// The cells of the flowers' atlas ([`flowers`]): how many pixels each is
+/// across, and how many there are across and down.
+const FLOWER_CELL: u32 = 256;
+const FLOWER_COLUMNS: u32 = 4;
+const FLOWER_ROWS: u32 = 3;
+/// How far from the edges of its cell each clump keeps (px), so that the
+/// smaller mipmaps do not mix in the cells beside it.
+const FLOWER_MARGIN: f32 = 6.0;
+/// Where the ground is in a cell seen from the side (px down from its
+/// top): the stems rise from just above its bottom edge.
+const FLOWER_GROUND: f32 = FLOWER_CELL as f32 - 2.0;
+/// Every kind of flower, in the order of their cells in the atlas and of
+/// their meadows (see [`meadow`]).
+pub const FLOWER_KINDS: [FlowerKind; 6] = [
+    FlowerKind::SpiderLily,
+    FlowerKind::White,
+    FlowerKind::Yellow,
+    FlowerKind::Iris,
+    FlowerKind::Susuki,
+    FlowerKind::Phlox,
+];
+
+/// The rectangle (its top left and bottom right corners, in texture
+/// coordinates) of the cell of the flowers' atlas ([`flowers`]) where a
+/// clump of `kind` is painted seen from the side, rising from its bottom
+/// edge, or, `from_above`, seen from above; a texel in from its edges.
+pub fn flower_cell(kind: FlowerKind, from_above: bool) -> (Vec2, Vec2) {
+    let (left, top) = flower_cell_origin(kind, from_above);
+    let size = Vec2::new(
+        (FLOWER_COLUMNS * FLOWER_CELL) as f32,
+        (FLOWER_ROWS * FLOWER_CELL) as f32,
+    );
+    let min = Vec2::new(left, top) + Vec2::ONE;
+    let max = Vec2::new(left, top) + Vec2::splat(FLOWER_CELL as f32 - 1.0);
+    (min / size, max / size)
+}
+
+/// The top left corner of a cell of the flowers' atlas (px).
+fn flower_cell_origin(kind: FlowerKind, from_above: bool) -> (f32, f32) {
+    let index = FLOWER_KINDS
+        .iter()
+        .position(|&k| k == kind)
+        .expect("every kind has its cells") as u32
+        * 2
+        + from_above as u32;
+    (
+        ((index % FLOWER_COLUMNS) * FLOWER_CELL) as f32,
+        ((index / FLOWER_COLUMNS) * FLOWER_CELL) as f32,
+    )
+}
+
+/// Clumps of flowers, a pair of cells of an atlas for each kind (see
+/// [`flower_cell`]): seen from the side, stems and leaves rising from the
+/// bottom of the cell to the flowers; seen from above, the flowers open
+/// over their leaves. Clear round them, and drawn with alpha masking. In
+/// their own colours, not tinted.
+pub fn flowers() -> Image {
+    let mut canvas = Canvas::new(
+        FLOWER_COLUMNS * FLOWER_CELL,
+        FLOWER_ROWS * FLOWER_CELL,
+        false,
+        Color::srgb(0.3, 0.42, 0.2),
+        0.0,
+    );
+    // Each clump is kept inside its cell, clear of its edges.
+    let clip = |(x, y): (f32, f32)| {
+        let corner = IVec2::new(x as i32, y as i32);
+        let margin = IVec2::splat(FLOWER_MARGIN as i32);
+        (
+            corner + margin,
+            corner + IVec2::splat(FLOWER_CELL as i32) - margin,
+        )
+    };
+    // Moss phlox has no clumps: it hugs the ground (see [`meadow`]).
+    let standing = FLOWER_KINDS
+        .into_iter()
+        .filter(|&kind| kind != FlowerKind::Phlox);
+    for (seed, kind) in standing.enumerate() {
+        let seed = 40 + seed as u32 * 2;
+        let side = flower_cell_origin(kind, false);
+        canvas.clip = clip(side);
+        // Down to the bottom edge: the stems rise from it.
+        canvas.clip.1.y += FLOWER_MARGIN as i32;
+        paint_side(&mut canvas, kind, Vec2::new(side.0, side.1), seed);
+        let above = flower_cell_origin(kind, true);
+        canvas.clip = clip(above);
+        paint_from_above(&mut canvas, kind, Vec2::new(above.0, above.1), seed + 1);
+    }
+    canvas.image(true)
+}
+
+/// The lawn (see [`lawn`]) in flower, as seen from above: covered in
+/// blossoms of `kind`, so thick that a field of them is a carpet of their
+/// colour from afar. It repeats both ways, as the lawn does. Moss phlox is
+/// painted pale, a carpet of tiny flowers: the terrain colours it, in
+/// bands (see [`super::flowers::phlox_color`]).
+pub fn meadow(lawn: &Image, kind: FlowerKind) -> Image {
+    let (width, height) = (lawn.width(), lawn.height());
+    let mut canvas = Canvas::new(width, height, true, Color::BLACK, 1.0);
+    if let Some(source) = lawn.data.as_ref() {
+        for (pixel, texel) in canvas.pixels.iter_mut().zip(source.chunks(4)) {
+            let color = Color::srgb_u8(texel[0], texel[1], texel[2]).to_linear();
+            // A little darker under the flowers, between their stems.
+            *pixel =
+                Vec4::new(color.red, color.green, color.blue, 1.0) * Vec4::new(0.8, 0.8, 0.8, 1.0);
+        }
+    }
+    // Sizes are in pixels for a 512-pixel lawn, which is GRASS_TILE wide.
+    let scale = width as f32 / 512.0;
+    let seed = 70 + FLOWER_KINDS.iter().position(|&k| k == kind).unwrap_or(0) as u32;
+    let spot = |r: &dyn Fn(u32) -> f32| Vec2::new(r(0) * width as f32, r(1) * height as f32);
+    let count = |n: f32| (n * scale * scale) as u32;
+    let tau = std::f32::consts::TAU;
+    match kind {
+        FlowerKind::SpiderLily => {
+            let red = paint(0.86, 0.07, 0.05);
+            let light = paint(0.98, 0.24, 0.15);
+            for n in 0..count(1500.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(&r);
+                let turn = r(2) * tau;
+                for k in 0..6 {
+                    let a = turn + k as f32 / 6.0 * tau;
+                    let petal = Vec2::from_angle(a) * 6.0 * scale;
+                    canvas.stroke(at, at + petal, (3.4 * scale, 1.4 * scale), red, light);
+                    let stamen = Vec2::from_angle(a + 0.5) * 10.0 * scale;
+                    canvas.stroke(at, at + stamen, (1.3 * scale, 0.8 * scale), red, light);
+                }
+            }
+        }
+        FlowerKind::White => {
+            let white = paint(0.97, 0.97, 0.94);
+            let shade = paint(0.84, 0.86, 0.84);
+            let heart = paint(0.98, 0.78, 0.15);
+            for n in 0..count(1700.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(&r);
+                let petals = shade.lerp(white, r(3));
+                for k in 0..8 {
+                    let a = r(2) + k as f32 / 8.0 * tau;
+                    canvas.stroke(
+                        at,
+                        at + Vec2::from_angle(a) * 4.5 * scale,
+                        (4.0 * scale, 3.4 * scale),
+                        petals,
+                        white,
+                    );
+                }
+                dot(&mut canvas, at, 3.5 * scale, heart);
+            }
+        }
+        FlowerKind::Yellow => {
+            let yellow = paint(1.0, 0.84, 0.08);
+            let light = paint(1.0, 0.95, 0.45);
+            for n in 0..count(950.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(&r);
+                for k in 0..12 {
+                    let q = |j: u32| rand(seed, n * 16 + 5000 + k, j);
+                    let offset = Vec2::from_angle(q(0) * tau) * 9.0 * scale * q(1).sqrt();
+                    dot(
+                        &mut canvas,
+                        at + offset,
+                        (3.5 + 1.5 * q(2)) * scale,
+                        yellow.lerp(light, q(3)),
+                    );
+                }
+            }
+        }
+        FlowerKind::Iris => {
+            let purple = paint(0.42, 0.2, 0.72);
+            let light = paint(0.62, 0.45, 0.9);
+            let signal = paint(1.0, 0.85, 0.2);
+            let leaf = paint(0.24, 0.46, 0.14);
+            for n in 0..count(900.0) {
+                let r = |k: u32| rand(seed, n + 20_000, k);
+                let at = spot(&r);
+                let to = at + Vec2::from_angle(r(2) * tau) * 18.0 * scale;
+                canvas.stroke(at, to, (3.0 * scale, 0.8 * scale), leaf, leaf);
+            }
+            for n in 0..count(1000.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(&r);
+                let turn = r(2) * tau;
+                for k in 0..3 {
+                    let a = turn + k as f32 / 3.0 * tau;
+                    canvas.stroke(
+                        at,
+                        at + Vec2::from_angle(a) * 7.5 * scale,
+                        (6.0 * scale, 3.5 * scale),
+                        purple,
+                        light,
+                    );
+                    canvas.stroke(
+                        at,
+                        at + Vec2::from_angle(a) * 3.0 * scale,
+                        (1.5 * scale, 1.2 * scale),
+                        signal,
+                        signal,
+                    );
+                    let standard = Vec2::from_angle(a + tau / 6.0) * 4.5 * scale;
+                    canvas.stroke(at, at + standard, (4.0 * scale, 2.5 * scale), purple, light);
+                }
+            }
+        }
+        FlowerKind::Susuki => {
+            let blade_gold = paint(0.78, 0.7, 0.4);
+            let straw = paint(0.66, 0.56, 0.32);
+            let plume = paint(0.96, 0.9, 0.76);
+            let plume_dark = paint(0.84, 0.72, 0.52);
+            for n in 0..count(3200.0) {
+                let r = |k: u32| rand(seed, n + 20_000, k);
+                let at = spot(&r);
+                // Blades combed the same way by the wind, in waves.
+                let a = fbm(at / (90.0 * scale), 2) * tau + (r(2) - 0.5) * 0.8;
+                let to = at + Vec2::from_angle(a) * (10.0 + 8.0 * r(3)) * scale;
+                canvas.stroke(at, to, (2.2 * scale, 0.6 * scale), straw, blade_gold);
+            }
+            for n in 0..count(1400.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(&r);
+                let a = fbm(at / (90.0 * scale), 2) * tau;
+                for k in 0..7 {
+                    let q = |j: u32| rand(seed, n * 8 + 9000 + k, j);
+                    let to =
+                        at + Vec2::from_angle(a + (q(0) - 0.5) * 1.1) * (11.0 + 7.0 * q(1)) * scale;
+                    canvas.stroke(
+                        at,
+                        to,
+                        (2.2 * scale, 0.7 * scale),
+                        plume_dark.lerp(plume, q(2)),
+                        plume,
+                    );
+                }
+            }
+        }
+        FlowerKind::Phlox => {
+            let petal = paint(1.0, 0.94, 0.97);
+            let eye = paint(0.82, 0.55, 0.78);
+            for n in 0..count(9400.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(&r);
+                let turn = r(2) * tau;
+                let shade = Vec4::new(0.85, 0.85, 0.85, 1.0).lerp(Vec4::ONE, r(3));
+                for k in 0..5 {
+                    let a = turn + k as f32 / 5.0 * tau;
+                    dot(
+                        &mut canvas,
+                        at + Vec2::from_angle(a) * 1.8 * scale,
+                        2.6 * scale,
+                        petal * shade,
+                    );
+                }
+                dot(&mut canvas, at, 1.4 * scale, eye);
+            }
+        }
+    }
+    canvas.image(false)
+}
+
+/// A colour given in sRGB, as the canvas paints it (linear, opaque).
+fn paint(r: f32, g: f32, b: f32) -> Vec4 {
+    let linear = Color::srgb(r, g, b).to_linear();
+    Vec4::new(linear.red, linear.green, linear.blue, 1.0)
+}
+
+/// A stroke through `points` (px), tapering from `width` to `end_width`,
+/// of colour `start` turning to `end`.
+fn bent_stroke(
+    canvas: &mut Canvas,
+    points: &[Vec2],
+    (width, end_width): (f32, f32),
+    start: Vec4,
+    end: Vec4,
+) {
+    let count = (points.len() - 1) as f32;
+    for (k, pair) in points.windows(2).enumerate() {
+        let (t0, t1) = (k as f32 / count, (k + 1) as f32 / count);
+        canvas.stroke(
+            pair[0],
+            pair[1],
+            (width.lerp(end_width, t0), width.lerp(end_width, t1)),
+            start.lerp(end, t0),
+            start.lerp(end, t1),
+        );
+    }
+}
+
+/// A blade or a stem from `root` up `height` px, leaning `lean` px over at
+/// its top and curving out on the way.
+fn blade(root: Vec2, height: f32, lean: f32, curve: f32) -> [Vec2; 4] {
+    let at = |t: f32| root + Vec2::new(lean * t * t + curve * t * (1.0 - t), -height * t);
+    [at(0.0), at(0.35), at(0.7), at(1.0)]
+}
+
+/// A disc of `color` (`width` px across) at `at`.
+fn dot(canvas: &mut Canvas, at: Vec2, width: f32, color: Vec4) {
+    canvas.stroke(at, at, (width, width), color, color);
+}
+
+/// A clump of `kind` seen from the side in the cell at `origin` (px).
+fn paint_side(canvas: &mut Canvas, kind: FlowerKind, origin: Vec2, seed: u32) {
+    let size = FLOWER_CELL as f32;
+    let ground = origin.y + FLOWER_GROUND;
+    let across = |r: f32| origin.x + FLOWER_MARGIN + 24.0 + r * (size - 2.0 * FLOWER_MARGIN - 48.0);
+    // Leaning over, `amount` px at most, those by the edges of the cell
+    // into it.
+    let lean = |x: f32, r: f32, amount: f32| (r - (x - origin.x) / size) * amount;
+    let root_green = paint(0.16, 0.3, 0.08);
+    let leaf_green = paint(0.36, 0.58, 0.2);
+    match kind {
+        FlowerKind::SpiderLily => {
+            let red = paint(0.86, 0.07, 0.05);
+            let light = paint(0.98, 0.22, 0.14);
+            for n in 0..10 {
+                let r = |k: u32| rand(seed, n, k);
+                let x = across(r(0));
+                let height = size * (0.5 + 0.32 * r(1));
+                let stem = blade(Vec2::new(x, ground), height, lean(x, r(2), 24.0), 0.0);
+                bent_stroke(canvas, &stem, (4.0, 3.0), root_green, leaf_green);
+                let head = stem[3];
+                // Six petals curling back, and longer stamens curving up and
+                // out past them, all round the head.
+                for k in 0..6 {
+                    let a = (k as f32 / 6.0 + r(3)) * std::f32::consts::TAU;
+                    let (out, depth) = (a.cos(), a.sin());
+                    let tip = head + Vec2::new(out * 15.0, 3.0 + depth * 4.0);
+                    bent_stroke(
+                        canvas,
+                        &[head, tip, tip + Vec2::new(out * 4.0, -7.0)],
+                        (5.0, 1.5),
+                        red,
+                        light,
+                    );
+                    let middle = head + Vec2::new(out * 13.0, -12.0 + depth * 2.0);
+                    bent_stroke(
+                        canvas,
+                        &[head, middle, middle + Vec2::new(out * 11.0, -10.0)],
+                        (1.8, 1.0),
+                        red,
+                        light,
+                    );
+                }
+            }
+        }
+        FlowerKind::White => {
+            let white = paint(0.97, 0.97, 0.94);
+            let shade = paint(0.8, 0.82, 0.8);
+            let heart = paint(0.98, 0.78, 0.15);
+            for n in 0..22 {
+                let r = |k: u32| rand(seed, n, k);
+                let x = across(r(0));
+                let leaf = blade(
+                    Vec2::new(x, ground),
+                    size * (0.12 + 0.18 * r(1)),
+                    lean(x, r(2), 50.0),
+                    (r(3) - 0.5) * 20.0,
+                );
+                bent_stroke(canvas, &leaf, (7.0, 1.0), root_green, leaf_green);
+            }
+            for n in 0..15 {
+                let r = |k: u32| rand(seed, n + 100, k);
+                let x = across(r(0));
+                let stem = blade(
+                    Vec2::new(x, ground),
+                    size * (0.35 + 0.42 * r(1)),
+                    lean(x, r(2), 30.0),
+                    (r(3) - 0.5) * 16.0,
+                );
+                bent_stroke(canvas, &stem, (3.0, 2.0), root_green, leaf_green);
+                // The flower turned up a little: a flat oval of petals, and
+                // its heart on top.
+                let head = stem[3];
+                let tilt = (r(4) - 0.5) * 4.0;
+                canvas.stroke(
+                    head - Vec2::new(10.0, tilt),
+                    head + Vec2::new(10.0, tilt),
+                    (9.0, 9.0),
+                    shade.lerp(white, r(5)),
+                    white,
+                );
+                dot(canvas, head - Vec2::new(0.0, 3.0), 6.0, heart);
+            }
+        }
+        FlowerKind::Yellow => {
+            let yellow = paint(1.0, 0.84, 0.08);
+            let light = paint(1.0, 0.95, 0.45);
+            let bud = paint(0.7, 0.75, 0.2);
+            for n in 0..10 {
+                let r = |k: u32| rand(seed, n, k);
+                let x = across(r(0));
+                let leaf = blade(
+                    Vec2::new(x, ground),
+                    size * (0.18 + 0.15 * r(1)),
+                    lean(x, r(2), 60.0),
+                    (r(3) - 0.5) * 24.0,
+                );
+                bent_stroke(canvas, &leaf, (11.0, 2.0), root_green, leaf_green);
+            }
+            for n in 0..9 {
+                let r = |k: u32| rand(seed, n + 100, k);
+                let x = across(r(0));
+                let height = size * (0.55 + 0.33 * r(1));
+                let stem = blade(Vec2::new(x, ground), height, lean(x, r(2), 20.0), 0.0);
+                bent_stroke(canvas, &stem, (4.0, 3.0), root_green, leaf_green);
+                // A branch either side, and a cluster of blossoms at the
+                // end of each.
+                let mut ends = vec![stem[3]];
+                for (k, side) in [-1.0, 1.0].into_iter().enumerate() {
+                    let from = stem[2];
+                    let to = from + Vec2::new(side * (14.0 + 10.0 * r(3 + k as u32)), -30.0);
+                    canvas.stroke(from, to, (2.5, 2.0), leaf_green, leaf_green);
+                    ends.push(to);
+                }
+                for (e, end) in ends.into_iter().enumerate() {
+                    for k in 0..14 {
+                        let q = |j: u32| rand(seed, n * 16 + e as u32 * 1000 + 300, k * 4 + j);
+                        let at = end + Vec2::new((q(0) - 0.5) * 24.0, -q(1) * 18.0 + 4.0);
+                        let color = if q(2) < 0.12 {
+                            bud
+                        } else {
+                            yellow.lerp(light, q(3))
+                        };
+                        dot(canvas, at, 5.0 + 3.0 * q(3), color);
+                    }
+                }
+            }
+        }
+        FlowerKind::Iris => {
+            let purple = paint(0.42, 0.2, 0.72);
+            let light = paint(0.62, 0.45, 0.9);
+            let signal = paint(1.0, 0.85, 0.2);
+            for n in 0..14 {
+                let r = |k: u32| rand(seed, n, k);
+                let x = across(r(0));
+                let leaf = blade(
+                    Vec2::new(x, ground),
+                    size * (0.5 + 0.38 * r(1)),
+                    lean(x, r(2), 30.0),
+                    (r(3) - 0.5) * 10.0,
+                );
+                bent_stroke(canvas, &leaf, (8.0, 1.0), root_green, leaf_green);
+            }
+            for n in 0..7 {
+                let r = |k: u32| rand(seed, n + 100, k);
+                let x = across(r(0));
+                let stem = blade(
+                    Vec2::new(x, ground),
+                    size * (0.58 + 0.3 * r(1)),
+                    lean(x, r(2), 16.0),
+                    0.0,
+                );
+                bent_stroke(canvas, &stem, (3.5, 3.0), root_green, leaf_green);
+                let head = stem[3];
+                // Three falls hanging out and down, three standards up
+                // between them, a yellow mark at the root of each fall.
+                for side in [-1.0, 1.0, 0.15] {
+                    let tip = head + Vec2::new(side * 15.0, 12.0);
+                    bent_stroke(
+                        canvas,
+                        &[head, head + Vec2::new(side * 9.0, 2.0), tip],
+                        (10.0, 6.0),
+                        purple,
+                        light,
+                    );
+                    canvas.stroke(
+                        head,
+                        head + Vec2::new(side * 6.0, 3.0),
+                        (2.5, 2.0),
+                        signal,
+                        signal,
+                    );
+                }
+                for side in [-0.5, 0.5, 0.0] {
+                    canvas.stroke(
+                        head,
+                        head + Vec2::new(side * 9.0, -15.0),
+                        (7.0, 3.0),
+                        purple,
+                        light,
+                    );
+                }
+            }
+        }
+        FlowerKind::Susuki => {
+            let blade_green = paint(0.52, 0.56, 0.28);
+            let blade_gold = paint(0.78, 0.72, 0.42);
+            let straw = paint(0.72, 0.62, 0.4);
+            let plume = paint(0.96, 0.9, 0.76);
+            let plume_dark = paint(0.82, 0.7, 0.52);
+            for n in 0..44 {
+                let r = |k: u32| rand(seed, n, k);
+                let x = across(r(0));
+                let middle = 1.0 - ((x - origin.x) / size * 2.0 - 1.0).abs();
+                let leaf = blade(
+                    Vec2::new(x, ground),
+                    size * (0.3 + 0.4 * middle * (0.6 + 0.4 * r(1))),
+                    lean(x, r(2), 120.0),
+                    (r(3) - 0.5) * 30.0,
+                );
+                bent_stroke(canvas, &leaf, (4.0, 0.6), blade_green, blade_gold);
+            }
+            for n in 0..9 {
+                let r = |k: u32| rand(seed, n + 100, k);
+                // Rooted to the left: the plumes bow to the right.
+                let x =
+                    origin.x + FLOWER_MARGIN + 16.0 + r(0) * (size - 2.0 * FLOWER_MARGIN - 110.0);
+                let stem = blade(
+                    Vec2::new(x, ground),
+                    size * (0.72 + 0.22 * r(1)),
+                    20.0 + r(2) * 20.0,
+                    (r(3) - 0.5) * 10.0,
+                );
+                bent_stroke(canvas, &stem, (2.5, 2.0), straw, straw);
+                // The plume: fine strands from the top of the stem, all
+                // bowing the same way, as in the wind.
+                let top = stem[3];
+                for k in 0..14 {
+                    let q = |j: u32| rand(seed, n * 20 + 500 + k, j);
+                    let from = top + Vec2::new(0.0, k as f32 * 2.5);
+                    let a = 0.35 + 0.9 * q(0);
+                    let length = 26.0 + 20.0 * q(1);
+                    let to = from + Vec2::new(a.cos(), a.sin() * 0.8) * length;
+                    bent_stroke(
+                        canvas,
+                        &[from, from.lerp(to, 0.5) - Vec2::new(0.0, 3.0), to],
+                        (2.6, 0.8),
+                        plume_dark.lerp(plume, q(2)),
+                        plume,
+                    );
+                }
+            }
+        }
+        FlowerKind::Phlox => {}
+    }
+}
+
+/// A clump of `kind` seen from above in the cell at `origin` (px).
+fn paint_from_above(canvas: &mut Canvas, kind: FlowerKind, origin: Vec2, seed: u32) {
+    let size = FLOWER_CELL as f32;
+    let inside = FLOWER_MARGIN + 28.0;
+    let spot =
+        |a: f32, b: f32| origin + Vec2::splat(inside) + Vec2::new(a, b) * (size - 2.0 * inside);
+    let leaf_dark = paint(0.18, 0.34, 0.1);
+    let leaf_green = paint(0.36, 0.58, 0.2);
+    let leaves = |canvas: &mut Canvas, count: u32, length: f32, width: f32| {
+        for n in 0..count {
+            let r = |k: u32| rand(seed, n + 900, k);
+            let from = spot(r(0), r(1));
+            let to =
+                from + Vec2::from_angle(r(2) * std::f32::consts::TAU) * length * (0.6 + 0.4 * r(3));
+            canvas.stroke(from, to, (width, 1.0), leaf_dark, leaf_green);
+        }
+    };
+    let radial = |canvas: &mut Canvas,
+                  at: Vec2,
+                  count: u32,
+                  turn: f32,
+                  length: f32,
+                  widths: (f32, f32),
+                  color: Vec4,
+                  tip: Vec4| {
+        for k in 0..count {
+            let a = turn + k as f32 / count as f32 * std::f32::consts::TAU;
+            canvas.stroke(at, at + Vec2::from_angle(a) * length, widths, color, tip);
+        }
+    };
+    match kind {
+        FlowerKind::SpiderLily => {
+            let red = paint(0.86, 0.07, 0.05);
+            let light = paint(0.98, 0.22, 0.14);
+            for n in 0..13 {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(r(0), r(1));
+                let turn = r(2) * std::f32::consts::TAU;
+                radial(canvas, at, 6, turn, 15.0, (5.0, 2.0), red, light);
+                radial(canvas, at, 6, turn + 0.5, 25.0, (1.6, 1.0), red, light);
+            }
+        }
+        FlowerKind::White => {
+            let white = paint(0.97, 0.97, 0.94);
+            let heart = paint(0.98, 0.78, 0.15);
+            leaves(canvas, 16, 32.0, 8.0);
+            for n in 0..22 {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(r(0), r(1));
+                radial(canvas, at, 8, r(2), 9.0, (7.0, 6.0), white, white);
+                dot(canvas, at, 7.0, heart);
+            }
+        }
+        FlowerKind::Yellow => {
+            let yellow = paint(1.0, 0.84, 0.08);
+            let light = paint(1.0, 0.95, 0.45);
+            leaves(canvas, 12, 36.0, 12.0);
+            for n in 0..16 {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(r(0), r(1));
+                for k in 0..14 {
+                    let q = |j: u32| rand(seed, n * 20 + 200 + k, j);
+                    let offset =
+                        Vec2::from_angle(q(0) * std::f32::consts::TAU) * 16.0 * q(1).sqrt();
+                    dot(
+                        canvas,
+                        at + offset,
+                        6.0 + 2.0 * q(2),
+                        yellow.lerp(light, q(3)),
+                    );
+                }
+            }
+        }
+        FlowerKind::Iris => {
+            let purple = paint(0.42, 0.2, 0.72);
+            let light = paint(0.62, 0.45, 0.9);
+            let signal = paint(1.0, 0.85, 0.2);
+            leaves(canvas, 16, 60.0, 6.0);
+            for n in 0..9 {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(r(0), r(1));
+                let turn = r(2) * std::f32::consts::TAU;
+                radial(canvas, at, 3, turn, 19.0, (11.0, 7.0), purple, light);
+                radial(canvas, at, 3, turn, 7.0, (2.5, 2.0), signal, signal);
+                radial(canvas, at, 3, turn + 1.05, 10.0, (7.0, 4.0), purple, light);
+            }
+        }
+        FlowerKind::Susuki => {
+            let blade_green = paint(0.52, 0.56, 0.28);
+            let blade_gold = paint(0.78, 0.72, 0.42);
+            let plume = paint(0.96, 0.9, 0.76);
+            let plume_dark = paint(0.82, 0.7, 0.52);
+            for n in 0..26 {
+                let r = |k: u32| rand(seed, n + 900, k);
+                let from = spot(r(0), r(1));
+                let to = from
+                    + Vec2::from_angle(r(2) * std::f32::consts::TAU) * 50.0 * (0.6 + 0.4 * r(3));
+                canvas.stroke(from, to, (3.0, 0.6), blade_green, blade_gold);
+            }
+            // The plumes bow the same way, as the side's do.
+            for n in 0..11 {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(r(0), r(1));
+                for k in 0..14 {
+                    let q = |j: u32| rand(seed, n * 20 + 500 + k, j);
+                    let a = (q(0) - 0.5) * 1.2;
+                    let to = at + Vec2::from_angle(a) * (26.0 + 18.0 * q(1));
+                    canvas.stroke(at, to, (2.6, 0.8), plume_dark.lerp(plume, q(2)), plume);
+                }
+            }
+        }
+        FlowerKind::Phlox => {}
+    }
 }
 
 #[cfg(test)]

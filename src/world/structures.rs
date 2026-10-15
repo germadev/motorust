@@ -9,9 +9,10 @@ use super::lamps::Lamp;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
 use super::scenery::{
-    Billboard, BrakeMarker, BridgeStyle, ChevronDirection, ChevronSign, Scenery, Soil, Span,
+    Billboard, BrakeMarker, BridgeStyle, ChevronDirection, ChevronSign, FlowerKind, Scenery, Soil,
+    Span,
 };
-use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, Terrain, ground_vertex_color};
+use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, GroundMesh, Terrain};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
@@ -77,7 +78,6 @@ const DECK_TILE: f32 = 4.0;
 /// and the colours of the wood.
 const PLANK_TILE: f32 = 4.0;
 const PLANK_LIFT: f32 = 0.02;
-const FENCE_HEIGHT: f32 = 1.2;
 const POST_WOOD: Color = Color::srgb(0.34, 0.2, 0.09);
 const RAIL_WOOD: Color = Color::srgb(0.52, 0.33, 0.15);
 
@@ -89,9 +89,10 @@ pub fn structure_pieces(
     terrain: &Terrain,
     scenery: &Scenery,
     textures: &WorldTextures,
-) -> (Vec<(Mesh, StandardMaterial)>, Vec<Lamp>) {
+) -> (Vec<(Mesh, StandardMaterial)>, Vec<Lamp>, Vec<GroundMesh>) {
     let mut pieces = Vec::new();
     let mut lamps = Vec::new();
+    let mut ground = Vec::new();
     let lap = track.lap_length();
     for tunnel in scenery.tunnels {
         // A mine's tunnels are its excavation.
@@ -109,6 +110,12 @@ pub fn structure_pieces(
         let indices = indices(track, *tunnel, lap);
         let mut parts = tunnel_meshes(track, terrain, scenery.soil, &indices);
         lamps.append(&mut parts.lamps);
+        // The top in flower, drawn as the ground round it is.
+        ground.extend(parts.meadows.drain(..).map(|(kind, meadow)| GroundMesh {
+            ground: Ground::Grass,
+            flowers: Some(kind),
+            mesh: meadow,
+        }));
         let rock = match scenery.soil {
             Soil::Rock | Soil::Mine => StandardMaterial {
                 base_color: Color::srgb(0.85, 0.75, 0.6),
@@ -190,7 +197,7 @@ pub fn structure_pieces(
     for bridge in scenery.bridges {
         let indices = indices(track, bridge.span, lap);
         if bridge.style == BridgeStyle::Wooden {
-            let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices);
+            let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices, bridge.fence);
             pieces.push((
                 planks,
                 StandardMaterial {
@@ -231,7 +238,7 @@ pub fn structure_pieces(
             },
         ));
     }
-    (pieces, lamps)
+    (pieces, lamps, ground)
 }
 
 /// The signs along the road: billboards, curve chevrons and brake markers.
@@ -320,8 +327,10 @@ fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
 struct TunnelParts {
     /// La roca por encima y a los lados.
     rock: Mesh,
-    /// Grass on the gentle parts of the top.
+    /// Grass on the gentle parts of the top, and where the fields round it
+    /// are in flower, the same flowers, by kind.
     grass: Mesh,
+    meadows: Vec<(FlowerKind, Mesh)>,
     /// Paredes y techo por dentro.
     lining: Mesh,
     /// El marco de hormigón de las bocas.
@@ -344,6 +353,7 @@ struct TunnelParts {
 fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]) -> TunnelParts {
     let mut rock = MeshBuilder::default();
     let mut grass = MeshBuilder::default();
+    let mut meadows: Vec<(FlowerKind, MeshBuilder)> = Vec::new();
     let mut lining = MeshBuilder::default();
     let mut portals = MeshBuilder::default();
     let mut sidewalks = MeshBuilder::default();
@@ -569,6 +579,13 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         }
         // La roca de encima, en franjas de lado a lado.
         const STRIPS: usize = 12;
+        // Whether its top is gentle enough for grass, judged the whole way
+        // across at once, its rugged hump left out: grass and rock lie in
+        // bands across it, as on the slopes round it, not in a chequer.
+        let level = |k: usize| (edge(k, -1.0) + edge(k, 1.0)) / 2.0;
+        let along = (level(j) - level(i)) / step;
+        let across = (edge(i, 1.0) - edge(i, -1.0)) / (2.0 * TUNNEL_SHELL);
+        let gentle = 1.0 / (1.0 + along * along + across * across).sqrt() > CLIFF_NORMAL_Y;
         for k in 0..STRIPS {
             let (a, b) = (
                 -TUNNEL_SHELL + 2.0 * TUNNEL_SHELL * k as f32 / STRIPS as f32,
@@ -581,18 +598,47 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 (at(i, b, rock_top(i, b)), Vec2::new(vi, b / 4.0)),
             ];
             // Through natural rock, grass grows where the top is gentle, as
-            // on the hills around.
+            // on the hills around (where a road passes over, by the slope
+            // down to it).
             let [p, q, r, _] = corners.map(|(p, _)| p);
             let face = (q - p).cross(r - p).normalize_or_zero();
             let face = if face.y < 0.0 { -face } else { face };
-            if soil == Soil::Rock && face.y > CLIFF_NORMAL_Y {
+            let grassy = match deck(i, (a + b) / 2.0) {
+                Some(_) => face.y > CLIFF_NORMAL_Y,
+                None => gentle,
+            };
+            if soil == Soil::Rock && grassy {
                 let center = corners.iter().map(|(p, _)| *p).sum::<Vec3>() / 4.0;
-                let tint = ground_vertex_color(Ground::Grass, center, face);
-                grass.quad(
-                    corners.map(|(p, _)| (p, Vec2::new(p.x, p.z) / GRASS_TILE)),
-                    Vec3::Y,
-                    Color::LinearRgba(LinearRgba::from_f32_array(tint)),
-                );
+                let corners = corners.map(|(p, _)| (p, Vec2::new(p.x, p.z) / GRASS_TILE));
+                // In a field of flowers, its flowers: the top is the hill
+                // the tunnel goes through, not a strip of lawn over it.
+                match terrain.field_flowers(Vec2::new(center.x, center.z)) {
+                    Some(kind) => {
+                        let meadow = match meadows.iter().position(|(k, _)| *k == kind) {
+                            Some(meadow) => meadow,
+                            None => {
+                                meadows.push((kind, MeshBuilder::default()));
+                                meadows.len() - 1
+                            }
+                        };
+                        // Coloured corner by corner, as the ground is: no
+                        // squares of colour.
+                        let [a, b, c, d] = corners.map(|(p, uv)| {
+                            let tint = terrain.meadow_color(p, face, kind);
+                            (p, uv, Color::LinearRgba(LinearRgba::from_f32_array(tint)))
+                        });
+                        meadows[meadow].1.shaded_triangle([a, b, c], Vec3::Y);
+                        meadows[meadow].1.shaded_triangle([a, c, d], Vec3::Y);
+                    }
+                    None => {
+                        let tint = terrain.grass_color(center, face);
+                        grass.quad(
+                            corners,
+                            Vec3::Y,
+                            Color::LinearRgba(LinearRgba::from_f32_array(tint)),
+                        );
+                    }
+                }
             } else {
                 rock.quad(corners, Vec3::Y, Color::WHITE);
             }
@@ -647,6 +693,10 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
     TunnelParts {
         rock: rock.build(),
         grass: grass.build(),
+        meadows: meadows
+            .into_iter()
+            .map(|(kind, meadow)| (kind, meadow.build()))
+            .collect(),
         lining: lining.build(),
         portals: portals.build(),
         sidewalks: sidewalks.build(),
@@ -834,7 +884,12 @@ fn truss_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (
 /// on the sides and underside of the deck (the first mesh), and the logs
 /// (the second): a fence of posts and two rails on each side, and piers of
 /// two logs and a crossbeam down to the water.
-fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (Mesh, Mesh) {
+fn wooden_bridge_meshes(
+    track: &Track,
+    terrain: &Terrain,
+    indices: &[usize],
+    fence_height: f32,
+) -> (Mesh, Mesh) {
     let mut planks = MeshBuilder::default();
     let mut logs = MeshBuilder::default();
     // Out to its fence, which stands where the walls are: closer than the
@@ -886,13 +941,13 @@ fn wooden_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> 
                 }
                 logs.beam(
                     fence(at, -0.3),
-                    fence(at, FENCE_HEIGHT),
+                    fence(at, fence_height),
                     0.3,
                     0.3,
                     POST_WOOD,
                 );
             }
-            for height in [FENCE_HEIGHT - 0.12, FENCE_HEIGHT * 0.5] {
+            for height in [fence_height - 0.12, fence_height * 0.5] {
                 logs.beam(fence(i, height), fence(j, height), 0.17, 0.17, RAIL_WOOD);
             }
         }
@@ -1226,6 +1281,50 @@ mod tests {
                 (u >= 0.0 && v >= 0.0 && w >= 0.0).then_some(a.y * u + b.y * v + c.y * w)
             })
             .reduce(f32::max)
+    }
+
+    #[test]
+    fn a_tunnels_top_is_in_flower_where_the_fields_round_it_are() {
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == "Ghost Island")
+            .unwrap();
+        let scenery = &circuit.scenery;
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, scenery);
+        let lap = track.lap_length();
+        for tunnel in scenery.tunnels {
+            let indices = indices(&track, *tunnel, lap);
+            let parts = tunnel_meshes(&track, &terrain, scenery.soil, &indices);
+            // Its gentle top is grass in flower, as the hill round it,
+            // not a strip of lawn over it.
+            let flowered: usize = parts
+                .meadows
+                .iter()
+                .map(|(_, meadow)| meadow.count_vertices())
+                .sum();
+            assert!(flowered > 0);
+            for (kind, meadow) in &parts.meadows {
+                let Some(VertexAttributeValues::Float32x3(positions)) =
+                    meadow.attribute(Mesh::ATTRIBUTE_POSITION)
+                else {
+                    panic!("positions");
+                };
+                // Each of its quads (two triangles, four corners) in the
+                // flowers of the field it is in.
+                for quad in positions.chunks(6).step_by(7) {
+                    let mut corners: Vec<Vec2> = Vec::new();
+                    for p in quad {
+                        let p = Vec2::new(p[0], p[2]);
+                        if !corners.contains(&p) {
+                            corners.push(p);
+                        }
+                    }
+                    let center = corners.iter().sum::<Vec2>() / corners.len() as f32;
+                    assert_eq!(terrain.field_flowers(center), Some(*kind));
+                }
+            }
+        }
     }
 
     #[test]

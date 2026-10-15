@@ -33,10 +33,23 @@ repository's [model releases](https://github.com/germadev/motorust/releases);
 measurements and downsizes their textures.
 
 The trees (`models/trees/`: stone pine, cypress, olive, tall forest tree,
-leafy broadleaf, maritime pine, poplar, almond and Nordmann fir) were made by
+leafy broadleaf, maritime pine, poplar, almond, Nordmann fir, and the
+Japanese momiji, ginkgo, sakura, black pine, sugi and bamboo) were made by
 the project's author with [Meshy](https://www.meshy.ai);
 `tools/import_trees.py` stands them on the ground at the game's sizes and puts
 their colour textures together.
+
+The props of feudal Japan (`models/props/`: the great torii, the castle keep,
+the temple hall and its pagoda, the shrine on stilts, the ancient and the
+great maple, the torii of the corridor, a log torii, a wayside shrine, a
+Jizō, a komainu, bronze and stone lanterns, a memorial stone, a brazier, a
+supply pile, a fishing boat, a minka and a water wheel) were made by the
+project's author with [Meshy](https://www.meshy.ai), the originals attached
+to the repository's [assets release](https://github.com/germadev/motorust/releases/tag/assets_pj);
+`tools/import_props.py` mends those that came out wrong, stands them on the
+ground at the game's sizes and puts their colour textures together.
+
+The flowers, the lawn in flower and the snow are painted in code.
 
 ## Font
 

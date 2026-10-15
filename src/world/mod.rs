@@ -4,7 +4,9 @@
 
 mod cavern;
 mod desert;
+mod flowers;
 mod foliage;
+mod japan;
 mod lamps;
 mod landmarks;
 mod lettering;
@@ -58,6 +60,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<Preparing>()
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
+            .init_resource::<japan::ModelledProps>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
@@ -71,6 +74,8 @@ impl Plugin for WorldPlugin {
                     mine::roll_carts,
                     desert::pump,
                     desert::tumble,
+                    japan::turn_wheels,
+                    japan::drift_petals,
                     spawn_prepared_circuit.run_if(in_state(GameState::Tracks)),
                 ),
             )
@@ -134,7 +139,7 @@ struct Prepared {
     index: usize,
     track: Track,
     terrain: terrain::Terrain,
-    ground: [(terrain::Ground, Mesh); 3],
+    ground: Vec<terrain::GroundMesh>,
     shore: sea::ShoreMap,
     shore_image: Image,
     roadside: Roadside,
@@ -145,6 +150,10 @@ struct Prepared {
     /// Its grass beside the roads, drawn only near the camera.
     grass: Vec<tufts::GrassPiece>,
     trees: props::TreePlan,
+    /// The lawn in flower, for each kind of flower the ground is drawn in,
+    /// and the flowers standing up near the roads.
+    meadows: Vec<(scenery::FlowerKind, Image)>,
+    flowers: flowers::FlowerPlan,
 }
 
 /// How many threads a circuit's terrain is worked out on: all the cores
@@ -171,7 +180,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
     let terrain = terrain::Terrain::on_threads(&track, scenery, urgency.threads());
-    let ground = terrain.meshes();
+    let mut ground = terrain.meshes();
     let shore = sea::ShoreMap::new(&terrain, &track);
     let shore_image = shore.image();
     let roadside = Roadside {
@@ -179,8 +188,10 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         shoulders: shoulders::track_shoulders(&track, &terrain, scenery),
     };
     let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
-    let (structures, lamps) = structures::structure_pieces(&track, &terrain, scenery, textures);
+    let (structures, lamps, tops) =
+        structures::structure_pieces(&track, &terrain, scenery, textures);
     pieces.extend(structures);
+    ground.extend(tops);
     let grass = tufts::tuft_pieces(
         &track,
         &terrain,
@@ -189,6 +200,19 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         textures,
     );
     let trees = props::plan_trees(&track, &terrain, scenery);
+    // One meadow for each kind of flower drawn (the tunnels' tops drawn in
+    // the same as the ground round them).
+    let mut kinds = Vec::new();
+    for kind in ground.iter().filter_map(|ground| ground.flowers) {
+        if !kinds.contains(&kind) {
+            kinds.push(kind);
+        }
+    }
+    let meadows = kinds
+        .into_iter()
+        .map(|kind| (kind, foliage::meadow(&textures.lawn, kind)))
+        .collect();
+    let flowers = flowers::plan_flowers(&track, &terrain);
     structures::draw_signs(scenery);
     Prepared {
         index,
@@ -202,6 +226,8 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         lamps,
         grass,
         trees,
+        meadows,
+        flowers,
     }
 }
 
@@ -350,6 +376,7 @@ fn build_world(
 #[derive(bevy::ecs::system::SystemParam)]
 struct Builder<'w> {
     textures: Res<'w, textures::WorldTextures>,
+    props: Res<'w, japan::ModelledProps>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
     meshes: ResMut<'w, Assets<Mesh>>,
@@ -377,7 +404,13 @@ fn build(
         lamps,
         grass,
         trees,
+        meadows,
+        flowers,
     } = prepared;
+    let meadows: Vec<_> = meadows
+        .into_iter()
+        .map(|(kind, meadow)| (kind, builder.images.add(meadow)))
+        .collect();
     let shore_image = builder.images.add(shore_image);
     let scenery = &CIRCUITS[index].scenery;
     let sea_material = builder
@@ -385,6 +418,7 @@ fn build(
         .add(shore.material(shore_image, scenery.water));
     let mut assets = Assets3d {
         textures: &builder.textures,
+        props: &builder.props,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -401,6 +435,7 @@ fn build(
                 world,
                 &terrain,
                 ground,
+                &meadows,
                 assets.textures,
                 assets.meshes,
                 assets.materials,
@@ -433,7 +468,15 @@ fn build(
             }
             road::spawn_gantries(world, &track, scenery, &mut assets);
             structures::spawn_signs(world, &track, &terrain, scenery, &mut assets);
-            props::spawn_props(world, &track, &terrain, scenery, &trees, &mut assets);
+            props::spawn_props(
+                world,
+                &track,
+                &terrain,
+                scenery,
+                &trees,
+                flowers,
+                &mut assets,
+            );
         });
     roadside
 }
@@ -441,6 +484,8 @@ fn build(
 /// Dónde guardar las mallas, los materiales y las imágenes del mundo.
 pub struct Assets3d<'a> {
     pub textures: &'a textures::WorldTextures,
+    /// The props made with Meshy (see [`japan`]).
+    pub props: &'a japan::ModelledProps,
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub images: &'a mut Assets<Image>,

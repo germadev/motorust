@@ -24,7 +24,7 @@ make test      # runs the tests
 | `make install` | Linux packages, then `cargo fetch` | Installs the system dependencies (Linux only) and downloads the crates. Fails early if `cargo` is missing. |
 | `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
-| `make test` | `cargo test` | Runs the 401 tests (see [architecture.md](architecture.md#tests)). |
+| `make test` | `cargo test` | Runs the 430 tests (see [architecture.md](architecture.md#tests)). |
 
 ### Build times and profiles
 
@@ -95,7 +95,7 @@ This is not WasmFS: WasmFS is Emscripten's file system for programs built with E
 
 ### Size
 
-Without the music, the `.wasm` file is about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. The music (`assets/music/`, eight 192 kbps MP3s: the four tracks' songs, three chill ones and the menus') adds about **33.7 MB**, which compression does not shrink: about **118 MB**, or **67 MB gzipped**, in all. The JavaScript glue is about 120 KB.
+Without the music, the `.wasm` file was measured at about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. Ghost Island's props and Japanese trees have since added about 4.2 MB of models (mostly JPEG and vertex data, which compress little), not measured in a web build yet. The music (`assets/music/`, nine 192 kbps MP3s: the five tracks' songs, three chill ones and the menus') adds about **37.9 MB**, which compression does not shrink: about **122 MB**, or **71 MB gzipped**, in all. The JavaScript glue is about 120 KB.
 
 ## Continuous integration
 
