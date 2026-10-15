@@ -614,7 +614,6 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 // the tunnel goes through, not a strip of lawn over it.
                 match terrain.field_flowers(Vec2::new(center.x, center.z)) {
                     Some(kind) => {
-                        let tint = terrain.meadow_color(center, face, kind);
                         let meadow = match meadows.iter().position(|(k, _)| *k == kind) {
                             Some(meadow) => meadow,
                             None => {
@@ -622,11 +621,14 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                                 meadows.len() - 1
                             }
                         };
-                        meadows[meadow].1.quad(
-                            corners,
-                            Vec3::Y,
-                            Color::LinearRgba(LinearRgba::from_f32_array(tint)),
-                        );
+                        // Coloured corner by corner, as the ground is: no
+                        // squares of colour.
+                        let [a, b, c, d] = corners.map(|(p, uv)| {
+                            let tint = terrain.meadow_color(p, face, kind);
+                            (p, uv, Color::LinearRgba(LinearRgba::from_f32_array(tint)))
+                        });
+                        meadows[meadow].1.shaded_triangle([a, b, c], Vec3::Y);
+                        meadows[meadow].1.shaded_triangle([a, c, d], Vec3::Y);
                     }
                     None => {
                         let tint = terrain.grass_color(center, face);
@@ -1308,9 +1310,17 @@ mod tests {
                 else {
                     panic!("positions");
                 };
-                // Each of its quads in the flowers of the field it is in.
-                for quad in positions.chunks(4).step_by(7) {
-                    let center = quad.iter().map(|p| Vec2::new(p[0], p[2])).sum::<Vec2>() / 4.0;
+                // Each of its quads (two triangles, four corners) in the
+                // flowers of the field it is in.
+                for quad in positions.chunks(6).step_by(7) {
+                    let mut corners: Vec<Vec2> = Vec::new();
+                    for p in quad {
+                        let p = Vec2::new(p[0], p[2]);
+                        if !corners.contains(&p) {
+                            corners.push(p);
+                        }
+                    }
+                    let center = corners.iter().sum::<Vec2>() / corners.len() as f32;
                     assert_eq!(terrain.field_flowers(center), Some(*kind));
                 }
             }
