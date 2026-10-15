@@ -10,7 +10,7 @@
 
 use std::ops::Range;
 
-use bevy::camera::Viewport;
+use bevy::camera::{CameraUpdateSystems, RenderTarget, Viewport};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -85,6 +85,7 @@ impl Plugin for ChaseCameraPlugin {
         }
         app.insert_resource(ClearColor(HORIZON))
             .add_systems(Startup, spawn_camera)
+            .add_systems(PostUpdate, follow_window_size.before(CameraUpdateSystems))
             .init_resource::<CameraGlide>()
             .add_systems(OnEnter(GameState::Select), setup_split_cameras)
             .add_systems(OnEnter(GameState::Race), (setup_split_cameras, reset_chase))
@@ -223,6 +224,32 @@ fn setup_split_cameras(
 /// Jugador 1 arriba (0 .. alto/2), Jugador 2 abajo (alto/2 .. alto).
 /// While the others are watched come in, the first camera takes the whole
 /// screen.
+/// Every camera on the window takes its new size in the same frame. Bevy
+/// reads a camera's size again only when the window reports a resize or the
+/// camera's projection changes. On macOS, asking for another window size
+/// changes `Window` at once, but winit reports the resize frames later (or,
+/// during a fullscreen animation, never): meanwhile the 3D camera, whose
+/// projection changes every frame, would take the new size and the UI camera
+/// keep the old one. They share the window's colour textures, sized by
+/// whichever comes first, while the depth is the 3D camera's size, and the
+/// GPU stops with "attachments have differing sizes".
+fn follow_window_size(
+    window: Query<&Window, With<PrimaryWindow>>,
+    mut cameras: Query<(&Camera, &RenderTarget, &mut Projection)>,
+) {
+    let Ok(window) = window.single() else {
+        return;
+    };
+    let size = window.physical_size();
+    for (camera, target, mut projection) in &mut cameras {
+        if matches!(target, RenderTarget::Window(_))
+            && camera.physical_target_size().is_some_and(|now| now != size)
+        {
+            projection.set_changed();
+        }
+    }
+}
+
 fn update_camera_viewports(
     windows: Query<&Window, With<PrimaryWindow>>,
     game_mode: Res<GameMode>,

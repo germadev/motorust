@@ -52,6 +52,9 @@ pub const WEB: bool = cfg!(target_arch = "wasm32");
 #[serde(default)]
 pub struct Settings {
     pub fullscreen: bool,
+    /// How fullscreen covers the screen, where it can be chosen: see
+    /// [`Settings::fullscreen_kind`].
+    pub fullscreen_kind: FullscreenKind,
     pub resolution: Resolution,
     pub fps: FpsLimit,
     pub language: Language,
@@ -211,6 +214,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             fullscreen: false,
+            fullscreen_kind: FullscreenKind::default(),
             resolution: Resolution::default(),
             fps: FpsLimit::default(),
             language: Language::default(),
@@ -285,6 +289,39 @@ impl Resolution {
             },
             Resolution::Window(width, height) => format!("{width} × {height}"),
             Resolution::Fullscreen => lang.fullscreen().into(),
+        }
+    }
+}
+
+/// Whether the player chooses the kind of fullscreen (on macOS: a Space of
+/// its own over the desktop as it is, or the screen switched to a display
+/// mode of its own). Elsewhere a fixed resolution switches the screen and a
+/// dynamic one does not, as always.
+pub const CHOOSE_FULLSCREEN: bool = cfg!(target_os = "macos");
+
+/// How fullscreen covers the screen.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum FullscreenKind {
+    /// Without borders over the desktop as it is, at its resolution (on
+    /// macOS, in a Space of its own): `WindowMode::BorderlessFullscreen`.
+    #[default]
+    Desktop,
+    /// The screen switched to a display mode of its own, at the resolution
+    /// chosen: `WindowMode::Fullscreen`.
+    Exclusive,
+}
+
+/// The kinds of fullscreen that can be chosen, in order.
+pub const FULLSCREEN_KINDS: [FullscreenKind; 2] =
+    [FullscreenKind::Desktop, FullscreenKind::Exclusive];
+
+impl FullscreenKind {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (FullscreenKind::Exclusive, Language::Spanish) => "Pantalla completa dedicada",
+            (FullscreenKind::Exclusive, Language::English) => "Dedicated fullscreen",
+            (FullscreenKind::Desktop, Language::Spanish) => "Espacio dedicado (escritorio)",
+            (FullscreenKind::Desktop, Language::English) => "Own Space (desktop)",
         }
     }
 }
@@ -897,23 +934,56 @@ impl Settings {
         window
     }
 
-    /// Whether the screen itself is switched to the resolution chosen: in
-    /// fullscreen with a fixed one, out of the browser. Then the monitor's
-    /// display modes are needed, known only once the window is open.
-    fn exclusive(&self) -> bool {
-        !WEB && self.fullscreen && matches!(self.resolution, Resolution::Window(..))
+    /// The kind of fullscreen used: the one chosen where it can be chosen
+    /// ([`CHOOSE_FULLSCREEN`]); elsewhere the screen is switched for a fixed
+    /// resolution and not for a dynamic one; never in the browser.
+    pub fn fullscreen_kind(&self) -> FullscreenKind {
+        self.kind_of_fullscreen(CHOOSE_FULLSCREEN)
     }
 
-    /// Sets `window` as these settings ask. In fullscreen with a fixed
-    /// resolution, the screen is switched to the display mode of `monitor`
-    /// that comes closest to it (in pixels); with a dynamic one, or with no
-    /// monitor known yet, the window covers the screen as it is.
+    fn kind_of_fullscreen(&self, chosen: bool) -> FullscreenKind {
+        if WEB {
+            FullscreenKind::Desktop
+        } else if chosen {
+            self.fullscreen_kind
+        } else if matches!(self.resolution, Resolution::Window(..)) {
+            FullscreenKind::Exclusive
+        } else {
+            FullscreenKind::Desktop
+        }
+    }
+
+    /// Whether the screen itself is switched to a display mode of its own.
+    /// Then the monitor's display modes are needed, known only once the
+    /// window is open.
+    fn exclusive(&self) -> bool {
+        self.fullscreen && self.fullscreen_kind() == FullscreenKind::Exclusive
+    }
+
+    /// Sets `window` as these settings ask. In a dedicated fullscreen, the
+    /// screen is switched to the display mode of `monitor` that comes
+    /// closest to the resolution chosen (in pixels), or with a dynamic one
+    /// to its own size; otherwise, or with no monitor known yet, the window
+    /// covers the screen as it is.
     fn configure(&self, window: &mut Window, monitor: Option<&Monitor>) {
+        self.configure_as(window, monitor, self.exclusive());
+    }
+
+    /// As [`Self::configure`], switching the screen or not as `exclusive`
+    /// says.
+    fn configure_as(&self, window: &mut Window, monitor: Option<&Monitor>, exclusive: bool) {
         if self.fullscreen {
-            let mode = match (self.resolution, monitor) {
-                (Resolution::Window(width, height), Some(monitor)) if !WEB => {
-                    fitting_mode(&monitor.video_modes, width, height)
-                }
+            let mode = match monitor {
+                Some(monitor) if exclusive => match self.resolution {
+                    Resolution::Window(width, height) => {
+                        fitting_mode(&monitor.video_modes, width, height)
+                    }
+                    Resolution::Dynamic | Resolution::Fullscreen => fitting_mode(
+                        &monitor.video_modes,
+                        monitor.physical_width,
+                        monitor.physical_height,
+                    ),
+                },
                 _ => None,
             };
             window.mode = match mode {
@@ -954,6 +1024,13 @@ impl Settings {
         if settings.resolution == Resolution::Fullscreen {
             settings.fullscreen = true;
             settings.resolution = Resolution::Dynamic;
+        }
+        // Saved before the kind of fullscreen could be chosen: in fullscreen
+        // a fixed resolution switched the screen.
+        if !text.contains("fullscreen_kind")
+            && matches!(settings.resolution, Resolution::Window(..))
+        {
+            settings.fullscreen_kind = FullscreenKind::Exclusive;
         }
         settings.controls.give_the_wheelie_a_button();
         settings
@@ -1201,14 +1278,24 @@ fn apply_settings(
     settings: Res<Settings>,
     mut window: Query<(&mut Window, Option<&OnMonitor>), With<PrimaryWindow>>,
     monitors: Query<(&Monitor, Has<PrimaryMonitor>)>,
-    mut applied: Local<Option<(bool, Resolution, FpsLimit)>>,
+    mut applied: Local<Option<(bool, FullscreenKind, Resolution, FpsLimit)>>,
 ) {
-    let wanted = (settings.fullscreen, settings.resolution, settings.fps);
+    let wanted = (
+        settings.fullscreen,
+        settings.fullscreen_kind(),
+        settings.resolution,
+        settings.fps,
+    );
     // La ventana ya se abrió con los ajustes guardados; salvo que la
     // pantalla deba pasar a la resolución elegida, que espera a conocer los
     // modos del monitor.
     let applied = applied.get_or_insert(if settings.exclusive() {
-        (false, Resolution::Dynamic, settings.fps)
+        (
+            false,
+            FullscreenKind::Desktop,
+            Resolution::Dynamic,
+            settings.fps,
+        )
     } else {
         wanted
     });
@@ -1494,20 +1581,27 @@ mod tests {
             UVec2::new(1920, 1200)
         );
         assert_eq!(fitting_mode(&[], 1920, 1080), None);
-        // Only a fixed resolution in fullscreen switches the screen.
+        // Where the kind of fullscreen is not chosen, only a fixed
+        // resolution switches the screen; where it is, the kind chosen.
         let fixed = Settings {
             fullscreen: true,
+            fullscreen_kind: FullscreenKind::Exclusive,
             resolution: Resolution::Window(1280, 720),
             ..default()
         };
         assert!(fixed.exclusive());
-        assert!(
-            !Settings {
-                resolution: Resolution::Dynamic,
-                ..fixed.clone()
-            }
-            .exclusive()
-        );
+        let dynamic = Settings {
+            resolution: Resolution::Dynamic,
+            ..fixed.clone()
+        };
+        assert_eq!(dynamic.kind_of_fullscreen(false), FullscreenKind::Desktop);
+        assert_eq!(dynamic.kind_of_fullscreen(true), FullscreenKind::Exclusive);
+        let desktop = Settings {
+            fullscreen_kind: FullscreenKind::Desktop,
+            ..fixed.clone()
+        };
+        assert_eq!(desktop.kind_of_fullscreen(false), FullscreenKind::Exclusive);
+        assert_eq!(desktop.kind_of_fullscreen(true), FullscreenKind::Desktop);
         let monitor = Monitor {
             name: None,
             physical_height: 1600,
@@ -1528,6 +1622,21 @@ mod tests {
         );
         // Before the monitor is known, the window covers the screen as it is.
         fixed.configure(&mut window, None);
+        assert_eq!(
+            window.mode,
+            WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+        );
+        // A dedicated fullscreen at a dynamic resolution takes the screen's
+        // own size; on the desktop, the window covers the screen as it is.
+        dynamic.configure_as(&mut window, Some(&monitor), true);
+        assert_eq!(
+            window.mode,
+            WindowMode::Fullscreen(
+                MonitorSelection::Current,
+                VideoModeSelection::Specific(mode(2560, 1600, 60))
+            )
+        );
+        fixed.configure_as(&mut window, Some(&monitor), false);
         assert_eq!(
             window.mode,
             WindowMode::BorderlessFullscreen(MonitorSelection::Current)

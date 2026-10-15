@@ -34,6 +34,9 @@ const BETWEEN: f32 = 1.0;
 const HOLD: Range<f32> = 0.3..1.3;
 /// Seconds the lights show green once they are out.
 const GREEN_FOR: f32 = 0.8;
+/// The longest step (s) the lights take in one frame: after a hitch they
+/// carry on where they were, instead of skipping ahead (or past a light).
+const MAX_STEP: f32 = 0.1;
 /// After a false start, seconds more before the first light: to read the
 /// notice and let go of the throttle.
 const RECALL_PAUSE: f32 = 1.5;
@@ -125,19 +128,28 @@ impl StartLights {
         self.elapsed >= self.out_at
     }
 
-    /// `dt` s later: what beeps.
+    /// `dt` s later (at most [`MAX_STEP`]): what beeps. The lights go out
+    /// their hold after the last one is seen to come on, however late a
+    /// slow frame showed it.
     pub fn advance(&mut self, dt: f32) -> Option<StartBeep> {
+        let dt = dt.clamp(0.0, MAX_STEP);
         if let Some(since) = &mut self.since_out {
             *since += dt;
             return None;
         }
         let (lit, out) = (self.lit(), self.out());
+        let last = FIRST_LIGHT + (self.count - 1) as f32 * BETWEEN;
         self.elapsed += dt;
         if self.out() && !out {
             self.since_out = Some(0.0);
             Some(StartBeep::Go)
+        } else if self.lit() > lit {
+            if self.lit() == self.count {
+                self.out_at = self.elapsed + (self.out_at - last);
+            }
+            Some(StartBeep::Light)
         } else {
-            (self.lit() > lit).then_some(StartBeep::Light)
+            None
         }
     }
 }
@@ -420,6 +432,43 @@ mod tests {
     }
 
     #[test]
+    fn the_wait_after_the_last_light_holds_through_slow_frames() {
+        // Whatever the frames take, hitches and all, the lights go out
+        // their hold after the last one came on, give or take a step.
+        let hold = HOLD.start;
+        for frames in [
+            vec![1.0 / 144.0],
+            vec![1.0 / 60.0],
+            vec![1.0 / 24.0],
+            vec![1.0 / 60.0, 0.4, 1.0 / 60.0, 1.0 / 30.0],
+        ] {
+            let mut lights = StartLights::new(0.0, LIGHTS);
+            let (mut on, mut lit, mut go) = (0, None, None);
+            for dt in frames.iter().cycle().take(2000) {
+                match lights.advance(*dt) {
+                    Some(StartBeep::Light) => {
+                        on += 1;
+                        lit = Some(lights.elapsed);
+                    }
+                    Some(StartBeep::Go) => go = Some(lights.elapsed),
+                    None => {}
+                }
+            }
+            assert_eq!(on, LIGHTS, "{frames:?}");
+            let wait = go.expect("they go out") - lit.expect("the last one comes on");
+            assert!(
+                (hold - 1e-4..hold + MAX_STEP).contains(&wait),
+                "{frames:?}: {wait}"
+            );
+        }
+        // A frame stuck for seconds moves them on a step, no more.
+        let mut lights = StartLights::new(0.0, LIGHTS);
+        assert_eq!(lights.advance(3.0), None);
+        assert_eq!(lights.lit(), 0);
+        assert_eq!(lights.elapsed, MAX_STEP);
+    }
+
+    #[test]
     fn the_wait_after_the_fifth_light_varies() {
         let soon = StartLights::new(0.0, LIGHTS).out_at;
         let late = StartLights::new(1.0, LIGHTS).out_at;
@@ -534,7 +583,9 @@ mod tests {
     fn free_or_not_nobody_moves_before_the_first_light() {
         let mut lights = StartLights::new(0.5, LIGHTS);
         assert!(holds_now(RaceStart::LightsUnheld, &lights));
-        lights.advance(FIRST_LIGHT + 0.1);
+        for _ in 0..12 {
+            lights.advance(0.1);
+        }
         assert!(!holds_now(RaceStart::LightsUnheld, &lights));
         assert!(holds_now(RaceStart::Lights, &lights));
         assert!(!holds_now(RaceStart::Throttle, &StartLights::default()));

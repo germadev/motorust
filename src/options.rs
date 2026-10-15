@@ -17,8 +17,9 @@ use crate::mapping::{
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
 use crate::pause::{DebugOptions, ReturnRate, SteerRate, TurnLimit};
 use crate::settings::{
-    ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES,
-    RACE_STARTS, RESOLUTIONS, RaceStart, START_LIGHTS, Settings, StartedWith, WEB, cycle,
+    CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FALSE_STARTS, FPS_LIMITS,
+    FRAME_LATENCIES, FULLSCREEN_KINDS, RACE_STARTS, RESOLUTIONS, RaceStart, START_LIGHTS, Settings,
+    StartedWith, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
@@ -240,6 +241,9 @@ enum SoundItem {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum GraphicsItem {
     Fullscreen,
+    /// The kind of fullscreen, where it can be chosen (see
+    /// [`CHOOSE_FULLSCREEN`]).
+    FullscreenKind,
     Resolution,
     Fps,
     /// The trees modelled or the classic ones.
@@ -311,14 +315,18 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Trees,
         ]
     } else {
-        vec![
-            GraphicsItem::Fullscreen,
+        let mut items = vec![GraphicsItem::Fullscreen];
+        if CHOOSE_FULLSCREEN {
+            items.push(GraphicsItem::FullscreenKind);
+        }
+        items.extend([
             GraphicsItem::Resolution,
             GraphicsItem::Fps,
             GraphicsItem::Trees,
             GraphicsItem::PipelinedRendering,
             GraphicsItem::FrameLatency,
-        ]
+        ]);
+        items
     }
 }
 
@@ -393,6 +401,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
         OptionsTab::Graphics => {
             (
                 settings.fullscreen,
+                settings.fullscreen_kind,
                 settings.resolution,
                 settings.fps,
                 settings.modelled_trees,
@@ -400,6 +409,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.frame_latency,
             ) == (
                 first.fullscreen,
+                first.fullscreen_kind,
                 first.resolution,
                 first.fps,
                 first.modelled_trees,
@@ -431,6 +441,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
         }
         OptionsTab::Graphics => {
             settings.fullscreen = first.fullscreen;
+            settings.fullscreen_kind = first.fullscreen_kind;
             settings.resolution = first.resolution;
             settings.fps = first.fps;
             settings.modelled_trees = first.modelled_trees;
@@ -623,6 +634,11 @@ fn use_options_menu(
             match item {
                 GraphicsItem::Fullscreen if change != 0 => {
                     settings.fullscreen = !settings.fullscreen;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::FullscreenKind if change != 0 => {
+                    settings.fullscreen_kind =
+                        cycle(&FULLSCREEN_KINDS, settings.fullscreen_kind, change);
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Resolution if change != 0 => {
@@ -992,6 +1008,10 @@ fn show_options_menu(
             .into_iter()
             .map(|item| match item {
                 GraphicsItem::Fullscreen => Row::check(lang.fullscreen(), settings.fullscreen),
+                GraphicsItem::FullscreenKind => Row::with_value(
+                    lang.fullscreen_kind(),
+                    format!("<  {}  >", settings.fullscreen_kind.name(lang)),
+                ),
                 GraphicsItem::Resolution => {
                     let name = settings.resolution.name(window_inner, lang);
                     if WEB {
