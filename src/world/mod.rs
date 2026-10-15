@@ -4,12 +4,14 @@
 
 mod cavern;
 mod desert;
+pub mod detail;
 mod flowers;
 mod foliage;
 mod japan;
 mod lamps;
 mod landmarks;
 mod lettering;
+mod lod;
 mod mine;
 mod props;
 mod quads;
@@ -28,9 +30,7 @@ use bevy::asset::embedded_asset;
 use bevy::pbr::PbrPlugin;
 use bevy::tasks::{Task, TaskPool, TaskPoolBuilder, block_on, poll_once};
 use bevy::{
-    camera::visibility::VisibilitySystems,
-    light::{CascadeShadowConfigBuilder, NotShadowCaster},
-    prelude::*,
+    camera::visibility::VisibilitySystems, light::NotShadowCaster, prelude::*,
     transform::TransformSystems,
 };
 
@@ -53,7 +53,7 @@ impl Plugin for WorldPlugin {
             app.init_asset::<sea::SeaMaterial>();
         }
         let current = CurrentCircuit::default();
-        app.add_plugins(lamps::LampsPlugin);
+        app.add_plugins((lamps::LampsPlugin, detail::DetailPlugin));
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
             .init_resource::<Roadsides>()
@@ -88,7 +88,12 @@ impl Plugin for WorldPlugin {
                 PostUpdate,
                 (
                     sky::follow_camera.before(TransformSystems::Propagate),
-                    trees::dress_trees.before(VisibilitySystems::CalculateBounds),
+                    // With the trees where they are and whether they are
+                    // seen, before what each camera sees is worked out.
+                    trees::dress_trees
+                        .after(TransformSystems::Propagate)
+                        .after(VisibilitySystems::VisibilityPropagate)
+                        .before(VisibilitySystems::CheckVisibility),
                 ),
             );
     }
@@ -506,13 +511,9 @@ fn spawn_sun(mut commands: Commands) {
             ..default()
         },
         Transform::default().looking_to(-sun, Vec3::Y),
-        // Las sombras solo hacen falta cerca de la cámara; así tienen más resolución.
-        CascadeShadowConfigBuilder {
-            first_cascade_far_bound: 25.0,
-            maximum_distance: 250.0,
-            ..default()
-        }
-        .build(),
+        // Shadows are only needed near the camera, which gives them more
+        // resolution (with the screen split, nearer still: see [`detail`]).
+        detail::Detail::Full.cascades(),
     ));
 }
 

@@ -328,9 +328,10 @@ fn use_welcome(
 }
 
 /// How wide the menu is (px): as wide as the title, measured once it is laid
-/// out. It starts with the width the font gives.
+/// out. It starts with the width the font gives. The game modes screen is
+/// sized from it too, so both look alike at any resolution.
 #[derive(Resource)]
-struct MenuWidth(f32);
+pub struct MenuWidth(pub f32);
 
 impl Default for MenuWidth {
     fn default() -> Self {

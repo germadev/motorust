@@ -25,7 +25,7 @@ use crate::ui::{
     text_font,
 };
 use crate::vector_art::{Art, VectorArt};
-use crate::welcome::{CardMaterial, FADE, GameMode, IDLE};
+use crate::welcome::{CardMaterial, FADE, GameMode, IDLE, MenuWidth};
 
 pub struct ModesPlugin;
 
@@ -265,8 +265,17 @@ struct Shown {
     music: bool,
     language: Language,
     device: ActiveDevice,
+    /// How wide the cards are (px).
     width: f32,
     scale_factor: f32,
+}
+
+/// How wide the cards of the game modes are (px), with the start menu
+/// `menu` px wide (the title's width) in a window `window` px wide: as wide
+/// as the start menu, whatever the resolution, but never wider than most of
+/// the window.
+fn cards_width(menu: f32, window: f32) -> f32 {
+    menu.min(window * 0.92)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -277,6 +286,7 @@ fn show_modes(
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
     window: Query<&Window, With<PrimaryWindow>>,
+    menu_width: Res<MenuWidth>,
     icons: Res<UiIcons>,
     cards: Res<ModeCards>,
     mut art: ResMut<VectorArt>,
@@ -293,7 +303,7 @@ fn show_modes(
         music: settings.music_enabled,
         language: lang,
         device: active_dev,
-        width: window.map_or(1280.0, Window::width),
+        width: cards_width(menu_width.0, window.map_or(1280.0, Window::width)),
         scale_factor: window.map_or(1.0, Window::scale_factor),
     };
     if last.as_ref() == Some(&now) && !shown.is_empty() {
@@ -304,9 +314,9 @@ fn show_modes(
         commands.entity(entity).despawn();
     }
 
-    // As wide as most of the window; the cards and their lettering in
+    // As big as the start menu; the cards and their lettering in
     // proportion.
-    let width = (now.width * 0.72).clamp(600.0, 1100.0);
+    let width = now.width;
     let gap = width * 0.025;
     let rows = rows(now.two);
     let scale = now.scale_factor;
@@ -319,10 +329,17 @@ fn show_modes(
         (drawn.0, drawn.1.as_vec2() / scale)
     };
     // The cards' size, and their lettering's: the championship's as tall as
-    // it fits; the others all alike, as tall as the widest name fits.
+    // it fits; the others all alike, as tall as the widest name fits. With
+    // two players, in a row of their own, they are as tall as the
+    // championship, with room for their descriptions.
+    let single = rows.len() == 1;
     let card = |row: &[Mode]| {
         let big = row.len() == 1;
-        let height = if big { width * 0.2 } else { width * 0.14 };
+        let height = if big || single {
+            width * 0.2
+        } else {
+            width * 0.14
+        };
         let card_width = (width - gap * (row.len() - 1) as f32) / row.len() as f32;
         let letters = if big { height * 0.42 } else { height * 0.36 };
         (big, height, card_width, letters)
@@ -473,6 +490,17 @@ fn light_cards(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_modes_are_as_wide_as_the_start_menu_at_any_resolution() {
+        let menu = 620.0;
+        // The same, from a small window to a large one.
+        for window in [1280.0, 1600.0, 1920.0, 2560.0] {
+            assert_eq!(cards_width(menu, window), menu);
+        }
+        // But inside a narrow window.
+        assert_eq!(cards_width(menu, 600.0), 600.0 * 0.92);
+    }
 
     #[test]
     fn one_player_gets_the_championship_big_and_four_below() {

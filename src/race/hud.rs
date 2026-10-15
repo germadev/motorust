@@ -249,6 +249,26 @@ pub fn ordinal(place: usize, lang: Language) -> String {
     }
 }
 
+/// A bike's place in the race (`rider`, of the roster) and how many bikes
+/// it is among: all of them; but in elimination, while it is still in,
+/// only those still in, so that the count comes down as they go out
+/// ("2nd / 6" with two of eight out). One out keeps its place among them
+/// all.
+fn place_among(standing: &Standing, mode: Mode, rider: usize) -> (usize, usize) {
+    let racers = standing.order.len();
+    let place = standing
+        .order
+        .iter()
+        .position(|&r| r == rider)
+        .map_or(racers, |p| p + 1);
+    let among = if mode == Mode::Elimination && !standing.out.contains(&rider) {
+        racers.saturating_sub(standing.out.len())
+    } else {
+        racers
+    };
+    (place, among)
+}
+
 #[allow(clippy::type_complexity)]
 fn show_race_info(
     rules: Res<Rules>,
@@ -267,7 +287,6 @@ fn show_race_info(
 ) {
     let lang = settings.language;
     let target = rules.mode.laps(rules.laps);
-    let racers = standing.order.len();
     for (info, mut text, mut color) in &mut texts {
         let Some((rider, progress, _, _, retired)) =
             bikes.iter().find(|(_, _, player, local, _)| {
@@ -277,16 +296,12 @@ fn show_race_info(
         else {
             continue;
         };
-        let place = standing
-            .order
-            .iter()
-            .position(|r| *r == rider.0)
-            .map_or(racers, |p| p + 1);
+        let (place, among) = place_among(&standing, rules.mode, rider.0);
         let (wanted, tint) = match info.kind {
             // Over for the players: the results say it all.
             _ if outcome.is_some() => (String::new(), color.0),
             InfoKind::Place if rules.mode != Mode::Checkpoint => {
-                (format!("{} / {racers}", ordinal(place, lang)), color.0)
+                (format!("{} / {among}", ordinal(place, lang)), color.0)
             }
             InfoKind::Lap => {
                 let lap = match lang {
@@ -671,6 +686,29 @@ mod tests {
         assert_eq!(said(Out::In, None), "");
         // Disqualified says so instead.
         assert!(said(Out::Disqualified, Some((2, 2))).contains("DESCALIFICADO"));
+    }
+
+    #[test]
+    fn in_elimination_a_place_is_among_those_still_in() {
+        // Eight bikes, two of them out: 7 first, then 5.
+        let standing = Standing {
+            order: vec![3, 0, 1, 2, 4, 6, 5, 7],
+            out: vec![7, 5],
+            ..default()
+        };
+        assert_eq!(place_among(&standing, Mode::Elimination, 0), (2, 6));
+        assert_eq!(place_among(&standing, Mode::Elimination, 6), (6, 6));
+        // Those out keep their place among them all.
+        assert_eq!(place_among(&standing, Mode::Elimination, 5), (7, 8));
+        assert_eq!(place_among(&standing, Mode::Elimination, 7), (8, 8));
+        // Nobody out yet: among them all.
+        let start = Standing {
+            out: Vec::new(),
+            ..standing.clone()
+        };
+        assert_eq!(place_among(&start, Mode::Elimination, 0), (2, 8));
+        // In a race, a bike out (disqualified) still counts.
+        assert_eq!(place_among(&standing, Mode::Race, 0), (2, 8));
     }
 
     #[test]

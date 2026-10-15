@@ -125,7 +125,7 @@ Rivals keep to their own lane. They pull out to pass a bike they catch, or lift 
 
 | Element | Where | What it shows |
 |---|---|---|
-| Race | Top left | Your place and how many race, the lap (of how many), the clock and your best lap. In split screen, each player's in their half. |
+| Race | Top left | Your place and how many race (in an elimination, how many are still in: 2nd / 6 once two are out; once you are out, your place among them all), the lap (of how many), the clock and your best lap. In split screen, each player's in their half. |
 | Start lights | Top middle | The five lights of the start (in split screen, across the line between the halves). |
 | Time left | Top middle | Against the clock: the seconds left (red under 10) and what the last checkpoint gave. |
 | Finished | Top right | In a race or the arcade, those who have crossed the line at the end, as they do: their place, name and time, with no panel behind. |

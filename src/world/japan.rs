@@ -506,13 +506,34 @@ impl Petal {
     }
 }
 
-/// Moves the petals in the air.
-pub fn drift_petals(time: Res<Time>, mut petals: Query<(&Petal, &mut Transform)>) {
+/// Moves the petals in the air: those of the circuit in sight near enough a
+/// camera to be drawn, the others as they come near (where each one is
+/// follows from the time alone).
+pub fn drift_petals(
+    time: Res<Time>,
+    cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
+    mut petals: Query<(&Petal, &InheritedVisibility, &mut Transform)>,
+) {
     let now = time.elapsed_secs();
-    for (petal, mut transform) in &mut petals {
-        transform.translation = petal.position(now);
-        transform.rotation = petal.rotation(now);
-    }
+    let eyes: Vec<Vec3> = cameras
+        .iter()
+        .filter(|(camera, _)| camera.is_active)
+        .map(|(_, transform)| transform.translation())
+        .collect();
+    // Past where they are drawn, and the column they fall down and drift
+    // through.
+    let reach = PETALS_SEEN + 20.0 + 2.0 * PETAL_FALL_FROM;
+    petals
+        .par_iter_mut()
+        .for_each(|(petal, visible, mut transform)| {
+            let near = eyes
+                .iter()
+                .any(|eye| eye.distance_squared(petal.ground) < reach * reach);
+            if visible.get() && near {
+                transform.translation = petal.position(now);
+                transform.rotation = petal.rotation(now);
+            }
+        });
 }
 
 /// The petals over each area, each falling over a spot of its own, with
