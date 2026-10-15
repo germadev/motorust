@@ -941,7 +941,7 @@ impl<'a> Shaper<'a> {
                     point.distance(terrace.center),
                 );
             height = height.lerp(
-                terrace.height,
+                terrace.height + terrace.tilt.dot(point - terrace.center),
                 reach * smoothstep(FLAT, FLAT + 8.0, distance),
             );
         }

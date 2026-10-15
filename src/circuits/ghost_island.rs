@@ -165,19 +165,161 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         grass_shade: 0.36,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
-        // Level ground for the clearing under the great maple, at the
-        // height of the road beside it.
-        terraces: &[Terrace {
-            center: MAPLE_GROUND,
-            radius: 16.0,
-            height: 2.4,
-            skirt: 10.0,
-        }],
+        // The clearing under the great maple, tilted up away from the road
+        // beside it, so that its carpet of leaves faces the riders; and the
+        // fishing village's farmhouses raised a little over the coast road
+        // climbing past them, so that they show over its wall.
+        terraces: &[
+            Terrace {
+                center: MAPLE_GROUND,
+                radius: 16.0,
+                height: 3.7,
+                tilt: Vec2::new(0.002, 0.13),
+                skirt: 10.0,
+            },
+            Terrace {
+                center: Vec2::new(96.6, -760.7),
+                radius: 7.0,
+                height: 9.0,
+                tilt: Vec2::ZERO,
+                skirt: 10.0,
+            },
+            Terrace {
+                center: Vec2::new(154.0, -774.4),
+                radius: 7.0,
+                height: 10.9,
+                tilt: Vec2::ZERO,
+                skirt: 10.0,
+            },
+            Terrace {
+                center: Vec2::new(213.2, -764.5),
+                radius: 7.0,
+                height: 12.0,
+                tilt: Vec2::ZERO,
+                skirt: 10.0,
+            },
+        ],
         mountains,
         curbs: [VERMILION, WHITE],
         // Stone walls along the castle street, the coast and the castle
         // ridge, a hedge round the lake, and timber everywhere else.
         walls: &[
+            // Openings of the shrine's vermilion fence where the statues,
+            // lanterns and shrines stand by the road, so that they show
+            // whole: as low as most of them, a wall would hide them.
+            WallRun {
+                span: span(53.0, 67.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(123.0, 137.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(193.0, 207.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(313.0, 327.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(323.0, 337.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(1388.0, 1402.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(1648.0, 1662.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(1648.0, 1662.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(3388.0, 3402.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(3388.0, 3402.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(3793.0, 3807.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(3793.0, 3807.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(4180.0, 4262.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(4273.0, 4287.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(4693.0, 4747.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(4693.0, 4707.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(4953.0, 4967.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(5153.0, 5167.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(5353.0, 5367.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(5513.0, 5527.0),
+                side: Side::Right,
+                style: WallStyle::ShrineFence,
+            },
+            WallRun {
+                span: span(5874.0, 5888.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
+            // Along the shore before the great torii, open to the sea: the
+            // gate shows whole, from the water up, as the road swings
+            // towards it, and the bronze lanterns past it at the boardwalk.
+            WallRun {
+                span: span(1090.0, 1402.0),
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
             WallRun {
                 span: CASTLE_STREET,
                 side: Side::Left,
@@ -375,6 +517,14 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                     },
                     kind: PetalKind::Maple,
                 },
+                // Blowing over the road along the great maple's clearing.
+                Petals {
+                    area: PetalArea::Round {
+                        center: MAPLE_ROAD,
+                        radius: 30.0,
+                    },
+                    kind: PetalKind::Maple,
+                },
                 Petals {
                     area: PetalArea::Road {
                         span: CASTLE_STREET,
@@ -460,20 +610,26 @@ const FLOWERS: [FlowerField; 7] = [
     },
 ];
 
+/// How far from the middle of the road the small props stand (m): just
+/// past its walls.
+const NEAR: f32 = WALL_DISTANCE + 1.3;
+
 /// The props of feudal Japan, made with Meshy: landmarks out in the open,
 /// and statues, lanterns, shrines and houses by the road.
 const PROPS: [Prop; 43] = [
     // The great torii standing in the sea off the coast road, facing it,
-    // ahead of the road as it swings along the shore.
-    standing(PropModel::GreatTorii, 512.0, -910.0, PI).scaled(1.4),
-    // The castle keep on its hill, over the tunnel, looking down the castle
-    // street.
-    standing(PropModel::CastleKeep, -55.0, -455.0, PI).scaled(1.6),
+    // ahead of the road as it swings along the shore, close in past the
+    // beach.
+    standing(PropModel::GreatTorii, 500.0, -885.0, PI).scaled(1.6),
+    // The castle keep on the bamboo hill, on the outside of the bend past
+    // the castle, facing the riders coming over the tunnel: ahead of them
+    // all the way along the castle ridge.
+    standing(PropModel::CastleKeep, -172.0, -539.0, -1.76).scaled(1.6),
     // The temple and its pagoda on the outside of the bend at the end of
-    // its split, facing the road: straight ahead all the way through the
-    // split, the pagoda over the temple's roofs.
+    // its split, facing the road: the pagoda first, on the level of the
+    // road, and the temple past it.
     standing(PropModel::TempleHall, 752.0, -262.0, FRAC_PI_2),
-    standing(PropModel::Pagoda, 742.0, -312.0, 1.83),
+    standing(PropModel::Pagoda, 745.0, -205.0, FRAC_PI_2),
     // The shrine on stilts in the inlet, beside the boardwalk.
     standing(PropModel::StiltShrine, 760.0, -755.0, 0.0),
     // The great maple on the outside of the bend round the foot of the
@@ -501,54 +657,58 @@ const PROPS: [Prop; 43] = [
         0.55,
     ),
     standing(PropModel::Hokora, ISLET.x, ISLET.y, 2.36),
-    // A water wheel on the lake's shore, ahead on the way down to it.
-    standing(PropModel::WaterWheel, 946.7, 400.2, -0.29),
+    // A water wheel on the lake's west shore, ahead past the great maple,
+    // facing the riders coming round from it.
+    standing(PropModel::WaterWheel, 745.6, 355.6, -2.44),
     // Fishing boats off the coast.
     standing(PropModel::FishingBoat, 250.0, -925.0, 1.2),
     standing(PropModel::FishingBoat, 560.0, -935.0, -0.4),
     standing(PropModel::FishingBoat, 700.0, -870.0, 2.0),
     // Stone lanterns along the castle street, before the temple, by the
     // lake, at the top of the red ridge and at the castle.
-    by_road(PropModel::StoneLantern, 60.0, 14.5),
-    by_road(PropModel::StoneLantern, 200.0, -14.5),
-    by_road(PropModel::StoneLantern, 330.0, 14.5),
-    by_road(PropModel::StoneLantern, 3395.0, 14.5),
-    by_road(PropModel::StoneLantern, 3395.0, -14.5),
-    by_road(PropModel::StoneLantern, 3300.0, -16.0),
-    by_road(PropModel::StoneLantern, 4280.0, 15.0),
-    by_road(PropModel::StoneLantern, 4740.0, 14.5),
+    // The small ones stand right by the road, past the walls where the
+    // shrine's fence opens for them (see the walls).
+    by_road(PropModel::StoneLantern, 60.0, NEAR),
+    by_road(PropModel::StoneLantern, 200.0, -NEAR),
+    by_road(PropModel::StoneLantern, 330.0, NEAR),
+    by_road(PropModel::StoneLantern, 3395.0, NEAR),
+    by_road(PropModel::StoneLantern, 3395.0, -NEAR),
+    by_road(PropModel::StoneLantern, 3300.0, -NEAR),
+    by_road(PropModel::StoneLantern, 4280.0, NEAR),
+    by_road(PropModel::StoneLantern, 4740.0, NEAR),
     // The castle town's stores.
-    by_road(PropModel::SupplyPile, 130.0, 22.0),
-    by_road(PropModel::SupplyPile, 320.0, -22.0),
-    // The fishing village: thatched farmhouses inland of the coast road.
-    by_road(PropModel::Minka, 760.0, -40.0),
-    by_road(PropModel::Minka, 850.0, -42.0),
-    by_road(PropModel::Minka, 930.0, -36.0),
+    by_road(PropModel::SupplyPile, 130.0, 13.5),
+    by_road(PropModel::SupplyPile, 320.0, -13.5),
+    // The fishing village: thatched farmhouses inland of the coast road,
+    // each on its terrace.
+    by_road(PropModel::Minka, 820.0, -26.0),
+    by_road(PropModel::Minka, 890.0, -26.0),
+    by_road(PropModel::Minka, 960.0, -26.0),
     // Bronze lanterns at either end of the boardwalk.
-    by_road(PropModel::BronzeLantern, 1395.0, 14.5),
-    by_road(PropModel::BronzeLantern, 1395.0, -14.5),
-    by_road(PropModel::BronzeLantern, 1655.0, 14.5),
-    by_road(PropModel::BronzeLantern, 1655.0, -14.5),
+    by_road(PropModel::BronzeLantern, 1395.0, NEAR),
+    by_road(PropModel::BronzeLantern, 1395.0, -NEAR),
+    by_road(PropModel::BronzeLantern, 1655.0, NEAR),
+    by_road(PropModel::BronzeLantern, 1655.0, -NEAR),
     // A torii of logs on the top of the susuki hills.
     by_road(PropModel::LogTorii, 2350.0, 30.0),
     // Guardians at the foot of the corridor of torii.
-    by_road(PropModel::Komainu, 3800.0, 19.0),
-    by_road(PropModel::Komainu, 3800.0, -19.0),
+    by_road(PropModel::Komainu, 3800.0, NEAR),
+    by_road(PropModel::Komainu, 3800.0, -NEAR),
     // An ancient maple on its boulders with a wayside shrine beside it, and
     // a memorial stone, at the top of the red ridge.
-    by_road(PropModel::AncientMaple, 4190.0, -34.0),
-    by_road(PropModel::Hokora, 4205.0, -24.0),
-    by_road(PropModel::Stele, 4250.0, -26.0),
+    by_road(PropModel::AncientMaple, 4190.0, -24.0),
+    by_road(PropModel::Hokora, 4205.0, -13.5),
+    by_road(PropModel::Stele, 4250.0, -NEAR),
     // Braziers at the castle.
-    by_road(PropModel::Brazier, 4700.0, 14.5),
-    by_road(PropModel::Brazier, 4700.0, -14.5),
+    by_road(PropModel::Brazier, 4700.0, NEAR),
+    by_road(PropModel::Brazier, 4700.0, -NEAR),
     // Jizō by the road down through the bamboo.
-    by_road(PropModel::Jizo, 4960.0, 14.5),
-    by_road(PropModel::Jizo, 5160.0, -14.5),
-    by_road(PropModel::Jizo, 5360.0, 14.5),
-    by_road(PropModel::Jizo, 5520.0, -14.5),
+    by_road(PropModel::Jizo, 4960.0, NEAR),
+    by_road(PropModel::Jizo, 5160.0, -NEAR),
+    by_road(PropModel::Jizo, 5360.0, NEAR),
+    by_road(PropModel::Jizo, 5520.0, -NEAR),
     // And one more by the castle street.
-    by_road(PropModel::Jizo, 5881.0, 14.5),
+    by_road(PropModel::Jizo, 5881.0, NEAR),
 ];
 
 const CONTROL_POINTS: [Vec2; 110] = [
@@ -701,15 +861,17 @@ const ELEVATION: [(f32, f32); 71] = [
     (720.0, 2.0),
     (840.0, 5.5),
     (960.0, 8.0),
-    (1080.0, 7.0),
-    (1200.0, 8.5),
-    (1320.0, 5.5),
+    // Down by the shore before the great torii.
+    (1080.0, 6.0),
+    (1200.0, 4.2),
+    (1320.0, 3.6),
     (1400.0, 3.2),
-    // The boardwalk, with a crest in the middle where the bike flies.
-    (1470.0, 3.0),
-    (1540.0, 7.2),
-    (1585.0, 5.8),
-    (1650.0, 3.6),
+    // The boardwalk, low over the water by the shrine on stilts, with a
+    // crest in the middle where the bike flies.
+    (1470.0, 2.4),
+    (1540.0, 4.6),
+    (1585.0, 4.0),
+    (1650.0, 3.0),
     // Up the susuki hills, at up to 12 %.
     (1760.0, 6.0),
     (1820.0, 9.0),
@@ -992,9 +1154,9 @@ const SHORE: [Vec2; 49] = [
     Vec2::new(20.0, -870.0),
     Vec2::new(110.0, -862.0),
     Vec2::new(250.0, -848.0),
-    Vec2::new(390.0, -880.0),
-    Vec2::new(470.0, -898.0),
-    Vec2::new(560.0, -874.0),
+    Vec2::new(390.0, -872.0),
+    Vec2::new(470.0, -870.0),
+    Vec2::new(560.0, -856.0),
     Vec2::new(630.0, -856.0),
     // The inlet, in under the boardwalk and a little way past it.
     Vec2::new(664.0, -818.0),
@@ -1050,6 +1212,8 @@ const ISLET_RADIUS: f32 = 16.0;
 /// the foot of the lake, 35 m from its centre line on the outside of the
 /// bend, away from the water.
 const MAPLE_GROUND: Vec2 = Vec2::new(875.4, 479.9);
+/// The middle of the road beside it (3086 m).
+const MAPLE_ROAD: Vec2 = Vec2::new(874.8, 444.9);
 
 /// How far `point` is from the lake's shore: negative in its water, and
 /// positive on the islet.

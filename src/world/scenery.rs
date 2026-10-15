@@ -120,11 +120,16 @@ pub enum Greens {
 }
 
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un
-/// círculo, para poner encima un edificio grande.
+/// círculo, para poner encima un edificio grande; or sloping, facing one
+/// way.
 pub struct Terrace {
     pub center: Vec2,
     pub radius: f32,
+    /// How high its middle stands.
     pub height: f32,
+    /// How much higher it stands for each metre along x and along z: zero
+    /// for level ground.
+    pub tilt: Vec2,
     /// How far past its edge the ground blends back into the land (m):
     /// wider where the land round it stands far above or below it, so the
     /// bank stays grass instead of breaking into a cliff.

@@ -742,7 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn a_clearing_of_maple_leaves_lies_on_level_ground_ringed_with_logs() {
+    fn a_clearing_of_maple_leaves_faces_the_road_ringed_with_logs() {
         let mut checked = 0;
         for circuit in &CIRCUITS {
             let Some(japan) = &circuit.scenery.japan else {
@@ -762,21 +762,32 @@ mod tests {
                     let top = LOG_HEIGHT + LOG_THICKNESS;
                     assert!((-0.05..top).contains(&over), "{over} m over the ground");
                 }
-                // The leaves spill past the ring, but not far; on level
-                // ground, dry, and short of the roads' walls.
+                // The leaves spill past the ring, but not far; on ground
+                // rising smoothly away from the road, so that it faces the
+                // riders, dry, and short of the roads' walls.
                 let reach = positions
                     .iter()
                     .map(|p| Vec2::new(p[0], p[2]).distance(ground.center))
                     .fold(0.0, f32::max);
                 assert!(reach > ground.radius && reach < 1.3 * ground.radius);
-                let (low, high) = positions
+                let nearest = track.nearest(ground.center);
+                let away = (ground.center - nearest.point).normalize();
+                let across = away.perp();
+                let at = |along: f32, side: f32| {
+                    terrain.height(ground.center + (away * along + across * side) * ground.radius)
+                };
+                let rise = at(0.8, 0.0) - at(-0.8, 0.0);
+                assert!((2.0..6.0).contains(&rise), "{rise} m up away from the road");
+                assert!((at(0.0, 0.8) - at(0.0, -0.8)).abs() < 0.6, "level across");
+                // A plane: its middle half way between its sides.
+                let middle = at(0.0, 0.0) - (at(0.4, 0.0) + at(-0.4, 0.0)) / 2.0;
+                assert!(middle.abs() < 0.3, "{middle} m off a plane");
+                let low = positions
                     .iter()
                     .map(|p| terrain.height(Vec2::new(p[0], p[2])))
-                    .fold((f32::MAX, f32::MIN), |(l, h), y| (l.min(y), h.max(y)));
-                assert!(high - low < 0.6, "{} m from low to high", high - low);
+                    .fold(f32::MAX, f32::min);
                 assert!(low > SEA_LEVEL + 2.0, "dry");
-                let road = track.nearest(ground.center).distance;
-                assert!(road > WALL_DISTANCE + LEAVES_SPILL * ground.radius + 2.0);
+                assert!(nearest.distance > WALL_DISTANCE + LEAVES_SPILL * ground.radius + 2.0);
                 checked += 1;
             }
         }

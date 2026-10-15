@@ -87,6 +87,7 @@ pub const TURBO_BAY: Circuit = Circuit {
                 center: Vec2::new(410.0, -237.0),
                 radius: 32.0,
                 height: 15.0,
+                tilt: Vec2::ZERO,
                 skirt: 15.0,
             },
         ],
