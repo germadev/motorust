@@ -411,7 +411,7 @@ pub struct Scenery {
     pub japan: Option<Japan>,
 }
 
-/// The scenery of feudal Japan, as at Tsushima Isle (see
+/// The scenery of feudal Japan, as at Ghost Island (see
 /// [`crate::world::japan`]): corridors of torii over the road, props made
 /// with Meshy standing about, and fields of flowers.
 pub struct Japan {

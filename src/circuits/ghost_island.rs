@@ -1,4 +1,4 @@
-//! Tsushima Isle: a lap of an island of feudal Japan, after Ghost of
+//! Ghost Island: a lap of an island of feudal Japan, after Ghost of
 //! Tsushima, its stretches each in a colour of their own. It crosses the
 //! castle hill twice, in a figure of eight: first through it, by a tunnel at
 //! the end of the castle street, and at the end of the lap over it, 33 m
@@ -67,9 +67,9 @@ const CASTLE_SPLIT: (f32, f32) = (4322.0, 4672.0);
 const VERMILION: Color = Color::srgb(0.86, 0.2, 0.09);
 const WHITE: Color = Color::srgb(0.95, 0.94, 0.9);
 
-pub const TSUSHIMA: Circuit = Circuit {
-    name: "Tsushima Isle",
-    name_en: "Tsushima Isle",
+pub const GHOST_ISLAND: Circuit = Circuit {
+    name: "Ghost Island",
+    name_en: "Ghost Island",
     description: "Inspirada en Ghost of Tsushima: un castillo cruzado por\n\
                   debajo y por encima, cuestas, un lago entre flores y dos bifurcaciones",
     description_en: "Inspired by Ghost of Tsushima: a castle crossed under and\n\
@@ -248,7 +248,7 @@ pub const TSUSHIMA: Circuit = Circuit {
             Gantry {
                 along: 0.0,
                 color: VERMILION,
-                text: Some("TSUSHIMA"),
+                text: Some("GHOST ISLAND"),
             },
             // The checkpoints, about a kilometre apart (none on the
             // boardwalk nor where the road splits): along the coast, up the
@@ -1140,7 +1140,7 @@ mod tests {
 
     #[test]
     fn the_lap_goes_through_the_castle_hill_and_then_over_it() {
-        let track = Track::new(&TSUSHIMA.layout);
+        let track = Track::new(&GHOST_ISLAND.layout);
         let line = track.centerline();
         // Through it, by its middle.
         let middle = line[track.index_at((TUNNEL.from + TUNNEL.to) / 2.0)];
@@ -1162,7 +1162,7 @@ mod tests {
 
     #[test]
     fn the_hills_are_steep_and_the_road_climbs_and_drops_a_lot() {
-        let track = Track::new(&TSUSHIMA.layout);
+        let track = Track::new(&GHOST_ISLAND.layout);
         let step = track.step_length();
         let height = |along: f32| track.elevations()[track.index_at(along)];
         let grade = |along: f32| {
@@ -1205,7 +1205,7 @@ mod tests {
     fn the_road_winds_down_the_bamboo_hill_in_tight_esses() {
         // Four tight bends and more, one after the other, each the other
         // way.
-        let track = Track::new(&TSUSHIMA.layout);
+        let track = Track::new(&GHOST_ISLAND.layout);
         let bends: Vec<f32> = (track.index_at(BAMBOO.from)..track.index_at(BAMBOO.to))
             .map(|index| track.curvature(index))
             .filter(|curvature| curvature.abs() > 1.0 / 50.0)
@@ -1227,7 +1227,7 @@ mod tests {
 
     #[test]
     fn the_road_rounds_a_lake_with_an_islet_and_crosses_an_inlet_on_the_boardwalk() {
-        let track = Track::new(&TSUSHIMA.layout);
+        let track = Track::new(&GHOST_ISLAND.layout);
         let lap = track.lap_length();
         // Three sides of the lake, close by its shore all the way, with the
         // lake on the right, and low, just over the water.
@@ -1273,7 +1273,7 @@ mod tests {
 
     #[test]
     fn the_volcano_rises_across_the_strait_and_nothing_is_raised_by_the_road() {
-        let track = Track::new(&TSUSHIMA.layout);
+        let track = Track::new(&GHOST_ISLAND.layout);
         assert!(mountains(VOLCANO) > 0.85 * VOLCANO_HEIGHT);
         assert!(mountains(VOLCANO) < VOLCANO_HEIGHT, "a crater at its top");
         // Under snow at its top, with its rim, and alone: no mountain

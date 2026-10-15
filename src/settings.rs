@@ -73,6 +73,9 @@ pub struct Settings {
     pub start: RaceStart,
     /// How many red lights the start has (see [`crate::race::lights`]).
     pub start_lights: u32,
+    /// How long they stay on once all are lit: a moment never quite the
+    /// same, or as long as between one and the next.
+    pub lights_hold: LightsHold,
     /// At the lights without holding the bikes, how many false starts each
     /// player is let off in a race: the next one disqualifies.
     pub false_starts: u32,
@@ -173,6 +176,32 @@ pub enum RaceStart {
 pub const START_LIGHTS: [u32; 5] = [1, 2, 3, 4, 5];
 pub const DEFAULT_START_LIGHTS: u32 = 5;
 
+/// How long the red lights stay on once all are lit, before they go out.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum LightsHold {
+    /// A moment never quite the same, as in a Grand Prix: the start cannot
+    /// be timed.
+    #[default]
+    Random,
+    /// As long as between one light and the next: the start keeps their
+    /// beat.
+    Fixed,
+}
+
+/// The holds that can be chosen, in order.
+pub const LIGHTS_HOLDS: [LightsHold; 2] = [LightsHold::Random, LightsHold::Fixed];
+
+impl LightsHold {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (LightsHold::Random, Language::Spanish) => "Aleatoria",
+            (LightsHold::Random, Language::English) => "Random",
+            (LightsHold::Fixed, Language::Spanish) => "Fija, al compás",
+            (LightsHold::Fixed, Language::English) => "Fixed, on the beat",
+        }
+    }
+}
+
 /// How many false starts a player can be let off, and how many at first.
 pub const FALSE_STARTS: [u32; 4] = [0, 1, 2, 3];
 pub const DEFAULT_FALSE_STARTS: u32 = 2;
@@ -189,8 +218,8 @@ impl RaceStart {
         match (self, lang) {
             (RaceStart::Lights, Language::Spanish) => "Semáforo",
             (RaceStart::Lights, Language::English) => "Lights",
-            (RaceStart::LightsUnheld, Language::Spanish) => "Semáforo sin bloqueo",
-            (RaceStart::LightsUnheld, Language::English) => "Lights, no hold",
+            (RaceStart::LightsUnheld, Language::Spanish) => "Semáforo real",
+            (RaceStart::LightsUnheld, Language::English) => "Real lights",
             (RaceStart::Throttle, Language::Spanish) => "Acelerando",
             (RaceStart::Throttle, Language::English) => "Throttle",
         }
@@ -224,6 +253,7 @@ impl Default for Settings {
             music_enabled: true,
             start: RaceStart::default(),
             start_lights: DEFAULT_START_LIGHTS,
+            lights_hold: LightsHold::default(),
             false_starts: DEFAULT_FALSE_STARTS,
             centre_results: false,
             difficulty: Difficulty::default(),
@@ -1033,6 +1063,8 @@ impl Settings {
             settings.fullscreen_kind = FullscreenKind::Exclusive;
         }
         settings.controls.give_the_wheelie_a_button();
+        // Ghost Island was Tsushima Isle.
+        settings.records.rename("Tsushima Isle", "Ghost Island");
         settings
     }
 
@@ -1426,6 +1458,7 @@ mod tests {
         assert_eq!(partial.controls, Controls::default());
         assert_eq!(partial.start, RaceStart::Lights);
         assert_eq!(partial.start_lights, DEFAULT_START_LIGHTS);
+        assert_eq!(partial.lights_hold, LightsHold::Random);
         assert_eq!(partial.false_starts, DEFAULT_FALSE_STARTS);
         assert!(!partial.centre_results);
         assert!(partial.modelled_trees);

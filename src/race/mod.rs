@@ -243,6 +243,25 @@ impl Records {
             }
         }
     }
+
+    /// Keeps the records of a track that was `from` under its new name,
+    /// `to` (the best of both, if it has some under that name already).
+    pub fn rename(&mut self, from: &str, to: &str) {
+        let laps: Vec<_> = self
+            .best_laps
+            .extract_if(.., |(name, _)| name == from)
+            .collect();
+        for (_, time) in laps {
+            self.lap(to, time);
+        }
+        let clock: Vec<_> = self
+            .checkpoint_laps
+            .extract_if(.., |(name, _)| name == from)
+            .collect();
+        for (_, laps) in clock {
+            self.checkpoint(to, laps);
+        }
+    }
 }
 
 /// The gates round a lap, as fractions of it: a lap only counts once a bike
@@ -1356,6 +1375,18 @@ mod tests {
         assert!(records.checkpoint("Bay", 2));
         assert!(!records.checkpoint("Bay", 1));
         assert_eq!(records.checkpoint_best("Bay"), Some(2));
+        // Renamed, a track keeps its records, the best of both names.
+        records.lap("Isle", 80.0);
+        records.checkpoint("Isle", 4);
+        records.lap("Island", 85.0);
+        records.rename("Isle", "Island");
+        records.rename("Nowhere", "Bay");
+        assert_eq!(records.best_lap("Isle"), None);
+        assert_eq!(records.checkpoint_best("Isle"), None);
+        assert_eq!(records.best_lap("Island"), Some(80.0));
+        assert_eq!(records.checkpoint_best("Island"), Some(4));
+        assert_eq!(records.best_lap("Bay"), Some(65.0));
+        assert_eq!(records.best_laps.len(), 2);
     }
 
     #[test]

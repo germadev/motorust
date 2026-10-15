@@ -1,4 +1,4 @@
-//! The scenery of feudal Japan ([`Japan`]), as at Tsushima Isle: corridors
+//! The scenery of feudal Japan ([`Japan`]), as at Ghost Island: corridors
 //! of torii over the road, as at Fushimi Inari in Kyoto, and props made
 //! with Meshy standing about (prepared by `tools/import_props.py`): a great
 //! torii in the sea, a castle keep, a temple, a shrine on stilts, an

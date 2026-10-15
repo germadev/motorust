@@ -2,9 +2,9 @@
 //! está usando.
 
 mod bay;
+mod ghost_island;
 mod gold_mine;
 mod loop_island;
-mod tsushima;
 mod turbo_bay;
 
 use bevy::prelude::*;
@@ -88,7 +88,7 @@ pub static CIRCUITS: [Circuit; 5] = [
     turbo_bay::TURBO_BAY,
     loop_island::LOOP_ISLAND,
     gold_mine::GOLD_MINE,
-    tsushima::TSUSHIMA,
+    ghost_island::GHOST_ISLAND,
 ];
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se

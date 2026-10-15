@@ -105,7 +105,7 @@ Upload the original GLB files to a model release of the repository so they can b
 
 ## Trees
 
-The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond, and Tsushima Isle's momiji, ginkgo, sakura, Japanese black pine, sugi and bamboo) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`src/world/props.rs`).
+The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond, and Ghost Island's momiji, ginkgo, sakura, Japanese black pine, sugi and bamboo) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`src/world/props.rs`).
 
 `tools/import_trees.py` turns the GLB files into what the game embeds (`assets/models/trees/`):
 
@@ -125,7 +125,7 @@ All fifteen take about 1.1 MB. `cargo test` checks that every tree is in the pac
 
 ## The props of feudal Japan
 
-Tsushima Isle's buildings, landmarks, statues, lanterns and gates were made with Meshy by the author too: the great torii in the sea, the castle keep, the temple hall and its pagoda, the shrine on stilts, an ancient maple and the great maple over its clearing, the two torii of the corridor (a wide one over the road and a narrow one over the corridor), a log torii, a wayside shrine (hokora), a Jizō, a komainu, bronze and stone lanterns, a memorial stone, a brazier, a pile of rice bales and barrels, a fishing boat, a thatched minka and a water wheel. Where each stands is in the track's data (see [tracks.md](tracks.md#scenery), `japan`), and `src/world/japan.rs` places them.
+Ghost Island's buildings, landmarks, statues, lanterns and gates were made with Meshy by the author too: the great torii in the sea, the castle keep, the temple hall and its pagoda, the shrine on stilts, an ancient maple and the great maple over its clearing, the two torii of the corridor (a wide one over the road and a narrow one over the corridor), a log torii, a wayside shrine (hokora), a Jizō, a komainu, bronze and stone lanterns, a memorial stone, a brazier, a pile of rice bales and barrels, a fishing boat, a thatched minka and a water wheel. Where each stands is in the track's data (see [tracks.md](tracks.md#scenery), `japan`), and `src/world/japan.rs` places them.
 
 `tools/import_props.py` turns the GLB files into what the game embeds (`assets/models/props/`), each by its name in `SIZES`:
 
@@ -139,7 +139,7 @@ python3 tools/import_props.py o_torii=O_TORII.glb castle_keep=KEEP.glb temple_ha
 
 Some came out of Meshy wrong, and are mended as they are read: the great torii stood on a slab of blue water, which is cut away (the game has its own sea); the torii over the road came so stout that one after another they read as a wall, so their pillars are made slimmer and the gates shallower (`SLIM`); the water wheel came in one piece with its post, so it is split into the wheel and its axle, which turns, and the post (`water_wheel_frame`), both with their origin at the middle of the axle; and the great maple's reds came so saturated they glared, so its texture is toned down and a little lightened (`TONED`). All of them take about 3.7 MB. `cargo test` checks that every prop is in the pack, standing on the ground, and not too heavy to draw.
 
-The flowers of Tsushima Isle are not models: they are cards cut out of an atlas painted at startup (`src/world/foliage.rs`), see [tracks.md](tracks.md#scenery).
+The flowers of Ghost Island are not models: they are cards cut out of an atlas painted at startup (`src/world/foliage.rs`), see [tracks.md](tracks.md#scenery).
 
 ## Textures
 

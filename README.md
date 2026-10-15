@@ -65,7 +65,7 @@ and a wooden bridge nearly half a kilometre long, narrower than the road, over
 the red water of a flooded open pit, its benches stepping down to the water
 all round.
 
-**Tsushima Isle**, after Ghost of Tsushima, is a winding, steep figure of eight
+**Ghost Island**, after Ghost of Tsushima, is a winding, steep figure of eight
 on an island of feudal Japan that crosses the castle hill twice: first through
 it, by a tunnel at the end of the castle street, and at the end of the lap
 over it, through the castle. On the way: a coast road in esses, a boardwalk

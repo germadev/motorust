@@ -908,7 +908,7 @@ mod tests {
     fn a_pack_of_rivals_races_without_wrecking_each_other() {
         // On the Bay, on Loop Island, with the rivals that take its branch
         // going round the loop, and through the forks of Gold Mine and of
-        // Tsushima Isle.
+        // Ghost Island.
         for circuit in [
             &crate::circuits::CIRCUITS[0],
             &crate::circuits::CIRCUITS[2],

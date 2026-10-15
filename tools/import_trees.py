@@ -54,7 +54,7 @@ HEIGHTS = {
     "poplar": 11.8,
     "almond": 4.8,
     "fir": 14.0,
-    # The trees of Tsushima Isle (feudal Japan).
+    # The trees of Ghost Island (feudal Japan).
     "momiji": 7.0,
     "ginkgo": 13.0,
     "sakura": 7.5,

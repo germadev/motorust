@@ -1182,7 +1182,7 @@ mod tests {
         ] {
             assert!((a - b).abs() < 1e-4, "{painted:?} is not {hedge:?}");
         }
-        // Tsushima Isle's grass: darker and less vivid.
+        // Ghost Island's grass: darker and less vivid.
         let dull = hedge_color(0.36);
         let (dull_srgb, painted_hsl) = (dull.to_srgba(), Hsla::from(hedge_color(1.0)));
         assert!(dull_srgb.red < painted.red && dull_srgb.green < painted.green);
