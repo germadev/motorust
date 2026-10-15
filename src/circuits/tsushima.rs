@@ -327,7 +327,7 @@ pub const TSUSHIMA: Circuit = Circuit {
         loops: &[],
         rings: &[],
         waterfalls: &[],
-        sky: SkyStyle::Clear,
+        sky: SkyStyle::GoldenHour,
         water: Water::Sea,
         pit: None,
         desert: None,

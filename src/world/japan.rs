@@ -281,11 +281,12 @@ fn maple_ground_mesh(terrain: &Terrain, ground: &MapleGround) -> Mesh {
     let seed = (ground.center.x.abs() * 7.0 + ground.center.y.abs() * 13.0) as u32;
     let leaf = |k: u32| {
         let random = |n: u32| random01(seed.wrapping_add(k * 4 + n));
-        // Autumn reds, from crimson to rust, muted as fallen leaves are.
+        // Autumn reds, from crimson to rust, duller than the leaves still
+        // on the tree, as fallen leaves are.
         let red = Color::srgb(
-            0.5 + 0.2 * random(0),
-            0.13 + 0.1 * random(1),
-            0.08 + 0.05 * random(2),
+            0.44 + 0.16 * random(0),
+            0.15 + 0.08 * random(1),
+            0.1 + 0.05 * random(2),
         );
         // Some leaves lie in the shade of others.
         if random(3) < 0.25 {

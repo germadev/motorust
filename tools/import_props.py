@@ -30,7 +30,7 @@ Some models need mending as they are read:
   post reaches down to the ground, as far below its origin as the axle is
   high.
 - The great maple (`great_maple`) came in reds so saturated they glared:
-  its texture is muted (`MUTED`).
+  its texture is toned down and a little lightened (`TONED`).
 
 Every prop faces +Z as Meshy made it, with its width along X: a gate spans
 X. Usage: python3 tools/import_props.py NAME=PROP.glb [NAME=PROP.glb ...]
@@ -94,9 +94,10 @@ SLIM = {
     "torii_wide": (0.6, 0.6),
     "torii_road": (0.45, 0.5),
 }
-# How saturated each texture is left (1 as it came): the great maple's reds
-# came so saturated they glared.
-MUTED = {"great_maple": 0.62}
+# How saturated and how bright each texture is left (1 as it came): the
+# great maple's reds came so saturated they glared, and toned down they
+# need a little more light.
+TONED = {"great_maple": (0.8, 1.12)}
 CELL = 512
 COLUMNS = 5
 MARGIN = 2
@@ -247,8 +248,10 @@ def main():
         column, row = slot % COLUMNS, slot // COLUMNS
         inner = CELL - 2 * MARGIN
         texture = color.resize((inner, inner), Image.LANCZOS)
-        if name in MUTED:
-            texture = ImageEnhance.Color(texture).enhance(MUTED[name])
+        if name in TONED:
+            saturation, brightness = TONED[name]
+            texture = ImageEnhance.Color(texture).enhance(saturation)
+            texture = ImageEnhance.Brightness(texture).enhance(brightness)
         cell = texture.resize((CELL, CELL), Image.NEAREST)
         cell.paste(texture, (MARGIN, MARGIN))
         atlas.paste(cell, (column * CELL, row * CELL))

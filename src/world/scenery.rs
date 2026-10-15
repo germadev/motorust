@@ -186,13 +186,13 @@ pub enum Soil {
     Mine,
 }
 
-/// The light of a track: a summer day, a clear spring day whose air is so
-/// clean that the mountains far away stand out sharp, or a low sun setting
-/// in a warm, hazy sky.
+/// The light of a track: a summer day; the last hours of a clear autumn
+/// afternoon, the sun low and golden; or a low sun setting in a warm, hazy
+/// sky.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SkyStyle {
     Day,
-    Clear,
+    GoldenHour,
     Dusk,
 }
 

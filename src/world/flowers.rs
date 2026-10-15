@@ -48,18 +48,17 @@ const WIDE_KIND_PATCH: f32 = 130.0;
 /// How far the flowers keep from the walls of the roads (m): the shoulders
 /// stay grass.
 const CLEAR_OF_WALL: f32 = 2.0;
-/// The bands of moss phlox: how wide (m), and their colours in turn,
-/// magenta most of all.
-const PHLOX_BAND: f32 = 16.0;
-const PHLOX: [Color; 7] = [
-    Color::srgb(0.86, 0.46, 0.72),
-    Color::srgb(0.94, 0.66, 0.8),
-    Color::srgb(0.86, 0.46, 0.72),
-    Color::srgb(0.76, 0.66, 0.9),
-    Color::srgb(0.86, 0.46, 0.72),
-    Color::srgb(0.94, 0.66, 0.8),
-    Color::srgb(0.96, 0.93, 0.94),
+/// The colours of moss phlox: magenta, and drifts of pink, lavender and
+/// white over it, each drift of its own size (m) and found where its own
+/// noise passes a threshold (rarer the higher), blending into what is
+/// round it over a few metres; and how big its mottling is (m).
+const PHLOX: Color = Color::srgb(0.86, 0.46, 0.72);
+const PHLOX_DRIFTS: [(Color, f32, f32); 3] = [
+    (Color::srgb(0.94, 0.66, 0.8), 38.0, 0.53),
+    (Color::srgb(0.76, 0.66, 0.9), 55.0, 0.6),
+    (Color::srgb(0.96, 0.93, 0.94), 30.0, 0.63),
 ];
+const PHLOX_MOTTLE: f32 = 6.0;
 
 /// The clumps standing up near the roads: how far apart (m), on a grid,
 /// and how far each is shaken off its point of it (times that); out to how
@@ -199,12 +198,22 @@ impl FlowerMap {
     }
 }
 
-/// The colour of moss phlox at `point` (linear RGBA): in wavy bands, as it
-/// is planted, of magenta, pink, lavender and white.
+/// The colour of moss phlox at `point` (linear RGBA): in drifts of its
+/// colours of every shape and size, as it grows, mottled lighter and darker.
 pub fn phlox_color(point: Vec2) -> [f32; 4] {
-    let across = point.dot(Vec2::new(0.6, 0.8)) / PHLOX_BAND + 3.0 * fbm(point / 70.0, 2);
-    let band = (across.floor() as i64).rem_euclid(PHLOX.len() as i64) as usize;
-    PHLOX[band].to_linear().to_f32_array()
+    let mut color = PHLOX;
+    for (k, &(drift, size, threshold)) in PHLOX_DRIFTS.iter().enumerate() {
+        let noise = fbm(point / size + Vec2::splat(23.0 * (k + 1) as f32), 3);
+        color = color.mix(&drift, smoothstep(threshold, threshold + 0.08, noise));
+    }
+    let mottle = 0.9 + 0.2 * fbm(point / PHLOX_MOTTLE + 71.0, 2);
+    let linear = color.to_linear();
+    [
+        linear.red * mottle,
+        linear.green * mottle,
+        linear.blue * mottle,
+        1.0,
+    ]
 }
 
 /// How full of flowers an area is at `point` (0..1): thinning out across
@@ -606,16 +615,46 @@ mod tests {
     }
 
     #[test]
-    fn moss_phlox_grows_in_bands_of_its_colours() {
-        let colors: Vec<[f32; 4]> = (0..400)
-            .map(|k| phlox_color(Vec2::new(k as f32 * 1.5, k as f32 * 2.0)))
+    fn moss_phlox_grows_in_drifts_of_its_colours_not_in_bands() {
+        let at = |x: f32, z: f32| {
+            let [r, g, b, _] = phlox_color(Vec2::new(x, z));
+            Vec3::new(r, g, b)
+        };
+        // Every colour has its drifts somewhere; magenta most.
+        let colors: Vec<Vec3> = std::iter::once(PHLOX)
+            .chain(PHLOX_DRIFTS.iter().map(|&(color, ..)| color))
+            .map(|color| {
+                let l = color.to_linear();
+                Vec3::new(l.red, l.green, l.blue)
+            })
             .collect();
-        for color in PHLOX {
-            let color = color.to_linear().to_f32_array();
-            assert!(colors.contains(&color), "{color:?}");
+        let mut found = vec![0; colors.len()];
+        for z in 0..60 {
+            for x in 0..60 {
+                let here = at(x as f32 * 7.0, z as f32 * 7.0);
+                let nearest = (0..colors.len())
+                    .min_by(|&a, &b| {
+                        let d = |k: usize| {
+                            (here / here.max_element() - colors[k] / colors[k].max_element())
+                                .length()
+                        };
+                        d(a).total_cmp(&d(b))
+                    })
+                    .unwrap();
+                found[nearest] += 1;
+            }
         }
-        // In bands: the colour changes now and then, not at every step.
-        let changes = colors.windows(2).filter(|w| w[0] != w[1]).count();
-        assert!(changes > 5 && changes < 100, "{changes}");
+        assert!(found.iter().all(|&n| n > 0), "{found:?}");
+        assert!(found[0] == *found.iter().max().unwrap(), "{found:?}");
+        // No hard edges: a metre apart, never more than half the way from
+        // one colour to another, whichever way one goes.
+        for k in 0..400 {
+            let (x, z) = (k as f32 * 3.7, k as f32 * -2.3);
+            for step in [Vec2::X, Vec2::Y, Vec2::new(0.6, 0.8)] {
+                let next = Vec2::new(x, z) + step;
+                let change = (at(x, z) - at(next.x, next.y)).length();
+                assert!(change < 0.4, "{change} at ({x}, {z})");
+            }
+        }
     }
 }

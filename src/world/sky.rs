@@ -45,10 +45,10 @@ const ZENITH: Color = Color::srgb(0.16, 0.42, 0.88);
 const ABOVE_HORIZON: Color = Color::srgb(0.36, 0.62, 0.95);
 pub const HORIZON: Color = Color::srgb(0.68, 0.8, 0.94);
 /// Where the fog begins and where it hides everything (m from the camera):
-/// on most days, and on a clear one (`SkyStyle::Clear`), whose mountains
-/// stand out from across the sea.
+/// on most days, and in a clear autumn afternoon's golden hour
+/// (`SkyStyle::GoldenHour`), whose mountains stand out from across the sea.
 pub const FOG: (f32, f32) = (450.0, 3800.0);
-const CLEAR_FOG: (f32, f32) = (900.0, 6000.0);
+const GOLDEN_FOG: (f32, f32) = (900.0, 6000.0);
 
 /// The light of a track ([`SkyStyle`]): the sky's colours, where the sun
 /// is and the colour of its light, the light of the sky on the shade, and
@@ -109,27 +109,30 @@ impl Grade {
 impl Palette {
     pub fn of(style: SkyStyle) -> Self {
         match style {
-            // A clear autumn day, as in Japan: a paler, softer blue, a
-            // light haze at the horizon far off, the sun lower and warm, the
-            // shade cooler and deeper; and the picture luminous, with
-            // contrast, but not saturated.
-            SkyStyle::Clear => Self {
-                zenith: Color::srgb(0.24, 0.48, 0.82),
-                above_horizon: Color::srgb(0.5, 0.67, 0.88),
-                horizon: Color::srgb(0.78, 0.84, 0.9),
-                glow: 0.15,
-                glow_color: Color::srgb(1.0, 0.96, 0.88),
-                sun_azimuth: SUN_AZIMUTH,
-                sun_elevation: 0.6,
-                sun_disc: Color::srgb(1.0, 0.97, 0.9),
-                sunlight: Color::srgb(1.0, 0.95, 0.86),
-                sunlight_strength: 1.1,
-                ambient: Color::srgb(0.68, 0.75, 0.88),
-                ambient_brightness: 560.0,
-                clouds: Color::srgb(1.0, 0.98, 0.96),
-                fog: CLEAR_FOG,
+            // The last hours of a clear autumn afternoon, as in Japan: the
+            // sun low in the west-south-west, golden, lighting the volcano
+            // from the side and casting long shadows, the shade cool and
+            // blue; the sky still blue overhead, warmer and paler towards
+            // the horizon and glowing round the sun, a light warm haze far
+            // off; and the picture luminous, with contrast, but not
+            // saturated.
+            SkyStyle::GoldenHour => Self {
+                zenith: Color::srgb(0.22, 0.42, 0.75),
+                above_horizon: Color::srgb(0.55, 0.64, 0.8),
+                horizon: Color::srgb(0.88, 0.85, 0.8),
+                glow: 0.45,
+                glow_color: Color::srgb(1.0, 0.82, 0.55),
+                sun_azimuth: 1.35 * std::f32::consts::PI,
+                sun_elevation: 0.3,
+                sun_disc: Color::srgb(1.0, 0.88, 0.66),
+                sunlight: Color::srgb(1.0, 0.84, 0.62),
+                sunlight_strength: 1.0,
+                ambient: Color::srgb(0.62, 0.68, 0.86),
+                ambient_brightness: 480.0,
+                clouds: Color::srgb(1.0, 0.9, 0.8),
+                fog: GOLDEN_FOG,
                 grade: Grade {
-                    saturation: 0.8,
+                    saturation: 0.82,
                     contrast: 1.15,
                     exposure: 0.25,
                 },
@@ -1035,7 +1038,7 @@ mod tests {
 
     #[test]
     fn the_sky_meets_the_fog_at_the_horizon() {
-        for style in [SkyStyle::Day, SkyStyle::Clear, SkyStyle::Dusk] {
+        for style in [SkyStyle::Day, SkyStyle::GoldenHour, SkyStyle::Dusk] {
             let palette = Palette::of(style);
             // Away from the sun, the horizon is the colour of the fog.
             let away = -palette.sun_direction() * Vec3::new(1.0, 0.0, 1.0);
@@ -1074,11 +1077,11 @@ mod tests {
         let day = Palette::of(SkyStyle::Day);
         assert_eq!(day.horizon, HORIZON);
         assert_eq!(day.sky_color(Vec3::Y), ZENITH);
-        // A clear day: its haze further off, but nearer than the sea's edge;
-        // its sky paler than a summer day's; its sun lower; its picture less
-        // saturated, with more contrast and a little lighter. The other days
-        // are not graded.
-        let clear = Palette::of(SkyStyle::Clear);
+        // The golden hour: its haze further off, but nearer than the sea's
+        // edge; its sky less vivid than a summer day's; its sun low, but not
+        // setting, and golden; its picture less saturated, with more
+        // contrast and a little lighter. The other days are not graded.
+        let clear = Palette::of(SkyStyle::GoldenHour);
         assert!(clear.fog.0 > day.fog.0 && clear.fog.1 > day.fog.1);
         assert!(clear.fog.1 < super::super::sea::SEA_EXTENT);
         let vivid = |c: Color| {
@@ -1086,7 +1089,10 @@ mod tests {
             c.blue - c.red.min(c.green)
         };
         assert!(vivid(clear.sky_color(Vec3::Y)) < vivid(day.sky_color(Vec3::Y)));
-        assert!(clear.sun_elevation < day.sun_elevation);
+        assert!(clear.sun_elevation < day.sun_elevation / 2.0);
+        assert!(clear.sun_elevation > dusk.sun_elevation);
+        let gold = clear.sunlight.to_srgba();
+        assert!(gold.red > gold.blue + 0.25, "{gold:?}");
         assert!(clear.grade.saturation < 1.0 && clear.grade.contrast > 1.0);
         assert!(clear.grade.exposure > 0.0);
         assert_eq!(day.grade, Grade::NONE);
