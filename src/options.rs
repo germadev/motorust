@@ -251,6 +251,13 @@ enum GraphicsItem {
     Fps,
     /// The trees modelled or the classic ones.
     Trees,
+    /// Whether the trees far away are drawn with lighter meshes.
+    FarTrees,
+    /// Whether the world is drawn lighter with the screen split.
+    SplitDetail,
+    /// Whether the frame rate is written to a file (see
+    /// [`crate::perf_log`]).
+    PerformanceLog,
     PipelinedRendering,
     FrameLatency,
 }
@@ -317,6 +324,8 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Fullscreen,
             GraphicsItem::Resolution,
             GraphicsItem::Trees,
+            GraphicsItem::FarTrees,
+            GraphicsItem::SplitDetail,
         ]
     } else {
         let mut items = vec![GraphicsItem::Fullscreen];
@@ -327,6 +336,9 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Resolution,
             GraphicsItem::Fps,
             GraphicsItem::Trees,
+            GraphicsItem::FarTrees,
+            GraphicsItem::SplitDetail,
+            GraphicsItem::PerformanceLog,
             GraphicsItem::PipelinedRendering,
             GraphicsItem::FrameLatency,
         ]);
@@ -411,6 +423,9 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.resolution,
                 settings.fps,
                 settings.modelled_trees,
+                settings.lighter_far_trees,
+                settings.lighter_split_screen,
+                settings.performance_log,
                 settings.pipelined_rendering,
                 settings.frame_latency,
             ) == (
@@ -419,6 +434,9 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 first.resolution,
                 first.fps,
                 first.modelled_trees,
+                first.lighter_far_trees,
+                first.lighter_split_screen,
+                first.performance_log,
                 first.pipelined_rendering,
                 first.frame_latency,
             )
@@ -452,6 +470,9 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.resolution = first.resolution;
             settings.fps = first.fps;
             settings.modelled_trees = first.modelled_trees;
+            settings.lighter_far_trees = first.lighter_far_trees;
+            settings.lighter_split_screen = first.lighter_split_screen;
+            settings.performance_log = first.performance_log;
             settings.pipelined_rendering = first.pipelined_rendering;
             settings.frame_latency = first.frame_latency;
         }
@@ -664,6 +685,18 @@ fn use_options_menu(
                 }
                 GraphicsItem::Trees if change != 0 => {
                     settings.modelled_trees = !settings.modelled_trees;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::FarTrees if change != 0 => {
+                    settings.lighter_far_trees = !settings.lighter_far_trees;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::SplitDetail if change != 0 => {
+                    settings.lighter_split_screen = !settings.lighter_split_screen;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::PerformanceLog if change != 0 => {
+                    settings.performance_log = !settings.performance_log;
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::PipelinedRendering if change != 0 => {
@@ -1059,6 +1092,27 @@ fn show_options_menu(
                             (false, Language::English) => "Classic",
                         }
                     ),
+                ),
+                GraphicsItem::FarTrees => Row::check(
+                    match lang {
+                        Language::Spanish => "Árboles lejanos más ligeros",
+                        Language::English => "Lighter far trees",
+                    },
+                    settings.lighter_far_trees,
+                ),
+                GraphicsItem::SplitDetail => Row::check(
+                    match lang {
+                        Language::Spanish => "Menos detalle a dos jugadores",
+                        Language::English => "Less detail for two players",
+                    },
+                    settings.lighter_split_screen,
+                ),
+                GraphicsItem::PerformanceLog => Row::check(
+                    match lang {
+                        Language::Spanish => "Registro de rendimiento",
+                        Language::English => "Performance log",
+                    },
+                    settings.performance_log,
                 ),
                 // These two take effect when the game starts again.
                 GraphicsItem::PipelinedRendering => Row {

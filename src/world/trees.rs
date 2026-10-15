@@ -191,6 +191,14 @@ pub struct Dressed {
     level: usize,
 }
 
+impl Dressed {
+    /// Which of its meshes it is drawn with: 0, the full one, to
+    /// [`LEVELS`] - 1.
+    pub fn level(&self) -> usize {
+        self.level
+    }
+}
+
 /// Dresses the trees as Options > Graphics says: each one as it is
 /// planted, and all of them when the option changes, with their bounds,
 /// for the culling. And with the mesh their distance from the nearest
@@ -212,8 +220,13 @@ pub fn dress_trees(
     )>,
 ) {
     // Without settings (in tests of the world alone), the new ones, as by
-    // default.
-    let wanted = settings.is_none_or(|settings| settings.modelled_trees);
+    // default, and whole.
+    let wanted = settings
+        .as_deref()
+        .is_none_or(|settings| settings.modelled_trees);
+    let lighter = settings
+        .as_deref()
+        .is_some_and(|settings| settings.lighter_far_trees);
     let bounds = detail.map_or(Detail::Full, |detail| *detail).tree_levels();
     let eyes: Vec<Vec3> = cameras
         .iter()
@@ -224,11 +237,14 @@ pub fn dress_trees(
         |(tree, mut dressed, transform, visible, mut mesh, mut material, mut aabb)| {
             let restyled = dressed.modelled != Some(wanted);
             // Those out of sight (of the circuits kept for later) keep the
-            // mesh they had until they are seen.
-            if !restyled && !visible.get() {
+            // mesh they had until they are seen; and with the lighter
+            // meshes off, those already whole stay so.
+            if !restyled && (!visible.get() || (!lighter && dressed.level == 0)) {
                 return;
             }
-            let level = if eyes.is_empty() {
+            let level = if !lighter {
+                0
+            } else if eyes.is_empty() {
                 dressed.level
             } else {
                 let distance = eyes

@@ -19,6 +19,7 @@ mod modes;
 mod options;
 mod pad_art;
 mod pause;
+mod perf_log;
 mod race;
 mod settings;
 mod shapes;
@@ -128,6 +129,12 @@ fn main() {
     } else {
         plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>()
     };
+    // The CPU and memory in use, for the performance log (read on another
+    // thread about once a second), only when it is written.
+    #[cfg(not(target_arch = "wasm32"))]
+    if settings.performance_log {
+        app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
+    }
     app.add_plugins(plugins)
         .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
         .insert_resource(settings::StartedWith::from(&settings))
@@ -149,7 +156,11 @@ fn main() {
             sound::SoundPlugin,
             ui::UiPlugin,
         ))
-        .add_plugins((race::RacePlugin, modes::ModesPlugin));
+        .add_plugins((
+            race::RacePlugin,
+            modes::ModesPlugin,
+            perf_log::PerfLogPlugin,
+        ));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);
     app.run();

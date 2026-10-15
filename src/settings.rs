@@ -93,6 +93,16 @@ pub struct Settings {
     /// Whether the trees are the ones modelled with Meshy, or the classic
     /// ones built in code (see [`crate::world`]).
     pub modelled_trees: bool,
+    /// Whether the trees far from the cameras are drawn with lighter meshes
+    /// (see [`crate::world`]); off, every tree is drawn whole.
+    pub lighter_far_trees: bool,
+    /// Whether, with the screen split, the world is drawn lighter: nearer
+    /// and coarser shadows, the grass, flowers and petals less far, and the
+    /// lighter trees sooner.
+    pub lighter_split_screen: bool,
+    /// Whether the frame rate is written down every few seconds, to a file
+    /// beside the settings (see [`crate::perf_log`]).
+    pub performance_log: bool,
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
@@ -259,6 +269,9 @@ impl Default for Settings {
             difficulty: Difficulty::default(),
             pipelined_rendering: true,
             modelled_trees: true,
+            lighter_far_trees: false,
+            lighter_split_screen: true,
+            performance_log: true,
             frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
         }
@@ -1462,6 +1475,10 @@ mod tests {
         assert_eq!(partial.false_starts, DEFAULT_FALSE_STARTS);
         assert!(!partial.centre_results);
         assert!(partial.modelled_trees);
+        // As are the lighter far trees (off), less detail for two players
+        // and the performance log (on).
+        assert!(!partial.lighter_far_trees);
+        assert!(partial.lighter_split_screen && partial.performance_log);
         // At the lights, held or not; or at the throttle.
         assert!(RaceStart::Lights.at_lights() && RaceStart::Lights.holds());
         assert!(RaceStart::LightsUnheld.at_lights() && !RaceStart::LightsUnheld.holds());

@@ -39,6 +39,7 @@ use crate::menu::GameState;
 use crate::settings::WEB;
 use crate::track::{Surface, Track};
 pub use textures::generate_mipmaps;
+pub use trees::Dressed;
 
 pub struct WorldPlugin;
 

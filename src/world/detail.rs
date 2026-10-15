@@ -10,6 +10,7 @@ use bevy::light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLi
 use bevy::prelude::*;
 
 use super::sky::Sunlight;
+use crate::settings::Settings;
 use crate::welcome::GameMode;
 
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -43,8 +44,8 @@ impl Detail {
     /// [`super::lod::level_at`]).
     pub fn tree_levels(self) -> [f32; 2] {
         match self {
-            Detail::Full => [60.0, 190.0],
-            Detail::Split => [30.0, 100.0],
+            Detail::Full => [100.0, 280.0],
+            Detail::Split => [50.0, 150.0],
         }
     }
 
@@ -93,9 +94,17 @@ impl Plugin for DetailPlugin {
 #[derive(Component, Clone, PartialEq)]
 struct FullReach(VisibilityRange);
 
-/// The detail for the players at play: split when two share the screen.
-fn choose_detail(game_mode: Option<Res<GameMode>>, mut detail: ResMut<Detail>) {
-    let wanted = game_mode.map_or(Detail::Full, |mode| Detail::of(*mode));
+/// The detail for the players at play: split when two share the screen,
+/// unless Options > Graphics says to draw it all anyway.
+fn choose_detail(
+    game_mode: Option<Res<GameMode>>,
+    settings: Option<Res<Settings>>,
+    mut detail: ResMut<Detail>,
+) {
+    let lighter = settings.is_none_or(|settings| settings.lighter_split_screen);
+    let wanted = game_mode
+        .filter(|_| lighter)
+        .map_or(Detail::Full, |mode| Detail::of(*mode));
     detail.set_if_neq(wanted);
 }
 
@@ -226,6 +235,20 @@ mod tests {
                 .end_margin,
             shortened(&range, Detail::Split.reach()).end_margin
         );
+
+        // With the option off, two players see it all.
+        app.insert_resource(Settings {
+            lighter_split_screen: false,
+            ..default()
+        });
+        app.update();
+        assert_eq!(reach(&app), margins(&range));
+        assert_eq!(cascades(&app), Detail::Full.cascades().bounds);
+        app.world_mut()
+            .resource_mut::<Settings>()
+            .lighter_split_screen = true;
+        app.update();
+        assert_eq!(cascades(&app), Detail::Split.cascades().bounds);
 
         *app.world_mut().resource_mut::<GameMode>() = GameMode::SinglePlayer;
         app.update();
