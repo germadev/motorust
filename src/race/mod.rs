@@ -1160,7 +1160,9 @@ pub fn spot_worth(track: &Track, state: &BikeState, together: usize) -> f32 {
         }
         let index = index % road.sample_count();
         bend = bend.max(road.smoothed_curvature(index, 3));
-        crest = crest.max(road.crest(&Nearest { index, ..nearest }));
+        // Asked of the whole track, which finds the road from `nearest`: a
+        // road off the lap has no roads of its own to find it among.
+        crest = crest.max(track.crest(&Nearest { index, ..nearest }));
     }
     let mut worth = (bend * 40.0).min(1.5) + (crest * 60.0).min(1.5);
     worth += (together as f32 * 0.5).min(1.5);
@@ -1470,6 +1472,39 @@ mod tests {
         // In a group, more; hardly moving, hardly anything.
         assert!(spot_worth(&track, &riding(straight, 40.0), 2) > on_straight);
         assert!(spot_worth(&track, &riding(before_bend, 1.0), 0) < into_bend * 0.5);
+    }
+
+    #[test]
+    fn a_bike_on_a_road_off_the_lap_is_worth_watching() {
+        // Once everybody is in, the camera weighs every bike's spot; one on
+        // a branch (Ghost Island's, say) is weighed on that branch.
+        let mut weighed = 0;
+        for circuit in CIRCUITS.iter() {
+            let track = Track::new(&circuit.layout);
+            weighed += track.side_roads().len();
+            for road in 1..=track.side_roads().len() {
+                let line = track.road(road);
+                let index = line.sample_count() / 2;
+                let at = track.surface_point_on(road, index, 0.0);
+                let state = BikeState {
+                    elevation: at.y,
+                    speed: 40.0,
+                    ..BikeState::parked_at((Vec2::new(at.x, at.z), 0.0))
+                };
+                let nearest = track.nearest_at(state.position, state.elevation);
+                if nearest.road == 0 {
+                    // Where the branch still shares the lap's road.
+                    continue;
+                }
+                let worth = spot_worth(&track, &state, 0);
+                assert!(
+                    worth.is_finite() && worth >= 1.5,
+                    "{} road {road}: {worth}",
+                    circuit.name
+                );
+            }
+        }
+        assert!(weighed > 0, "some track has roads off the lap");
     }
 
     #[test]
