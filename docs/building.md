@@ -17,6 +17,7 @@ make up        # runs the game in development mode
 make build     # optimised build in target/release/motorust
 make test      # runs the tests
 make bench     # rides every track alone under each graphics setting; results in bench-results/
+make bench.push  # commits bench-results/ and pushes it to the branch
 ```
 
 | Target | Runs | What it does |
@@ -27,6 +28,7 @@ make bench     # rides every track alone under each graphics setting; results in
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
 | `make test` | `cargo test` | Runs the tests (see [architecture.md](architecture.md#tests)). |
 | `make bench` | `cargo run --release -- --bench` | The benchmark: the game rides every track on its own, in free ride on autopilot, with one player and with two, under each graphics setting worth comparing (shadows high, medium and low; MSAA, FXAA or none; lighter far trees; less detail for two players), with the frame rate unlimited; each scenario settles for 4 s and is measured for 10 (`MOTORUST_BENCH_SECONDS`), on the tracks in `MOTORUST_BENCH_TRACKS` (as `0,2`) or all of them. It says what it is doing in the terminal: the machine (system, CPU, memory, GPU, window), where the results go, each scenario as it starts and, as it ends, its frame rate, slowest 1 %, frame times, the simulation's time and the CPU in use, with the time left. The results go to `bench-results/` in the folder it is run from (the repository, with `make bench`), one file for each run named after when (UTC) and the machine (`2026-10-16_1830_mac-mini.txt`), headed with the machine, each scenario's line written as soon as it is measured, with the run's performance log beside it (`.perf.log`): runs on several machines sit side by side, to commit and compare. Esc stops it, keeping what it has measured, and prints the table so far (closing the window or Ctrl+C keep it too). The player's settings are used as they are and never saved over. |
+| `make bench.push` | `git add bench-results`, `git commit -- bench-results`, `git pull --rebase --autostash`, `git push` | Commits the benchmark's results (only `bench-results/`, whatever else is changed and not committed) as "bench: results from <machine>", brings in first what other machines have pushed to the branch (anything not committed is put aside and back), and pushes. With nothing new it says so and makes no commit. |
 
 ### Build times and profiles
 
