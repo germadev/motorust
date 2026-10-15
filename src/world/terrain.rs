@@ -49,6 +49,16 @@ const BEACH_HEIGHT: f32 = SEA_LEVEL + 1.6;
 const SNOW_LINE: f32 = 560.0;
 const SNOW_REACH: f32 = 110.0;
 const SNOW_NORMAL_Y: f32 = 0.55;
+/// Above this height (m), below the snow, no tree grows: the tallest
+/// mountains are bare rock, volcanic scree, reaching up and down this much.
+const TREE_LINE: f32 = 400.0;
+const TREE_LINE_REACH: f32 = 50.0;
+/// Up the hills, the grass gives way to forest from this height (m), and is
+/// all forest from this one (see [`grass_tint`]); far from the roads, over
+/// this many metres past the fine part of the grid, the land is all forest.
+const FOREST_FROM: f32 = 70.0;
+const FOREST_FULL: f32 = 170.0;
+const WILD_REACH: f32 = 220.0;
 /// Where a road passes over a tunnel, the ground stays down at the tunnel
 /// this far from its centre line (m): short of the edge of its rock, so the
 /// slope up to the road above is under it too.
@@ -88,6 +98,14 @@ pub struct Terrain {
     soil: Soil,
     /// Where the grass is in flower, if anywhere.
     flowers: Option<FlowerMap>,
+    /// The corners of the fine part of the grid, round the roads: past it
+    /// the land is wild (see [`grass_tint`]).
+    fine: (Vec2, Vec2),
+    /// How much of each point of the grid is mountain across the sea (0 to
+    /// 1, by rows as `heights`): wild land, under forest.
+    mountain: Vec<f32>,
+    /// How light the grass is (see `Scenery::grass_shade`).
+    grass_shade: f32,
 }
 
 /// A mesh of the ground and what it is drawn as: a kind of ground and, on
@@ -159,12 +177,19 @@ impl Terrain {
             .as_ref()
             .filter(|japan| !japan.flowers.is_empty())
             .map(|japan| FlowerMap::new(track, japan.flowers));
+        let mountain = points
+            .iter()
+            .map(|&point| smoothstep(2.0, 40.0, (scenery.mountains)(point)))
+            .collect();
         Self {
             xs,
             zs,
             heights,
             soil: scenery.soil,
             flowers,
+            fine,
+            mountain,
+            grass_shade: scenery.grass_shade,
         }
     }
 
@@ -262,6 +287,13 @@ impl Terrain {
         let [a, b, c] = self.triangle_at(point);
         let face = (b - a).cross(c - a).normalize();
         classify((a + b + c) / 3.0, face)
+    }
+
+    /// The colour of the grass at `p` (x, height, z), facing `normal`, as a
+    /// tint over its texture (linear RGBA): its greens (see [`grass_tint`]),
+    /// as light as the circuit's grass is.
+    pub fn grass_color(&self, p: Vec3, normal: Vec3) -> [f32; 4] {
+        shaded(grass_tint(p, normal, 0.0), self.grass_shade)
     }
 
     /// Whether any of the ground is in flower.
@@ -388,8 +420,20 @@ impl Terrain {
                             _ if flowers == Some(FlowerKind::Phlox) => {
                                 phlox_color(Vec2::new(p.x, p.z))
                             }
+                            _ if flowers.is_some() => shaded(
+                                meadow_tint(p, normals[index]),
+                                (1.0 + self.grass_shade) / 2.0,
+                            ),
                             (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normals[index]),
                             (Soil::Mine, _) => canyon_vertex_color(ground_type, p, normals[index]),
+                            (_, Ground::Grass) => {
+                                let outside = (self.fine.0 - Vec2::new(p.x, p.z))
+                                    .max(Vec2::new(p.x, p.z) - self.fine.1)
+                                    .max_element();
+                                let wild =
+                                    smoothstep(0.0, WILD_REACH, outside).max(self.mountain[index]);
+                                shaded(grass_tint(p, normals[index], wild), self.grass_shade)
+                            }
                             _ => ground_vertex_color(ground_type, p, normals[index]),
                         };
                         builder.push(index, p, normals[index], uv, color);
@@ -477,9 +521,11 @@ fn classify(point: Vec3, normal: Vec3) -> Ground {
     let height = point.y;
     let snow_line =
         SNOW_LINE + (fbm(Vec2::new(point.x, point.z) / 90.0, 2) - 0.5) * 2.0 * SNOW_REACH;
+    let tree_line = TREE_LINE
+        + (fbm(Vec2::new(point.x, point.z) / 70.0 + 9.0, 2) - 0.5) * 2.0 * TREE_LINE_REACH;
     if height > snow_line && normal.y > SNOW_NORMAL_Y {
         Ground::Snow
-    } else if normal.y < CLIFF_NORMAL_Y {
+    } else if normal.y < CLIFF_NORMAL_Y || height > tree_line {
         Ground::Rock
     } else if height < BEACH_HEIGHT {
         Ground::Sand
@@ -839,33 +885,7 @@ fn rock_projection(point: Vec3, face: Vec3) -> Vec2 {
 
 pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
     let color = match ground {
-        Ground::Grass => {
-            // Natural macro variation across tens of meters (bright meadows, shaded hollows, golden knolls)
-            let macro_n = fbm(Vec2::new(p.x * 0.012, p.z * 0.012), 3);
-            let detail_n = value_noise(Vec2::new(p.x * 0.045 + 17.0, p.z * 0.045 - 23.0));
-            let steepness = (1.0 - normal.y).clamp(0.0, 1.0);
-
-            // Three harmonious arcade tones:
-            // 1. Vibrant lush meadow green
-            let lush = Color::srgb(0.92, 1.05, 0.88);
-            // 2. Warm golden sunny slope green
-            let sunny = Color::srgb(1.05, 1.01, 0.85);
-            // 3. Deep green natural shade
-            let deep = Color::srgb(0.84, 0.93, 0.82);
-
-            let base_tint = if macro_n > 0.5 {
-                lush.mix(&sunny, (macro_n - 0.5) * 2.0)
-            } else {
-                deep.mix(&lush, macro_n * 2.0)
-            };
-
-            // Subtle micro-relief accent and drier embankments on steeper inclines
-            let earthy = Color::srgb(1.02, 0.95, 0.82);
-            base_tint.mix(
-                &earthy,
-                (steepness * 1.8 + (detail_n - 0.5) * 0.3).clamp(0.0, 0.55),
-            )
-        }
+        Ground::Grass => grass_tint(p, normal, 0.0),
         Ground::Rock => {
             // 1. Macro massif geological formation (scale ~120m):
             // Regional variations across mountain ranges:
@@ -923,7 +943,12 @@ pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
 
             let lit = with_minerals.mix(&Color::srgb(1.22, 1.16, 1.04), sun_highlight * 0.35);
             let shaded = lit.mix(&Color::srgb(0.56, 0.56, 0.62), (1.0 - ao) * 0.65);
-            shaded.mix(&mossy, moss_tint.clamp(0.0, 0.45))
+            let mossed = shaded.mix(&mossy, moss_tint.clamp(0.0, 0.45));
+            // Past the tree line of the tallest mountains, the bare scree of
+            // a volcano: dark grey-brown, a little lighter where the sun is.
+            let scree =
+                Color::srgb(0.5, 0.44, 0.44).mix(&Color::srgb(0.66, 0.58, 0.55), sun_highlight);
+            mossed.mix(&scree, smoothstep(TREE_LINE - 60.0, TREE_LINE, p.y))
         }
         Ground::Sand => {
             // Moisture gradient near sea level and windblown dune variations
@@ -940,6 +965,72 @@ pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
         Ground::Snow => snow_color(p, normal),
     };
     color.to_linear().to_f32_array()
+}
+
+/// The greens of the grass, as tints over its texture: not one green, as a
+/// lawn's, but those of a countryside. Broad swathes, a hundred metres and
+/// more across, of fresh, yellow, olive, deep and bluish greens, with
+/// patches within them; lusher and deeper by the water, drier and yellower
+/// up on the heights and on the slopes turned to the sun, earthier on
+/// steep banks; and, up the hills and over the `wild` land far from the
+/// roads (0 to 1), the dark, cool green of forests of conifers, as on the
+/// lower slopes of a volcano.
+pub fn grass_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
+    const DEEP: Color = Color::srgb(0.7, 0.84, 0.7);
+    const BLUISH: Color = Color::srgb(0.74, 0.88, 0.86);
+    const FRESH: Color = Color::srgb(0.94, 1.0, 0.88);
+    const YELLOW: Color = Color::srgb(1.1, 1.02, 0.64);
+    const OLIVE: Color = Color::srgb(0.86, 0.84, 0.58);
+    const SWATHES: [Color; 5] = [BLUISH, DEEP, FRESH, YELLOW, OLIVE];
+    const FOREST: Color = Color::srgb(0.3, 0.42, 0.4);
+    const EARTHY: Color = Color::srgb(1.0, 0.9, 0.74);
+    let at = Vec2::new(p.x, p.z);
+    // The swathes, from one green to the next along the noise.
+    let swathe = ((fbm(at / 170.0, 3) - 0.3) / 0.4).clamp(0.0, 1.0) * (SWATHES.len() - 1) as f32;
+    let k = (swathe as usize).min(SWATHES.len() - 2);
+    let mut tint = SWATHES[k].mix(&SWATHES[k + 1], swathe - k as f32);
+    // Patches within them, drier or deeper.
+    let patch = fbm(at / 45.0 + 31.0, 2) - 0.5;
+    tint = if patch > 0.0 {
+        tint.mix(&YELLOW, patch * 0.8)
+    } else {
+        tint.mix(&DEEP, -patch * 0.8)
+    };
+    // By the water, lush; up on the heights and towards the sun, dry.
+    let wet = 1.0 - smoothstep(BEACH_HEIGHT, BEACH_HEIGHT + 5.0, p.y);
+    tint = tint.mix(&DEEP, wet * 0.6);
+    let sun = Vec3::new(0.55, 0.82, -0.35).normalize();
+    let exposed = smoothstep(20.0, 60.0, p.y) * 0.35 + smoothstep(0.85, 1.0, normal.dot(sun)) * 0.2;
+    tint = tint.mix(&YELLOW, exposed);
+    // Steep banks, earthier.
+    let steepness = (1.0 - normal.y).clamp(0.0, 1.0);
+    let detail = value_noise(at * 0.045 + Vec2::new(17.0, -23.0));
+    tint = tint.mix(
+        &EARTHY,
+        (steepness * 1.8 + (detail - 0.5) * 0.3).clamp(0.0, 0.5),
+    );
+    // Forests up the hills and over the wild land.
+    let forest = smoothstep(FOREST_FROM, FOREST_FULL, p.y).max(wild);
+    tint.mix(&FOREST, forest * 0.9)
+}
+
+/// A tint `shade` times as light (linear RGBA), its green a little less
+/// vivid the darker it is.
+fn shaded(tint: Color, shade: f32) -> [f32; 4] {
+    let linear = tint.to_linear();
+    let green = shade * (0.66 + 0.34 * shade);
+    [
+        linear.red * shade,
+        linear.green * green,
+        linear.blue * shade,
+        linear.alpha,
+    ]
+}
+
+/// The tint of grass in flower (see [`super::flowers`]): the grass's own
+/// greens, but gentler, so they do not dull the flowers.
+fn meadow_tint(p: Vec3, normal: Vec3) -> Color {
+    grass_tint(p, normal, 0.0).mix(&Color::WHITE, 0.6)
 }
 
 /// Snow: white, a little blue in the shade of the slopes turned away from
@@ -1437,6 +1528,62 @@ mod tests {
         ];
         assert_eq!(signed_distance(&square, Vec2::new(5.0, 3.0)), 3.0);
         assert_eq!(signed_distance(&square, Vec2::new(5.0, -2.0)), -2.0);
+    }
+
+    #[test]
+    fn the_grass_is_many_greens_darker_in_forests_and_as_dark_as_its_circuit() {
+        let up = Vec3::Y;
+        let luma = |tint: Color| {
+            let l = tint.to_linear();
+            0.2126 * l.red + 0.7152 * l.green + 0.0722 * l.blue
+        };
+        // Not one green: their hues spread across the land.
+        let warmth: Vec<f32> = (0..60)
+            .map(|k| {
+                let p = Vec3::new(k as f32 * 97.0, 10.0, k as f32 * 61.0);
+                let l = grass_tint(p, up, 0.0).to_linear();
+                l.red / l.green
+            })
+            .collect();
+        let spread = warmth.iter().fold(f32::MIN, |a, &b| a.max(b))
+            - warmth.iter().fold(f32::MAX, |a, &b| a.min(b));
+        assert!(spread > 0.15, "{spread}");
+        // Forests up the hills and over the wild land, much darker than the
+        // meadows below; lush by the water.
+        for k in 0..20 {
+            let at = |height: f32| Vec3::new(k as f32 * 131.0, height, k as f32 * -77.0);
+            let meadow = luma(grass_tint(at(20.0), up, 0.0));
+            assert!(luma(grass_tint(at(220.0), up, 0.0)) < 0.6 * meadow);
+            assert!(luma(grass_tint(at(20.0), up, 1.0)) < 0.6 * meadow);
+        }
+        // A circuit's shade darkens it, its green the most.
+        let tint = Color::srgb(0.9, 1.0, 0.8);
+        let [r, g, b, _] = shaded(tint, 0.4);
+        let linear = tint.to_linear();
+        assert!((r - linear.red * 0.4).abs() < 1e-5 && (b - linear.blue * 0.4).abs() < 1e-5);
+        assert!(g < linear.green * 0.4);
+        assert_eq!(shaded(tint, 1.0), linear.to_f32_array());
+    }
+
+    #[test]
+    fn the_tallest_mountains_are_bare_over_the_tree_line_and_snowy_over_the_snow_line() {
+        let up = Vec3::Y;
+        let steep = Vec3::new(0.9, 0.4, 0.0).normalize();
+        for k in 0..30 {
+            let at = |height: f32| Vec3::new(k as f32 * 53.0, height, k as f32 * 29.0);
+            assert_eq!(classify(at(200.0), up), Ground::Grass);
+            // Bare above the tree line (or already under snow, where the
+            // snow line dips down a ravine).
+            assert_ne!(
+                classify(at(TREE_LINE + TREE_LINE_REACH + 1.0), up),
+                Ground::Grass
+            );
+            assert_eq!(classify(at(SNOW_LINE + SNOW_REACH + 1.0), up), Ground::Snow);
+            assert_eq!(
+                classify(at(SNOW_LINE + SNOW_REACH + 1.0), steep),
+                Ground::Rock
+            );
+        }
     }
 
     #[test]

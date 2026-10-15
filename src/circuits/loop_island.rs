@@ -136,6 +136,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::AroundTrack(&COAST),
         hills: 20.0,
+        grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         terraces: &[],

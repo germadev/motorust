@@ -19,7 +19,7 @@ use bevy::prelude::*;
 use super::foliage::ALPHA_CUTOFF;
 use super::quads::MeshBuilder;
 use super::road::paved_edge;
-use super::terrain::{Ground, Terrain, ground_vertex_color};
+use super::terrain::{Ground, Terrain};
 use super::textures::WorldTextures;
 use crate::geometry::random01;
 use crate::track::{CURB_WIDTH, SURFACE_Y, Surface, Track};
@@ -185,7 +185,7 @@ fn edge_meshes(
                 // pale, a little lighter than the lawn's blades on
                 // average).
                 let middle = at(index, 0.0);
-                let tint = ground_vertex_color(Ground::Grass, middle, Vec3::Y);
+                let tint = terrain.grass_color(middle, Vec3::Y);
                 let linear = grass.to_linear();
                 let color = Color::LinearRgba(LinearRgba::rgb(
                     linear.red * tint[0] * 0.95,
@@ -263,7 +263,8 @@ fn tuft_meshes(
                         continue;
                     }
                     let root = Vec3::new(ground.x, height - 0.04, ground.y);
-                    add_tuft(&mut mesh, root, grass, |k| random(2 + k));
+                    let tint = terrain.grass_color(root, Vec3::Y);
+                    add_tuft(&mut mesh, root, grass, tint, |k| random(2 + k));
                 }
             }
             if !mesh.is_empty() {
@@ -276,14 +277,20 @@ fn tuft_meshes(
     meshes
 }
 
-/// A tuft at `root`: two cards crossed at right angles, turned at random,
-/// darker at the roots; every normal points up, so it is lit like the
-/// ground (see [`tuft_pieces`]).
-fn add_tuft(mesh: &mut MeshBuilder, root: Vec3, grass: Color, random: impl Fn(u32) -> f32) {
+/// A tuft at `root`, of the grass's colour there (`tint`, see
+/// [`Terrain::grass_color`]): two cards crossed at right angles, turned at
+/// random, darker at the roots; every normal points up, so it is lit like
+/// the ground (see [`tuft_pieces`]).
+fn add_tuft(
+    mesh: &mut MeshBuilder,
+    root: Vec3,
+    grass: Color,
+    tint: [f32; 4],
+    random: impl Fn(u32) -> f32,
+) {
     let height = HEIGHT.0.lerp(HEIGHT.1, random(0));
     let width = WIDTH.0.lerp(WIDTH.1, random(1));
     let turn = random(2) * std::f32::consts::PI;
-    let tint = ground_vertex_color(Ground::Grass, root, Vec3::Y);
     let shade = 0.85 + 0.3 * random(3);
     let linear = grass.to_linear();
     let color = Color::LinearRgba(LinearRgba::rgb(

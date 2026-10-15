@@ -281,10 +281,11 @@ fn maple_ground_mesh(terrain: &Terrain, ground: &MapleGround) -> Mesh {
     let seed = (ground.center.x.abs() * 7.0 + ground.center.y.abs() * 13.0) as u32;
     let leaf = |k: u32| {
         let random = |n: u32| random01(seed.wrapping_add(k * 4 + n));
+        // Autumn reds, from crimson to rust, muted as fallen leaves are.
         let red = Color::srgb(
-            0.6 + 0.3 * random(0),
-            0.05 + 0.13 * random(1),
-            0.03 + 0.04 * random(2),
+            0.5 + 0.2 * random(0),
+            0.13 + 0.1 * random(1),
+            0.08 + 0.05 * random(2),
         );
         // Some leaves lie in the shade of others.
         if random(3) < 0.25 {
@@ -517,7 +518,7 @@ fn spawn_petals(
 ) {
     for (number, area) in petals.iter().enumerate() {
         let (mesh, color) = match area.kind {
-            PetalKind::Maple => (maple_leaf_mesh(), Color::srgb(0.84, 0.14, 0.06)),
+            PetalKind::Maple => (maple_leaf_mesh(), Color::srgb(0.7, 0.22, 0.12)),
             PetalKind::Cherry => (cherry_petal_mesh(), Color::srgb(0.98, 0.93, 0.95)),
         };
         let mesh = assets.meshes.add(mesh);

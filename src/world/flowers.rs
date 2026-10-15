@@ -52,13 +52,13 @@ const CLEAR_OF_WALL: f32 = 2.0;
 /// magenta most of all.
 const PHLOX_BAND: f32 = 16.0;
 const PHLOX: [Color; 7] = [
-    Color::srgb(0.95, 0.22, 0.74),
-    Color::srgb(1.0, 0.55, 0.8),
-    Color::srgb(0.95, 0.22, 0.74),
-    Color::srgb(0.74, 0.56, 1.0),
-    Color::srgb(0.95, 0.22, 0.74),
-    Color::srgb(1.0, 0.55, 0.8),
-    Color::srgb(1.0, 0.96, 0.98),
+    Color::srgb(0.86, 0.46, 0.72),
+    Color::srgb(0.94, 0.66, 0.8),
+    Color::srgb(0.86, 0.46, 0.72),
+    Color::srgb(0.76, 0.66, 0.9),
+    Color::srgb(0.86, 0.46, 0.72),
+    Color::srgb(0.94, 0.66, 0.8),
+    Color::srgb(0.96, 0.93, 0.94),
 ];
 
 /// The clumps standing up near the roads: how far apart (m), on a grid,

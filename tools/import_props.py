@@ -29,6 +29,8 @@ Some models need mending as they are read:
   middle of the axle (along Z), so that the wheel can turn about it; the
   post reaches down to the ground, as far below its origin as the axle is
   high.
+- The great maple (`great_maple`) came in reds so saturated they glared:
+  its texture is muted (`MUTED`).
 
 Every prop faces +Z as Meshy made it, with its width along X: a gate spans
 X. Usage: python3 tools/import_props.py NAME=PROP.glb [NAME=PROP.glb ...]
@@ -39,7 +41,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from import_trees import read_glb  # noqa: E402
@@ -92,6 +94,9 @@ SLIM = {
     "torii_wide": (0.6, 0.6),
     "torii_road": (0.45, 0.5),
 }
+# How saturated each texture is left (1 as it came): the great maple's reds
+# came so saturated they glared.
+MUTED = {"great_maple": 0.62}
 CELL = 512
 COLUMNS = 5
 MARGIN = 2
@@ -242,6 +247,8 @@ def main():
         column, row = slot % COLUMNS, slot // COLUMNS
         inner = CELL - 2 * MARGIN
         texture = color.resize((inner, inner), Image.LANCZOS)
+        if name in MUTED:
+            texture = ImageEnhance.Color(texture).enhance(MUTED[name])
         cell = texture.resize((CELL, CELL), Image.NEAREST)
         cell.paste(texture, (MARGIN, MARGIN))
         atlas.paste(cell, (column * CELL, row * CELL))

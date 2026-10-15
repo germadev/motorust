@@ -151,6 +151,7 @@ pub const GOLD_MINE: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::Function(water),
         hills: 8.0,
+        grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         terraces: &[],

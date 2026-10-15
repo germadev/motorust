@@ -40,6 +40,7 @@ pub const BAY: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::Function(coast),
         hills: 16.0,
+        grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         terraces: &[],

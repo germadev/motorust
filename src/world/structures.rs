@@ -11,7 +11,7 @@ use super::quads::MeshBuilder;
 use super::scenery::{
     Billboard, BrakeMarker, BridgeStyle, ChevronDirection, ChevronSign, Scenery, Soil, Span,
 };
-use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, Terrain, ground_vertex_color};
+use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Terrain};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
@@ -587,7 +587,7 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
             let face = if face.y < 0.0 { -face } else { face };
             if soil == Soil::Rock && face.y > CLIFF_NORMAL_Y {
                 let center = corners.iter().map(|(p, _)| *p).sum::<Vec3>() / 4.0;
-                let tint = ground_vertex_color(Ground::Grass, center, face);
+                let tint = terrain.grass_color(center, face);
                 grass.quad(
                     corners.map(|(p, _)| (p, Vec2::new(p.x, p.z) / GRASS_TILE)),
                     Vec3::Y,
