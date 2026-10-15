@@ -158,7 +158,8 @@ pub const TSUSHIMA: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::OutlineWithLakes(&SHORE, lakes),
         hills: 22.0,
-        grass_shade: 0.28,
+        greens: Greens::Countryside,
+        grass_shade: 0.36,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         // Level ground for the clearing under the great maple, at the

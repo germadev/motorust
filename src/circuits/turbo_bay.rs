@@ -77,6 +77,7 @@ pub const TURBO_BAY: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::Outline(&COAST),
         hills: 22.0,
+        greens: Greens::Lawn,
         grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,

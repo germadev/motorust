@@ -19,6 +19,7 @@ use bevy::{
     mesh::Indices,
     prelude::*,
     render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat},
+    render::view::ColorGrading,
 };
 
 use super::generate_mipmaps;
@@ -47,7 +48,7 @@ pub const HORIZON: Color = Color::srgb(0.68, 0.8, 0.94);
 /// on most days, and on a clear one (`SkyStyle::Clear`), whose mountains
 /// stand out from across the sea.
 pub const FOG: (f32, f32) = (450.0, 3800.0);
-const CLEAR_FOG: (f32, f32) = (1100.0, 6500.0);
+const CLEAR_FOG: (f32, f32) = (900.0, 6000.0);
 
 /// The light of a track ([`SkyStyle`]): the sky's colours, where the sun
 /// is and the colour of its light, the light of the sky on the shade, and
@@ -73,15 +74,65 @@ pub struct Palette {
     /// Where the fog begins and where it hides everything (m from the
     /// camera).
     fog: (f32, f32),
+    /// How the picture is graded, as a film is: not at all but on a clear
+    /// day (see [`Grade`]).
+    grade: Grade,
+}
+
+/// A colour grade of the whole picture: how much saturation it keeps (after
+/// tonemapping), how much contrast its midtones get, and how many stops
+/// lighter it is.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Grade {
+    saturation: f32,
+    contrast: f32,
+    exposure: f32,
+}
+
+impl Grade {
+    const NONE: Grade = Grade {
+        saturation: 1.0,
+        contrast: 1.0,
+        exposure: 0.0,
+    };
+
+    /// The camera's colour grading for it.
+    fn grading(self) -> ColorGrading {
+        let mut grading = ColorGrading::default();
+        grading.global.post_saturation = self.saturation;
+        grading.global.exposure = self.exposure;
+        grading.midtones.contrast = self.contrast;
+        grading
+    }
 }
 
 impl Palette {
     pub fn of(style: SkyStyle) -> Self {
         match style {
-            // As a summer day, with the haze much further off.
+            // A clear autumn day, as in Japan: a paler, softer blue, a
+            // light haze at the horizon far off, the sun lower and warm, the
+            // shade cooler and deeper; and the picture luminous, with
+            // contrast, but not saturated.
             SkyStyle::Clear => Self {
+                zenith: Color::srgb(0.24, 0.48, 0.82),
+                above_horizon: Color::srgb(0.5, 0.67, 0.88),
+                horizon: Color::srgb(0.78, 0.84, 0.9),
+                glow: 0.15,
+                glow_color: Color::srgb(1.0, 0.96, 0.88),
+                sun_azimuth: SUN_AZIMUTH,
+                sun_elevation: 0.6,
+                sun_disc: Color::srgb(1.0, 0.97, 0.9),
+                sunlight: Color::srgb(1.0, 0.95, 0.86),
+                sunlight_strength: 1.1,
+                ambient: Color::srgb(0.68, 0.75, 0.88),
+                ambient_brightness: 560.0,
+                clouds: Color::srgb(1.0, 0.98, 0.96),
                 fog: CLEAR_FOG,
-                ..Self::of(SkyStyle::Day)
+                grade: Grade {
+                    saturation: 0.8,
+                    contrast: 1.15,
+                    exposure: 0.25,
+                },
             },
             SkyStyle::Day => Self {
                 zenith: ZENITH,
@@ -98,6 +149,7 @@ impl Palette {
                 ambient_brightness: 700.0,
                 clouds: Color::WHITE,
                 fog: FOG,
+                grade: Grade::NONE,
             },
             // The sun low in the west-north-west, in front on the start
             // straight: violet overhead, rose above the horizon and orange
@@ -118,6 +170,7 @@ impl Palette {
                 ambient_brightness: 520.0,
                 clouds: Color::srgb(1.0, 0.76, 0.66),
                 fog: FOG,
+                grade: Grade::NONE,
             },
         }
     }
@@ -351,14 +404,15 @@ fn lit_from_the_sun(at: Vec3, size: Vec2, sun: Vec3) -> Transform {
 }
 
 /// Puts on the light of the track in use ([`SkyStyle`]): the sky's colours,
-/// the sun and its light, the light of the sky, the clouds' colour, and the
-/// fog the colour of the horizon. Also for a camera that has just been
-/// made, with the fog of a clear day.
+/// the sun and its light, the light of the sky, the clouds' colour, the fog
+/// the colour of the horizon, and the picture's colour grade. Also for a
+/// camera that has just been made.
 #[allow(clippy::too_many_arguments)]
 pub fn light_the_sky(
     current: Res<CurrentCircuit>,
     parts: Option<Res<SkyParts>>,
     mut fogs: Query<&mut DistanceFog>,
+    mut gradings: Query<&mut ColorGrading>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut transforms: Query<&mut Transform>,
@@ -379,6 +433,11 @@ pub fn light_the_sky(
                 start: palette.fog.0,
                 end: palette.fog.1,
             };
+        }
+    }
+    for mut grading in &mut gradings {
+        if changed || grading.is_added() {
+            *grading = palette.grade.grading();
         }
     }
     if !changed {
@@ -1015,12 +1074,23 @@ mod tests {
         let day = Palette::of(SkyStyle::Day);
         assert_eq!(day.horizon, HORIZON);
         assert_eq!(day.sky_color(Vec3::Y), ZENITH);
-        // A clear day is a day with the haze further off, but nearer than
-        // the sky.
+        // A clear day: its haze further off, but nearer than the sea's edge;
+        // its sky paler than a summer day's; its sun lower; its picture less
+        // saturated, with more contrast and a little lighter. The other days
+        // are not graded.
         let clear = Palette::of(SkyStyle::Clear);
-        assert_eq!(clear.horizon, day.horizon);
         assert!(clear.fog.0 > day.fog.0 && clear.fog.1 > day.fog.1);
         assert!(clear.fog.1 < super::super::sea::SEA_EXTENT);
+        let vivid = |c: Color| {
+            let c = c.to_srgba();
+            c.blue - c.red.min(c.green)
+        };
+        assert!(vivid(clear.sky_color(Vec3::Y)) < vivid(day.sky_color(Vec3::Y)));
+        assert!(clear.sun_elevation < day.sun_elevation);
+        assert!(clear.grade.saturation < 1.0 && clear.grade.contrast > 1.0);
+        assert!(clear.grade.exposure > 0.0);
+        assert_eq!(day.grade, Grade::NONE);
+        assert_eq!(dusk.grade, Grade::NONE);
     }
 
     /// The lowest row of cloud `data` thicker than half in column `x`, if

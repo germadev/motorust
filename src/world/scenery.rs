@@ -107,6 +107,18 @@ pub struct Cutting {
     pub height: f32,
 }
 
+/// The greens of a track's grass.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Greens {
+    /// The arcade lawn: a bright green, a little lighter or deeper here and
+    /// there.
+    Lawn,
+    /// A countryside's: swathes of many greens, lusher by the water, drier
+    /// up high and towards the sun, and dark conifer forest up the hills,
+    /// far from the roads and on the mountains across the sea.
+    Countryside,
+}
+
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un
 /// círculo, para poner encima un edificio grande.
 pub struct Terrace {
@@ -325,6 +337,9 @@ pub struct Scenery {
     pub coast: Coast,
     /// Altura de las colinas (m).
     pub hills: f32,
+    /// How the grass is coloured: one track's greens never change
+    /// another's.
+    pub greens: Greens,
     /// How light the grass is: 1 as painted, less for darker, less vivid
     /// greens (the grass in flower darkens half as much, the flowers being
     /// lighter).

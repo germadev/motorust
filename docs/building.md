@@ -24,7 +24,7 @@ make test      # runs the tests
 | `make install` | Linux packages, then `cargo fetch` | Installs the system dependencies (Linux only) and downloads the crates. Fails early if `cargo` is missing. |
 | `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
-| `make test` | `cargo test` | Runs the 419 tests (see [architecture.md](architecture.md#tests)). |
+| `make test` | `cargo test` | Runs the 420 tests (see [architecture.md](architecture.md#tests)). |
 
 ### Build times and profiles
 

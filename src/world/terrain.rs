@@ -11,7 +11,7 @@ use bevy::{
 };
 
 use super::flowers::{FlowerMap, phlox_color};
-use super::scenery::{Coast, FlowerKind, Pit, Scenery, Side, Soil, span};
+use super::scenery::{Coast, FlowerKind, Greens, Pit, Scenery, Side, Soil, span};
 use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep, value_noise};
@@ -104,7 +104,9 @@ pub struct Terrain {
     /// How much of each point of the grid is mountain across the sea (0 to
     /// 1, by rows as `heights`): wild land, under forest.
     mountain: Vec<f32>,
-    /// How light the grass is (see `Scenery::grass_shade`).
+    /// How the grass is coloured, and how light (see `Scenery::greens` and
+    /// `Scenery::grass_shade`).
+    greens: Greens,
     grass_shade: f32,
 }
 
@@ -189,6 +191,7 @@ impl Terrain {
             flowers,
             fine,
             mountain,
+            greens: scenery.greens,
             grass_shade: scenery.grass_shade,
         }
     }
@@ -293,7 +296,13 @@ impl Terrain {
     /// tint over its texture (linear RGBA): its greens (see [`grass_tint`]),
     /// as light as the circuit's grass is.
     pub fn grass_color(&self, p: Vec3, normal: Vec3) -> [f32; 4] {
-        shaded(grass_tint(p, normal, 0.0), self.grass_shade)
+        shaded(self.grass_tint(p, normal, 0.0), self.grass_shade)
+    }
+
+    /// The tint of the grass at `p`, `wild` as it is far from the roads
+    /// (see [`grass_tint`]), by the circuit's greens.
+    fn grass_tint(&self, p: Vec3, normal: Vec3, wild: f32) -> Color {
+        greens_tint(self.greens, p, normal, wild)
     }
 
     /// Whether any of the ground is in flower.
@@ -420,8 +429,11 @@ impl Terrain {
                             _ if flowers == Some(FlowerKind::Phlox) => {
                                 phlox_color(Vec2::new(p.x, p.z))
                             }
+                            // Grass in flower: its greens, gentler, so the
+                            // flowers stay bright.
                             _ if flowers.is_some() => shaded(
-                                meadow_tint(p, normals[index]),
+                                self.grass_tint(p, normals[index], 0.0)
+                                    .mix(&Color::WHITE, 0.6),
                                 (1.0 + self.grass_shade) / 2.0,
                             ),
                             (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normals[index]),
@@ -432,7 +444,7 @@ impl Terrain {
                                     .max_element();
                                 let wild =
                                     smoothstep(0.0, WILD_REACH, outside).max(self.mountain[index]);
-                                shaded(grass_tint(p, normals[index], wild), self.grass_shade)
+                                shaded(self.grass_tint(p, normals[index], wild), self.grass_shade)
                             }
                             _ => ground_vertex_color(ground_type, p, normals[index]),
                         };
@@ -885,7 +897,7 @@ fn rock_projection(point: Vec3, face: Vec3) -> Vec2 {
 
 pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
     let color = match ground {
-        Ground::Grass => grass_tint(p, normal, 0.0),
+        Ground::Grass => lawn_tint(p, normal),
         Ground::Rock => {
             // 1. Macro massif geological formation (scale ~120m):
             // Regional variations across mountain ranges:
@@ -967,8 +979,47 @@ pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
     color.to_linear().to_f32_array()
 }
 
-/// The greens of the grass, as tints over its texture: not one green, as a
-/// lawn's, but those of a countryside. Broad swathes, a hundred metres and
+/// The tint of grass of `greens` at `p`, `wild` as it is far from the roads:
+/// the lawn's knows nothing of wild land.
+fn greens_tint(greens: Greens, p: Vec3, normal: Vec3, wild: f32) -> Color {
+    match greens {
+        Greens::Lawn => lawn_tint(p, normal),
+        Greens::Countryside => grass_tint(p, normal, wild),
+    }
+}
+
+/// The arcade lawn's greens (`Greens::Lawn`), as tints over its texture:
+/// natural variation across tens of metres (bright meadows, shaded hollows,
+/// golden knolls) and drier embankments on the steeper slopes.
+fn lawn_tint(p: Vec3, normal: Vec3) -> Color {
+    let macro_n = fbm(Vec2::new(p.x * 0.012, p.z * 0.012), 3);
+    let detail_n = value_noise(Vec2::new(p.x * 0.045 + 17.0, p.z * 0.045 - 23.0));
+    let steepness = (1.0 - normal.y).clamp(0.0, 1.0);
+
+    // Three harmonious arcade tones:
+    // 1. Vibrant lush meadow green
+    let lush = Color::srgb(0.92, 1.05, 0.88);
+    // 2. Warm golden sunny slope green
+    let sunny = Color::srgb(1.05, 1.01, 0.85);
+    // 3. Deep green natural shade
+    let deep = Color::srgb(0.84, 0.93, 0.82);
+
+    let base_tint = if macro_n > 0.5 {
+        lush.mix(&sunny, (macro_n - 0.5) * 2.0)
+    } else {
+        deep.mix(&lush, macro_n * 2.0)
+    };
+
+    // Subtle micro-relief accent and drier embankments on steeper inclines
+    let earthy = Color::srgb(1.02, 0.95, 0.82);
+    base_tint.mix(
+        &earthy,
+        (steepness * 1.8 + (detail_n - 0.5) * 0.3).clamp(0.0, 0.55),
+    )
+}
+
+/// A countryside's greens (`Greens::Countryside`), as tints over the grass's
+/// texture: not one green, as a lawn's, but many. Broad swathes, a hundred metres and
 /// more across, of fresh, yellow, olive, deep and bluish greens, with
 /// patches within them; lusher and deeper by the water, drier and yellower
 /// up on the heights and on the slopes turned to the sun, earthier on
@@ -1025,12 +1076,6 @@ fn shaded(tint: Color, shade: f32) -> [f32; 4] {
         linear.blue * shade,
         linear.alpha,
     ]
-}
-
-/// The tint of grass in flower (see [`super::flowers`]): the grass's own
-/// greens, but gentler, so they do not dull the flowers.
-fn meadow_tint(p: Vec3, normal: Vec3) -> Color {
-    grass_tint(p, normal, 0.0).mix(&Color::WHITE, 0.6)
 }
 
 /// Snow: white, a little blue in the shade of the slopes turned away from
@@ -1563,6 +1608,22 @@ mod tests {
         assert!((r - linear.red * 0.4).abs() < 1e-5 && (b - linear.blue * 0.4).abs() < 1e-5);
         assert!(g < linear.green * 0.4);
         assert_eq!(shaded(tint, 1.0), linear.to_f32_array());
+    }
+
+    #[test]
+    fn each_track_s_greens_are_its_own() {
+        for k in 0..20 {
+            let p = Vec3::new(k as f32 * 83.0, 15.0 + k as f32 * 9.0, k as f32 * -47.0);
+            let up = Vec3::Y;
+            // The lawn stays the arcade lawn, wild land or not.
+            assert_eq!(greens_tint(Greens::Lawn, p, up, 1.0), lawn_tint(p, up));
+            assert_eq!(greens_tint(Greens::Lawn, p, up, 0.0), lawn_tint(p, up));
+            // The countryside's are its own, forest in the wild.
+            assert_eq!(
+                greens_tint(Greens::Countryside, p, up, 1.0),
+                grass_tint(p, up, 1.0)
+            );
+        }
     }
 
     #[test]
