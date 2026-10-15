@@ -1070,7 +1070,7 @@ pub fn grass_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
 
 /// A tint `shade` times as light (linear RGBA), its green less vivid the
 /// darker it is: a dark grass is a dull one, not a lawn's vivid green.
-fn shaded(tint: Color, shade: f32) -> [f32; 4] {
+pub(super) fn shaded(tint: Color, shade: f32) -> [f32; 4] {
     let linear = tint.to_linear();
     let green = shade * (0.45 + 0.55 * shade);
     [

@@ -342,7 +342,7 @@ pub struct Scenery {
     pub greens: Greens,
     /// How light the grass is: 1 as painted, less for darker, less vivid
     /// greens (the grass in flower darkens half as much, the flowers being
-    /// lighter).
+    /// lighter; the hedges as much as the grass).
     pub grass_shade: f32,
     pub massifs: &'static [Massif],
     pub cuttings: &'static [Cutting],

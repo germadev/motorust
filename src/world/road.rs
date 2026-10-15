@@ -10,7 +10,7 @@ use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
 use super::scenery::{BridgeStyle, Gantry, Scenery, Side, WallStyle};
-use super::terrain::Terrain;
+use super::terrain::{Terrain, shaded};
 use super::textures::{STONE_WALL, WorldTextures};
 use crate::geometry::{fbm, smoothstep};
 use crate::track::{CURB_WIDTH, SURFACE_Y, Track, WALL_DISTANCE};
@@ -28,6 +28,8 @@ const PAINT_LIFT: f32 = 0.012;
 const CURB_RADIUS: f32 = 130.0;
 
 const WALL_HEIGHT: f32 = 1.1;
+/// The leaves of a hedge where the grass is as painted.
+const HEDGE: Color = Color::srgb(0.55, 0.85, 0.4);
 /// Las barreras de hormigón son algo más bajas, y los setos, más altos.
 const CONCRETE_HEIGHT: f32 = 1.0;
 const HEDGE_HEIGHT: f32 = 1.3;
@@ -304,7 +306,7 @@ fn spawn_surface(
         (
             WallStyle::Hedge,
             StandardMaterial {
-                base_color: Color::srgb(0.55, 0.85, 0.4),
+                base_color: hedge_color(scenery.grass_shade),
                 base_color_texture: Some(textures.grass.clone()),
                 perceptual_roughness: 1.0,
                 ..default()
@@ -531,6 +533,14 @@ fn profile(style: WallStyle) -> Profile {
         top,
         tile,
     }
+}
+
+/// The leaves of a hedge on a track whose grass is `grass_shade` as light
+/// (`Scenery::grass_shade`): as dark and as dull as the grass round it, not
+/// a bright green strip over a dark verge.
+fn hedge_color(grass_shade: f32) -> Color {
+    let [red, green, blue, alpha] = shaded(HEDGE, grass_shade);
+    Color::linear_rgba(red, green, blue, alpha)
 }
 
 /// The points of a profile with its corners (all but its two ends) rounded
@@ -1160,6 +1170,25 @@ fn skid_marks(track: &Track) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hedge_is_as_dull_as_the_grass_round_it() {
+        let painted = hedge_color(1.0).to_srgba();
+        let hedge = HEDGE.to_srgba();
+        for (a, b) in [
+            (painted.red, hedge.red),
+            (painted.green, hedge.green),
+            (painted.blue, hedge.blue),
+        ] {
+            assert!((a - b).abs() < 1e-4, "{painted:?} is not {hedge:?}");
+        }
+        // Tsushima Isle's grass: darker and less vivid.
+        let dull = hedge_color(0.36);
+        let (dull_srgb, painted_hsl) = (dull.to_srgba(), Hsla::from(hedge_color(1.0)));
+        assert!(dull_srgb.red < painted.red && dull_srgb.green < painted.green);
+        assert!(Hsla::from(dull).saturation < painted_hsl.saturation - 0.1);
+        assert!(Hsla::from(dull).lightness < painted_hsl.lightness - 0.15);
+    }
 
     #[test]
     fn curbs_only_in_the_corners() {
