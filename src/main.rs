@@ -3,6 +3,8 @@
 // En Windows, la versión optimizada se abre sin ventana de consola.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(not(target_arch = "wasm32"))]
+mod bench;
 mod bike;
 mod camera;
 mod circuits;
@@ -111,6 +113,16 @@ fn main() {
 
     // Los ajustes guardados deciden cómo se abre la ventana.
     let settings = settings::Settings::load();
+    // The benchmark rides the tracks on its own, with the player's settings
+    // changed as it goes and never saved.
+    #[cfg(not(target_arch = "wasm32"))]
+    let bench = bench::requested();
+    #[cfg(not(target_arch = "wasm32"))]
+    let settings = if bench {
+        bench::settings(settings)
+    } else {
+        settings
+    };
     let mut app = App::new();
     let plugins = DefaultPlugins
         .set(WindowPlugin {
@@ -163,5 +175,9 @@ fn main() {
         ));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);
+    #[cfg(not(target_arch = "wasm32"))]
+    if bench {
+        app.add_plugins(bench::BenchPlugin);
+    }
     app.run();
 }

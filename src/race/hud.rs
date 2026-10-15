@@ -1,5 +1,5 @@
 //! What the race shows on the screen for each player: their place, their
-//! lap, the clock and their best lap; against the clock, the time left and
+//! lap, the clock, the time of the lap under way and their best lap; against the clock, the time left and
 //! what each checkpoint gives; in elimination, who is out (and how many are
 //! still in, which pops as it changes); and their place when they cross the
 //! line at the end. Once the players' race is over,
@@ -56,6 +56,8 @@ enum InfoKind {
     Place,
     Lap,
     Clock,
+    /// The time of the lap under way.
+    LapTime,
     Best,
     /// Against the clock, the time left; or a big notice in the middle.
     TimeLeft,
@@ -194,6 +196,7 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                         (InfoKind::Place, PLACE_SIZE, Color::WHITE),
                         (InfoKind::Lap, 22.0, Color::WHITE),
                         (InfoKind::Clock, 20.0, Color::srgba(1.0, 1.0, 1.0, 0.85)),
+                        (InfoKind::LapTime, 17.0, Color::srgba(1.0, 1.0, 1.0, 0.85)),
                         (InfoKind::Best, 15.0, GOLD),
                     ] {
                         let info = (
@@ -272,6 +275,16 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
 pub fn clock(seconds: f32) -> String {
     let tenths = (seconds.max(0.0) * 10.0).floor() as u32;
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
+}
+
+/// The time of the lap under way, said so: "ESTA VUELTA 0:31.2", "THIS LAP
+/// 0:31.2".
+fn lap_time(seconds: f32, lang: Language) -> String {
+    let label = match lang {
+        Language::Spanish => "ESTA VUELTA",
+        Language::English => "THIS LAP",
+    };
+    format!("{label} {}", clock(seconds))
 }
 
 /// A place: 1º, 2º... in Spanish; 1st, 2nd... in English.
@@ -357,7 +370,17 @@ fn show_race_info(
                     color.0,
                 )
             }
-            InfoKind::Clock => (clock(standing.clock), color.0),
+            // "TOTAL" in either language.
+            InfoKind::Clock => (format!("TOTAL {}", clock(standing.clock)), color.0),
+            // The lap under way, until the line at the end.
+            InfoKind::LapTime => (
+                if progress.finished.is_some() {
+                    String::new()
+                } else {
+                    lap_time(progress.lap_time(standing.clock), lang)
+                },
+                color.0,
+            ),
             InfoKind::Best => (
                 progress.best_lap.map_or(String::new(), |best| {
                     let label = match lang {
@@ -697,6 +720,19 @@ fn notice(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_lap_under_way_reads_with_its_time() {
+        assert_eq!(lap_time(31.25, Language::Spanish), "ESTA VUELTA 0:31.2");
+        assert_eq!(lap_time(75.0, Language::English), "THIS LAP 1:15.0");
+        // Since the lap began, at the line.
+        let progress = Progress {
+            lap_start: 40.0,
+            ..default()
+        };
+        assert_eq!(progress.lap_time(71.5), 31.5);
+        assert_eq!(progress.lap_time(30.0), 0.0);
+    }
 
     #[test]
     fn times_read_as_minutes_seconds_and_tenths() {

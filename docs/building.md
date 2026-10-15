@@ -16,6 +16,7 @@ make install   # system dependencies (Linux: apt, dnf or pacman) and crates
 make up        # runs the game in development mode
 make build     # optimised build in target/release/motorust
 make test      # runs the tests
+make bench     # rides every track alone under each graphics setting and reports the frame rates
 ```
 
 | Target | Runs | What it does |
@@ -24,7 +25,8 @@ make test      # runs the tests
 | `make install` | Linux packages, then `cargo fetch` | Installs the system dependencies (Linux only) and downloads the crates. Fails early if `cargo` is missing. |
 | `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
-| `make test` | `cargo test` | Runs the 430 tests (see [architecture.md](architecture.md#tests)). |
+| `make test` | `cargo test` | Runs the tests (see [architecture.md](architecture.md#tests)). |
+| `make bench` | `cargo run --release -- --bench` | The benchmark: the game rides every track on its own, in free ride on autopilot, with one player and with two, under each graphics setting worth comparing (shadows high, medium and low; MSAA, FXAA or none; lighter far trees; less detail for two players), with the frame rate unlimited; each scenario settles for 4 s and is measured for 10 (`MOTORUST_BENCH_SECONDS`), on the tracks in `MOTORUST_BENCH_TRACKS` (as `0,2`) or all of them. It prints a table (fps, slowest 1 %, frame times at 50 and 95 %) and writes it to `bench-<time>.txt` beside the performance log (`~/Library/Application Support/motorust/logs` on macOS), then closes. The player's settings are used as they are and never saved over. |
 
 ### Build times and profiles
 

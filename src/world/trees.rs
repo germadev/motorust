@@ -227,7 +227,9 @@ pub fn dress_trees(
     let lighter = settings
         .as_deref()
         .is_some_and(|settings| settings.lighter_far_trees);
-    let bounds = detail.map_or(Detail::Full, |detail| *detail).tree_levels();
+    let bounds = detail
+        .map_or(Detail::default(), |detail| *detail)
+        .tree_levels();
     let eyes: Vec<Vec3> = cameras
         .iter()
         .filter(|(camera, _)| camera.is_active)

@@ -103,11 +103,21 @@ pub struct Settings {
     /// Whether the frame rate is written down every few seconds, to a file
     /// beside the settings (see [`crate::perf_log`]).
     pub performance_log: bool,
+    /// How far and how fine the sun's shadows are: chosen, or lowered and
+    /// raised as the frame rate asks (see [`crate::world::detail`]).
+    pub shadows: ShadowQuality,
+    /// How the edges are smoothed (see [`crate::world::detail`]): fixed, as
+    /// changing it makes every pipeline again.
+    pub antialiasing: Antialiasing,
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
     /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
+    /// Settings tried out and not to be kept (the benchmark's, see
+    /// [`crate::bench`]): never saved, and never saved over the player's.
+    #[serde(skip)]
+    pub transient: bool,
 }
 
 /// How hard the races are.
@@ -272,8 +282,11 @@ impl Default for Settings {
             lighter_far_trees: false,
             lighter_split_screen: true,
             performance_log: true,
+            shadows: ShadowQuality::default(),
+            antialiasing: Antialiasing::default(),
             frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
+            transient: false,
         }
     }
 }
@@ -377,6 +390,51 @@ pub enum FpsLimit {
     Screen,
     Cap(u32),
     Unlimited,
+}
+
+/// The shadows' quality: automatic (lowered while the frame rate falls
+/// short, raised again once it keeps up), or one of the levels, from the
+/// most detail to the least (see [`crate::world::detail::Level`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum ShadowQuality {
+    #[default]
+    Auto,
+    High,
+    Medium,
+    Low,
+}
+
+/// The shadows' qualities that can be chosen, in order.
+pub const SHADOW_QUALITIES: [ShadowQuality; 4] = [
+    ShadowQuality::Auto,
+    ShadowQuality::High,
+    ShadowQuality::Medium,
+    ShadowQuality::Low,
+];
+
+/// How the edges are smoothed: four samples a pixel (as always), FXAA over
+/// the frame (cheaper), or not at all.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Antialiasing {
+    #[default]
+    Msaa,
+    Fxaa,
+    Off,
+}
+
+/// The ways of smoothing the edges that can be chosen, in order.
+pub const ANTIALIASINGS: [Antialiasing; 3] =
+    [Antialiasing::Msaa, Antialiasing::Fxaa, Antialiasing::Off];
+
+impl FpsLimit {
+    /// The frame rate the automatic quality aims at: the cap chosen, or 60
+    /// (with the screen's rate or unlimited).
+    pub fn target(self) -> f32 {
+        match self {
+            FpsLimit::Cap(fps) => fps as f32,
+            FpsLimit::Screen | FpsLimit::Unlimited => 60.0,
+        }
+    }
 }
 
 /// Los límites que se pueden elegir, en orden.
@@ -1082,6 +1140,9 @@ impl Settings {
     }
 
     fn save(&self) {
+        if self.transient {
+            return;
+        }
         let saved = ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default())
             .map_err(|error| error.to_string())
             .and_then(|text| storage::write(&text));

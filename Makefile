@@ -1,7 +1,7 @@
 # Atajos para desarrollar motorust. `make` a secas muestra la lista.
 
 .DEFAULT_GOAL := help
-.PHONY: help install up preview build test linux-deps
+.PHONY: help install up preview build test bench linux-deps
 
 CARGO ?= cargo
 # Como root (contenedores, CI) no hace falta sudo, y a veces ni existe.
@@ -51,6 +51,9 @@ build: ## Compila la versión optimizada en target/release/motorust
 
 test: ## Pasa los tests
 	$(CARGO) test
+
+bench: ## Benchmark: recorre las pistas solo, con cada ajuste, y escribe los resultados
+	$(CARGO) run --release -- --bench
 
 linux-deps:
 	@if command -v apt-get >/dev/null; then \

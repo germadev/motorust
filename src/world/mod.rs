@@ -18,6 +18,7 @@ mod quads;
 mod road;
 pub mod scenery;
 mod sea;
+mod shadow_fade;
 mod shoulders;
 pub mod sky;
 mod structures;
@@ -54,7 +55,11 @@ impl Plugin for WorldPlugin {
             app.init_asset::<sea::SeaMaterial>();
         }
         let current = CurrentCircuit::default();
-        app.add_plugins((lamps::LampsPlugin, detail::DetailPlugin));
+        app.add_plugins((
+            lamps::LampsPlugin,
+            detail::DetailPlugin,
+            shadow_fade::ShadowFadePlugin,
+        ));
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
             .init_resource::<Roadsides>()
@@ -514,7 +519,7 @@ fn spawn_sun(mut commands: Commands) {
         Transform::default().looking_to(-sun, Vec3::Y),
         // Shadows are only needed near the camera, which gives them more
         // resolution (with the screen split, nearer still: see [`detail`]).
-        detail::Detail::Full.cascades(),
+        detail::Detail::default().cascades(),
     ));
 }
 

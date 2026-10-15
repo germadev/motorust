@@ -356,6 +356,11 @@ impl Progress {
         passed
     }
 
+    /// How long the lap under way has taken at `clock` (s on the clock).
+    pub fn lap_time(&self, clock: f32) -> f32 {
+        (clock - self.lap_start).max(0.0)
+    }
+
     /// The checkpoint just gone through (an index of [`checkpoints`]).
     pub fn last_checkpoint(&self, points: &[f32]) -> usize {
         match self.next_checkpoint {

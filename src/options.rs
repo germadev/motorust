@@ -17,14 +17,16 @@ use crate::mapping::{
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
 use crate::pause::{DebugOptions, ReturnRate, SteerRate, TurnLimit};
 use crate::settings::{
-    CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES, FALSE_STARTS, FPS_LIMITS,
-    FRAME_LATENCIES, FULLSCREEN_KINDS, LIGHTS_HOLDS, RACE_STARTS, RESOLUTIONS, RaceStart,
-    START_LIGHTS, Settings, StartedWith, WEB, cycle,
+    ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
+    DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS, LIGHTS_HOLDS,
+    RACE_STARTS, RESOLUTIONS, RaceStart, SHADOW_QUALITIES, START_LIGHTS, Settings, ShadowQuality,
+    StartedWith, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
     text_font, ui_pixels,
 };
+use crate::world::detail::{AutoQuality, Level};
 
 /// Height of the panel (px): the tab with the most options (Control) fits.
 const PANEL_HEIGHT: f32 = 600.0;
@@ -249,6 +251,10 @@ enum GraphicsItem {
     FullscreenKind,
     Resolution,
     Fps,
+    /// How far and fine the shadows are, or automatic.
+    Shadows,
+    /// How the edges are smoothed.
+    Antialiasing,
     /// The trees modelled or the classic ones.
     Trees,
     /// Whether the trees far away are drawn with lighter meshes.
@@ -323,6 +329,8 @@ fn graphics_items() -> Vec<GraphicsItem> {
         vec![
             GraphicsItem::Fullscreen,
             GraphicsItem::Resolution,
+            GraphicsItem::Shadows,
+            GraphicsItem::Antialiasing,
             GraphicsItem::Trees,
             GraphicsItem::FarTrees,
             GraphicsItem::SplitDetail,
@@ -335,6 +343,8 @@ fn graphics_items() -> Vec<GraphicsItem> {
         items.extend([
             GraphicsItem::Resolution,
             GraphicsItem::Fps,
+            GraphicsItem::Shadows,
+            GraphicsItem::Antialiasing,
             GraphicsItem::Trees,
             GraphicsItem::FarTrees,
             GraphicsItem::SplitDetail,
@@ -422,6 +432,8 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.fullscreen_kind,
                 settings.resolution,
                 settings.fps,
+                settings.shadows,
+                settings.antialiasing,
                 settings.modelled_trees,
                 settings.lighter_far_trees,
                 settings.lighter_split_screen,
@@ -433,6 +445,8 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 first.fullscreen_kind,
                 first.resolution,
                 first.fps,
+                first.shadows,
+                first.antialiasing,
                 first.modelled_trees,
                 first.lighter_far_trees,
                 first.lighter_split_screen,
@@ -469,6 +483,8 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.fullscreen_kind = first.fullscreen_kind;
             settings.resolution = first.resolution;
             settings.fps = first.fps;
+            settings.shadows = first.shadows;
+            settings.antialiasing = first.antialiasing;
             settings.modelled_trees = first.modelled_trees;
             settings.lighter_far_trees = first.lighter_far_trees;
             settings.lighter_split_screen = first.lighter_split_screen;
@@ -683,6 +699,14 @@ fn use_options_menu(
                     settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
                     sounds.write(MenuSound::Move);
                 }
+                GraphicsItem::Shadows if change != 0 => {
+                    settings.shadows = cycle(&SHADOW_QUALITIES, settings.shadows, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::Antialiasing if change != 0 => {
+                    settings.antialiasing = cycle(&ANTIALIASINGS, settings.antialiasing, change);
+                    sounds.write(MenuSound::Move);
+                }
                 GraphicsItem::Trees if change != 0 => {
                     settings.modelled_trees = !settings.modelled_trees;
                     sounds.write(MenuSound::Move);
@@ -711,6 +735,26 @@ fn use_options_menu(
                 _ => {}
             }
         }
+    }
+}
+
+/// The shadows' quality as Options > Graphics names it: automatic, with
+/// the level it has come to (`auto`), or the level chosen.
+fn shadows_name(quality: ShadowQuality, auto: Level, lang: Language) -> String {
+    let level = |level: Level| match (level, lang) {
+        (Level::High, Language::Spanish) => "Altas",
+        (Level::High, Language::English) => "High",
+        (Level::Medium, Language::Spanish) => "Medias",
+        (Level::Medium, Language::English) => "Medium",
+        (Level::Low, Language::Spanish) => "Bajas",
+        (Level::Low, Language::English) => "Low",
+    };
+    match Level::of(quality) {
+        Some(chosen) => level(chosen).to_string(),
+        None => match lang {
+            Language::Spanish => format!("Automáticas ({})", level(auto).to_lowercase()),
+            Language::English => format!("Automatic ({})", level(auto).to_lowercase()),
+        },
     }
 }
 
@@ -894,7 +938,11 @@ fn show_options_menu(
         Query<&Name, With<Gamepad>>,
     ),
     // The mapping's gamepads, drawn at the interface's scale.
-    (mut pad_arts, ui_scale): (ResMut<PadArts>, Option<Res<UiScale>>),
+    (mut pad_arts, ui_scale, auto_quality): (
+        ResMut<PadArts>,
+        Option<Res<UiScale>>,
+        Option<Res<AutoQuality>>,
+    ),
     mut last: Local<Option<String>>,
 ) {
     let started = started.as_deref();
@@ -1078,6 +1126,34 @@ fn show_options_menu(
                 GraphicsItem::Fps => {
                     Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang)))
                 }
+                GraphicsItem::Shadows => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Sombras",
+                        Language::English => "Shadows",
+                    },
+                    format!(
+                        "<  {}  >",
+                        shadows_name(
+                            settings.shadows,
+                            auto_quality
+                                .as_deref()
+                                .map_or(Level::High, |auto| auto.level),
+                            lang
+                        )
+                    ),
+                ),
+                GraphicsItem::Antialiasing => Row::with_value(
+                    "Antialiasing",
+                    format!(
+                        "<  {}  >",
+                        match (settings.antialiasing, lang) {
+                            (Antialiasing::Msaa, _) => "MSAA 4×",
+                            (Antialiasing::Fxaa, _) => "FXAA",
+                            (Antialiasing::Off, Language::Spanish) => "No",
+                            (Antialiasing::Off, Language::English) => "Off",
+                        }
+                    ),
+                ),
                 GraphicsItem::Trees => Row::with_value(
                     match lang {
                         Language::Spanish => "Árboles",

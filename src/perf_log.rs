@@ -28,6 +28,7 @@ use crate::race::Rules;
 use crate::settings::Settings;
 use crate::welcome::GameMode;
 use crate::world::Dressed;
+use crate::world::detail::Detail;
 
 /// How long each line of the log covers (s), at most.
 const STRETCH: f32 = 5.0;
@@ -55,6 +56,8 @@ pub struct Context {
     pub trees: &'static str,
     pub far_trees: bool,
     pub split_detail: bool,
+    pub shadows: String,
+    pub antialiasing: String,
     pub fps_limit: String,
     pub resolution: String,
     pub fullscreen: String,
@@ -68,7 +71,7 @@ impl Context {
     fn pairs(&self) -> String {
         format!(
             "state={} mode={} players={} paused={} track={:?} trees={} lighter_far_trees={} \
-             lighter_split_screen={} fps_limit={} resolution={} fullscreen={} \
+             lighter_split_screen={} shadows={} antialiasing={} fps_limit={} resolution={} fullscreen={} \
              pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
             self.state,
             self.mode,
@@ -78,6 +81,8 @@ impl Context {
             self.trees,
             self.far_trees,
             self.split_detail,
+            self.shadows,
+            self.antialiasing,
             self.fps_limit,
             self.resolution,
             self.fullscreen,
@@ -103,7 +108,34 @@ fn percentile(sorted: &[f32], share: f32) -> f32 {
     sorted[index.min(sorted.len() - 1)] * 1000.0
 }
 
+/// What a stretch comes to: its average rate, the rate of its slowest 1 %
+/// of frames, and its frames' times (ms) at the middle and at 95 %.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Summary {
+    pub fps: f32,
+    pub low: f32,
+    pub p50: f32,
+    pub p95: f32,
+}
+
 impl Stretch {
+    pub fn summary(&self) -> Option<Summary> {
+        if self.frames.is_empty() {
+            return None;
+        }
+        let mut sorted = self.frames.clone();
+        sorted.sort_by(f32::total_cmp);
+        let total: f32 = sorted.iter().sum();
+        let slowest = (sorted.len() / 100).max(1);
+        let low: f32 = sorted.iter().rev().take(slowest).sum::<f32>() / slowest as f32;
+        Some(Summary {
+            fps: sorted.len() as f32 / total.max(1e-6),
+            low: 1.0 / low.max(1e-6),
+            p50: percentile(&sorted, 0.5),
+            p95: percentile(&sorted, 0.95),
+        })
+    }
+
     /// Its figures: frames, how long it lasted (s), the average rate, the
     /// rate of the slowest 1 % of the frames, the times (ms) at the middle,
     /// at 95 % and 99 %, and the longest; and the simulation's (ms) at the
@@ -204,7 +236,7 @@ fn usage(store: Option<&DiagnosticsStore>) -> String {
 }
 
 /// The folder the logs go in: beside the settings.
-fn folder() -> Option<PathBuf> {
+pub(crate) fn folder() -> Option<PathBuf> {
     let var = |name| std::env::var_os(name).map(PathBuf::from);
     let base = if cfg!(target_os = "macos") {
         var("HOME")?.join("Library/Application Support")
@@ -279,7 +311,12 @@ fn log_performance(
         Option<Res<RenderAdapterInfo>>,
         Query<(&Dressed, &InheritedVisibility)>,
     ),
-    (start, store, entities): (Res<FrameStart>, Option<Res<DiagnosticsStore>>, &Entities),
+    (start, store, entities, detail): (
+        Res<FrameStart>,
+        Option<Res<DiagnosticsStore>>,
+        &Entities,
+        Option<Res<Detail>>,
+    ),
     mut log: ResMut<PerfLog>,
 ) {
     if !settings.performance_log {
@@ -309,6 +346,13 @@ fn log_performance(
         },
         far_trees: settings.lighter_far_trees,
         split_detail: settings.lighter_split_screen,
+        // The quality chosen, and the level the shadows are drawn at now.
+        shadows: format!(
+            "{:?}/{:?}",
+            settings.shadows,
+            detail.as_deref().map(|detail| detail.level)
+        ),
+        antialiasing: format!("{:?}", settings.antialiasing),
         fps_limit: format!("{:?}", settings.fps),
         resolution: format!("{:?}", settings.resolution),
         fullscreen: if settings.fullscreen {
