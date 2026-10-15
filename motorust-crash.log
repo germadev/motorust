@@ -1,6 +1,0 @@
-Motorust se ha cerrado por un error:
-
-panicked at src/track.rs:820:13:
-assertion failed: edges.is_empty() || edges.len() == road.centerline.len()
-
-Se ha guardado un informe en motorust-crash.log.
