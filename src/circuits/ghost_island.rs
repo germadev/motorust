@@ -1349,9 +1349,11 @@ fn mountains(point: Vec2) -> f32 {
 
 /// The volcano's flanks as erosion and its own fires have left them (m over
 /// or under its smooth cone, `reach` its share of the way out from its
-/// middle): gullies and ridges down them, deepest half way down and none at
-/// the rim nor at the foot, each wandering a little as it runs down; broad
-/// lumps and hollows; and a parasitic cone on the flank facing the island.
+/// middle): gullies carved down them, rounded at their bottoms, between
+/// ridges that are the cone itself (so its skyline stays smooth), deepest
+/// half way down and none at the rim nor at the foot, each wandering a
+/// little as it runs down; broad lumps and hollows; and a parasitic cone on
+/// the flank facing the island.
 fn volcano_relief(point: Vec2, reach: f32) -> f32 {
     if reach >= 1.0 {
         return 0.0;
@@ -1365,9 +1367,8 @@ fn volcano_relief(point: Vec2, reach: f32) -> f32 {
         .enumerate()
     {
         let wander = 2.5 * (fbm(Vec2::new(reach * 5.0, k as f32 * 3.7), 2) - 0.5);
-        // Sharp ridges between rounded gullies.
         let wave = (count * angle + wander + k as f32 * 1.3).sin();
-        gullies += weight * (0.5 - wave.abs()) * smoothstep(from, from + 0.1, reach);
+        gullies += weight * wave.max(0.0).powi(2) * smoothstep(from, from + 0.1, reach);
     }
     let down = 1.0 - smoothstep(0.75, 1.0, reach);
     let lumps = 60.0 * (fbm(point / 420.0, 3) - 0.5) * smoothstep(0.1, 0.3, reach) * down;
@@ -1375,7 +1376,7 @@ fn volcano_relief(point: Vec2, reach: f32) -> f32 {
     let near = point.distance(parasite) / 230.0;
     let cone =
         95.0 * (1.0 - near * near).max(0.0).powi(2) - 18.0 * (1.0 - smoothstep(0.0, 0.18, near));
-    56.0 * gullies * down + lumps + cone
+    lumps + cone - 45.0 * gullies * down
 }
 
 #[cfg(test)]

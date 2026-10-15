@@ -696,7 +696,7 @@ fn lines(point: Vec3, hollow: f32) -> (f32, f32) {
 
 /// How much lower the snow lies down a gully (m), and how much higher the
 /// forest climbs it (and on a ridge, the other way).
-const SNOW_IN_GULLIES: f32 = 160.0;
+const SNOW_IN_GULLIES: f32 = 120.0;
 const TREES_IN_GULLIES: f32 = 70.0;
 /// On the mountains across the sea, faces steeper than this (the normal's
 /// height) are rock even under the lines: only sheer ones, the grid there
