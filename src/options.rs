@@ -15,12 +15,12 @@ use crate::mapping::{
     Held, MapDevice, Mapping, MappingLook, PAD_HEIGHT, Step, spawn_mapping, use_mapping,
 };
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
-use crate::pause::{DebugOptions, ReturnRate, SteerRate, TurnLimit};
+use crate::pause::{DebugOptions, ReturnRate, ReverseRate, SteerRate, TurnLimit};
 use crate::settings::{
     ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
     DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS, LIGHTS_HOLDS,
-    RACE_STARTS, RESOLUTIONS, RaceStart, SHADOW_QUALITIES, START_LIGHTS, Settings, ShadowQuality,
-    StartedWith, WEB, cycle,
+    RACE_STARTS, RENDER_SCALES, RESOLUTIONS, RaceStart, SHADOW_QUALITIES, START_LIGHTS, Settings,
+    ShadowQuality, StartedWith, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
@@ -222,6 +222,8 @@ enum GameItem {
     FalseStarts,
     /// Whether the results go to the middle once everybody is in.
     CentreResults,
+    /// Whether the race's whole time is shown under the lap's.
+    TotalTime,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -232,6 +234,8 @@ enum ControlItem {
     KeyboardTurnLimit,
     KeyboardTurnRate,
     KeyboardReturnRate,
+    /// How fast the keyboard turns over to the other side.
+    KeyboardReverseRate,
     ShowLegend,
     RescanGamepads,
 }
@@ -250,6 +254,8 @@ enum GraphicsItem {
     /// [`CHOOSE_FULLSCREEN`]).
     FullscreenKind,
     Resolution,
+    /// How much of the window's resolution the world is drawn at.
+    RenderScale,
     Fps,
     /// How far and fine the shadows are, or automatic.
     Shadows,
@@ -277,6 +283,7 @@ fn game_items() -> Vec<GameItem> {
         GameItem::LightsHold,
         GameItem::FalseStarts,
         GameItem::CentreResults,
+        GameItem::TotalTime,
     ]
 }
 
@@ -311,6 +318,7 @@ fn control_items() -> Vec<ControlItem> {
         ControlItem::KeyboardTurnLimit,
         ControlItem::KeyboardTurnRate,
         ControlItem::KeyboardReturnRate,
+        ControlItem::KeyboardReverseRate,
         ControlItem::ShowLegend,
         ControlItem::RescanGamepads,
     ]
@@ -329,6 +337,7 @@ fn graphics_items() -> Vec<GraphicsItem> {
         vec![
             GraphicsItem::Fullscreen,
             GraphicsItem::Resolution,
+            GraphicsItem::RenderScale,
             GraphicsItem::Shadows,
             GraphicsItem::Antialiasing,
             GraphicsItem::Trees,
@@ -342,6 +351,7 @@ fn graphics_items() -> Vec<GraphicsItem> {
         }
         items.extend([
             GraphicsItem::Resolution,
+            GraphicsItem::RenderScale,
             GraphicsItem::Fps,
             GraphicsItem::Shadows,
             GraphicsItem::Antialiasing,
@@ -353,6 +363,18 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::FrameLatency,
         ]);
         items
+    }
+}
+
+/// A render scale as it is shown: the share and, under 100 %, the pixels
+/// the world is drawn at in `window` ("70 % (2117 × 1329)").
+fn render_scale_name(percent: u32, window: Option<&Window>) -> String {
+    match window {
+        Some(window) if percent < 100 && window.physical_width() > 0 => {
+            let size = crate::render_scale::render_size(window.physical_size(), percent);
+            format!("{percent} % ({} × {})", size.x, size.y)
+        }
+        _ => format!("{percent} %"),
     }
 }
 
@@ -384,12 +406,22 @@ fn first_settings() -> &'static Settings {
 
 /// How the stick and the keyboard steer, and whether the legend is shown:
 /// the options of Control.
-fn steering(debug: &DebugOptions) -> (TurnLimit, TurnLimit, SteerRate, ReturnRate, bool) {
+fn steering(
+    debug: &DebugOptions,
+) -> (
+    TurnLimit,
+    TurnLimit,
+    SteerRate,
+    ReturnRate,
+    ReverseRate,
+    bool,
+) {
     (
         debug.stick_limit,
         debug.keyboard_limit,
         debug.keyboard_rate,
         debug.keyboard_return,
+        debug.keyboard_reverse,
         debug.show_legend,
     )
 }
@@ -408,6 +440,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.lights_hold,
                 settings.false_starts,
                 settings.centre_results,
+                settings.show_total_time,
             ) == (
                 first.language,
                 first.difficulty,
@@ -416,6 +449,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 first.lights_hold,
                 first.false_starts,
                 first.centre_results,
+                first.show_total_time,
             )
         }
         OptionsTab::Control => steering(debug) == steering(&DebugOptions::default()),
@@ -426,34 +460,36 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
                 settings.music_enabled,
             ) == (first.fx_volume, first.music_volume, first.music_enabled)
         }
+        // (Twelve at most in a tuple compared.)
         OptionsTab::Graphics => {
-            (
-                settings.fullscreen,
-                settings.fullscreen_kind,
-                settings.resolution,
-                settings.fps,
-                settings.shadows,
-                settings.antialiasing,
-                settings.modelled_trees,
-                settings.lighter_far_trees,
-                settings.lighter_split_screen,
-                settings.performance_log,
-                settings.pipelined_rendering,
-                settings.frame_latency,
-            ) == (
-                first.fullscreen,
-                first.fullscreen_kind,
-                first.resolution,
-                first.fps,
-                first.shadows,
-                first.antialiasing,
-                first.modelled_trees,
-                first.lighter_far_trees,
-                first.lighter_split_screen,
-                first.performance_log,
-                first.pipelined_rendering,
-                first.frame_latency,
-            )
+            settings.render_scale == first.render_scale
+                && (
+                    settings.fullscreen,
+                    settings.fullscreen_kind,
+                    settings.resolution,
+                    settings.fps,
+                    settings.shadows,
+                    settings.antialiasing,
+                    settings.modelled_trees,
+                    settings.lighter_far_trees,
+                    settings.lighter_split_screen,
+                    settings.performance_log,
+                    settings.pipelined_rendering,
+                    settings.frame_latency,
+                ) == (
+                    first.fullscreen,
+                    first.fullscreen_kind,
+                    first.resolution,
+                    first.fps,
+                    first.shadows,
+                    first.antialiasing,
+                    first.modelled_trees,
+                    first.lighter_far_trees,
+                    first.lighter_split_screen,
+                    first.performance_log,
+                    first.pipelined_rendering,
+                    first.frame_latency,
+                )
         }
     }
 }
@@ -471,6 +507,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.lights_hold = first.lights_hold;
             settings.false_starts = first.false_starts;
             settings.centre_results = first.centre_results;
+            settings.show_total_time = first.show_total_time;
         }
         OptionsTab::Control => *debug = DebugOptions::default(),
         OptionsTab::Sound => {
@@ -482,6 +519,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.fullscreen = first.fullscreen;
             settings.fullscreen_kind = first.fullscreen_kind;
             settings.resolution = first.resolution;
+            settings.render_scale = first.render_scale;
             settings.fps = first.fps;
             settings.shadows = first.shadows;
             settings.antialiasing = first.antialiasing;
@@ -615,6 +653,10 @@ fn use_options_menu(
                     settings.centre_results = !settings.centre_results;
                     sounds.write(MenuSound::Move);
                 }
+                GameItem::TotalTime if change != 0 => {
+                    settings.show_total_time = !settings.show_total_time;
+                    sounds.write(MenuSound::Move);
+                }
                 _ => {}
             }
         }
@@ -641,6 +683,10 @@ fn use_options_menu(
                 }
                 ControlItem::KeyboardReturnRate if change != 0 => {
                     debug_options.keyboard_return = debug_options.keyboard_return.next(change);
+                    sounds.write(MenuSound::Move);
+                }
+                ControlItem::KeyboardReverseRate if change != 0 => {
+                    debug_options.keyboard_reverse = debug_options.keyboard_reverse.next(change);
                     sounds.write(MenuSound::Move);
                 }
                 ControlItem::ShowLegend if change != 0 => {
@@ -694,6 +740,10 @@ fn use_options_menu(
                         settings.resolution = cycle(RESOLUTIONS, settings.resolution, change);
                         sounds.write(MenuSound::Move);
                     }
+                }
+                GraphicsItem::RenderScale if change != 0 => {
+                    settings.render_scale = cycle(&RENDER_SCALES, settings.render_scale, change);
+                    sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Fps if change != 0 => {
                     settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
@@ -1025,6 +1075,13 @@ fn show_options_menu(
                     },
                     settings.centre_results,
                 ),
+                GameItem::TotalTime => Row::check(
+                    match lang {
+                        Language::Spanish => "Mostrar el tiempo total",
+                        Language::English => "Show the total time",
+                    },
+                    settings.show_total_time,
+                ),
             })
             .collect(),
         OptionsTab::Control => control_items()
@@ -1067,6 +1124,13 @@ fn show_options_menu(
                         Language::English => "Keyboard: return rate released",
                     },
                     format!("<  {}  >", debug_options.keyboard_return.name(lang)),
+                ),
+                ControlItem::KeyboardReverseRate => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Teclado: rapidez de cambio de sentido",
+                        Language::English => "Keyboard: turning the other way",
+                    },
+                    format!("<  {}  >", debug_options.keyboard_reverse.name(lang)),
                 ),
                 ControlItem::ShowLegend => {
                     Row::check(lang.show_legend(), debug_options.show_legend)
@@ -1123,6 +1187,16 @@ fn show_options_menu(
                         Row::with_value(lang.resolution(), format!("<  {name}  >"))
                     }
                 }
+                GraphicsItem::RenderScale => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Escala de resolución",
+                        Language::English => "Resolution scale",
+                    },
+                    format!(
+                        "<  {}  >",
+                        render_scale_name(settings.render_scale, window_inner)
+                    ),
+                ),
                 GraphicsItem::Fps => {
                     Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang)))
                 }

@@ -23,6 +23,7 @@ mod pad_art;
 mod pause;
 mod perf_log;
 mod race;
+mod render_scale;
 mod settings;
 mod shapes;
 mod sound;
@@ -182,6 +183,7 @@ fn main() {
             race::RacePlugin,
             modes::ModesPlugin,
             perf_log::PerfLogPlugin,
+            render_scale::RenderScalePlugin,
         ));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);

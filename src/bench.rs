@@ -46,6 +46,7 @@ use crate::perf_log::{
     CpuClock, FrameStart, PerfLog, Stretch, Summary, folder, log_name, process_cpu,
 };
 use crate::race::{Mode, Progress, Rules};
+use crate::render_scale::render_size;
 use crate::settings::{Antialiasing, FpsLimit, Settings, ShadowQuality};
 use crate::track::Track;
 use crate::ui::text_font;
@@ -94,11 +95,14 @@ pub struct Scenario {
     pub antialiasing: Antialiasing,
     pub far_trees: bool,
     pub split_detail: bool,
+    /// The render scale (% of the window's resolution).
+    pub render_scale: u32,
 }
 
 /// Every scenario on each of `tracks`: one player as the game starts
-/// (shadows high, multisampled, whole trees), then one thing changed at a
-/// time; then two players, with less detail and with all of it.
+/// (shadows high, multisampled, whole trees, the world at the window's
+/// resolution), then one thing changed at a time; then two players, with
+/// less detail, with all of it and with less detail drawn smaller.
 pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
     let base = |name, track| Scenario {
         name,
@@ -108,6 +112,7 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
         antialiasing: Antialiasing::Msaa,
         far_trees: false,
         split_detail: true,
+        render_scale: 100,
     };
     tracks
         .iter()
@@ -135,6 +140,14 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
                     ..base("1p-lighter-far-trees", track)
                 },
                 Scenario {
+                    render_scale: 70,
+                    ..base("1p-render-70", track)
+                },
+                Scenario {
+                    render_scale: 50,
+                    ..base("1p-render-50", track)
+                },
+                Scenario {
                     players: 2,
                     ..base("2p", track)
                 },
@@ -142,6 +155,11 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
                     players: 2,
                     split_detail: false,
                     ..base("2p-full-detail", track)
+                },
+                Scenario {
+                    players: 2,
+                    render_scale: 70,
+                    ..base("2p-render-70", track)
                 },
             ]
         })
@@ -236,6 +254,18 @@ fn players_said(players: u32) -> String {
     } else {
         format!("{players} players")
     }
+}
+
+/// The pixels the world is drawn at in a window of `window` physical
+/// pixels at the render scale of `settings`, as shown on the screen.
+pub fn resolution_said(settings: &Settings, window: UVec2) -> String {
+    let size = render_size(window, settings.render_scale);
+    format!(
+        "3D {} × {} · {} %",
+        size.x,
+        size.y,
+        settings.render_scale.min(100)
+    )
 }
 
 /// The settings on, as they are shown on the screen: the shadows, the
@@ -448,7 +478,7 @@ impl Bench {
 
     /// What it is doing, shown on the screen under the frame rate: the lap,
     /// the setting on and how far round.
-    fn on_screen(&self, settings: &Settings) -> String {
+    fn on_screen(&self, settings: &Settings, window: UVec2) -> String {
         let Some(range) = self.laps.get(self.lap) else {
             return String::new();
         };
@@ -482,6 +512,7 @@ impl Bench {
             setting.and_then(|setting| self.scenarios.get(range.start + setting))
         {
             lines.push(scenario.name.to_string());
+            lines.push(resolution_said(settings, window));
             lines.push(settings_said(settings, first.players));
         }
         lines.push(doing);
@@ -568,6 +599,7 @@ fn use_setting(scenario: &Scenario, settings: &mut Settings) {
     settings.antialiasing = scenario.antialiasing;
     settings.lighter_far_trees = scenario.far_trees;
     settings.lighter_split_screen = scenario.split_detail;
+    settings.render_scale = scenario.render_scale;
 }
 
 fn start_bench(mut rules: ResMut<Rules>) {
@@ -599,9 +631,13 @@ fn spawn_bench_label(mut commands: Commands, font: Res<UiFont>) {
 fn show_bench(
     bench: Res<Bench>,
     settings: Res<Settings>,
+    window: Query<&Window, With<PrimaryWindow>>,
     mut label: Single<&mut Text, With<BenchLabel>>,
 ) {
-    let text = bench.on_screen(&settings);
+    let window = window
+        .single()
+        .map_or(UVec2::ZERO, |window| window.physical_size());
+    let text = bench.on_screen(&settings, window);
     if label.0 != text {
         label.0 = text;
     }
@@ -999,8 +1035,8 @@ mod tests {
     #[test]
     fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time() {
         let all = scenarios(&tracks(None));
-        assert_eq!(all.len(), 8 * CIRCUITS.len());
-        let first = &all[..8];
+        assert_eq!(all.len(), 11 * CIRCUITS.len());
+        let first = &all[..11];
         assert!(first.iter().all(|scenario| scenario.track == 0));
         // The first as the game starts; the others one change from it.
         let base = &first[0];
@@ -1009,9 +1045,10 @@ mod tests {
                 base.players,
                 base.shadows,
                 base.antialiasing,
-                base.far_trees
+                base.far_trees,
+                base.render_scale
             ),
-            (1, ShadowQuality::High, Antialiasing::Msaa, false)
+            (1, ShadowQuality::High, Antialiasing::Msaa, false, 100)
         );
         for scenario in &first[1..] {
             let changes = [
@@ -1020,6 +1057,7 @@ mod tests {
                 scenario.antialiasing != base.antialiasing,
                 scenario.far_trees != base.far_trees,
                 scenario.split_detail != base.split_detail && scenario.players == 2,
+                scenario.render_scale != base.render_scale,
             ]
             .iter()
             .filter(|&&changed| changed)
@@ -1085,8 +1123,8 @@ mod tests {
                 scenario.track == first.track && scenario.players == first.players
             }));
         }
-        assert_eq!(laps[0].len(), 6);
-        assert_eq!(laps[1].len(), 2);
+        assert_eq!(laps[0].len(), 8);
+        assert_eq!(laps[1].len(), 3);
         assert_eq!(all[laps[2].start].track, 3);
     }
 
@@ -1152,6 +1190,11 @@ mod tests {
         );
         settings.lighter_split_screen = false;
         assert!(settings_said(&settings, 2).ends_with(" · all the detail"));
+        // The pixels the world is drawn at.
+        let retina = UVec2::new(3024, 1898);
+        assert_eq!(resolution_said(&settings, retina), "3D 3024 × 1898 · 100 %");
+        settings.render_scale = 70;
+        assert_eq!(resolution_said(&settings, retina), "3D 2117 × 1329 · 70 %");
     }
 
     #[test]

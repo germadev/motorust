@@ -83,6 +83,9 @@ pub struct Settings {
     /// everybody is in (see [`crate::race::results`]); otherwise they stay
     /// at the top right.
     pub centre_results: bool,
+    /// Whether the race's whole time so far is shown under the lap's in
+    /// the race (see [`crate::race::hud`]).
+    pub show_total_time: bool,
     /// How fast the rivals ride, and how much time the checkpoints give.
     pub difficulty: Difficulty,
     /// Whether each frame is drawn while the next one is simulated
@@ -109,6 +112,10 @@ pub struct Settings {
     /// How the edges are smoothed (see [`crate::world::detail`]): fixed, as
     /// changing it makes every pipeline again.
     pub antialiasing: Antialiasing,
+    /// How much of the window's resolution the world is drawn at (%), scaled
+    /// up to it (see [`crate::render_scale`]); the interface is always drawn
+    /// at the window's own.
+    pub render_scale: u32,
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
@@ -276,6 +283,7 @@ impl Default for Settings {
             lights_hold: LightsHold::default(),
             false_starts: DEFAULT_FALSE_STARTS,
             centre_results: false,
+            show_total_time: false,
             difficulty: Difficulty::default(),
             pipelined_rendering: true,
             modelled_trees: true,
@@ -284,6 +292,7 @@ impl Default for Settings {
             performance_log: true,
             shadows: ShadowQuality::default(),
             antialiasing: Antialiasing::default(),
+            render_scale: DEFAULT_RENDER_SCALE,
             frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
             transient: false,
@@ -425,6 +434,11 @@ pub enum Antialiasing {
 /// The ways of smoothing the edges that can be chosen, in order.
 pub const ANTIALIASINGS: [Antialiasing; 3] =
     [Antialiasing::Msaa, Antialiasing::Fxaa, Antialiasing::Off];
+
+/// The render scales that can be chosen (% of the window's resolution, see
+/// [`Settings::render_scale`]), in order, and the one at first: all of it.
+pub const RENDER_SCALES: [u32; 4] = [100, 85, 70, 50];
+pub const DEFAULT_RENDER_SCALE: u32 = 100;
 
 impl FpsLimit {
     /// The frame rate the automatic quality aims at: the cap chosen, or 60

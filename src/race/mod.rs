@@ -304,9 +304,11 @@ pub struct Progress {
     gates: usize,
     /// When it crossed the line at the end of its race (s on the clock).
     pub finished: Option<f32>,
-    /// When the lap under way began (s on the clock), and the best lap.
+    /// When the lap under way began (s on the clock), the best lap and the
+    /// last one (s).
     lap_start: f32,
     pub best_lap: Option<f32>,
+    pub last_lap: Option<f32>,
     /// Against the clock: checkpoints gone through, and the next one of
     /// the lap (an index of [`checkpoints`]).
     pub checkpoints: u32,
@@ -682,6 +684,7 @@ fn follow_the_race(
             let lap_time = clock - progress.lap_start;
             progress.lap_start = clock;
             if progress.finished.is_none() {
+                progress.last_lap = Some(lap_time);
                 if progress.best_lap.is_none_or(|best| lap_time < best) {
                     progress.best_lap = Some(lap_time);
                 }

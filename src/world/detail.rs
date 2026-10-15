@@ -345,21 +345,28 @@ fn reach_for_detail(
 }
 
 /// The edges smoothed as Options > Graphics says, on every camera as it
-/// comes: all of them (the interface's too) multisampled alike, four
-/// samples a pixel or one, and FXAA on the world's if chosen.
+/// comes: all of them (the interface's too, while it draws over what the
+/// world's drew on the window) multisampled alike, four samples a pixel or
+/// one, and FXAA on the world's if chosen. With the world drawn smaller
+/// (see [`crate::render_scale`]) the interface's camera draws on its own
+/// over the window, with one sample a pixel.
 #[allow(clippy::type_complexity)]
 fn antialias(
     mut commands: Commands,
     settings: Option<Res<Settings>>,
     cameras: Query<(Entity, Option<&Msaa>, Has<Fxaa>, Has<Camera3d>), With<Camera>>,
 ) {
-    let chosen = settings.map_or(Antialiasing::default(), |settings| settings.antialiasing);
+    let chosen = settings
+        .as_deref()
+        .map_or(Antialiasing::default(), |settings| settings.antialiasing);
     let (msaa, fxaa) = match chosen {
         Antialiasing::Msaa => (Msaa::Sample4, false),
         Antialiasing::Fxaa => (Msaa::Off, true),
         Antialiasing::Off => (Msaa::Off, false),
     };
+    let scaled = crate::render_scale::render_percent(settings.as_deref()) < 100;
     for (camera, current, has_fxaa, world) in &cameras {
+        let msaa = if scaled && !world { Msaa::Off } else { msaa };
         if current != Some(&msaa) {
             commands.entity(camera).insert(msaa);
         }

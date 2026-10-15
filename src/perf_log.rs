@@ -27,6 +27,7 @@ use crate::circuits::CurrentCircuit;
 use crate::menu::GameState;
 use crate::pause::Pause;
 use crate::race::Rules;
+use crate::render_scale::render_size;
 use crate::settings::Settings;
 use crate::welcome::GameMode;
 use crate::world::Dressed;
@@ -60,6 +61,9 @@ pub struct Context {
     pub split_detail: bool,
     pub shadows: String,
     pub antialiasing: String,
+    /// The render scale (%) and the pixels the world is drawn at.
+    pub render_scale: u32,
+    pub render: String,
     pub fps_limit: String,
     pub resolution: String,
     pub fullscreen: String,
@@ -73,8 +77,8 @@ impl Context {
     fn pairs(&self) -> String {
         format!(
             "state={} mode={} players={} paused={} track={:?} trees={} lighter_far_trees={} \
-             lighter_split_screen={} shadows={} antialiasing={} fps_limit={} resolution={} fullscreen={} \
-             pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
+             lighter_split_screen={} shadows={} antialiasing={} render_scale={} render={} fps_limit={} \
+             resolution={} fullscreen={} pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
             self.state,
             self.mode,
             self.players,
@@ -85,6 +89,8 @@ impl Context {
             self.split_detail,
             self.shadows,
             self.antialiasing,
+            self.render_scale,
+            self.render,
             self.fps_limit,
             self.resolution,
             self.fullscreen,
@@ -569,6 +575,14 @@ fn log_performance(
             detail.as_deref().map(|detail| detail.level)
         ),
         antialiasing: format!("{:?}", settings.antialiasing),
+        render_scale: settings.render_scale,
+        render: window.map_or_else(
+            || "none".into(),
+            |window| {
+                let size = render_size(window.physical_size(), settings.render_scale);
+                format!("{}x{}", size.x, size.y)
+            },
+        ),
         fps_limit: format!("{:?}", settings.fps),
         resolution: format!("{:?}", settings.resolution),
         fullscreen: if settings.fullscreen {

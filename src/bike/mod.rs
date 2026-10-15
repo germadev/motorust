@@ -1099,9 +1099,12 @@ fn spawn_grid(
         } else {
             match *rival {
                 Some(rival) => {
-                    // As fast as the difficulty asks.
+                    // As fast as the difficulty asks. It sets off on its
+                    // slot's line, and goes over to its lane once there is
+                    // room beside it.
                     let skill = settings.difficulty.rival_skill(rival.skill);
-                    bike.insert((Rival { skill, ..rival }, ai::Line(rival.lane)));
+                    let line = ai::Line(Track::grid_lane(slot));
+                    bike.insert((Rival { skill, ..rival }, line));
                 }
                 None => {
                     bike.insert(Player);
@@ -1158,6 +1161,7 @@ fn read_controller_binding(
                 reach_with(options.keyboard_limit, speed),
                 options.keyboard_rate.factor(),
                 options.keyboard_return.factor(),
+                options.keyboard_reverse.unwind(),
                 dt,
             );
             BikeInput {
@@ -1204,6 +1208,7 @@ fn read_controller_binding(
                 reach_with(options.keyboard_limit, speed),
                 options.keyboard_rate.factor(),
                 options.keyboard_return.factor(),
+                options.keyboard_reverse.unwind(),
                 dt,
             );
             BikeInput {
@@ -1250,6 +1255,7 @@ fn read_controller_binding(
                     reach_with(options.keyboard_limit, speed),
                     options.keyboard_rate.factor(),
                     options.keyboard_return.factor(),
+                    options.keyboard_reverse.unwind(),
                     dt,
                 );
 
@@ -1422,6 +1428,7 @@ fn read_player_input(
             reach_with(options.keyboard_limit, state.speed),
             options.keyboard_rate.factor(),
             options.keyboard_return.factor(),
+            options.keyboard_reverse.unwind(),
             dt,
         );
 
@@ -1471,19 +1478,24 @@ impl DigitalSteer {
     /// Avanza `dt` segundos con `pressed` pulsado (-1, 0 o 1), girando como
     /// mucho `reach` (de 0 a 1) y con una rapidez multiplicada por `rate_factor`.
     /// Al soltar (sin pulsar), vuelve al centro con rapidez multiplicada por `return_factor`.
+    /// Pressing the other way while turning one way, the turn drops at once
+    /// with no `unwind` (of the whole turn per second), or unwinds back to
+    /// the middle that fast, and from there turns the new way as from the
+    /// middle.
     fn update(
         &mut self,
         pressed: f32,
         reach: f32,
         rate_factor: f32,
         return_factor: f32,
+        unwind: Option<f32>,
         dt: f32,
     ) -> f32 {
         if pressed != self.pressed {
             // Si se pulsa hacia el otro lado estando inclinado o recuperando,
             // aborta la recuperación para empezar de inmediato hacia el nuevo
             // lado (la misma respuesta que pulsando desde el centro).
-            if pressed != 0.0 && self.value * pressed < 0.0 {
+            if pressed != 0.0 && self.value * pressed < 0.0 && unwind.is_none() {
                 self.value = 0.0;
             }
             (self.pressed, self.time) = (pressed, 0.0);
@@ -1493,7 +1505,16 @@ impl DigitalSteer {
         let dt = dt / steps;
         for _ in 0..steps as usize {
             if pressed != 0.0 && self.value * pressed < 0.0 {
-                self.value = 0.0;
+                match unwind {
+                    None => self.value = 0.0,
+                    // Back to the middle first; the turn the new way starts
+                    // there.
+                    Some(unwind) => {
+                        self.value = move_toward(self.value, 0.0, unwind * dt);
+                        self.time = 0.0;
+                        continue;
+                    }
+                }
             }
             let returning = pressed == 0.0;
             let (start, accel, target) = if returning {
@@ -1568,7 +1589,7 @@ fn stick_steer(x: f32) -> f32 {
 /// What the wheels throw up: blades of grass and puffs of dust.
 type KickedUp = (With<GrassParticle>, With<DustPuff>);
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn restart_race(
     keyboard: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
@@ -1581,6 +1602,7 @@ fn restart_race(
         &mut PreviousBikeState,
         &mut Knock,
         &mut CrashState,
+        Option<&mut ai::Line>,
     )>,
     particles: Query<Entity, Or<KickedUp>>,
     autopiloted: Query<Entity, With<Autopilot>>,
@@ -1602,8 +1624,11 @@ fn restart_race(
             .entity(bike)
             .remove::<(Autopilot, Rival, ai::Line)>();
     }
-    for (grid, mut state, mut previous, mut knock, mut crash) in &mut bikes {
+    for (grid, mut state, mut previous, mut knock, mut crash, line) in &mut bikes {
         *state = BikeState::parked_on(&track, track.grid_slot(grid.0));
+        if let Some(mut line) = line {
+            line.0 = Track::grid_lane(grid.0);
+        }
         // Sin estado anterior distinto, la interpolación no dibuja un "viaje".
         previous.0 = *state;
         *knock = Knock::default();
@@ -1863,7 +1888,7 @@ mod tests {
 
     use bevy::ecs::system::RunSystemOnce;
 
-    use crate::pause::{ReturnRate, SteerRate};
+    use crate::pause::{ReturnRate, ReverseRate, SteerRate};
     use crate::track::{Dust, WALL_DISTANCE};
 
     use super::*;
@@ -2073,6 +2098,7 @@ mod tests {
                     digital_reach(speed),
                     rate_factor,
                     return_factor,
+                    None,
                     dt,
                 )
             })
@@ -2117,6 +2143,31 @@ mod tests {
     }
 
     #[test]
+    fn the_keyboard_turns_the_other_way_at_once_or_back_through_the_middle() {
+        let dt = 1.0 / 120.0;
+        // Full turn to the left, then the right pressed: how long until it
+        // turns right.
+        let to_the_right = |unwind: Option<f32>| {
+            let mut digital = DigitalSteer::default();
+            for _ in 0..120 {
+                digital.update(1.0, 1.0, 1.0, 1.0, unwind, dt);
+            }
+            let held = digital.value;
+            let frames = (1..240)
+                .find(|_| digital.update(-1.0, 1.0, 1.0, 1.0, unwind, dt) < 0.0)
+                .unwrap();
+            (held, frames as f32 * dt)
+        };
+        let (held, fast) = to_the_right(ReverseRate::Fast.unwind());
+        assert!(held > 0.9, "{held}");
+        assert!(fast <= dt, "fast, as always: at once ({fast} s)");
+        let (_, medium) = to_the_right(ReverseRate::Medium.unwind());
+        let (_, slow) = to_the_right(ReverseRate::Slow.unwind());
+        assert!((0.15..0.3).contains(&medium), "medium: {medium} s");
+        assert!(slow > 1.5 * medium && slow < 0.6, "slow: {slow} s");
+    }
+
+    #[test]
     fn keyboard_leans_the_bike_at_once_and_lets_it_up_softly() {
         let tuning = BikeTuning::default();
         let mut digital = DigitalSteer::default();
@@ -2130,7 +2181,14 @@ mod tests {
             let pressed = if frame < release { 1.0 } else { 0.0 };
             let input = BikeInput {
                 throttle: 1.0,
-                steer_direct: digital.update(pressed, digital_reach(state.speed), 1.0, 1.0, DT),
+                steer_direct: digital.update(
+                    pressed,
+                    digital_reach(state.speed),
+                    1.0,
+                    1.0,
+                    None,
+                    DT,
+                ),
                 ..default()
             };
             state = step(&state, &input, &Ground::flat(Surface::Asphalt), &tuning, DT);

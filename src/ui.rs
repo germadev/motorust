@@ -367,16 +367,6 @@ impl Row {
             )
         }
     }
-
-    /// Background of the option when it is not chosen: none, but the main
-    /// action stands out in a faint blue.
-    pub fn idle_background(&self) -> Color {
-        if self.primary {
-            PRIMARY_BLUE.with_alpha(0.3)
-        } else {
-            Color::NONE
-        }
-    }
 }
 
 pub fn text_font(font: &UiFont, size: f32) -> TextFont {
@@ -438,10 +428,11 @@ pub fn spawn_panel(
                             border_radius: BorderRadius::all(px(10)),
                             ..default()
                         },
+                        // Nothing behind an option not chosen.
                         BackgroundColor(if chosen {
                             chosen_background
                         } else {
-                            row.idle_background()
+                            Color::NONE
                         }),
                     ))
                     .with_children(|line| {
@@ -591,8 +582,6 @@ mod tests {
     fn the_main_action_is_blue_and_leaving_red() {
         let resume = Row::primary("Resume");
         assert_eq!(resume.chosen_colors(), (PRIMARY_BLUE, Color::WHITE));
-        assert_ne!(resume.idle_background(), Color::NONE);
         assert_eq!(Row::danger("Exit").chosen_colors().0, EXIT_RED);
-        assert_eq!(Row::new("Back").idle_background(), Color::NONE);
     }
 }

@@ -940,6 +940,11 @@ impl Track {
         (self.offset_point(index, GRID_LANES[column]), heading)
     }
 
+    /// How far to the left of the centre line grid slot `slot` is (m).
+    pub fn grid_lane(slot: usize) -> f32 {
+        GRID_LANES[slot % GRID_LANES.len()]
+    }
+
     /// Índice del punto de la línea central más cercano a `point`.
     #[cfg(test)]
     pub fn nearest_index(&self, point: Vec2) -> usize {

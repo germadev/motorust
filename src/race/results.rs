@@ -442,7 +442,7 @@ fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
                 String::new()
             };
             Line {
-                left: format!("{}   {name}", ordinal(index + 1, lang)),
+                left: format!("{}   {name}", ordinal(index + 1)),
                 right: format!("{result}{points}"),
                 player,
                 pending: pending || (place.time.is_none() && !place.out),
@@ -460,7 +460,7 @@ fn standing_lines(outcome: &Outcome, championship: &Championship, lang: Language
         .map(|(index, rider)| {
             let (name, player) = rider_name(rider, outcome, lang);
             Line {
-                left: format!("{}   {name}", ordinal(index + 1, lang)),
+                left: format!("{}   {name}", ordinal(index + 1)),
                 right: format!("{} pts", championship.points[rider]),
                 player,
                 pending: false,
