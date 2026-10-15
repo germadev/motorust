@@ -22,7 +22,8 @@ use crate::settings::{
     START_LIGHTS, Settings, StartedWith, WEB, cycle,
 };
 use crate::ui::{
-    ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device, text_font,
+    ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
+    text_font, ui_pixels,
 };
 
 /// Height of the panel (px): the tab with the most options (Control) fits.
@@ -859,8 +860,8 @@ fn show_options_menu(
         Query<&Gamepad>,
         Query<&Name, With<Gamepad>>,
     ),
-    // The mapping's gamepads, drawn.
-    mut pad_arts: ResMut<PadArts>,
+    // The mapping's gamepads, drawn at the interface's scale.
+    (mut pad_arts, ui_scale): (ResMut<PadArts>, Option<Res<UiScale>>),
     mut last: Local<Option<String>>,
 ) {
     let started = started.as_deref();
@@ -1132,7 +1133,7 @@ fn show_options_menu(
         .and_then(|pad| names.get(pad).ok())
         .map(|name| name.as_str().to_string());
     let art = PadArt::of(pad_style, pad_name.as_deref());
-    let scale_factor = window_inner.map_or(1.0, Window::scale_factor);
+    let scale_factor = ui_pixels(window_inner, ui_scale.as_deref());
     // It is drawn in the background from the Control tab on, to be ready
     // by the time it is shown (on the web the background is this same
     // thread: only once it is shown).

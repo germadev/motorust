@@ -22,7 +22,7 @@ use crate::race::{
 use crate::settings::Settings;
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, UiIcons, current_active_device, spawn_title,
-    text_font,
+    text_font, ui_pixels,
 };
 use crate::vector_art::{Art, VectorArt};
 use crate::welcome::{CardMaterial, FADE, GameMode, IDLE, MenuWidth};
@@ -265,8 +265,9 @@ struct Shown {
     music: bool,
     language: Language,
     device: ActiveDevice,
-    /// How wide the cards are (px).
+    /// How wide the cards are (units of the interface).
     width: f32,
+    /// Physical pixels to a unit of the interface (see [`ui_pixels`]).
     scale_factor: f32,
 }
 
@@ -285,7 +286,7 @@ fn show_modes(
     settings: Res<Settings>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
-    window: Query<&Window, With<PrimaryWindow>>,
+    (window, ui_scale): (Query<&Window, With<PrimaryWindow>>, Option<Res<UiScale>>),
     menu_width: Res<MenuWidth>,
     icons: Res<UiIcons>,
     cards: Res<ModeCards>,
@@ -303,8 +304,12 @@ fn show_modes(
         music: settings.music_enabled,
         language: lang,
         device: active_dev,
-        width: cards_width(menu_width.0, window.map_or(1280.0, Window::width)),
-        scale_factor: window.map_or(1.0, Window::scale_factor),
+        // The window's width in units of the interface, as the menu's.
+        width: cards_width(
+            menu_width.0,
+            window.map_or(1280.0, Window::width) / ui_scale.as_deref().map_or(1.0, |scale| scale.0),
+        ),
+        scale_factor: ui_pixels(window, ui_scale.as_deref()),
     };
     if last.as_ref() == Some(&now) && !shown.is_empty() {
         return;

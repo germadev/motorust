@@ -24,6 +24,7 @@ use crate::circuits::{Ambience, CIRCUITS, CurrentCircuit};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
+use crate::race::RaceCue;
 use crate::race::lights::StartBeep;
 use crate::settings::{DEFAULT_VOLUME, Settings, ToggleMute};
 use crate::ui::MenuSound;
@@ -72,6 +73,7 @@ impl Plugin for SoundPlugin {
             .add_audio_source::<music::SongSource>()
             .insert_resource(SoundControls(controls))
             .add_message::<StartBeep>()
+            .add_message::<RaceCue>()
             .add_message::<ToggleMute>()
             .init_resource::<Blip>()
             .init_resource::<music::FreeMusic>()
@@ -269,11 +271,14 @@ fn menu_blip(
     }
 }
 
-/// Lo que suena al moverse por los menús, and the beeps of the start
-/// lights.
+/// Lo que suena al moverse por los menús, the beeps of the start lights,
+/// and the moments of a race: a fanfare for a win, a chord for coming in, a
+/// sparkle for a record, a sweep for a rival out and falling notes for a
+/// player out or their time up.
 fn menu_sounds(
     mut sounds: MessageReader<MenuSound>,
     mut beeps: MessageReader<StartBeep>,
+    mut cues: MessageReader<RaceCue>,
     controls: Res<SoundControls>,
 ) {
     for sound in sounds.read() {
@@ -286,6 +291,15 @@ fn menu_sounds(
         controls.0.play(match beep {
             StartBeep::Light => Sound::StartLight,
             StartBeep::Go => Sound::StartGo,
+        });
+    }
+    for cue in cues.read() {
+        controls.0.play(match cue {
+            RaceCue::Won => Sound::Victory,
+            RaceCue::Finished => Sound::Finished,
+            RaceCue::Record => Sound::Record,
+            RaceCue::RivalOut => Sound::KnockedOut,
+            RaceCue::Lost => Sound::Defeat,
         });
     }
 }

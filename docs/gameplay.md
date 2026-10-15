@@ -125,7 +125,7 @@ Rivals keep to their own lane. They pull out to pass a bike they catch, or lift 
 
 | Element | Where | What it shows |
 |---|---|---|
-| Race | Top left | Your place and how many race (in an elimination, how many are still in: 2nd / 6 once two are out; once you are out, your place among them all), the lap (of how many), the clock and your best lap. In split screen, each player's in their half. |
+| Race | Top left | Your place and how many race (in an elimination, how many are still in: 2nd / 6 once two are out, the total popping bigger and red each time it changes; once you are out, your place among them all), the lap (of how many), the clock and your best lap. In split screen, each player's in their half. |
 | Start lights | Top middle | The five lights of the start (in split screen, across the line between the halves). |
 | Time left | Top middle | Against the clock: the seconds left (red under 10) and what the last checkpoint gave. |
 | Finished | Top right | In a race or the arcade, those who have crossed the line at the end, as they do: their place, name and time, with no panel behind. |
@@ -255,6 +255,7 @@ Every sound effect is synthesised in real time, with no recordings. The synthesi
   - pops and crackles when you lift off.
 - **Rivals.** Rival engines are louder the closer they are, panned left or right. They sound higher-pitched approaching than moving away (the Doppler effect), so you hear them come and go.
 - **Surroundings.** Wind that grows with speed; tyres when you push in corners or brake hard; grass; impacts against walls; landings.
+- **The moments of a race.** Short tunes, synthesised too: a bright fanfare up a major chord when a player wins; two notes a fifth apart, held, when a player crosses the line in any other place; a quick sparkle of bells for a lap record (and for the most laps against the clock); a short falling sweep when a rival goes out of an elimination; and three notes falling a semitone each, like a trombone, when a player is eliminated or disqualified, or their time is up. They play at the FX volume.
 - **Two players.** Both players' bikes sound as yours: full volume, no Doppler. Every bike, rivals included, is heard from the nearer of the two cameras, and the wind, tyres and grass follow whichever player makes them louder.
 - **Menus.** Moving through menus clicks. On the bike select screen, the chosen bike idles and revs when you switch to it.
 - **The track's surroundings.** On the bike select screen, instead of music, the sounds of the chosen track's surroundings, as much of each as the track has (`src/sound/ambience.rs`): waves that swell, break and wash back, seagulls calling now and then, small birds chirping, cicadas buzzing and the wind. They fade in and out with the screen, about as loud as the bike idling.

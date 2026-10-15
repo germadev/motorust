@@ -26,7 +26,7 @@ use crate::settings::{Settings, WEB};
 use crate::track::Track;
 use crate::ui::{
     ActiveDevice, EXIT_RED, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
-    spawn_logo, spawn_panel, spawn_title, version_label,
+    spawn_logo, spawn_panel, spawn_title, ui_pixels, version_label,
 };
 use crate::vector_art::{Art, VectorArt, advance};
 
@@ -414,8 +414,8 @@ struct Shown {
     language: Language,
     device: ActiveDevice,
     width: f32,
-    /// Physical pixels per logical pixel: the art is drawn at its size on
-    /// the screen.
+    /// Physical pixels to a unit of the interface (see [`ui_pixels`]): the
+    /// art is drawn at its size on the screen.
     scale_factor: f32,
 }
 
@@ -428,7 +428,7 @@ fn show_welcome(
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
     width: Res<MenuWidth>,
-    window: Query<&Window, With<PrimaryWindow>>,
+    (window, ui_scale): (Query<&Window, With<PrimaryWindow>>, Option<Res<UiScale>>),
     icons: Res<UiIcons>,
     cards: Res<MenuCards>,
     mut art: ResMut<VectorArt>,
@@ -447,7 +447,7 @@ fn show_welcome(
         language: lang,
         device: active_dev,
         width: width.0,
-        scale_factor: window.iter().next().map_or(1.0, Window::scale_factor),
+        scale_factor: ui_pixels(window.iter().next(), ui_scale.as_deref()),
     };
     // Built already (the screen goes when leaving the state, and is hidden
     // while the options are open).

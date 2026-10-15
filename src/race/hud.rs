@@ -1,13 +1,15 @@
 //! What the race shows on the screen for each player: their place, their
 //! lap, the clock and their best lap; against the clock, the time left and
-//! what each checkpoint gives; in elimination, who is out; and their place
-//! when they cross the line at the end. Once the players' race is over,
+//! what each checkpoint gives; in elimination, who is out (and how many are
+//! still in, which pops as it changes); and their place when they cross the
+//! line at the end. Once the players' race is over,
 //! which bike the camera watches come in, and its place when it does.
 
 use bevy::prelude::*;
 
 use super::{Mode, Outcome, Progress, Rules, Standing, Watching};
 use crate::bike::{LocalPlayer, Player, ROSTER, Race, Retired, Rider};
+use crate::geometry::smoothstep;
 use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::menu::GameState;
@@ -18,6 +20,11 @@ use crate::welcome::GameMode;
 const NOTICE: f32 = 2.5;
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.2);
 const RED: Color = Color::srgb(1.0, 0.3, 0.25);
+/// How big the place is (px), and the total after it ("/ 8").
+const PLACE_SIZE: f32 = 40.0;
+/// Seconds the total pops for when it changes, and how much bigger it gets.
+const POP: f32 = 0.8;
+const POP_GROWTH: f32 = 0.6;
 
 pub struct RaceHudPlugin;
 
@@ -26,7 +33,13 @@ impl Plugin for RaceHudPlugin {
         app.add_systems(OnEnter(GameState::Race), spawn_race_info)
             .add_systems(
                 Update,
-                (show_race_info, show_watched, show_arrivals).run_if(in_state(GameState::Race)),
+                (
+                    show_race_info,
+                    show_place_total,
+                    show_watched,
+                    show_arrivals,
+                )
+                    .run_if(in_state(GameState::Race)),
             );
     }
 }
@@ -61,6 +74,15 @@ enum WatchInfo {
 /// order, and when.
 #[derive(Component)]
 struct Arrivals;
+
+/// After a player's place, how many there are ("/ 8"), and since when (s,
+/// real time) the total it shows changed, to pop.
+#[derive(Component, Debug, Default)]
+struct PlaceTotal {
+    player: usize,
+    shown: Option<usize>,
+    changed: Option<f32>,
+}
 
 fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
     let players = if *game_mode == GameMode::SplitScreen {
@@ -169,18 +191,38 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                 })
                 .with_children(|column| {
                     for (kind, size, color) in [
-                        (InfoKind::Place, 40.0, Color::WHITE),
+                        (InfoKind::Place, PLACE_SIZE, Color::WHITE),
                         (InfoKind::Lap, 22.0, Color::WHITE),
                         (InfoKind::Clock, 20.0, Color::srgba(1.0, 1.0, 1.0, 0.85)),
                         (InfoKind::Best, 15.0, GOLD),
                     ] {
-                        column.spawn((
+                        let info = (
                             Info { player, kind },
                             Text::new(""),
                             text(size),
                             TextColor(color),
                             TextShadow::default(),
-                        ));
+                        );
+                        if kind != InfoKind::Place {
+                            column.spawn(info);
+                            continue;
+                        }
+                        // The total after the place, apart, to pop without
+                        // moving the rest.
+                        column.spawn(Node::default()).with_children(|row| {
+                            row.spawn(info);
+                            row.spawn((
+                                PlaceTotal {
+                                    player,
+                                    ..default()
+                                },
+                                Text::new(""),
+                                text(PLACE_SIZE),
+                                TextColor(Color::WHITE),
+                                TextShadow::default(),
+                                UiTransform::IDENTITY,
+                            ));
+                        });
                     }
                 });
                 // Top middle: the time left against the clock.
@@ -296,13 +338,11 @@ fn show_race_info(
         else {
             continue;
         };
-        let (place, among) = place_among(&standing, rules.mode, rider.0);
+        let (place, _) = place_among(&standing, rules.mode, rider.0);
         let (wanted, tint) = match info.kind {
             // Over for the players: the results say it all.
             _ if outcome.is_some() => (String::new(), color.0),
-            InfoKind::Place if rules.mode != Mode::Checkpoint => {
-                (format!("{} / {among}", ordinal(place, lang)), color.0)
-            }
+            InfoKind::Place if rules.mode != Mode::Checkpoint => (ordinal(place, lang), color.0),
             InfoKind::Lap => {
                 let lap = match lang {
                     Language::Spanish => "VUELTA",
@@ -360,6 +400,72 @@ fn show_race_info(
         if text.0 != wanted {
             text.0 = wanted;
         }
+        if color.0 != tint {
+            color.0 = tint;
+        }
+    }
+}
+
+/// How much the total after a place pops (0 to 1) `elapsed` s after it
+/// changed: at once all the way, and back over [`POP`].
+pub fn pop(elapsed: f32) -> f32 {
+    if !(0.0..POP).contains(&elapsed) {
+        return 0.0;
+    }
+    let back = 1.0 - elapsed / POP;
+    smoothstep(0.0, 0.06, elapsed) * back * back
+}
+
+/// After each player's place, how many there are (" / 8"; in elimination,
+/// how many are still in), popping bigger and red as it changes: scaled from
+/// its left end, so nothing round it moves.
+#[allow(clippy::type_complexity)]
+fn show_place_total(
+    time: Res<Time<Real>>,
+    rules: Res<Rules>,
+    standing: Res<Standing>,
+    outcome: Option<Res<Outcome>>,
+    bikes: Query<(&Rider, Has<Player>, Option<&LocalPlayer>)>,
+    mut totals: Query<(
+        &mut PlaceTotal,
+        &mut Text,
+        &mut UiTransform,
+        &mut TextColor,
+        &ComputedNode,
+    )>,
+) {
+    let now = time.elapsed_secs();
+    for (mut total, mut text, mut transform, mut color, node) in &mut totals {
+        let rider = bikes.iter().find_map(|(rider, player, local)| {
+            let index = local.map_or(usize::from(!player), |local| local.0);
+            (index == total.player).then_some(rider.0)
+        });
+        let among = rider
+            .filter(|_| outcome.is_none() && rules.mode != Mode::Checkpoint)
+            .map(|rider| place_among(&standing, rules.mode, rider).1);
+        // A change of the total pops; its first showing does not.
+        if among != total.shown {
+            if total.shown.is_some_and(|shown| shown > 0) && among.is_some() {
+                total.changed = Some(now);
+            }
+            total.shown = among;
+        }
+        let wanted = among.map_or(String::new(), |among| format!(" / {among}"));
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+        let popped = total.changed.map_or(0.0, |at| pop(now - at));
+        let scale = 1.0 + POP_GROWTH * popped;
+        let width = node.size().x * node.inverse_scale_factor;
+        let popping = UiTransform {
+            translation: Val2::px(width * (scale - 1.0) / 2.0, 0.0),
+            scale: Vec2::splat(scale),
+            ..UiTransform::IDENTITY
+        };
+        if *transform != popping {
+            *transform = popping;
+        }
+        let tint = Color::WHITE.mix(&RED, popped);
         if color.0 != tint {
             color.0 = tint;
         }
@@ -709,6 +815,21 @@ mod tests {
         assert_eq!(place_among(&start, Mode::Elimination, 0), (2, 8));
         // In a race, a bike out (disqualified) still counts.
         assert_eq!(place_among(&standing, Mode::Race, 0), (2, 8));
+    }
+
+    #[test]
+    fn the_total_pops_at_once_and_settles_back() {
+        assert_eq!(pop(-0.1), 0.0);
+        assert!(pop(0.08) > 0.8, "at once");
+        // Smaller and smaller, and gone after a moment.
+        let mut last = pop(0.08);
+        for k in 2..16 {
+            let now = pop(0.05 * k as f32);
+            assert!(now < last, "{k}");
+            last = now;
+        }
+        assert_eq!(pop(POP), 0.0);
+        assert_eq!(pop(5.0), 0.0);
     }
 
     #[test]
