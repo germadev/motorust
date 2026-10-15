@@ -109,13 +109,15 @@ fn percentile(sorted: &[f32], share: f32) -> f32 {
 }
 
 /// What a stretch comes to: its average rate, the rate of its slowest 1 %
-/// of frames, and its frames' times (ms) at the middle and at 95 %.
+/// of frames, its frames' times (ms) at the middle and at 95 %, and the
+/// simulation's (ms) at the middle, if it was timed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Summary {
     pub fps: f32,
     pub low: f32,
     pub p50: f32,
     pub p95: f32,
+    pub update: Option<f32>,
 }
 
 impl Stretch {
@@ -128,11 +130,14 @@ impl Stretch {
         let total: f32 = sorted.iter().sum();
         let slowest = (sorted.len() / 100).max(1);
         let low: f32 = sorted.iter().rev().take(slowest).sum::<f32>() / slowest as f32;
+        let mut updates = self.updates.clone();
+        updates.sort_by(f32::total_cmp);
         Some(Summary {
             fps: sorted.len() as f32 / total.max(1e-6),
             low: 1.0 / low.max(1e-6),
             p50: percentile(&sorted, 0.5),
             p95: percentile(&sorted, 0.95),
+            update: (!updates.is_empty()).then(|| percentile(&updates, 0.5)),
         })
     }
 
@@ -181,6 +186,8 @@ impl Stretch {
 /// written), when the stretch under way began and what it is noted with.
 #[derive(Resource, Default)]
 pub struct PerfLog {
+    /// Where it goes, if not to a file of its own beside the settings.
+    path: Option<PathBuf>,
     file: Option<File>,
     failed: bool,
     started: Option<f32>,
@@ -190,7 +197,14 @@ pub struct PerfLog {
 
 /// When this frame's update began.
 #[derive(Resource, Default)]
-struct FrameStart(Option<Instant>);
+pub struct FrameStart(Option<Instant>);
+
+impl FrameStart {
+    /// How long this frame's update has taken so far (s).
+    pub fn elapsed(&self) -> Option<f32> {
+        self.0.map(|start| start.elapsed().as_secs_f32())
+    }
+}
 
 fn mark_frame_start(mut start: ResMut<FrameStart>) {
     start.0 = Some(Instant::now());
@@ -252,6 +266,14 @@ pub(crate) fn folder() -> Option<PathBuf> {
 }
 
 impl PerfLog {
+    /// A log written to `path` (the benchmark's, beside its results).
+    pub fn to(path: PathBuf) -> Self {
+        Self {
+            path: Some(path),
+            ..default()
+        }
+    }
+
     /// Writes `line` to the file, opening it first (a new one for each
     /// session, named after when it began), with a heading.
     fn write(&mut self, line: &str, heading: impl FnOnce() -> String) {
@@ -259,12 +281,15 @@ impl PerfLog {
             return;
         }
         if self.file.is_none() {
-            let opened = folder().and_then(|folder| {
-                std::fs::create_dir_all(&folder).ok()?;
-                let since = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |since| since.as_secs());
-                let path = folder.join(format!("perf-{since}.log"));
+            let since = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs());
+            let path = self
+                .path
+                .clone()
+                .or_else(|| Some(folder()?.join(format!("perf-{since}.log"))));
+            let opened = path.and_then(|path| {
+                std::fs::create_dir_all(path.parent()?).ok()?;
                 let file = OpenOptions::new()
                     .create(true)
                     .append(true)
@@ -436,12 +461,12 @@ mod tests {
         // 99 frames at 60 fps and one of 100 ms.
         let mut frames = vec![1.0 / 60.0; 99];
         frames.push(0.1);
-        let figures = Stretch {
+        let stretch = Stretch {
             frames,
             updates: vec![0.004; 100],
-        }
-        .figures()
-        .unwrap();
+        };
+        assert_eq!(stretch.summary().unwrap().update, Some(4.0));
+        let figures = stretch.figures().unwrap();
         assert!(
             figures.starts_with("frames=100 seconds=1.75 fps=57.1"),
             "{figures}"

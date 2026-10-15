@@ -52,7 +52,7 @@ build: ## Compila la versión optimizada en target/release/motorust
 test: ## Pasa los tests
 	$(CARGO) test
 
-bench: ## Benchmark: recorre las pistas solo, con cada ajuste, y escribe los resultados
+bench: ## Benchmark: recorre las pistas solo, con cada ajuste, y escribe los resultados (Esc lo para)
 	$(CARGO) run --release -- --bench
 
 linux-deps:

@@ -16,7 +16,7 @@ make install   # system dependencies (Linux: apt, dnf or pacman) and crates
 make up        # runs the game in development mode
 make build     # optimised build in target/release/motorust
 make test      # runs the tests
-make bench     # rides every track alone under each graphics setting and reports the frame rates
+make bench     # rides every track alone under each graphics setting; results in bench-results/
 ```
 
 | Target | Runs | What it does |
@@ -26,7 +26,7 @@ make bench     # rides every track alone under each graphics setting and reports
 | `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
 | `make test` | `cargo test` | Runs the tests (see [architecture.md](architecture.md#tests)). |
-| `make bench` | `cargo run --release -- --bench` | The benchmark: the game rides every track on its own, in free ride on autopilot, with one player and with two, under each graphics setting worth comparing (shadows high, medium and low; MSAA, FXAA or none; lighter far trees; less detail for two players), with the frame rate unlimited; each scenario settles for 4 s and is measured for 10 (`MOTORUST_BENCH_SECONDS`), on the tracks in `MOTORUST_BENCH_TRACKS` (as `0,2`) or all of them. It prints a table (fps, slowest 1 %, frame times at 50 and 95 %) and writes it to `bench-<time>.txt` beside the performance log (`~/Library/Application Support/motorust/logs` on macOS), then closes. The player's settings are used as they are and never saved over. |
+| `make bench` | `cargo run --release -- --bench` | The benchmark: the game rides every track on its own, in free ride on autopilot, with one player and with two, under each graphics setting worth comparing (shadows high, medium and low; MSAA, FXAA or none; lighter far trees; less detail for two players), with the frame rate unlimited; each scenario settles for 4 s and is measured for 10 (`MOTORUST_BENCH_SECONDS`), on the tracks in `MOTORUST_BENCH_TRACKS` (as `0,2`) or all of them. It says what it is doing in the terminal: the machine (system, CPU, memory, GPU, window), where the results go, each scenario as it starts and, as it ends, its frame rate, slowest 1 %, frame times, the simulation's time and the CPU in use, with the time left. The results go to `bench-results/` in the folder it is run from (the repository, with `make bench`), one file for each run named after when (UTC) and the machine (`2026-10-16_1830_mac-mini.txt`), headed with the machine, each scenario's line written as soon as it is measured, with the run's performance log beside it (`.perf.log`): runs on several machines sit side by side, to commit and compare. Esc stops it, keeping what it has measured, and prints the table so far (closing the window or Ctrl+C keep it too). The player's settings are used as they are and never saved over. |
 
 ### Build times and profiles
 

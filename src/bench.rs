@@ -5,19 +5,32 @@
 //! comparing (the shadows' levels, the ways of smoothing the edges, the
 //! lighter far trees, less detail for two players), with the frame rate
 //! unlimited. Each scenario is let settle a few seconds, then measured for
-//! some more (`MOTORUST_BENCH_SECONDS`, 10 by default). The results go to
-//! the terminal, as a table, and to a file beside the performance log
-//! (`bench-<time>.txt`), and the game closes. The settings tried are never
-//! saved.
+//! some more (`MOTORUST_BENCH_SECONDS`, 10 by default).
+//!
+//! It says what it is doing in the terminal as it goes: the machine, where
+//! the results go, each scenario as it starts and what it measured. The
+//! results are written as they are measured to `bench-results/` (in the
+//! folder it is run from: the repository, with `make bench`), one file for
+//! each run named after when and on which machine (`2026-10-16_1830_
+//! mac-mini.txt`), headed with the machine, with the performance log of the
+//! run beside it (`.perf.log`); so runs on several machines can be kept
+//! side by side, committed and compared. Stopping it (Esc, which also
+//! prints the table so far, closing the window, or Ctrl+C in the terminal)
+//! keeps what was measured. The settings tried are never saved.
 
+use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 
+use bevy::diagnostic::{DiagnosticsStore, SystemInfo, SystemInformationDiagnosticsPlugin};
 use bevy::prelude::*;
+use bevy::render::renderer::RenderAdapterInfo;
+use bevy::window::PrimaryWindow;
 
 use crate::bike::{LocalPlayer, Player, Race, autopilot};
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
-use crate::perf_log::{Stretch, Summary, folder};
+use crate::perf_log::{FrameStart, PerfLog, Stretch, Summary, folder};
 use crate::race::{Mode, Rules};
 use crate::settings::{Antialiasing, FpsLimit, Settings, ShadowQuality};
 use crate::welcome::GameMode;
@@ -26,6 +39,8 @@ use crate::welcome::GameMode;
 /// shadow maps, a world built), and is measured for by default.
 const SETTLE: f32 = 4.0;
 const MEASURE: f32 = 10.0;
+/// The folder the results go in, in the folder the game is run from.
+const RESULTS: &str = "bench-results";
 
 /// Whether the game was started for the benchmark.
 pub fn requested() -> bool {
@@ -121,6 +136,55 @@ pub fn tracks(value: Option<&str>) -> Vec<usize> {
     }
 }
 
+/// `seconds` since 1970 as a date and time (UTC) for a file name:
+/// `2026-10-16_1830`.
+pub fn stamp(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    let (hour, minute) = (seconds % 86_400 / 3600, seconds % 3600 / 60);
+    // Days to a civil date (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}_{hour:02}{minute:02}")
+}
+
+/// A machine's name as it can go in a file name: lowercase letters, digits
+/// and dashes, without `.local`.
+pub fn file_name(machine: &str) -> String {
+    let name = machine.trim().trim_end_matches(".local").to_lowercase();
+    let name: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let name = name.trim_matches('-').to_string();
+    if name.is_empty() {
+        "machine".into()
+    } else {
+        name
+    }
+}
+
+/// This machine's name, as the system gives it.
+fn machine() -> String {
+    std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .unwrap_or_default()
+}
+
 /// Where the benchmark is at in its scenario.
 #[derive(Clone, Debug, PartialEq)]
 enum Phase {
@@ -142,7 +206,12 @@ pub struct Bench {
     phase: Phase,
     measure: f32,
     stretch: Stretch,
-    results: Vec<(Scenario, Option<Summary>)>,
+    results: Vec<(Scenario, Option<Summary>, Option<f32>)>,
+    /// This machine's name, where the results go and the file they are
+    /// written to as they come.
+    machine: String,
+    path: PathBuf,
+    file: Option<File>,
 }
 
 pub struct BenchPlugin;
@@ -155,16 +224,33 @@ impl Plugin for BenchPlugin {
             .filter(|&seconds: &f32| seconds > 0.0)
             .unwrap_or(MEASURE);
         let tracks = tracks(std::env::var("MOTORUST_BENCH_TRACKS").ok().as_deref());
-        app.insert_resource(Bench {
-            scenarios: scenarios(&tracks),
-            index: 0,
-            phase: Phase::Start,
-            measure,
-            stretch: Stretch::default(),
-            results: Vec::new(),
-        })
-        .add_systems(Startup, start_bench)
-        .add_systems(Update, run_bench);
+        let machine = machine();
+        let since = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        let name = format!("{}_{}", stamp(since), file_name(&machine));
+        // In the folder it is run from, or else beside the performance log.
+        let results = std::env::current_dir()
+            .map(|here| here.join(RESULTS))
+            .ok()
+            .filter(|folder| std::fs::create_dir_all(folder).is_ok())
+            .or_else(folder)
+            .unwrap_or_else(|| PathBuf::from(RESULTS));
+        // The performance log of the run, beside its results.
+        app.insert_resource(PerfLog::to(results.join(format!("{name}.perf.log"))))
+            .insert_resource(Bench {
+                scenarios: scenarios(&tracks),
+                index: 0,
+                phase: Phase::Start,
+                measure,
+                stretch: Stretch::default(),
+                results: Vec::new(),
+                machine: machine.trim().to_string(),
+                path: results.join(format!("{name}.txt")),
+                file: None,
+            })
+            .add_systems(Startup, start_bench)
+            .add_systems(Update, run_bench);
     }
 }
 
@@ -195,9 +281,76 @@ fn apply(
     again
 }
 
-fn start_bench(bench: Res<Bench>, mut rules: ResMut<Rules>) {
+fn start_bench(mut rules: ResMut<Rules>) {
     rules.mode = Mode::Free;
-    info!("Benchmark: {} scenarios", bench.scenarios.len());
+}
+
+/// What the benchmark runs on: the machine, its GPU and system, the
+/// window, and the settings it starts from, as the lines of a heading.
+fn machine_lines(
+    bench: &Bench,
+    system: Option<&SystemInfo>,
+    adapter: Option<&RenderAdapterInfo>,
+    window: Option<&Window>,
+    settings: &Settings,
+) -> Vec<String> {
+    let mut lines = vec![format!(
+        "motorust {} benchmark on {}",
+        env!("CARGO_PKG_VERSION"),
+        if bench.machine.is_empty() {
+            "this machine"
+        } else {
+            &bench.machine
+        }
+    )];
+    if let Some(system) = system {
+        lines.push(format!(
+            "system: {}; CPU {} ({} cores); memory {}",
+            system.os, system.cpu, system.core_count, system.memory
+        ));
+    }
+    if let Some(adapter) = adapter {
+        lines.push(format!(
+            "GPU: {} ({:?}, {})",
+            adapter.name, adapter.backend, adapter.driver
+        ));
+    }
+    if let Some(window) = window {
+        lines.push(format!(
+            "window: {} x {} pixels at {}x; resolution {:?}, fullscreen {}",
+            window.physical_width(),
+            window.physical_height(),
+            window.scale_factor(),
+            settings.resolution,
+            if settings.fullscreen {
+                format!("{:?}", settings.fullscreen_kind)
+            } else {
+                "no".into()
+            }
+        ));
+    }
+    lines.push(format!(
+        "trees {}; pipelined rendering {}; frames queued {}; frame rate unlimited",
+        if settings.modelled_trees {
+            "new"
+        } else {
+            "classic"
+        },
+        settings.pipelined_rendering,
+        settings.frame_latency
+    ));
+    lines.push(format!(
+        "{} scenarios, {SETTLE} s settling and {} s measured each, about {} min",
+        bench.scenarios.len(),
+        bench.measure,
+        minutes(bench.scenarios.len(), bench.measure)
+    ));
+    lines
+}
+
+/// About how many minutes `scenarios` take, measured `measure` s each.
+fn minutes(scenarios: usize, measure: f32) -> u32 {
+    (scenarios as f32 * (SETTLE + measure + 1.0) / 60.0).ceil() as u32
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -207,27 +360,84 @@ fn run_bench(
     state: Res<State<GameState>>,
     mut bench: ResMut<Bench>,
     mut settings: ResMut<Settings>,
-    mut current: ResMut<CurrentCircuit>,
-    mut game_mode: ResMut<GameMode>,
-    mut next: ResMut<NextState<GameState>>,
-    mut race: ResMut<Race>,
+    (mut current, mut game_mode, mut next, mut race): (
+        ResMut<CurrentCircuit>,
+        ResMut<GameMode>,
+        ResMut<NextState<GameState>>,
+        ResMut<Race>,
+    ),
     players: Query<Entity, Or<(With<Player>, With<LocalPlayer>)>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    (frame_start, store, system, adapter, window): (
+        Res<FrameStart>,
+        Option<Res<DiagnosticsStore>>,
+        Option<Res<SystemInfo>>,
+        Option<Res<RenderAdapterInfo>>,
+        Query<&Window, With<PrimaryWindow>>,
+    ),
     mut exit: MessageWriter<AppExit>,
 ) {
+    // Stopped: what has been measured is kept.
+    if keyboard.just_pressed(KeyCode::Escape) {
+        let (done, total) = (bench.results.len(), bench.scenarios.len());
+        if let Some(file) = &mut bench.file {
+            let _ = writeln!(file, "# stopped after {done} of {total}");
+        }
+        println!("\nStopped after {done} of {total}.");
+        report(&bench);
+        exit.write(AppExit::Success);
+        return;
+    }
     let now = time.elapsed_secs();
     // The race on as soon as there is one: no lights, the players' bikes
     // ridden by the machine.
     if *state.get() == GameState::Race && !race.started {
         race.started = true;
     }
+    let total = bench.scenarios.len();
+    let label = |bench: &Bench| {
+        let scenario = &bench.scenarios[bench.index];
+        format!(
+            "[{:>2}/{total}] {} · {}",
+            bench.index + 1,
+            CIRCUITS[scenario.track].name,
+            scenario.name
+        )
+    };
     match bench.phase.clone() {
         Phase::Start => {
             let Some(first) = bench.scenarios.first().cloned() else {
                 exit.write(AppExit::Success);
                 return;
             };
+            // The heading, in the terminal and in the file.
+            let heading = machine_lines(
+                &bench,
+                system.as_deref(),
+                adapter.as_deref(),
+                window.iter().next(),
+                &settings,
+            );
+            println!();
+            for line in &heading {
+                println!("{line}");
+            }
+            let path = bench.path.clone();
+            bench.file = File::create(&path).ok().and_then(|mut file| {
+                for line in &heading {
+                    writeln!(file, "# {line}").ok()?;
+                }
+                writeln!(file, "{}", header()).ok()?;
+                Some(file)
+            });
+            match &bench.file {
+                Some(_) => println!("results: {}", path.display()),
+                None => println!("the results cannot be written to {}", path.display()),
+            }
+            println!("Esc stops it, keeping what it has measured.\n");
             apply(&first, &mut settings, &mut current, &mut game_mode);
             next.set(GameState::Race);
+            println!("{}: setting up the race", label(&bench));
             bench.phase = Phase::Entering(now);
         }
         Phase::Entering(since) => {
@@ -237,6 +447,11 @@ fn run_bench(
             for bike in &players {
                 autopilot(&mut commands.entity(bike), 0.0);
             }
+            println!(
+                "{}: settling {SETTLE} s, then measuring {} s",
+                label(&bench),
+                bench.measure
+            );
             bench.phase = Phase::Settling(now);
         }
         Phase::Settling(since) => {
@@ -247,78 +462,126 @@ fn run_bench(
         }
         Phase::Measuring(since) => {
             bench.stretch.frames.push(time.delta_secs());
+            if let Some(update) = frame_start.elapsed() {
+                bench.stretch.updates.push(update);
+            }
             if now - since < bench.measure {
                 return;
             }
             let scenario = bench.scenarios[bench.index].clone();
             let summary = bench.stretch.summary();
-            info!(
-                "Benchmark {}/{}: {} {} {}",
-                bench.index + 1,
-                bench.scenarios.len(),
-                CIRCUITS[scenario.track].name,
-                scenario.name,
-                summary.map_or("no frames".into(), |s| format!("{:.1} fps", s.fps))
+            // The game's share of all the cores, as the system reads it.
+            let cpu = store.as_deref().and_then(|store| {
+                store
+                    .get(&SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE)
+                    .and_then(|cpu| cpu.average())
+                    .map(|cpu| cpu as f32)
+            });
+            let left = minutes(total - bench.index - 1, bench.measure);
+            println!(
+                "{}: {}{}",
+                label(&bench),
+                said(summary.as_ref(), cpu),
+                if left > 0 {
+                    format!("  (about {left} min left)")
+                } else {
+                    String::new()
+                }
             );
-            bench.results.push((scenario, summary));
+            if let Some(file) = &mut bench.file {
+                let _ = writeln!(file, "{}", row(&scenario, summary.as_ref(), cpu));
+                let _ = file.flush();
+            }
+            bench.results.push((scenario, summary, cpu));
             bench.index += 1;
             let Some(next_scenario) = bench.scenarios.get(bench.index).cloned() else {
-                report(&bench.results);
+                if let Some(file) = &mut bench.file {
+                    let _ = writeln!(file, "# finished");
+                }
+                report(&bench);
                 exit.write(AppExit::Success);
                 return;
             };
             if apply(&next_scenario, &mut settings, &mut current, &mut game_mode) {
                 next.set(GameState::Race);
+                println!("{}: setting up the race", label(&bench));
                 bench.phase = Phase::Entering(now);
             } else {
+                println!(
+                    "{}: settling {SETTLE} s, then measuring {} s",
+                    label(&bench),
+                    bench.measure
+                );
                 bench.phase = Phase::Settling(now);
             }
         }
     }
 }
 
-/// The results as a table: a line for each scenario.
-pub fn table(results: &[(Scenario, Option<Summary>)]) -> String {
-    let mut lines = vec![format!(
-        "{:<16} {:<22} {:>8} {:>10} {:>8} {:>8}",
-        "track", "scenario", "fps", "1% low", "p50 ms", "p95 ms"
-    )];
-    for (scenario, summary) in results {
-        let track = CIRCUITS[scenario.track].name;
-        lines.push(match summary {
-            Some(s) => format!(
-                "{track:<16} {:<22} {:>8.1} {:>10.1} {:>8.2} {:>8.2}",
-                scenario.name, s.fps, s.low, s.p50, s.p95
-            ),
-            None => format!("{track:<16} {:<22} {:>8}", scenario.name, "-"),
-        });
+/// What a scenario measured, said in a line of the terminal.
+fn said(summary: Option<&Summary>, cpu: Option<f32>) -> String {
+    let Some(s) = summary else {
+        return "no frames".into();
+    };
+    let mut line = format!(
+        "{:.1} fps · 1% low {:.1} · {:.2} ms (95%: {:.2} ms)",
+        s.fps, s.low, s.p50, s.p95
+    );
+    if let Some(update) = s.update {
+        line.push_str(&format!(" · simulation {update:.2} ms"));
     }
-    lines.join("\n")
+    if let Some(cpu) = cpu {
+        line.push_str(&format!(" · CPU {cpu:.0} %"));
+    }
+    line
 }
 
-/// Prints the results and writes them beside the performance log.
-fn report(results: &[(Scenario, Option<Summary>)]) {
-    let table = table(results);
-    println!("\nmotorust benchmark\n{table}\n");
-    let since = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs());
-    let written = folder().and_then(|folder| {
-        std::fs::create_dir_all(&folder).ok()?;
-        let path = folder.join(format!("bench-{since}.txt"));
-        let mut file = std::fs::File::create(&path).ok()?;
-        writeln!(
-            file,
-            "# motorust {} benchmark, unix time {since}",
-            env!("CARGO_PKG_VERSION")
+/// The heading of the table of results.
+fn header() -> String {
+    format!(
+        "{:<16} {:<22} {:>8} {:>10} {:>8} {:>8} {:>8} {:>6}",
+        "track", "scenario", "fps", "1% low", "p50 ms", "p95 ms", "sim ms", "cpu %"
+    )
+}
+
+/// A line of the table: a scenario and what it measured.
+fn row(scenario: &Scenario, summary: Option<&Summary>, cpu: Option<f32>) -> String {
+    let track = CIRCUITS[scenario.track].name;
+    let or_dash = |value: Option<f32>, decimals: usize| {
+        value.map_or("-".to_string(), |value| format!("{value:.decimals$}"))
+    };
+    match summary {
+        Some(s) => format!(
+            "{track:<16} {:<22} {:>8.1} {:>10.1} {:>8.2} {:>8.2} {:>8} {:>6}",
+            scenario.name,
+            s.fps,
+            s.low,
+            s.p50,
+            s.p95,
+            or_dash(s.update, 2),
+            or_dash(cpu, 0)
+        ),
+        None => format!("{track:<16} {:<22} {:>8}", scenario.name, "-"),
+    }
+}
+
+/// The results as a table: a line for each scenario.
+pub fn table(results: &[(Scenario, Option<Summary>, Option<f32>)]) -> String {
+    std::iter::once(header())
+        .chain(
+            results
+                .iter()
+                .map(|(scenario, summary, cpu)| row(scenario, summary.as_ref(), *cpu)),
         )
-        .ok()?;
-        writeln!(file, "{table}").ok()?;
-        Some(path)
-    });
-    match written {
-        Some(path) => info!("Benchmark results: {}", path.display()),
-        None => warn!("The benchmark results cannot be written"),
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Prints the results (they are in their file already).
+fn report(bench: &Bench) {
+    println!("\n{}\n", table(&bench.results));
+    if bench.file.is_some() {
+        println!("Written to {}", bench.path.display());
     }
 }
 
@@ -382,8 +645,12 @@ mod tests {
             low: 41.0,
             p50: 13.5,
             p95: 18.25,
+            update: Some(2.5),
         };
-        let table = table(&[(scenario.clone(), Some(summary)), (scenario, None)]);
+        let table = table(&[
+            (scenario.clone(), Some(summary), Some(34.0)),
+            (scenario, None, None),
+        ]);
         let lines: Vec<&str> = table.lines().collect();
         assert_eq!(lines.len(), 3);
         assert!(lines[0].starts_with("track"));
@@ -391,7 +658,26 @@ mod tests {
             lines[1].contains("72.2") || lines[1].contains("72.3"),
             "{table}"
         );
-        assert!(lines[1].contains("18.25"), "{table}");
+        assert!(
+            lines[1].contains("18.25") && lines[1].contains("2.50"),
+            "{table}"
+        );
+        assert!(lines[1].trim_end().ends_with("34"), "{table}");
         assert!(lines[2].trim_end().ends_with('-'));
+        assert!(said(Some(&summary), Some(34.0)).contains("simulation 2.50 ms · CPU 34 %"));
+    }
+
+    #[test]
+    fn each_run_is_named_after_when_and_where() {
+        assert_eq!(stamp(0), "1970-01-01_0000");
+        assert_eq!(stamp(1_792_083_939), "2026-10-15_1705");
+        // The last day of a leap February.
+        assert_eq!(
+            stamp(1_709_164_800 + 3_600 * 23 + 59 * 60),
+            "2024-02-29_2359"
+        );
+        assert_eq!(file_name("Joshuas-Mac-mini.local\n"), "joshuas-mac-mini");
+        assert_eq!(file_name("DESKTOP 42"), "desktop-42");
+        assert_eq!(file_name("  "), "machine");
     }
 }
