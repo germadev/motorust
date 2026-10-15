@@ -33,5 +33,6 @@ version=$(grep '^version = ' Cargo.toml | head -n 1 | cut -d'"' -f 2)
 sed "s/const WASM_BYTES = 0;/const WASM_BYTES = $bytes;/; s/const WASM_SHA256 = \"\";/const WASM_SHA256 = \"$hash\";/; s/const GAME_VERSION = \"[^\"]*\";/const GAME_VERSION = \"$version\";/; s/<div class=\"version\" id=\"game-version\">[^<]*<\/div>/<div class=\"version\" id=\"game-version\">v$version<\/div>/" web/index.html > "$out/index.html"
 cp web/favicon.png "$out/favicon.png"
 [ -f web/favicon.ico ] && cp web/favicon.ico "$out/favicon.ico"
+[ -d web/images ] && cp -r web/images "$out/images"
 ls -l "$out"
 
