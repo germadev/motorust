@@ -43,11 +43,21 @@ use bevy::prelude::*;
 /// 240 FPS y la simulación es reproducible.
 const SIMULATION_HZ: f64 = 120.0;
 
+/// The game's version and the commit it is built from (see `build.rs`), for
+/// its logs: "0.0.10 (1a2b3c4d5)", "-dirty" after it with changes not
+/// committed.
+pub const BUILD: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("MOTORUST_COMMIT"),
+    ")"
+);
+
 fn init_crash_handler() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let msg = format!(
-            "Motorust se ha cerrado por un error:\n\n{info}\n\nSe ha guardado un informe en motorust-crash.log."
+            "Motorust {BUILD} se ha cerrado por un error:\n\n{info}\n\nSe ha guardado un informe en motorust-crash.log."
         );
         let _ = std::fs::write("motorust-crash.log", &msg);
 

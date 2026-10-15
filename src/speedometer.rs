@@ -4,7 +4,8 @@
 //! black), the speeds from 0 to 360 km/h round it (from 180 a little bigger
 //! each, and from 300 red, over a red arc), a blue pointer, and the speed in
 //! figures on a translucent dark disc in the middle. The pointer glows, and
-//! the figure of the scale it points at lights up in red, with a halo.
+//! the figure of the scale it points at lights up, with a halo: blue, or
+//! bright red from the red line up.
 //!
 //! Bevy does not draw SVG, so the shapes of the design are drawn with zeno
 //! (the rasterizer Bevy already uses for the fonts, which reads SVG path
@@ -76,12 +77,14 @@ const RED: [f32; 3] = rgb(0xe2, 0x4b, 0x4a);
 /// outline as sharp as the design's.
 const LIT_BLUE: [f32; 3] = rgb(0x4c, 0xa6, 0xff);
 const POINTER_TIP: [f32; 3] = rgb(0xdc, 0xf2, 0xff);
-/// A figure of the scale lit up, and the halo round it: pale blue like the
-/// pointer, or red from the red line up.
-const LIT_FIGURE: [f32; 3] = rgb(0xa8, 0xe0, 0xff);
+/// A figure of the scale lit up, and the halo round it: blue, or bright red
+/// from the red line up; the halo as strong as that, so that the figure
+/// shows its colour.
+const LIT_FIGURE: [f32; 3] = rgb(0x3a, 0x9b, 0xff);
 const FIGURE_GLOW: [f32; 3] = rgb(0x2e, 0x96, 0xff);
-const LIT_RED: [f32; 3] = rgb(0xff, 0x6a, 0x5c);
+const LIT_RED: [f32; 3] = rgb(0xff, 0x24, 0x1c);
 const RED_GLOW: [f32; 3] = rgb(0xff, 0x2a, 0x1e);
+const GLOW_STRENGTH: f32 = 0.9;
 /// How far the halo round a lit figure spreads (units of the design).
 const FIGURE_HALO: f32 = 4.0;
 /// The box round each figure of the scale its lit image covers (units of
@@ -614,7 +617,7 @@ fn lit_figure_canvas(size: u32, kmh: u32) -> Canvas {
     let mut canvas = Canvas::new(size, glow);
     let at = on_dial(pointer_angle(kmh as f32), MARKS);
     let ink = canvas.letter_coverage(&kmh.to_string(), figure_size(kmh), at);
-    canvas.glow(&ink, FIGURE_HALO, glow, 1.5);
+    canvas.glow(&ink, FIGURE_HALO, glow, GLOW_STRENGTH);
     canvas.paint_coverage(&ink, color, 1.0);
     canvas
 }

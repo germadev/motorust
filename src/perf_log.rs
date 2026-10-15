@@ -14,7 +14,9 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 
-use bevy::diagnostic::{DiagnosticPath, DiagnosticsStore, SystemInformationDiagnosticsPlugin};
+use bevy::diagnostic::{
+    DiagnosticPath, DiagnosticsStore, SystemInfo, SystemInformationDiagnosticsPlugin,
+};
 use bevy::ecs::entity::Entities;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
@@ -186,8 +188,10 @@ impl Stretch {
 /// written), when the stretch under way began and what it is noted with.
 #[derive(Resource, Default)]
 pub struct PerfLog {
-    /// Where it goes, if not to a file of its own beside the settings.
+    /// Where it goes, if not to a file of its own beside the settings; and
+    /// whether it waits to be told where (dropping what comes before).
     path: Option<PathBuf>,
+    waiting: bool,
     file: Option<File>,
     failed: bool,
     started: Option<f32>,
@@ -338,6 +342,88 @@ pub fn process_cpu(store: Option<&DiagnosticsStore>) -> Option<f32> {
         .map(|cpu| cpu as f32)
 }
 
+/// `seconds` since 1970 as a date and time (UTC) for a file name:
+/// `2026-10-16_1830`.
+pub fn stamp(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    let (hour, minute) = (seconds % 86_400 / 3600, seconds % 3600 / 60);
+    // Days to a civil date (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}_{hour:02}{minute:02}")
+}
+
+/// `name` as it can go in a file name: lowercase letters and digits, a
+/// dash between words, at most 40 characters (cut between words).
+pub fn slug(name: &str) -> String {
+    let mut slug = String::new();
+    for c in name.to_lowercase().chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c);
+        } else if !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let mut slug = slug.trim_end_matches('-').to_string();
+    if slug.len() > 40 {
+        slug.truncate(40);
+        if let Some(cut) = slug.rfind('-') {
+            slug.truncate(cut);
+        }
+    }
+    slug
+}
+
+/// A CPU's or GPU's name as it can go in a file name, without what says
+/// nothing of it: trademarks, its clock, its driver (in brackets or after
+/// a slash), "CPU", "Processor" and how many cores.
+fn chip(name: &str) -> String {
+    let mut name = name.to_string();
+    for mark in ["(R)", "(r)", "(TM)", "(tm)", "®", "™"] {
+        name = name.replace(mark, " ");
+    }
+    for cut in [" @", " (", "/"] {
+        if let Some(at) = name.find(cut) {
+            name.truncate(at);
+        }
+    }
+    let words: Vec<&str> = name
+        .split_whitespace()
+        .filter(|word| {
+            let word = word.to_lowercase();
+            word != "cpu" && word != "processor" && !word.ends_with("-core")
+        })
+        .collect();
+    slug(&words.join(" "))
+}
+
+/// The name of a log (without its ending): when it began (UTC), the system,
+/// the CPU and the GPU (once, where they are one chip), as
+/// `2026-10-16_1830_macos-26-3-1_apple-m1-pro`.
+pub fn log_name(seconds: u64, system: Option<&SystemInfo>, gpu: Option<&str>) -> String {
+    let os = slug(system.map_or(std::env::consts::OS, |system| system.os.as_str()));
+    let cpu = system.map(|system| chip(&system.cpu));
+    let gpu = gpu.map(chip).filter(|gpu| Some(gpu) != cpu.as_ref());
+    [Some(stamp(seconds)), Some(os), cpu, gpu]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
 /// The folder the logs go in: beside the settings.
 pub(crate) fn folder() -> Option<PathBuf> {
     let var = |name| std::env::var_os(name).map(PathBuf::from);
@@ -355,18 +441,33 @@ pub(crate) fn folder() -> Option<PathBuf> {
 }
 
 impl PerfLog {
-    /// A log written to `path` (the benchmark's, beside its results).
-    pub fn to(path: PathBuf) -> Self {
+    /// A log that waits to be told where to go ([`PerfLog::set_path`]):
+    /// the benchmark's, beside its results once it names them.
+    pub fn waiting() -> Self {
         Self {
-            path: Some(path),
+            waiting: true,
             ..default()
         }
     }
 
+    /// Where it goes, if it has not been written to yet.
+    pub fn set_path(&mut self, path: PathBuf) {
+        if self.file.is_none() {
+            self.path = Some(path);
+            self.waiting = false;
+        }
+    }
+
     /// Writes `line` to the file, opening it first (a new one for each
-    /// session, named after when it began), with a heading.
-    fn write(&mut self, line: &str, heading: impl FnOnce() -> String) {
-        if self.failed || cfg!(target_arch = "wasm32") {
+    /// session, named by `name` from when it began, see [`log_name`]), with
+    /// a heading.
+    fn write(
+        &mut self,
+        line: &str,
+        name: impl FnOnce(u64) -> String,
+        heading: impl FnOnce() -> String,
+    ) {
+        if self.failed || self.waiting || cfg!(target_arch = "wasm32") {
             return;
         }
         if self.file.is_none() {
@@ -376,7 +477,7 @@ impl PerfLog {
             let path = self
                 .path
                 .clone()
-                .or_else(|| Some(folder()?.join(format!("perf-{since}.log"))));
+                .or_else(|| Some(folder()?.join(format!("{}.perf.log", name(since)))));
             let opened = path.and_then(|path| {
                 std::fs::create_dir_all(path.parent()?).ok()?;
                 let file = OpenOptions::new()
@@ -395,7 +496,7 @@ impl PerfLog {
             let _ = writeln!(
                 file,
                 "# motorust {} perf log, unix time {since}",
-                env!("CARGO_PKG_VERSION")
+                crate::BUILD
             );
             let _ = writeln!(file, "# {}", heading());
             self.file = Some(file);
@@ -419,10 +520,11 @@ fn log_performance(
     game_mode: Res<GameMode>,
     pause: Res<Pause>,
     current: Res<CurrentCircuit>,
-    (window, ui_scale, adapter, trees): (
+    (window, ui_scale, adapter, system, trees): (
         Query<&Window, With<PrimaryWindow>>,
         Option<Res<UiScale>>,
         Option<Res<RenderAdapterInfo>>,
+        Option<Res<SystemInfo>>,
         Query<(&Dressed, &InheritedVisibility)>,
     ),
     (start, store, entities, detail): (
@@ -518,13 +620,20 @@ fn log_performance(
                     )
                 },
             );
-            log.write(&line, || {
-                format!(
-                    "{gpu}; {} CPUs; {}",
-                    std::thread::available_parallelism().map_or(0, |n| n.get()),
-                    std::env::consts::OS
-                )
-            });
+            let system = system.as_deref();
+            let gpu_name = adapter.as_deref().map(|adapter| adapter.name.as_str());
+            log.write(
+                &line,
+                |since| log_name(since, system, gpu_name),
+                || {
+                    format!(
+                        "{gpu}; CPU {}, {} CPUs; {}",
+                        system.map_or("unknown", |system| system.cpu.as_str()),
+                        std::thread::available_parallelism().map_or(0, |n| n.get()),
+                        system.map_or(std::env::consts::OS, |system| system.os.as_str())
+                    )
+                },
+            );
         }
         log.stretch = Stretch::default();
         log.started = Some(now);
@@ -545,6 +654,51 @@ fn log_performance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_log_is_named_after_when_and_on_what() {
+        assert_eq!(stamp(0), "1970-01-01_0000");
+        assert_eq!(stamp(1_792_083_939), "2026-10-15_1705");
+        // The last day of a leap February.
+        assert_eq!(
+            stamp(1_709_164_800 + 3_600 * 23 + 59 * 60),
+            "2024-02-29_2359"
+        );
+        let system = |os: &str, cpu: &str| SystemInfo {
+            os: os.into(),
+            kernel: String::new(),
+            cpu: cpu.into(),
+            core_count: "8".into(),
+            memory: "16.0 GiB".into(),
+        };
+        // An Apple chip is its CPU and its GPU: named once.
+        let mac = system("macOS 26.3.1", "Apple M1 Pro");
+        assert_eq!(
+            log_name(1_792_083_939, Some(&mac), Some("Apple M1 Pro")),
+            "2026-10-15_1705_macos-26-3-1_apple-m1-pro"
+        );
+        // What says nothing of the chips left out.
+        let pc = system("Windows 11 Pro", "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz");
+        assert_eq!(
+            log_name(0, Some(&pc), Some("NVIDIA GeForce RTX 2060/PCIe/SSE2")),
+            "1970-01-01_0000_windows-11-pro_intel-core-i7-9750h_nvidia-geforce-rtx-2060"
+        );
+        let linux = system("Linux 24.04 Ubuntu", "AMD Ryzen 7 5800X 8-Core Processor");
+        assert_eq!(
+            log_name(0, Some(&linux), Some("llvmpipe (LLVM 15.0.7, 256 bits)")),
+            "1970-01-01_0000_linux-24-04-ubuntu_amd-ryzen-7-5800x_llvmpipe"
+        );
+        // Without them, the date and the system.
+        assert_eq!(
+            log_name(0, None, None),
+            format!("1970-01-01_0000_{}", std::env::consts::OS)
+        );
+        assert_eq!(
+            slug("  Joshua's Mac--mini.local "),
+            "joshua-s-mac-mini-local"
+        );
+        assert!(slug(&"word ".repeat(20)).len() <= 40);
+    }
 
     #[test]
     fn the_games_share_of_all_the_cores() {

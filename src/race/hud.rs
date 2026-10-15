@@ -277,12 +277,12 @@ pub fn clock(seconds: f32) -> String {
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
 }
 
-/// The time of the lap under way, said so: "ESTA VUELTA 0:31.2", "THIS LAP
+/// The time of the lap under way, said so: "ACTUAL 0:31.2", "CURRENT
 /// 0:31.2".
 fn lap_time(seconds: f32, lang: Language) -> String {
     let label = match lang {
-        Language::Spanish => "ESTA VUELTA",
-        Language::English => "THIS LAP",
+        Language::Spanish => "ACTUAL",
+        Language::English => "CURRENT",
     };
     format!("{label} {}", clock(seconds))
 }
@@ -723,8 +723,8 @@ mod tests {
 
     #[test]
     fn the_lap_under_way_reads_with_its_time() {
-        assert_eq!(lap_time(31.25, Language::Spanish), "ESTA VUELTA 0:31.2");
-        assert_eq!(lap_time(75.0, Language::English), "THIS LAP 1:15.0");
+        assert_eq!(lap_time(31.25, Language::Spanish), "ACTUAL 0:31.2");
+        assert_eq!(lap_time(75.0, Language::English), "CURRENT 1:15.0");
         // Since the lap began, at the line.
         let progress = Progress {
             lap_start: 40.0,
