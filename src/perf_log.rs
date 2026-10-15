@@ -193,6 +193,8 @@ pub struct PerfLog {
     started: Option<f32>,
     context: Option<Context>,
     stretch: Stretch,
+    /// The game's CPU time when the stretch began.
+    cpu: Option<CpuClock>,
 }
 
 /// When this frame's update began.
@@ -210,43 +212,130 @@ fn mark_frame_start(mut start: ResMut<FrameStart>) {
     start.0 = Some(Instant::now());
 }
 
-/// The CPU and memory the game and the whole system use, averaged over the
-/// last few readings (taken about once a second), if they are measured
-/// (see [`SystemInformationDiagnosticsPlugin`]): the game's CPU as a share
-/// of all the cores together, as the system's.
-fn usage(store: Option<&DiagnosticsStore>) -> String {
-    let Some(store) = store else {
-        return String::new();
+/// The CPU time the game has had so far (s), all its threads together.
+#[cfg(unix)]
+fn cpu_time() -> Option<f64> {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::zeroed();
+    // SAFETY: `getrusage` fills in the struct it is given, and says whether
+    // it did.
+    let usage = unsafe {
+        if libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) != 0 {
+            return None;
+        }
+        usage.assume_init()
     };
-    let read = |path: &DiagnosticPath| store.get(path).and_then(|diagnostic| diagnostic.average());
+    let seconds = |time: libc::timeval| time.tv_sec as f64 + time.tv_usec as f64 / 1e6;
+    Some(seconds(usage.ru_utime) + seconds(usage.ru_stime))
+}
+
+#[cfg(not(unix))]
+fn cpu_time() -> Option<f64> {
+    None
+}
+
+/// The memory the game takes (GiB), as Activity Monitor shows it: Bevy's
+/// reading of it is left out on macOS (its `sysinfo` is built for the App
+/// Store, which reads no processes), and so is the CPU's.
+#[cfg(target_os = "macos")]
+fn memory() -> Option<f64> {
+    let mut info = std::mem::MaybeUninit::<libc::rusage_info_v2>::zeroed();
+    // SAFETY: `proc_pid_rusage` fills in the struct of the kind asked for
+    // (`RUSAGE_INFO_V2`), and says whether it did.
+    let info = unsafe {
+        let pid = std::process::id() as libc::c_int;
+        if libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V2, info.as_mut_ptr().cast()) != 0 {
+            return None;
+        }
+        info.assume_init()
+    };
+    Some(info.ri_phys_footprint as f64 / (1u64 << 30) as f64)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn memory() -> Option<f64> {
+    None
+}
+
+/// The game's share of all the cores together (%), having had `cpu` s of
+/// CPU time over `wall` s on `cores` of them.
+fn cpu_share(cpu: f64, wall: f64, cores: usize) -> Option<f32> {
+    (wall > 0.0 && cores > 0).then(|| (cpu / wall / cores as f64 * 100.0) as f32)
+}
+
+/// The game's CPU time when a stretch began, to tell its share of the
+/// cores over the stretch.
+#[derive(Clone, Copy, Debug)]
+pub struct CpuClock {
+    wall: Instant,
+    cpu: f64,
+}
+
+impl CpuClock {
+    /// From now, where the game's CPU time can be read.
+    pub fn start() -> Option<Self> {
+        let cpu = cpu_time()?;
+        Some(Self {
+            wall: Instant::now(),
+            cpu,
+        })
+    }
+
+    /// The game's share of all the cores since it started (%).
+    pub fn share(&self) -> Option<f32> {
+        let cores = std::thread::available_parallelism().ok()?.get();
+        cpu_share(
+            cpu_time()? - self.cpu,
+            self.wall.elapsed().as_secs_f64(),
+            cores,
+        )
+    }
+}
+
+/// The CPU and memory the game and the whole system use: the game's CPU
+/// over the stretch (`cpu`), as a share of all the cores together, where it
+/// can be read (not on Windows), and its memory now (on macOS); the rest
+/// averaged over the last few readings (taken about once a second) if they
+/// are measured (see [`SystemInformationDiagnosticsPlugin`]).
+fn usage(store: Option<&DiagnosticsStore>, cpu: Option<f32>) -> String {
+    let read = |path: &DiagnosticPath| {
+        store
+            .and_then(|store| store.get(path))
+            .and_then(|diagnostic| diagnostic.average())
+    };
     let mut pairs = String::new();
-    for (key, path, unit) in [
+    for (key, value) in [
         (
             "cpu_process_pct",
-            SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE,
-            "",
+            cpu.map(f64::from)
+                .or_else(|| read(&SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE)),
         ),
         (
             "cpu_system_pct",
-            SystemInformationDiagnosticsPlugin::SYSTEM_CPU_USAGE,
-            "",
+            read(&SystemInformationDiagnosticsPlugin::SYSTEM_CPU_USAGE),
         ),
         (
             "mem_process_gib",
-            SystemInformationDiagnosticsPlugin::PROCESS_MEM_USAGE,
-            "",
+            memory().or_else(|| read(&SystemInformationDiagnosticsPlugin::PROCESS_MEM_USAGE)),
         ),
         (
             "mem_system_pct",
-            SystemInformationDiagnosticsPlugin::SYSTEM_MEM_USAGE,
-            "",
+            read(&SystemInformationDiagnosticsPlugin::SYSTEM_MEM_USAGE),
         ),
     ] {
-        if let Some(value) = read(&path) {
-            pairs.push_str(&format!(" {key}={value:.2}{unit}"));
+        if let Some(value) = value {
+            pairs.push_str(&format!(" {key}={value:.2}"));
         }
     }
     pairs
+}
+
+/// The game's share of all the cores (%) over the last few readings, as
+/// Bevy reads it (where the game's own reading of it cannot be had).
+pub fn process_cpu(store: Option<&DiagnosticsStore>) -> Option<f32> {
+    store?
+        .get(&SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE)?
+        .average()
+        .map(|cpu| cpu as f32)
 }
 
 /// The folder the logs go in: beside the settings.
@@ -413,10 +502,11 @@ fn log_performance(
                 }
             }
             let levels = format!(" tree_levels={}/{}/{}", levels[0], levels[1], levels[2]);
+            let cpu = log.cpu.and_then(|clock| clock.share());
             let line = format!(
                 "t={now:.1} {figures}{} entities={} {}{levels}",
-                usage(store.as_deref()),
-                entities.len(),
+                usage(store.as_deref(), cpu),
+                entities.count_spawned(),
                 noted.pairs()
             );
             let gpu = adapter.as_deref().map_or_else(
@@ -439,6 +529,7 @@ fn log_performance(
         log.stretch = Stretch::default();
         log.started = Some(now);
         log.context = Some(context);
+        log.cpu = CpuClock::start();
     }
     // This frame's time (the first after a stretch begins counts in it),
     // and its update's so far, nearly all of it.
@@ -454,6 +545,21 @@ fn log_performance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_games_share_of_all_the_cores() {
+        // 2 s of CPU time over 1 s on 8 cores: a quarter of them.
+        assert_eq!(cpu_share(2.0, 1.0, 8), Some(25.0));
+        assert_eq!(cpu_share(1.0, 0.0, 8), None);
+        assert_eq!(cpu_share(1.0, 1.0, 0), None);
+        // Read from the system where it can be.
+        if cfg!(unix) {
+            let clock = CpuClock::start().expect("the CPU time is read");
+            let busy = (0..2_000_000u64).fold(0u64, |sum, n| sum.wrapping_add(n * n));
+            std::hint::black_box(busy);
+            assert!(clock.share().is_some_and(|share| share >= 0.0));
+        }
+    }
 
     #[test]
     fn a_stretch_reads_as_its_rate_and_its_slowest_frames() {

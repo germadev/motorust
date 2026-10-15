@@ -52,8 +52,12 @@ build: ## Compila la versión optimizada en target/release/motorust
 test: ## Pasa los tests
 	$(CARGO) test
 
+# On macOS, under caffeinate: with no one touching it, the display would go
+# to sleep partway through, its monitor would be gone and the game with it.
+KEEP_AWAKE := $(shell [ "$$(uname)" = Darwin ] && echo "caffeinate -dis")
+
 bench: ## Benchmark: recorre las pistas solo, con cada ajuste, y escribe los resultados (Esc lo para)
-	$(CARGO) run --release -- --bench
+	$(KEEP_AWAKE) $(CARGO) run --release -- --bench
 
 # Solo bench-results/ entra en el commit, aunque haya otros cambios a medias;
 # antes trae lo que hayan subido otras máquinas, para que el push no se rechace.

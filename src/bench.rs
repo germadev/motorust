@@ -4,8 +4,12 @@
 //! autopilot, with one player and with two, under each setting worth
 //! comparing (the shadows' levels, the ways of smoothing the edges, the
 //! lighter far trees, less detail for two players), with the frame rate
-//! unlimited. Each scenario is let settle a few seconds, then measured for
-//! some more (`MOTORUST_BENCH_SECONDS`, 10 by default).
+//! unlimited. Each scenario starts the race afresh, so all of them ride the
+//! same stretch of road and differ only in what they try; it is let settle
+//! a few seconds, then measured for some more (`MOTORUST_BENCH_SECONDS`, 10
+//! by default). The first is ridden once before, unmeasured, while the
+//! shaders are compiled and the caches fill. The game's share of the CPU is
+//! read over each measured stretch.
 //!
 //! It says what it is doing in the terminal as it goes: the machine, where
 //! the results go, each scenario as it starts and what it measured. The
@@ -22,7 +26,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-use bevy::diagnostic::{DiagnosticsStore, SystemInfo, SystemInformationDiagnosticsPlugin};
+use bevy::diagnostic::{DiagnosticsStore, SystemInfo};
 use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 use bevy::window::PrimaryWindow;
@@ -30,7 +34,7 @@ use bevy::window::PrimaryWindow;
 use crate::bike::{LocalPlayer, Player, Race, autopilot};
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
-use crate::perf_log::{FrameStart, PerfLog, Stretch, Summary, folder};
+use crate::perf_log::{CpuClock, FrameStart, PerfLog, Stretch, Summary, folder, process_cpu};
 use crate::race::{Mode, Rules};
 use crate::settings::{Antialiasing, FpsLimit, Settings, ShadowQuality};
 use crate::welcome::GameMode;
@@ -39,6 +43,8 @@ use crate::welcome::GameMode;
 /// shadow maps, a world built), and is measured for by default.
 const SETTLE: f32 = 4.0;
 const MEASURE: f32 = 10.0;
+/// About how long setting up a race takes (s), building its world.
+const SETTING_UP: f32 = 2.5;
 /// The folder the results go in, in the folder the game is run from.
 const RESULTS: &str = "bench-results";
 
@@ -206,6 +212,10 @@ pub struct Bench {
     phase: Phase,
     measure: f32,
     stretch: Stretch,
+    /// The game's CPU time when the measuring began.
+    cpu: Option<CpuClock>,
+    /// Whether the first scenario has been ridden once, unmeasured.
+    warmed: bool,
     results: Vec<(Scenario, Option<Summary>, Option<f32>)>,
     /// This machine's name, where the results go and the file they are
     /// written to as they come.
@@ -244,6 +254,8 @@ impl Plugin for BenchPlugin {
                 phase: Phase::Start,
                 measure,
                 stretch: Stretch::default(),
+                cpu: None,
+                warmed: false,
                 results: Vec::new(),
                 machine: machine.trim().to_string(),
                 path: results.join(format!("{name}.txt")),
@@ -254,14 +266,14 @@ impl Plugin for BenchPlugin {
     }
 }
 
-/// The settings, track and players of `scenario`; whether the race must be
-/// set up again for them.
+/// The settings, track and players of `scenario`, for the race to be set
+/// up again with.
 fn apply(
     scenario: &Scenario,
     settings: &mut Settings,
     current: &mut CurrentCircuit,
     game_mode: &mut GameMode,
-) -> bool {
+) {
     settings.shadows = scenario.shadows;
     settings.antialiasing = scenario.antialiasing;
     settings.lighter_far_trees = scenario.far_trees;
@@ -271,14 +283,12 @@ fn apply(
     } else {
         GameMode::SinglePlayer
     };
-    let again = current.0 != scenario.track || *game_mode != mode;
     if current.0 != scenario.track {
         current.0 = scenario.track;
     }
     if *game_mode != mode {
         *game_mode = mode;
     }
-    again
 }
 
 fn start_bench(mut rules: ResMut<Rules>) {
@@ -340,17 +350,18 @@ fn machine_lines(
         settings.frame_latency
     ));
     lines.push(format!(
-        "{} scenarios, {SETTLE} s settling and {} s measured each, about {} min",
+        "{} scenarios, each a race afresh, {SETTLE} s settling and {} s measured, \
+         after one to warm up; about {} min",
         bench.scenarios.len(),
         bench.measure,
-        minutes(bench.scenarios.len(), bench.measure)
+        minutes(bench.scenarios.len() + 1, bench.measure)
     ));
     lines
 }
 
 /// About how many minutes `scenarios` take, measured `measure` s each.
 fn minutes(scenarios: usize, measure: f32) -> u32 {
-    (scenarios as f32 * (SETTLE + measure + 1.0) / 60.0).ceil() as u32
+    (scenarios as f32 * (SETTING_UP + SETTLE + measure) / 60.0).ceil() as u32
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -447,16 +458,25 @@ fn run_bench(
             for bike in &players {
                 autopilot(&mut commands.entity(bike), 0.0);
             }
-            println!(
-                "{}: settling {SETTLE} s, then measuring {} s",
-                label(&bench),
-                bench.measure
-            );
+            if bench.warmed {
+                println!(
+                    "{}: settling {SETTLE} s, then measuring {} s",
+                    label(&bench),
+                    bench.measure
+                );
+            } else {
+                println!(
+                    "{}: warming up {} s, not measured",
+                    label(&bench),
+                    SETTLE + bench.measure
+                );
+            }
             bench.phase = Phase::Settling(now);
         }
         Phase::Settling(since) => {
             if now - since >= SETTLE {
                 bench.stretch = Stretch::default();
+                bench.cpu = CpuClock::start();
                 bench.phase = Phase::Measuring(now);
             }
         }
@@ -468,15 +488,21 @@ fn run_bench(
             if now - since < bench.measure {
                 return;
             }
+            // Ridden once to warm up: now again, measured.
+            if !bench.warmed {
+                bench.warmed = true;
+                next.set(GameState::Race);
+                println!("{}: setting up the race again", label(&bench));
+                bench.phase = Phase::Entering(now);
+                return;
+            }
             let scenario = bench.scenarios[bench.index].clone();
             let summary = bench.stretch.summary();
-            // The game's share of all the cores, as the system reads it.
-            let cpu = store.as_deref().and_then(|store| {
-                store
-                    .get(&SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE)
-                    .and_then(|cpu| cpu.average())
-                    .map(|cpu| cpu as f32)
-            });
+            // The game's share of all the cores over the stretch.
+            let cpu = bench
+                .cpu
+                .and_then(|clock| clock.share())
+                .or_else(|| process_cpu(store.as_deref()));
             let left = minutes(total - bench.index - 1, bench.measure);
             println!(
                 "{}: {}{}",
@@ -502,18 +528,11 @@ fn run_bench(
                 exit.write(AppExit::Success);
                 return;
             };
-            if apply(&next_scenario, &mut settings, &mut current, &mut game_mode) {
-                next.set(GameState::Race);
-                println!("{}: setting up the race", label(&bench));
-                bench.phase = Phase::Entering(now);
-            } else {
-                println!(
-                    "{}: settling {SETTLE} s, then measuring {} s",
-                    label(&bench),
-                    bench.measure
-                );
-                bench.phase = Phase::Settling(now);
-            }
+            // The race afresh, so that each scenario rides the same road.
+            apply(&next_scenario, &mut settings, &mut current, &mut game_mode);
+            next.set(GameState::Race);
+            println!("{}: setting up the race", label(&bench));
+            bench.phase = Phase::Entering(now);
         }
     }
 }

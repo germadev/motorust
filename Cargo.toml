@@ -34,6 +34,11 @@ resvg = { version = "0.45", default-features = false, features = ["text"] }
 objc2 = "0.6"
 objc2-game-controller = "0.3"
 
+# The same version Bevy uses, to read the CPU time and memory the game itself
+# takes for the performance log (Bevy's own reading is left out on macOS).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # En escritorio (Windows, Linux, macOS), cargamos y aplicamos el icono de la ventana.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 winit = { version = "0.30", default-features = false }
