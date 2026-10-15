@@ -107,6 +107,12 @@ pub struct Terrain {
     /// How much of each point of the grid is mountain across the sea (0 to
     /// 1, by rows as `heights`): wild land, under forest.
     mountain: Vec<f32>,
+    /// On the mountains across the sea, how far each point of the grid lies
+    /// down a gully (up to 1) or up on a ridge (down to -1), by rows as
+    /// `heights` (0 elsewhere): the snow lies on down the gullies, the
+    /// forest climbs them, and they are in shade where the ridges catch the
+    /// light (see [`weathered`]).
+    hollow: Vec<f32>,
     /// How the grass is coloured, and how light (see `Scenery::greens` and
     /// `Scenery::grass_shade`).
     greens: Greens,
@@ -174,15 +180,21 @@ impl Terrain {
             .zip(&heights)
             .map(|(point, &height)| Vec3::new(point.x, height, point.y))
             .collect();
-        let sites = on_cores(&grid, threads, |part: &[Vec3]| {
-            part.iter()
-                .map(|&p| site(p, flowers.as_ref()))
-                .collect::<Vec<_>>()
-        });
-        let mountain = points
+        let mountain: Vec<f32> = points
             .iter()
             .map(|&point| smoothstep(2.0, 40.0, (scenery.mountains)(point)))
             .collect();
+        let hollow = hollows(&xs, &zs, &heights, &mountain);
+        let grid: Vec<(Vec3, f32, f32)> = grid
+            .into_iter()
+            .zip(hollow.iter().zip(&mountain))
+            .map(|(p, (&hollow, &mountain))| (p, hollow, mountain))
+            .collect();
+        let sites = on_cores(&grid, threads, |part: &[(Vec3, f32, f32)]| {
+            part.iter()
+                .map(|&(p, hollow, mountain)| site(p, flowers.as_ref(), hollow, mountain))
+                .collect::<Vec<_>>()
+        });
         Self {
             xs,
             zs,
@@ -192,6 +204,7 @@ impl Terrain {
             flowers,
             fine,
             mountain,
+            hollow,
             greens: scenery.greens,
             grass_shade: scenery.grass_shade,
         }
@@ -199,9 +212,15 @@ impl Terrain {
 
     /// Altura del terreno en un punto (interpolada en la rejilla).
     pub fn height(&self, point: Vec2) -> f32 {
+        self.on_grid(&self.heights, point)
+    }
+
+    /// One of the values kept for each point of the grid, at a point
+    /// between them (interpolated).
+    fn on_grid(&self, values: &[f32], point: Vec2) -> f32 {
         let (i, tx) = locate(&self.xs, point.x);
         let (j, tz) = locate(&self.zs, point.y);
-        let at = |i: usize, j: usize| self.heights[j * self.xs.len() + i];
+        let at = |i: usize, j: usize| values[j * self.xs.len() + i];
         let bottom = at(i, j).lerp(at(i + 1, j), tx);
         let top = at(i, j + 1).lerp(at(i + 1, j + 1), tx);
         bottom.lerp(top, tz)
@@ -316,7 +335,13 @@ impl Terrain {
     /// What the look of the ground at `p` (x, height, z) turns on but the
     /// way it faces (see [`look`]).
     fn site(&self, p: Vec3) -> Site {
-        site(p, self.flowers.as_ref())
+        let point = Vec2::new(p.x, p.z);
+        site(
+            p,
+            self.flowers.as_ref(),
+            self.on_grid(&self.hollow, point),
+            self.on_grid(&self.mountain, point),
+        )
     }
 
     /// The pieces a triangle of the grid is drawn in (`corners`, facing
@@ -492,6 +517,8 @@ impl Terrain {
                                 let normal = blend(indices.map(|index| normals[index])).normalize();
                                 let mountain =
                                     blend(indices.map(|index| Vec3::splat(self.mountain[index]))).x;
+                                let hollow =
+                                    blend(indices.map(|index| Vec3::splat(self.hollow[index]))).x;
                                 let uv = match shared {
                                     true => {
                                         let warp = Vec2::new(
@@ -559,6 +586,11 @@ impl Terrain {
                                         shaded(self.grass_tint(p, normal, wild), self.grass_shade)
                                     }
                                     _ => ground_vertex_color(ground_type, p, normal),
+                                };
+                                let color = if mountain > 0.0 {
+                                    weathered(color, ground_type, p, hollow, mountain)
+                                } else {
+                                    color
                                 };
                                 (p, normal, uv, color)
                             });
@@ -644,18 +676,56 @@ pub fn spawn_terrain(
 
 /// The ground at `point` (x, height, z), where it faces `normal`.
 fn classify(point: Vec3, normal: Vec3) -> Ground {
-    let (snow_line, tree_line) = lines(point);
-    ground_of(point.y, snow_line, tree_line, normal)
+    let (snow_line, tree_line) = lines(point, 0.0);
+    ground_of(point.y, snow_line, tree_line, normal, 0.0)
 }
 
 /// The snow line and the tree line over `point` (m), reaching up and down
-/// along the ravines (see [`SNOW_LINE`] and [`TREE_LINE`]).
-fn lines(point: Vec3) -> (f32, f32) {
+/// along the ravines (see [`SNOW_LINE`] and [`TREE_LINE`]); `hollow` down
+/// a gully (or, below 0, up a ridge) of a mountain across the sea, where
+/// the snow lies on lower and the forest climbs higher.
+fn lines(point: Vec3, hollow: f32) -> (f32, f32) {
     let ground = Vec2::new(point.x, point.z);
     (
-        SNOW_LINE + (fbm(ground / 90.0, 2) - 0.5) * 2.0 * SNOW_REACH,
-        TREE_LINE + (fbm(ground / 70.0 + 9.0, 2) - 0.5) * 2.0 * TREE_LINE_REACH,
+        SNOW_LINE + (fbm(ground / 90.0, 2) - 0.5) * 2.0 * SNOW_REACH - SNOW_IN_GULLIES * hollow,
+        TREE_LINE
+            + (fbm(ground / 70.0 + 9.0, 2) - 0.5) * 2.0 * TREE_LINE_REACH
+            + TREES_IN_GULLIES * hollow,
     )
+}
+
+/// How much lower the snow lies down a gully (m), and how much higher the
+/// forest climbs it (and on a ridge, the other way).
+const SNOW_IN_GULLIES: f32 = 160.0;
+const TREES_IN_GULLIES: f32 = 70.0;
+/// On the mountains across the sea, faces steeper than this (the normal's
+/// height) are rock even under the lines: only sheer ones, the grid there
+/// being too coarse for the steepness of each triangle to tell.
+const MOUNTAIN_CLIFF_NORMAL_Y: f32 = 0.45;
+/// How a gully or a ridge shows in the grid of a mountain: how far a point
+/// lies under (or over) the middle of its neighbours, for the spacing.
+const HOLLOW_SCALE: f32 = 0.8;
+
+/// For each point of the grid (by rows), on the mountains across the sea
+/// (`mountain`), how far it lies down a gully, up to 1, or up on a ridge,
+/// down to -1: how far under the middle of its neighbours (see
+/// [`Terrain::hollow`]).
+fn hollows(xs: &[f32], zs: &[f32], heights: &[f32], mountain: &[f32]) -> Vec<f32> {
+    let (width, depth) = (xs.len(), zs.len());
+    (0..depth)
+        .flat_map(|j| (0..width).map(move |i| (i, j)))
+        .map(|(i, j)| {
+            let index = j * width + i;
+            if mountain[index] <= 0.0 || i == 0 || j == 0 || i + 1 == width || j + 1 == depth {
+                return 0.0;
+            }
+            let at = |i: usize, j: usize| heights[j * width + i];
+            let under =
+                (at(i - 1, j) + at(i + 1, j) + at(i, j - 1) + at(i, j + 1)) / 4.0 - at(i, j);
+            let spacing = (xs[i + 1] - xs[i - 1] + zs[j + 1] - zs[j - 1]) / 4.0;
+            (under / spacing * HOLLOW_SCALE * 4.0).clamp(-1.0, 1.0) * mountain[index]
+        })
+        .collect()
 }
 
 /// What a piece of ground is drawn as: its kind and, on grass in a field
@@ -679,17 +749,21 @@ struct Site {
     snow_line: f32,
     tree_line: f32,
     flowers: Option<FlowerKind>,
+    /// How much of it is mountain across the sea.
+    mountain: f32,
 }
 
 /// What the look of the ground at `p` (x, height, z) turns on but the way
-/// it faces, where the grass is in `flowers`.
-fn site(p: Vec3, flowers: Option<&FlowerMap>) -> Site {
-    let (snow_line, tree_line) = lines(p);
+/// it faces, where the grass is in `flowers`, `hollow` down a gully of a
+/// mountain across the sea and `mountain` its share of it.
+fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32) -> Site {
+    let (snow_line, tree_line) = lines(p, hollow);
     Site {
         height: p.y,
         snow_line,
         tree_line,
         flowers: flowers.and_then(|map| map.at(Vec2::new(p.x, p.z))),
+        mountain,
     }
 }
 
@@ -719,7 +793,13 @@ fn on_cores<T: Sync, R: Send>(
 
 /// What the ground at `site` is drawn as, facing `face`.
 fn look(site: &Site, face: Vec3) -> Look {
-    let ground = ground_of(site.height, site.snow_line, site.tree_line, face);
+    let ground = ground_of(
+        site.height,
+        site.snow_line,
+        site.tree_line,
+        face,
+        site.mountain,
+    );
     let flowers = if ground == Ground::Grass {
         site.flowers
     } else {
@@ -741,11 +821,18 @@ fn inside(point: Vec2, [p, q, r]: [Vec2; 3]) -> f32 {
 }
 
 /// The ground `height` m up, under the snow line and the tree line there,
-/// where it faces `normal`.
-fn ground_of(height: f32, snow_line: f32, tree_line: f32, normal: Vec3) -> Ground {
-    if height > snow_line && normal.y > SNOW_NORMAL_Y {
+/// where it faces `normal`; on a mountain across the sea (`mountain` over
+/// a half), by the lines alone, but for sheer faces: snow however steep,
+/// and forest up to the tree line.
+fn ground_of(height: f32, snow_line: f32, tree_line: f32, normal: Vec3, mountain: f32) -> Ground {
+    let (snow_normal, cliff_normal) = if mountain > 0.5 {
+        (0.0, MOUNTAIN_CLIFF_NORMAL_Y)
+    } else {
+        (SNOW_NORMAL_Y, CLIFF_NORMAL_Y)
+    };
+    if height > snow_line && normal.y > snow_normal {
         Ground::Snow
-    } else if normal.y < CLIFF_NORMAL_Y || height > tree_line {
+    } else if normal.y < cliff_normal || height > tree_line {
         Ground::Rock
     } else if height < BEACH_HEIGHT {
         Ground::Sand
@@ -1274,6 +1361,53 @@ pub fn grass_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
     let forest = smoothstep(FOREST_FROM, FOREST_FULL, p.y).max(wild);
     tint.mix(&FOREST, forest * 0.9)
         .mix(&DARK_FOREST, wild * 0.8)
+}
+
+/// The colour `color` (linear RGBA) of `ground` at `p` on a mountain across
+/// the sea (`mountain` how much of it), weathered as a real mountain's:
+/// lighter on its ridges and darker down its gullies (`hollow`), which its
+/// grid is too coarse to light; under forest, mottled by the trees' crowns,
+/// with stands of darker conifers and a few in muted autumn colours; scree
+/// in streaks down the slope; snow bluer in the gullies' shade.
+fn weathered(color: [f32; 4], ground: Ground, p: Vec3, hollow: f32, mountain: f32) -> [f32; 4] {
+    let at = Vec2::new(p.x, p.z);
+    let relief = 1.0 - 0.32 * hollow.max(0.0) + 0.2 * (-hollow).max(0.0);
+    let [red, green, blue, alpha] = color;
+    let [r, g, b] = match ground {
+        Ground::Grass => {
+            let crowns = 0.8 + 0.4 * fbm(at / 31.0, 2);
+            let stands = 0.75 + 0.5 * fbm(at / 210.0 + Vec2::splat(40.0), 3);
+            let autumn = 0.45 * smoothstep(0.6, 0.72, fbm(at / 160.0 - Vec2::splat(12.0), 3));
+            let k = crowns * stands * relief;
+            // Rust and amber, muted, as the maples and larches on a far
+            // slope in autumn.
+            let rust = [0.09, 0.04, 0.015];
+            [
+                (red * k).lerp(rust[0] * k, autumn),
+                (green * k).lerp(rust[1] * k, autumn),
+                (blue * k).lerp(rust[2] * k, autumn),
+            ]
+        }
+        Ground::Rock => {
+            let k = (0.78 + 0.44 * fbm(at / 45.0 + Vec2::splat(7.0), 3)) * relief;
+            [red * k, green * k, blue * k]
+        }
+        Ground::Snow => {
+            let shade = 0.28 * hollow.max(0.0);
+            [
+                red * (1.0 - shade),
+                green * (1.0 - 0.8 * shade),
+                blue * (1.0 - 0.45 * shade),
+            ]
+        }
+        Ground::Sand => [red, green, blue],
+    };
+    [
+        red.lerp(r, mountain),
+        green.lerp(g, mountain),
+        blue.lerp(b, mountain),
+        alpha,
+    ]
 }
 
 /// A tint `shade` times as light (linear RGBA), its green less vivid the
@@ -1874,6 +2008,52 @@ mod tests {
         assert!(axis[0] <= -EXTENT && *axis.last().unwrap() >= EXTENT);
         let (i, _) = locate(&axis, 0.0);
         assert!((axis[i + 1] - axis[i] - FINE_SPACING).abs() < 1e-3);
+    }
+
+    #[test]
+    fn snow_lies_on_down_the_gullies_of_the_mountains_and_forest_climbs_them() {
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == "Ghost Island")
+            .unwrap();
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        // About the snow line and the tree line on the volcano, by points of
+        // the grid down its gullies and up its ridges.
+        let share = |hollow: f32, ground: Ground, from: f32, to: f32| {
+            let (mut of, mut count) = (0, 0);
+            for (index, site) in terrain.sites.iter().enumerate() {
+                let here = terrain.hollow[index];
+                let fits = if hollow > 0.0 {
+                    here > hollow
+                } else {
+                    here < hollow
+                };
+                if terrain.mountain[index] < 0.9 || !fits || !(from..to).contains(&site.height) {
+                    continue;
+                }
+                of += 1;
+                count += usize::from(look(site, Vec3::Y).0 == ground);
+            }
+            assert!(of > 20, "{of} points");
+            count as f32 / of as f32
+        };
+        let (snow, bare) = (
+            share(0.3, Ground::Snow, 480.0, 640.0),
+            share(-0.3, Ground::Snow, 480.0, 640.0),
+        );
+        assert!(
+            snow > bare + 0.2,
+            "snow down the gullies {snow}, on the ridges {bare}"
+        );
+        let (forest, scree) = (
+            share(0.3, Ground::Grass, 360.0, 460.0),
+            share(-0.3, Ground::Grass, 360.0, 460.0),
+        );
+        assert!(
+            forest > scree + 0.2,
+            "forest up the gullies {forest}, the ridges {scree}"
+        );
     }
 
     #[test]

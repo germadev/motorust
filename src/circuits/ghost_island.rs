@@ -183,17 +183,17 @@ pub const GHOST_ISLAND: Circuit = Circuit {
             // The shrine in the bamboo, a little over the road.
             Terrace {
                 center: BAMBOO_SHRINE,
-                radius: 9.0,
-                height: 44.5,
+                radius: 12.0,
+                height: 41.0,
                 tilt: Vec2::ZERO,
                 skirt: 10.0,
             },
             Terrace {
                 center: MAPLE_GROUND,
                 radius: 16.0,
-                height: 6.0,
-                tilt: Vec2::new(0.002, 0.13),
-                skirt: 30.0,
+                height: 9.0,
+                tilt: Vec2::new(0.002, 0.15),
+                skirt: 40.0,
             },
             Terrace {
                 center: Vec2::new(96.6, -760.7),
@@ -672,8 +672,9 @@ const PROPS: [Prop; 44] = [
         PropModel::StiltShrine,
         BAMBOO_SHRINE.x,
         BAMBOO_SHRINE.y,
-        0.82,
-    ),
+        0.39,
+    )
+    .scaled(1.5),
     // The great maple on the outside of the bend round the foot of the
     // lake, straight ahead all the way down to it: at the far side of its
     // clearing of red leaves, its crown spreading over it towards the road
@@ -722,10 +723,10 @@ const PROPS: [Prop; 44] = [
     by_road(PropModel::SupplyPile, 130.0, 13.5),
     by_road(PropModel::SupplyPile, 320.0, -13.5),
     // The fishing village: thatched farmhouses inland of the coast road,
-    // each on its terrace.
-    by_road(PropModel::Minka, 820.0, -26.0),
-    by_road(PropModel::Minka, 890.0, -26.0),
-    by_road(PropModel::Minka, 960.0, -26.0),
+    // each on its terrace, facing the riders coming along it.
+    standing(PropModel::Minka, 96.6, -760.7, 1.83),
+    standing(PropModel::Minka, 154.0, -774.4, 1.44),
+    standing(PropModel::Minka, 213.2, -764.5, 1.01),
     // Bronze lanterns at either end of the boardwalk.
     by_road(PropModel::BronzeLantern, 1395.0, NEAR),
     by_road(PropModel::BronzeLantern, 1395.0, -NEAR),
@@ -1256,9 +1257,9 @@ const ISLET_RADIUS: f32 = 16.0;
 const MAPLE_GROUND: Vec2 = Vec2::new(875.4, 479.9);
 /// The middle of the road beside it (3086 m).
 const MAPLE_ROAD: Vec2 = Vec2::new(874.8, 444.9);
-/// The shrine on the outside of the bend in the bamboo at 5150 m, 26 m from
-/// the road.
-const BAMBOO_SHRINE: Vec2 = Vec2::new(-88.3, -349.0);
+/// The shrine on the outside of the bend in the bamboo at 5180 m, 28 m from
+/// the road: ahead of the riders coming down to the bend.
+const BAMBOO_SHRINE: Vec2 = Vec2::new(-98.9, -305.5);
 /// The islet the great torii stands on, in the sea 56 m from the coast
 /// road (at about 1240 m).
 const TORII_ISLET: Vec2 = Vec2::new(497.0, -892.0);
@@ -1279,7 +1280,7 @@ const CASTLE_HILL: Massif = climbed_massif(0.0, -530.0, 210.0, 34.0);
 /// The hills, each about as high as the road over its top, so that the road
 /// runs over them and along their flanks, never sunk between banks cut on
 /// both sides.
-const MASSIFS: [Massif; 11] = [
+const MASSIFS: [Massif; 12] = [
     CASTLE_HILL,
     // The castle ridge, east of it, and the red ridge, east of that, which
     // the road climbs from the temple.
@@ -1288,6 +1289,9 @@ const MASSIFS: [Massif; 11] = [
     // The susuki hills.
     climbed_massif(1040.0, -330.0, 300.0, 36.0),
     climbed_massif(1050.0, 20.0, 240.0, 34.0),
+    // The hill of the great maple, rising from the road round the foot of
+    // the lake to the island's south shore.
+    climbed_massif(880.0, 560.0, 140.0, 10.0),
     // The bamboo hill west of the castle, which the road climbs and winds
     // down, and its lower slopes south of it.
     climbed_massif(-170.0, -430.0, 190.0, 46.0),
@@ -1340,7 +1344,38 @@ fn mountains(point: Vec2) -> f32 {
         * (0.35 + 0.65 * fbm(point / 300.0, 4));
     let cone = VOLCANO_HEIGHT * (1.0 - reach).max(0.0).powf(1.7);
     let crater = 40.0 * (1.0 - smoothstep(0.0, 0.08, reach));
-    ranges.max(cone - crater)
+    ranges.max(cone - crater + volcano_relief(point, reach))
+}
+
+/// The volcano's flanks as erosion and its own fires have left them (m over
+/// or under its smooth cone, `reach` its share of the way out from its
+/// middle): gullies and ridges down them, deepest half way down and none at
+/// the rim nor at the foot, each wandering a little as it runs down; broad
+/// lumps and hollows; and a parasitic cone on the flank facing the island.
+fn volcano_relief(point: Vec2, reach: f32) -> f32 {
+    if reach >= 1.0 {
+        return 0.0;
+    }
+    let angle = (point - VOLCANO).to_angle();
+    let mut gullies = 0.0;
+    // Each set of gullies only where they are far enough apart for the
+    // land's grid (about 70 m there) to draw them.
+    for (k, (count, weight, from)) in [(13.0, 1.0, 0.18), (21.0, 0.6, 0.28), (34.0, 0.35, 0.46)]
+        .into_iter()
+        .enumerate()
+    {
+        let wander = 2.5 * (fbm(Vec2::new(reach * 5.0, k as f32 * 3.7), 2) - 0.5);
+        // Sharp ridges between rounded gullies.
+        let wave = (count * angle + wander + k as f32 * 1.3).sin();
+        gullies += weight * (0.5 - wave.abs()) * smoothstep(from, from + 0.1, reach);
+    }
+    let down = 1.0 - smoothstep(0.75, 1.0, reach);
+    let lumps = 60.0 * (fbm(point / 420.0, 3) - 0.5) * smoothstep(0.1, 0.3, reach) * down;
+    let parasite = VOLCANO + Vec2::new(0.5, 0.86) * 0.55 * VOLCANO_RADIUS;
+    let near = point.distance(parasite) / 230.0;
+    let cone =
+        95.0 * (1.0 - near * near).max(0.0).powi(2) - 18.0 * (1.0 - smoothstep(0.0, 0.18, near));
+    56.0 * gullies * down + lumps + cone
 }
 
 #[cfg(test)]
@@ -1482,6 +1517,31 @@ mod tests {
         assert!(inside(
             track.centerline()[track.index_at(BOARDWALK.to + 30.0)]
         ));
+    }
+
+    #[test]
+    fn the_volcanos_flanks_are_carved_into_gullies_and_ridges() {
+        // Half way down, round it: ridges and gullies one after another, tens
+        // of metres apart in height, not a smooth cone.
+        let heights: Vec<f32> = (0..720)
+            .map(|k| {
+                let away = Vec2::from_angle(k as f32 / 720.0 * std::f32::consts::TAU);
+                mountains(VOLCANO + away * 0.5 * VOLCANO_RADIUS)
+            })
+            .collect();
+        let (low, high) = heights
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(l, h), &y| (l.min(y), h.max(y)));
+        assert!(high - low > 50.0, "{} m from gully to ridge", high - low);
+        let turns = heights
+            .windows(3)
+            .filter(|w| (w[1] - w[0]) * (w[2] - w[1]) < 0.0)
+            .count();
+        assert!(turns > 40, "{turns} ridges and gullies round it");
+        // None at the rim, nor past the foot.
+        let rim = mountains(VOLCANO + Vec2::X * 0.1 * VOLCANO_RADIUS);
+        let smooth = VOLCANO_HEIGHT * 0.9f32.powf(1.7) - 40.0 * (1.0 - smoothstep(0.0, 0.08, 0.1));
+        assert!((rim - smooth).abs() < 1.0, "{rim} at the rim");
     }
 
     #[test]
