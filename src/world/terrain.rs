@@ -1033,7 +1033,7 @@ pub fn grass_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
     const YELLOW: Color = Color::srgb(1.1, 1.02, 0.64);
     const OLIVE: Color = Color::srgb(0.86, 0.84, 0.58);
     const SWATHES: [Color; 5] = [BLUISH, DEEP, FRESH, YELLOW, OLIVE];
-    const FOREST: Color = Color::srgb(0.3, 0.42, 0.4);
+    const FOREST: Color = Color::srgb(0.2, 0.31, 0.29);
     const EARTHY: Color = Color::srgb(1.0, 0.9, 0.74);
     let at = Vec2::new(p.x, p.z);
     // The swathes, from one green to the next along the noise.

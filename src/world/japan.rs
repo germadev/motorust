@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use std::f32::consts::TAU;
 
 use bevy::camera::visibility::VisibilityRange;
-use bevy::light::NotShadowCaster;
+use bevy::light::{NotShadowCaster, NotShadowReceiver};
 
 use super::Assets3d;
 use super::flowers::{FlowerPlan, spawn_flowers};
@@ -259,9 +259,12 @@ pub fn spawn_japan(
             ..default()
         });
         for ground in japan.maple_grounds {
+            // In the sun, not in the shade of the great maple's crown: the
+            // carpet of its leaves glows under it.
             world.spawn((
                 Mesh3d(assets.meshes.add(maple_ground_mesh(terrain, ground))),
                 MeshMaterial3d(material.clone()),
+                NotShadowReceiver,
             ));
             taken.push((ground.center, ground.radius * LEAVES_SPILL + 2.0));
         }
@@ -281,12 +284,12 @@ fn maple_ground_mesh(terrain: &Terrain, ground: &MapleGround) -> Mesh {
     let seed = (ground.center.x.abs() * 7.0 + ground.center.y.abs() * 13.0) as u32;
     let leaf = |k: u32| {
         let random = |n: u32| random01(seed.wrapping_add(k * 4 + n));
-        // Autumn reds, from crimson to rust, duller than the leaves still
-        // on the tree, as fallen leaves are.
+        // Autumn reds, from crimson to rust, lighter and duller than the
+        // leaves still on the tree, as fallen leaves are in the sun.
         let red = Color::srgb(
-            0.44 + 0.16 * random(0),
-            0.15 + 0.08 * random(1),
-            0.1 + 0.05 * random(2),
+            0.66 + 0.16 * random(0),
+            0.27 + 0.09 * random(1),
+            0.19 + 0.07 * random(2),
         );
         // Some leaves lie in the shade of others.
         if random(3) < 0.25 {

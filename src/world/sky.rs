@@ -48,7 +48,7 @@ pub const HORIZON: Color = Color::srgb(0.68, 0.8, 0.94);
 /// on most days, and in a clear autumn afternoon's golden hour
 /// (`SkyStyle::GoldenHour`), whose mountains stand out from across the sea.
 pub const FOG: (f32, f32) = (450.0, 3800.0);
-const GOLDEN_FOG: (f32, f32) = (900.0, 6000.0);
+const GOLDEN_FOG: (f32, f32) = (2000.0, 6800.0);
 
 /// The light of a track ([`SkyStyle`]): the sky's colours, where the sun
 /// is and the colour of its light, the light of the sky on the shade, and
@@ -112,24 +112,24 @@ impl Palette {
             // The last hours of a clear autumn afternoon, as in Japan: the
             // sun low in the west-south-west, golden, lighting the volcano
             // from the side and casting long shadows, the shade cool and
-            // blue; the sky still blue overhead, warmer and paler towards
-            // the horizon and glowing round the sun, a light warm haze far
-            // off; and the picture luminous, with contrast, but not
-            // saturated.
+            // blue; the sky still blue overhead, turning lilac and then
+            // reddish towards the horizon, glowing orange round the sun,
+            // the clouds tinged pink, a light warm haze far off; and the
+            // picture luminous, with contrast, but not saturated.
             SkyStyle::GoldenHour => Self {
-                zenith: Color::srgb(0.22, 0.42, 0.75),
-                above_horizon: Color::srgb(0.55, 0.64, 0.8),
-                horizon: Color::srgb(0.88, 0.85, 0.8),
-                glow: 0.45,
-                glow_color: Color::srgb(1.0, 0.82, 0.55),
+                zenith: Color::srgb(0.24, 0.4, 0.72),
+                above_horizon: Color::srgb(0.68, 0.62, 0.74),
+                horizon: Color::srgb(0.95, 0.78, 0.68),
+                glow: 0.6,
+                glow_color: Color::srgb(1.0, 0.68, 0.48),
                 sun_azimuth: 1.35 * std::f32::consts::PI,
                 sun_elevation: 0.3,
-                sun_disc: Color::srgb(1.0, 0.88, 0.66),
-                sunlight: Color::srgb(1.0, 0.84, 0.62),
+                sun_disc: Color::srgb(1.0, 0.82, 0.6),
+                sunlight: Color::srgb(1.0, 0.8, 0.6),
                 sunlight_strength: 1.0,
-                ambient: Color::srgb(0.62, 0.68, 0.86),
+                ambient: Color::srgb(0.62, 0.66, 0.84),
                 ambient_brightness: 480.0,
-                clouds: Color::srgb(1.0, 0.9, 0.8),
+                clouds: Color::srgb(1.0, 0.82, 0.74),
                 fog: GOLDEN_FOG,
                 grade: Grade {
                     saturation: 0.82,
