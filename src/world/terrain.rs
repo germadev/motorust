@@ -94,6 +94,9 @@ pub struct Terrain {
     zs: Vec<f32>,
     /// Alturas por filas: `heights[z * xs.len() + x]`.
     heights: Vec<f32>,
+    /// What the ground's look turns on at each point, by rows as `heights`
+    /// (see [`look`]).
+    sites: Vec<Site>,
     /// What the steep faces are made of.
     soil: Soil,
     /// Where the grass is in flower, if anywhere.
@@ -157,28 +160,25 @@ impl Terrain {
                 .collect::<Vec<_>>()
         };
         // Lo más caro es buscar la carretera más cercana a cada punto: se
-        // reparte entre los núcleos del procesador. En la web no hay hilos y
-        // se hace todo en uno.
-        let heights = if cfg!(target_arch = "wasm32") || threads <= 1 {
-            heights_of(&points)
-        } else {
-            let chunk = points.len().div_ceil(threads);
-            std::thread::scope(|scope| {
-                let workers: Vec<_> = points
-                    .chunks(chunk)
-                    .map(|part| scope.spawn(|| heights_of(part)))
-                    .collect();
-                workers
-                    .into_iter()
-                    .flat_map(|worker| worker.join().expect("el cálculo del terreno no falla"))
-                    .collect()
-            })
-        };
+        // reparte entre los núcleos del procesador.
+        let heights = on_cores(&points, threads, heights_of);
         let flowers = scenery
             .japan
             .as_ref()
             .filter(|japan| !japan.flowers.is_empty())
             .map(|japan| FlowerMap::new(track, japan.flowers));
+        // And what the ground looks like at each point, but for the way it
+        // faces: the flowers in it are worked out with the roads near too.
+        let grid: Vec<Vec3> = points
+            .iter()
+            .zip(&heights)
+            .map(|(point, &height)| Vec3::new(point.x, height, point.y))
+            .collect();
+        let sites = on_cores(&grid, threads, |part: &[Vec3]| {
+            part.iter()
+                .map(|&p| site(p, flowers.as_ref()))
+                .collect::<Vec<_>>()
+        });
         let mountain = points
             .iter()
             .map(|&point| smoothstep(2.0, 40.0, (scenery.mountains)(point)))
@@ -187,6 +187,7 @@ impl Terrain {
             xs,
             zs,
             heights,
+            sites,
             soil: scenery.soil,
             flowers,
             fine,
@@ -269,27 +270,114 @@ impl Terrain {
     }
 
     /// The triangle of the terrain's meshes (see [`Self::meshes`]) a point
-    /// is in.
-    fn triangle_at(&self, point: Vec2) -> [Vec3; 3] {
+    /// is in, and the indices of its corners in the grid.
+    fn triangle_at(&self, point: Vec2) -> ([Vec3; 3], [usize; 3]) {
         let (i, tx) = locate(&self.xs, point.x);
         let (j, tz) = locate(&self.zs, point.y);
         let width = self.xs.len();
-        let position =
-            |(i, j): (usize, usize)| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
         let corners = [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)];
         // The same two triangles per cell as the meshes, split along the
         // diagonal from (i + 1, j) to (i, j + 1).
         let triangle = if tx + tz <= 1.0 { [0, 1, 2] } else { [2, 1, 3] };
-        triangle.map(|k| position(corners[k]))
+        let indices = triangle.map(|k| corners[k].1 * width + corners[k].0);
+        let points = triangle.map(|k| {
+            let (i, j) = corners[k];
+            Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j])
+        });
+        (points, indices)
     }
 
-    /// The kind of ground drawn at a point: that of the triangle of the
+    /// The kind of ground drawn at a point (see [`Self::look_drawn`]).
+    pub fn ground_drawn(&self, point: Vec2) -> Ground {
+        self.look_drawn(point).0
+    }
+
+    /// What the ground is drawn as at a point: the look of the piece of the
     /// terrain's meshes it is in (see [`Self::meshes`]), which is what the
     /// player sees there.
-    pub fn ground_drawn(&self, point: Vec2) -> Ground {
-        let [a, b, c] = self.triangle_at(point);
+    fn look_drawn(&self, point: Vec2) -> Look {
+        let (corners, indices) = self.triangle_at(point);
+        let [a, b, c] = corners;
         let face = (b - a).cross(c - a).normalize();
-        classify((a + b + c) / 3.0, face)
+        let looks = indices.map(|index| look(&self.sites[index], face));
+        let flat = corners.map(|corner| Vec2::new(corner.x, corner.z));
+        // The piece it is furthest inside of: on a border, either.
+        let mut drawn = (f32::MIN, looks[0]);
+        for (piece, weights) in self.cut(corners, face, looks).into_iter().flatten() {
+            let piece_corners = weights.map(|w| flat[0] * w.x + flat[1] * w.y + flat[2] * w.z);
+            let depth = inside(point, piece_corners);
+            if depth > drawn.0 {
+                drawn = (depth, piece);
+            }
+        }
+        drawn.1
+    }
+
+    /// What the look of the ground at `p` (x, height, z) turns on but the
+    /// way it faces (see [`look`]).
+    fn site(&self, p: Vec3) -> Site {
+        site(p, self.flowers.as_ref())
+    }
+
+    /// The pieces a triangle of the grid is drawn in (`corners`, facing
+    /// `face`, its corners looking `looks`): whole, if its corners look the
+    /// same; otherwise cut along the borders between the looks, found along
+    /// its edges, so that they run smoothly across the land instead of
+    /// round whole triangles, in steps. Each piece has its look and its
+    /// corners, as weights of the triangle's, turning the same way.
+    fn cut(&self, corners: [Vec3; 3], face: Vec3, looks: [Look; 3]) -> Pieces {
+        const ONE: [Vec3; 3] = [Vec3::X, Vec3::Y, Vec3::Z];
+        let mut pieces = Pieces::default();
+        if looks[0] == looks[1] && looks[1] == looks[2] {
+            pieces[0] = Some((looks[0], ONE));
+            return pieces;
+        }
+        // Where the look changes along the edge from corner k to corner l.
+        let edge = |k: usize, l: usize| {
+            let t = self.border([corners[k], corners[l]], [looks[k], looks[l]], face);
+            ONE[k].lerp(ONE[l], t)
+        };
+        match (0..3).find(|&k| looks[(k + 1) % 3] == looks[(k + 2) % 3]) {
+            // One corner looks unlike the other two: a triangle cut off it.
+            Some(k) => {
+                let (l, m) = ((k + 1) % 3, (k + 2) % 3);
+                let (kl, km) = (edge(k, l), edge(k, m));
+                pieces[0] = Some((looks[k], [ONE[k], kl, km]));
+                pieces[1] = Some((looks[l], [kl, ONE[l], ONE[m]]));
+                pieces[2] = Some((looks[l], [kl, ONE[m], km]));
+            }
+            // All three unlike: each corner's up to the middle.
+            None => {
+                let middle = Vec3::splat(1.0 / 3.0);
+                let sides = [edge(0, 1), edge(1, 2), edge(2, 0)];
+                for (k, piece) in pieces.chunks_mut(2).enumerate() {
+                    let (after, before) = (sides[k], sides[(k + 2) % 3]);
+                    piece[0] = Some((looks[k], [ONE[k], after, middle]));
+                    piece[1] = Some((looks[k], [ONE[k], middle, before]));
+                }
+            }
+        }
+        pieces
+    }
+
+    /// How far along the edge from `a` to `b` (0 to 1) its look changes
+    /// from `from`, at `a`, to `to`, at `b`: found by halving it, the same
+    /// whichever way the edge is walked, so that the triangles either side
+    /// of it agree.
+    fn border(&self, [a, b]: [Vec3; 2], [from, to]: [Look; 2], face: Vec3) -> f32 {
+        if (b.x, b.z) < (a.x, a.z) {
+            return 1.0 - self.border([b, a], [to, from], face);
+        }
+        let (mut near, mut far) = (0.0, 1.0);
+        for _ in 0..BORDER_STEPS {
+            let t = (near + far) / 2.0;
+            if look(&self.site(a.lerp(b, t)), face) == from {
+                near = t;
+            } else {
+                far = t;
+            }
+        }
+        (near + far) / 2.0
     }
 
     /// The colour of the grass at `p` (x, height, z), facing `normal`, as a
@@ -310,16 +398,10 @@ impl Terrain {
         self.flowers.is_some()
     }
 
-    /// The flowers the ground is drawn in at a point, if it is in flower:
-    /// those of the triangle of the terrain's meshes it is in, if grass.
+    /// The flowers the ground is drawn in at a point, if it is in flower
+    /// (see [`Self::look_drawn`]).
     pub fn flowers_drawn(&self, point: Vec2) -> Option<FlowerKind> {
-        let map = self.flowers.as_ref()?;
-        let [a, b, c] = self.triangle_at(point);
-        let face = (b - a).cross(c - a).normalize();
-        let middle = (a + b + c) / 3.0;
-        (classify(middle, face) == Ground::Grass)
-            .then(|| map.at(Vec2::new(middle.x, middle.z)))
-            .flatten()
+        self.look_drawn(point).1
     }
 
     /// What the steep faces are made of.
@@ -355,100 +437,118 @@ impl Terrain {
                 let corners = [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)];
                 // Dos triángulos por celda, en sentido antihorario visto desde arriba.
                 for triangle in [[0, 1, 2], [2, 1, 3]] {
-                    let vertices = triangle.map(|k| corners[k]);
-                    let [a, b, c] = vertices.map(|(i, j)| position(i, j));
+                    let indices = triangle.map(|k| corners[k].1 * width + corners[k].0);
+                    let points = triangle.map(|k| position(corners[k].0, corners[k].1));
+                    let [a, b, c] = points;
                     let face = (b - a).cross(c - a).normalize();
-                    let middle = (a + b + c) / 3.0;
-                    let ground_type = classify(middle, face);
-                    let flowers = match (ground_type, &self.flowers) {
-                        (Ground::Grass, Some(map)) => map.at(Vec2::new(middle.x, middle.z)),
-                        _ => None,
-                    };
-                    let builder = match (ground_type, flowers) {
-                        (Ground::Grass, Some(kind)) => {
-                            let meadow = match meadows.iter().position(|(k, _)| *k == kind) {
-                                Some(meadow) => meadow,
-                                None => {
-                                    meadows.push((kind, Builder::shared(width * depth)));
-                                    meadows.len() - 1
-                                }
-                            };
-                            &mut meadows[meadow].1
+                    let looks = indices.map(|index| look(&self.sites[index], face));
+                    for (look, weights) in self.cut(points, face, looks).into_iter().flatten() {
+                        let (ground_type, flowers) = look;
+                        let builder = match look {
+                            (Ground::Grass, Some(kind)) => {
+                                let meadow = match meadows.iter().position(|(k, _)| *k == kind) {
+                                    Some(meadow) => meadow,
+                                    None => {
+                                        meadows.push((kind, Builder::shared(width * depth)));
+                                        meadows.len() - 1
+                                    }
+                                };
+                                &mut meadows[meadow].1
+                            }
+                            (Ground::Grass, None) => &mut grass,
+                            (Ground::Sand, _) => &mut sand,
+                            (Ground::Rock, _) => &mut rock,
+                            (Ground::Snow, _) => &mut snow,
+                        };
+                        let shared = builder.shared_vertices.is_some();
+                        for w in weights {
+                            // A point of the grid, or one on a border.
+                            let grid = (0..3).find(|&k| w[k] == 1.0).map(|k| indices[k]);
+                            builder.push(grid, || {
+                                let blend = |values: [Vec3; 3]| {
+                                    values[0] * w.x + values[1] * w.y + values[2] * w.z
+                                };
+                                let p = blend(points);
+                                let normal = blend(indices.map(|index| normals[index])).normalize();
+                                let mountain =
+                                    blend(indices.map(|index| Vec3::splat(self.mountain[index]))).x;
+                                let uv = match shared {
+                                    true => {
+                                        let warp = Vec2::new(
+                                            fbm(Vec2::new(p.x, p.z) * 0.035, 2) - 0.5,
+                                            fbm(Vec2::new(p.z + 41.0, p.x - 29.0) * 0.035, 2) - 0.5,
+                                        ) * 2.2;
+                                        Vec2::new(p.x + warp.x, p.z + warp.y)
+                                    }
+                                    // Checkerboard earth: straight rows at the same
+                                    // heights on every cliff, as in Loop Island.
+                                    false if self.soil == Soil::Checkered => {
+                                        rock_projection(p, face)
+                                    }
+                                    false => {
+                                        // Continuous 3D domain warp based on world coordinates before projection.
+                                        // Warping in 3D breaks world-elevation synchronicity and introduces
+                                        // natural undulating strata following the mountain curvature.
+                                        let warp_x = fbm(
+                                            Vec2::new(p.z * 0.022 + 13.0, p.y * 0.032 - 7.0),
+                                            3,
+                                        ) - 0.5;
+                                        let warp_y = fbm(
+                                            Vec2::new(p.x * 0.025 - 29.0, p.z * 0.025 + 41.0),
+                                            3,
+                                        ) - 0.5;
+                                        let warp_z = fbm(
+                                            Vec2::new(p.x * 0.022 + 37.0, p.y * 0.032 + 19.0),
+                                            3,
+                                        ) - 0.5;
+                                        let warped_p =
+                                            p + Vec3::new(warp_x * 9.0, warp_y * 7.5, warp_z * 9.0);
+
+                                        let proj = rock_projection(warped_p, face);
+
+                                        // Apply 14-degree geological dip angle so rock layers follow a realistic tilt
+                                        let dip_angle = 0.244f32;
+                                        let cos_dip = dip_angle.cos();
+                                        let sin_dip = dip_angle.sin();
+                                        let tilted_u = proj.x * cos_dip - proj.y * sin_dip;
+                                        let tilted_v = proj.x * sin_dip + proj.y * cos_dip;
+
+                                        let micro_warp = Vec2::new(
+                                            fbm(Vec2::new(tilted_u, tilted_v) * 0.05, 2) - 0.5,
+                                            fbm(
+                                                Vec2::new(tilted_v + 50.0, tilted_u - 30.0) * 0.05,
+                                                2,
+                                            ) - 0.5,
+                                        ) * 2.5;
+
+                                        Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
+                                    }
+                                };
+                                let color = match (self.soil, ground_type) {
+                                    _ if flowers == Some(FlowerKind::Phlox) => {
+                                        phlox_color(Vec2::new(p.x, p.z))
+                                    }
+                                    // Grass in flower: its greens, gentler, so the
+                                    // flowers stay bright.
+                                    _ if flowers.is_some() => shaded(
+                                        self.grass_tint(p, normal, 0.0).mix(&Color::WHITE, 0.6),
+                                        (1.0 + self.grass_shade) / 2.0,
+                                    ),
+                                    (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
+                                    (Soil::Mine, _) => canyon_vertex_color(ground_type, p, normal),
+                                    (_, Ground::Grass) => {
+                                        let outside = (self.fine.0 - Vec2::new(p.x, p.z))
+                                            .max(Vec2::new(p.x, p.z) - self.fine.1)
+                                            .max_element();
+                                        let wild =
+                                            smoothstep(0.0, WILD_REACH, outside).max(mountain);
+                                        shaded(self.grass_tint(p, normal, wild), self.grass_shade)
+                                    }
+                                    _ => ground_vertex_color(ground_type, p, normal),
+                                };
+                                (p, normal, uv, color)
+                            });
                         }
-                        (Ground::Grass, None) => &mut grass,
-                        (Ground::Sand, _) => &mut sand,
-                        (Ground::Rock, _) => &mut rock,
-                        (Ground::Snow, _) => &mut snow,
-                    };
-                    for (i, j) in vertices {
-                        let index = j * width + i;
-                        let p = position(i, j);
-                        let uv = match builder.shared_vertices {
-                            Some(_) => {
-                                let warp = Vec2::new(
-                                    fbm(Vec2::new(p.x, p.z) * 0.035, 2) - 0.5,
-                                    fbm(Vec2::new(p.z + 41.0, p.x - 29.0) * 0.035, 2) - 0.5,
-                                ) * 2.2;
-                                Vec2::new(p.x + warp.x, p.z + warp.y)
-                            }
-                            // Checkerboard earth: straight rows at the same
-                            // heights on every cliff, as in Loop Island.
-                            None if self.soil == Soil::Checkered => rock_projection(p, face),
-                            None => {
-                                // Continuous 3D domain warp based on world coordinates before projection.
-                                // Warping in 3D breaks world-elevation synchronicity and introduces
-                                // natural undulating strata following the mountain curvature.
-                                let warp_x =
-                                    fbm(Vec2::new(p.z * 0.022 + 13.0, p.y * 0.032 - 7.0), 3) - 0.5;
-                                let warp_y =
-                                    fbm(Vec2::new(p.x * 0.025 - 29.0, p.z * 0.025 + 41.0), 3) - 0.5;
-                                let warp_z =
-                                    fbm(Vec2::new(p.x * 0.022 + 37.0, p.y * 0.032 + 19.0), 3) - 0.5;
-                                let warped_p =
-                                    p + Vec3::new(warp_x * 9.0, warp_y * 7.5, warp_z * 9.0);
-
-                                let proj = rock_projection(warped_p, face);
-
-                                // Apply 14-degree geological dip angle so rock layers follow a realistic tilt
-                                let dip_angle = 0.244f32;
-                                let cos_dip = dip_angle.cos();
-                                let sin_dip = dip_angle.sin();
-                                let tilted_u = proj.x * cos_dip - proj.y * sin_dip;
-                                let tilted_v = proj.x * sin_dip + proj.y * cos_dip;
-
-                                let micro_warp = Vec2::new(
-                                    fbm(Vec2::new(tilted_u, tilted_v) * 0.05, 2) - 0.5,
-                                    fbm(Vec2::new(tilted_v + 50.0, tilted_u - 30.0) * 0.05, 2)
-                                        - 0.5,
-                                ) * 2.5;
-
-                                Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
-                            }
-                        };
-                        let color = match (self.soil, ground_type) {
-                            _ if flowers == Some(FlowerKind::Phlox) => {
-                                phlox_color(Vec2::new(p.x, p.z))
-                            }
-                            // Grass in flower: its greens, gentler, so the
-                            // flowers stay bright.
-                            _ if flowers.is_some() => shaded(
-                                self.grass_tint(p, normals[index], 0.0)
-                                    .mix(&Color::WHITE, 0.6),
-                                (1.0 + self.grass_shade) / 2.0,
-                            ),
-                            (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normals[index]),
-                            (Soil::Mine, _) => canyon_vertex_color(ground_type, p, normals[index]),
-                            (_, Ground::Grass) => {
-                                let outside = (self.fine.0 - Vec2::new(p.x, p.z))
-                                    .max(Vec2::new(p.x, p.z) - self.fine.1)
-                                    .max_element();
-                                let wild =
-                                    smoothstep(0.0, WILD_REACH, outside).max(self.mountain[index]);
-                                shaded(self.grass_tint(p, normals[index], wild), self.grass_shade)
-                            }
-                            _ => ground_vertex_color(ground_type, p, normals[index]),
-                        };
-                        builder.push(index, p, normals[index], uv, color);
                     }
                 }
             }
@@ -530,11 +630,105 @@ pub fn spawn_terrain(
 
 /// The ground at `point` (x, height, z), where it faces `normal`.
 fn classify(point: Vec3, normal: Vec3) -> Ground {
-    let height = point.y;
-    let snow_line =
-        SNOW_LINE + (fbm(Vec2::new(point.x, point.z) / 90.0, 2) - 0.5) * 2.0 * SNOW_REACH;
-    let tree_line = TREE_LINE
-        + (fbm(Vec2::new(point.x, point.z) / 70.0 + 9.0, 2) - 0.5) * 2.0 * TREE_LINE_REACH;
+    let (snow_line, tree_line) = lines(point);
+    ground_of(point.y, snow_line, tree_line, normal)
+}
+
+/// The snow line and the tree line over `point` (m), reaching up and down
+/// along the ravines (see [`SNOW_LINE`] and [`TREE_LINE`]).
+fn lines(point: Vec3) -> (f32, f32) {
+    let ground = Vec2::new(point.x, point.z);
+    (
+        SNOW_LINE + (fbm(ground / 90.0, 2) - 0.5) * 2.0 * SNOW_REACH,
+        TREE_LINE + (fbm(ground / 70.0 + 9.0, 2) - 0.5) * 2.0 * TREE_LINE_REACH,
+    )
+}
+
+/// What a piece of ground is drawn as: its kind and, on grass in a field
+/// of flowers, the flowers.
+type Look = (Ground, Option<FlowerKind>);
+
+/// The pieces of a triangle of the grid (see [`Terrain::cut`]): at most
+/// six, each with its look and its corners as weights of the triangle's.
+type Pieces = [Option<(Look, [Vec3; 3])>; 6];
+
+/// How many times [`Terrain::border`] halves an edge looking for a border
+/// along it: to within a 32nd of it.
+const BORDER_STEPS: u32 = 5;
+
+/// What the look of the ground at a point turns on but the way it faces:
+/// how high it is, the snow line and the tree line over it, and the flowers
+/// it is in, if grass.
+#[derive(Clone, Copy)]
+struct Site {
+    height: f32,
+    snow_line: f32,
+    tree_line: f32,
+    flowers: Option<FlowerKind>,
+}
+
+/// What the look of the ground at `p` (x, height, z) turns on but the way
+/// it faces, where the grass is in `flowers`.
+fn site(p: Vec3, flowers: Option<&FlowerMap>) -> Site {
+    let (snow_line, tree_line) = lines(p);
+    Site {
+        height: p.y,
+        snow_line,
+        tree_line,
+        flowers: flowers.and_then(|map| map.at(Vec2::new(p.x, p.z))),
+    }
+}
+
+/// `work` done over `items` on at most `threads` threads, a share of them
+/// each, its results in order. On the web there are no threads: all on
+/// one.
+fn on_cores<T: Sync, R: Send>(
+    items: &[T],
+    threads: usize,
+    work: impl Fn(&[T]) -> Vec<R> + Sync,
+) -> Vec<R> {
+    if cfg!(target_arch = "wasm32") || threads <= 1 {
+        return work(items);
+    }
+    let chunk = items.len().div_ceil(threads).max(1);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = items
+            .chunks(chunk)
+            .map(|part| scope.spawn(|| work(part)))
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().expect("el cálculo del terreno no falla"))
+            .collect()
+    })
+}
+
+/// What the ground at `site` is drawn as, facing `face`.
+fn look(site: &Site, face: Vec3) -> Look {
+    let ground = ground_of(site.height, site.snow_line, site.tree_line, face);
+    let flowers = if ground == Ground::Grass {
+        site.flowers
+    } else {
+        None
+    };
+    (ground, flowers)
+}
+
+/// How far `point` is inside the triangle `corners` (x, z): the least of
+/// its barycentric weights, below 0 outside.
+fn inside(point: Vec2, [p, q, r]: [Vec2; 3]) -> f32 {
+    let area = (q - p).perp_dot(r - p);
+    if area.abs() < 1e-6 {
+        return f32::MIN;
+    }
+    let u = (q - point).perp_dot(r - point) / area;
+    let v = (r - point).perp_dot(p - point) / area;
+    u.min(v).min(1.0 - u - v)
+}
+
+/// The ground `height` m up, under the snow line and the tree line there,
+/// where it faces `normal`.
+fn ground_of(height: f32, snow_line: f32, tree_line: f32, normal: Vec3) -> Ground {
     if height > snow_line && normal.y > SNOW_NORMAL_Y {
         Ground::Snow
     } else if normal.y < CLIFF_NORMAL_Y || height > tree_line {
@@ -1169,21 +1363,26 @@ impl Builder {
         }
     }
 
-    fn push(&mut self, grid_index: usize, position: Vec3, normal: Vec3, uv: Vec2, color: [f32; 4]) {
-        if let Some(shared) = &mut self.shared_vertices
-            && shared[grid_index] != u32::MAX
+    /// Adds a corner of a triangle: a point of the grid (`grid`), shared
+    /// with the triangles before it where this builder shares them, or a
+    /// point of its own on a border. `vertex` works out its position,
+    /// normal, texture coordinates and colour, if it is new.
+    fn push(&mut self, grid: Option<usize>, vertex: impl FnOnce() -> (Vec3, Vec3, Vec2, [f32; 4])) {
+        if let (Some(grid), Some(shared)) = (grid, &self.shared_vertices)
+            && shared[grid] != u32::MAX
         {
-            self.indices.push(shared[grid_index]);
+            self.indices.push(shared[grid]);
             return;
         }
+        let (position, normal, uv, color) = vertex();
         let index = self.positions.len() as u32;
         self.positions.push(position.to_array());
         self.normals.push(normal.to_array());
         self.uvs.push(uv.to_array());
         self.colors.push(color);
         self.indices.push(index);
-        if let Some(shared) = &mut self.shared_vertices {
-            shared[grid_index] = index;
+        if let (Some(grid), Some(shared)) = (grid, &mut self.shared_vertices) {
+            shared[grid] = index;
         }
     }
 
@@ -1661,5 +1860,71 @@ mod tests {
         assert!(axis[0] <= -EXTENT && *axis.last().unwrap() >= EXTENT);
         let (i, _) = locate(&axis, 0.0);
         assert!((axis[i + 1] - axis[i] - FINE_SPACING).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_borders_between_grounds_run_smoothly_not_in_steps() {
+        // Ghost Island: fields of flowers, beaches, and a volcano with a
+        // tree line and snow on its top.
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == "Ghost Island")
+            .unwrap();
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        // What is drawn at a point, against what the ground there is: drawn
+        // by whole triangles, it is wrong up to half a cell either side of
+        // every border, in steps; cut along the borders, hardly ever.
+        let (mut cut, mut whole, mut borders) = (0, 0, 0);
+        let (low, high) = (
+            Vec2::new(terrain.xs[0], terrain.zs[0]),
+            Vec2::new(*terrain.xs.last().unwrap(), *terrain.zs.last().unwrap()),
+        );
+        let step = 9.7;
+        for z in 0..((high.y - low.y) / step) as usize {
+            for x in 0..((high.x - low.x) / step) as usize {
+                let point = low + Vec2::new(x as f32, z as f32) * step;
+                let (corners, indices) = terrain.triangle_at(point);
+                let [a, b, c] = corners;
+                let face = (b - a).cross(c - a).normalize();
+                // On the triangle, as drawn.
+                let height = a.y - (face.x * (point.x - a.x) + face.z * (point.y - a.z)) / face.y;
+                let truth = look(&terrain.site(Vec3::new(point.x, height, point.y)), face);
+                if terrain.look_drawn(point) != truth {
+                    cut += 1;
+                }
+                if look(&terrain.site((a + b + c) / 3.0), face) != truth {
+                    whole += 1;
+                }
+                // Cut, a triangle's pieces cover it, turning its way.
+                let looks = indices.map(|index| look(&terrain.sites[index], face));
+                if looks[0] != looks[1] || looks[1] != looks[2] {
+                    borders += 1;
+                    let flat = corners.map(|corner| Vec2::new(corner.x, corner.z));
+                    let area = |[p, q, r]: [Vec2; 3]| (q - p).perp_dot(r - p);
+                    let pieces: Vec<f32> = terrain
+                        .cut(corners, face, looks)
+                        .into_iter()
+                        .flatten()
+                        .map(|(_, weights)| {
+                            area(weights.map(|w| flat[0] * w.x + flat[1] * w.y + flat[2] * w.z))
+                        })
+                        .collect();
+                    assert!(pieces.len() == 3 || pieces.len() == 6, "{pieces:?}");
+                    let whole_area = area(flat);
+                    assert!(pieces.iter().all(|piece| piece * whole_area > 0.0));
+                    let sum: f32 = pieces.iter().sum();
+                    assert!((sum - whole_area).abs() < 1e-3 * whole_area.abs());
+                }
+            }
+        }
+        assert!(
+            borders > 1000 && whole > 300,
+            "{borders} {whole}: borders to look at"
+        );
+        assert!(
+            cut * 5 < whole,
+            "{cut} wrong where whole triangles get {whole}"
+        );
     }
 }
