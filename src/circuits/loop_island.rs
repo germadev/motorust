@@ -170,6 +170,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         bridges: &[Bridge {
             span: BRIDGE,
             style: BridgeStyle::Wooden,
+            fence: WOODEN_FENCE,
         }],
         gantries: &[
             Gantry {

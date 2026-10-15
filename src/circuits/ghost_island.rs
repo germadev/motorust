@@ -165,17 +165,35 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         grass_shade: 0.36,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
-        // The clearing under the great maple, tilted up away from the road
-        // beside it, so that its carpet of leaves faces the riders; and the
+        // The clearing under the great maple, on a knoll rising from the
+        // road beside it, tilted up away from it, so that the tree stands
+        // high and its carpet of leaves faces the riders; and the
         // fishing village's farmhouses raised a little over the coast road
         // climbing past them, so that they show over its wall.
         terraces: &[
+            // The top of the great torii's islet, level for it to stand on,
+            // a little under the road.
+            Terrace {
+                center: TORII_ISLET,
+                radius: 10.0,
+                height: 5.5,
+                tilt: Vec2::ZERO,
+                skirt: 5.0,
+            },
+            // The shrine in the bamboo, a little over the road.
+            Terrace {
+                center: BAMBOO_SHRINE,
+                radius: 9.0,
+                height: 44.5,
+                tilt: Vec2::ZERO,
+                skirt: 10.0,
+            },
             Terrace {
                 center: MAPLE_GROUND,
                 radius: 16.0,
-                height: 3.7,
+                height: 6.0,
                 tilt: Vec2::new(0.002, 0.13),
-                skirt: 10.0,
+                skirt: 30.0,
             },
             Terrace {
                 center: Vec2::new(96.6, -760.7),
@@ -381,10 +399,12 @@ pub const GHOST_ISLAND: Circuit = Circuit {
             },
         ],
         tunnels: &[TUNNEL],
-        // The shrine's boardwalk, planks on piers across the inlet.
+        // The shrine's boardwalk, planks on piers across the inlet, low over
+        // the water, its fence low: the shrine on stilts shows over it.
         bridges: &[Bridge {
             span: BOARDWALK,
             style: BridgeStyle::Wooden,
+            fence: 0.75,
         }],
         gantries: &[
             Gantry {
@@ -517,11 +537,26 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                     },
                     kind: PetalKind::Maple,
                 },
-                // Blowing over the road along the great maple's clearing.
+                // Blowing over the whole bend round the foot of the lake,
+                // along the great maple's clearing.
+                Petals {
+                    area: PetalArea::Round {
+                        center: Vec2::new(956.8, 422.0),
+                        radius: 32.0,
+                    },
+                    kind: PetalKind::Maple,
+                },
                 Petals {
                     area: PetalArea::Round {
                         center: MAPLE_ROAD,
-                        radius: 30.0,
+                        radius: 32.0,
+                    },
+                    kind: PetalKind::Maple,
+                },
+                Petals {
+                    area: PetalArea::Round {
+                        center: Vec2::new(790.0, 425.0),
+                        radius: 32.0,
                     },
                     kind: PetalKind::Maple,
                 },
@@ -616,22 +651,29 @@ const NEAR: f32 = WALL_DISTANCE + 1.3;
 
 /// The props of feudal Japan, made with Meshy: landmarks out in the open,
 /// and statues, lanterns, shrines and houses by the road.
-const PROPS: [Prop; 43] = [
-    // The great torii standing in the sea off the coast road, facing it,
-    // ahead of the road as it swings along the shore, close in past the
-    // beach.
-    standing(PropModel::GreatTorii, 500.0, -885.0, PI).scaled(1.6),
+const PROPS: [Prop; 44] = [
+    // The great torii on its islet in the sea off the coast road, facing
+    // it, ahead of the road as it swings along the shore.
+    standing(PropModel::GreatTorii, TORII_ISLET.x, TORII_ISLET.y, PI).scaled(1.6),
     // The castle keep on the bamboo hill, on the outside of the bend past
     // the castle, facing the riders coming over the tunnel: ahead of them
     // all the way along the castle ridge.
-    standing(PropModel::CastleKeep, -172.0, -539.0, -1.76).scaled(1.6),
+    standing(PropModel::CastleKeep, -162.1, -527.7, -1.76).scaled(1.6),
     // The temple and its pagoda on the outside of the bend at the end of
     // its split, facing the road: the pagoda first, on the level of the
     // road, and the temple past it.
     standing(PropModel::TempleHall, 752.0, -262.0, FRAC_PI_2),
     standing(PropModel::Pagoda, 745.0, -205.0, FRAC_PI_2),
-    // The shrine on stilts in the inlet, beside the boardwalk.
+    // The shrine on stilts in the inlet, beside the boardwalk, and another
+    // on land, on a terrace on the outside of a bend in the bamboo, facing
+    // the riders coming down.
     standing(PropModel::StiltShrine, 760.0, -755.0, 0.0),
+    standing(
+        PropModel::StiltShrine,
+        BAMBOO_SHRINE.x,
+        BAMBOO_SHRINE.y,
+        0.82,
+    ),
     // The great maple on the outside of the bend round the foot of the
     // lake, straight ahead all the way down to it: at the far side of its
     // clearing of red leaves, its crown spreading over it towards the road
@@ -659,7 +701,7 @@ const PROPS: [Prop; 43] = [
     standing(PropModel::Hokora, ISLET.x, ISLET.y, 2.36),
     // A water wheel on the lake's west shore, ahead past the great maple,
     // facing the riders coming round from it.
-    standing(PropModel::WaterWheel, 745.6, 355.6, -2.44),
+    standing(PropModel::WaterWheel, 745.6, 355.6, -2.44).scaled(1.8),
     // Fishing boats off the coast.
     standing(PropModel::FishingBoat, 250.0, -925.0, 1.2),
     standing(PropModel::FishingBoat, 560.0, -935.0, -0.4),
@@ -864,14 +906,14 @@ const ELEVATION: [(f32, f32); 71] = [
     // Down by the shore before the great torii.
     (1080.0, 6.0),
     (1200.0, 4.2),
-    (1320.0, 3.6),
-    (1400.0, 3.2),
-    // The boardwalk, low over the water by the shrine on stilts, with a
-    // crest in the middle where the bike flies.
-    (1470.0, 2.4),
-    (1540.0, 4.6),
-    (1585.0, 4.0),
-    (1650.0, 3.0),
+    (1320.0, 3.4),
+    (1400.0, 1.0),
+    // The boardwalk, at the water's level by the shrine on stilts: 1.6 m
+    // over it.
+    (1470.0, -1.4),
+    (1540.0, -1.4),
+    (1585.0, -1.4),
+    (1650.0, -1.2),
     // Up the susuki hills, at up to 12 %.
     (1760.0, 6.0),
     (1820.0, 9.0),
@@ -1214,6 +1256,12 @@ const ISLET_RADIUS: f32 = 16.0;
 const MAPLE_GROUND: Vec2 = Vec2::new(875.4, 479.9);
 /// The middle of the road beside it (3086 m).
 const MAPLE_ROAD: Vec2 = Vec2::new(874.8, 444.9);
+/// The shrine on the outside of the bend in the bamboo at 5150 m, 26 m from
+/// the road.
+const BAMBOO_SHRINE: Vec2 = Vec2::new(-88.3, -349.0);
+/// The islet the great torii stands on, in the sea 56 m from the coast
+/// road (at about 1240 m).
+const TORII_ISLET: Vec2 = Vec2::new(497.0, -892.0);
 
 /// How far `point` is from the lake's shore: negative in its water, and
 /// positive on the islet.
@@ -1247,9 +1295,10 @@ const MASSIFS: [Massif; 11] = [
     // Crags on the red ridge, away from the road.
     massif(520.0, -330.0, 40.0, 22.0),
     massif(800.0, -420.0, 45.0, 24.0),
-    // Stacks of rock standing in the sea off the coast road.
+    // Stacks of rock standing in the sea off the coast road, and the islet
+    // of the great torii.
     massif(300.0, -950.0, 28.0, 16.0),
-    massif(560.0, -990.0, 24.0, 13.0),
+    massif(TORII_ISLET.x, TORII_ISLET.y, 20.0, 10.0),
 ];
 
 const CUTTINGS: [Cutting; 2] = [

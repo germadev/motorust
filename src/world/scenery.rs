@@ -228,7 +228,14 @@ pub struct Pit {
 pub struct Bridge {
     pub span: Span,
     pub style: BridgeStyle,
+    /// How high a wooden bridge's fence stands over its deck (m): most as
+    /// high as [`WOODEN_FENCE`], a boardwalk low over the water lower. The
+    /// other bridges have walls of their own, and leave it unused.
+    pub fence: f32,
 }
+
+/// How high the fence of a wooden bridge usually stands over its deck (m).
+pub const WOODEN_FENCE: f32 = 1.2;
 
 /// How a bridge is built.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -557,6 +564,26 @@ pub enum PropModel {
     Minka,
     /// A wooden water wheel on its post, turning.
     WaterWheel,
+}
+
+impl PropModel {
+    /// Whether it is one of the island's landmarks, to be seen from afar:
+    /// no tree stands in the way of it (see [`crate::world::japan`]).
+    pub fn landmark(self) -> bool {
+        matches!(
+            self,
+            PropModel::GreatTorii
+                | PropModel::CastleKeep
+                | PropModel::TempleHall
+                | PropModel::StiltShrine
+                | PropModel::AncientMaple
+                | PropModel::GreatMaple
+                | PropModel::Pagoda
+                | PropModel::LogTorii
+                | PropModel::Minka
+                | PropModel::WaterWheel
+        )
+    }
 }
 
 /// A prop and where it stands, facing: by the road, `along` metres from the

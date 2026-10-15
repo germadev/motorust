@@ -180,7 +180,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
     let terrain = terrain::Terrain::on_threads(&track, scenery, urgency.threads());
-    let ground = terrain.meshes();
+    let mut ground = terrain.meshes();
     let shore = sea::ShoreMap::new(&terrain, &track);
     let shore_image = shore.image();
     let roadside = Roadside {
@@ -188,8 +188,10 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         shoulders: shoulders::track_shoulders(&track, &terrain, scenery),
     };
     let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
-    let (structures, lamps) = structures::structure_pieces(&track, &terrain, scenery, textures);
+    let (structures, lamps, tops) =
+        structures::structure_pieces(&track, &terrain, scenery, textures);
     pieces.extend(structures);
+    ground.extend(tops);
     let grass = tufts::tuft_pieces(
         &track,
         &terrain,
@@ -198,9 +200,16 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         textures,
     );
     let trees = props::plan_trees(&track, &terrain, scenery);
-    let meadows = ground
-        .iter()
-        .filter_map(|ground| ground.flowers)
+    // One meadow for each kind of flower drawn (the tunnels' tops drawn in
+    // the same as the ground round them).
+    let mut kinds = Vec::new();
+    for kind in ground.iter().filter_map(|ground| ground.flowers) {
+        if !kinds.contains(&kind) {
+            kinds.push(kind);
+        }
+    }
+    let meadows = kinds
+        .into_iter()
         .map(|kind| (kind, foliage::meadow(&textures.lawn, kind)))
         .collect();
     let flowers = flowers::plan_flowers(&track, &terrain);

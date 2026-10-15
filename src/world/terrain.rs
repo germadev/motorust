@@ -380,6 +380,26 @@ impl Terrain {
         (near + far) / 2.0
     }
 
+    /// The flowers the fields have at a point, if any, whatever road runs
+    /// there (see [`FlowerMap::field_at`]).
+    pub fn field_flowers(&self, point: Vec2) -> Option<FlowerKind> {
+        self.flowers.as_ref()?.field_at(point)
+    }
+
+    /// The colour of grass in flower with `kind` at `p` (x, height, z),
+    /// facing `normal`, as a tint over the meadow's texture (linear RGBA):
+    /// moss phlox in its drifts, or the grass's greens, gentler, so the
+    /// flowers stay bright.
+    pub fn meadow_color(&self, p: Vec3, normal: Vec3, kind: FlowerKind) -> [f32; 4] {
+        if kind == FlowerKind::Phlox {
+            return phlox_color(Vec2::new(p.x, p.z));
+        }
+        shaded(
+            self.grass_tint(p, normal, 0.0).mix(&Color::WHITE, 0.6),
+            (1.0 + self.grass_shade) / 2.0,
+        )
+    }
+
     /// The colour of the grass at `p` (x, height, z), facing `normal`, as a
     /// tint over its texture (linear RGBA): its greens (see [`grass_tint`]),
     /// as light as the circuit's grass is.
@@ -524,19 +544,13 @@ impl Terrain {
                                         Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
                                     }
                                 };
-                                let color = match (self.soil, ground_type) {
-                                    _ if flowers == Some(FlowerKind::Phlox) => {
-                                        phlox_color(Vec2::new(p.x, p.z))
+                                let color = match (self.soil, ground_type, flowers) {
+                                    (_, _, Some(kind)) => self.meadow_color(p, normal, kind),
+                                    (Soil::Checkered, Ground::Rock, _) => {
+                                        soil_vertex_color(p, normal)
                                     }
-                                    // Grass in flower: its greens, gentler, so the
-                                    // flowers stay bright.
-                                    _ if flowers.is_some() => shaded(
-                                        self.grass_tint(p, normal, 0.0).mix(&Color::WHITE, 0.6),
-                                        (1.0 + self.grass_shade) / 2.0,
-                                    ),
-                                    (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
-                                    (Soil::Mine, _) => canyon_vertex_color(ground_type, p, normal),
-                                    (_, Ground::Grass) => {
+                                    (Soil::Mine, ..) => canyon_vertex_color(ground_type, p, normal),
+                                    (_, Ground::Grass, _) => {
                                         let outside = (self.fine.0 - Vec2::new(p.x, p.z))
                                             .max(Vec2::new(p.x, p.z) - self.fine.1)
                                             .max_element();

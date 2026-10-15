@@ -26,7 +26,7 @@ use super::scenery::{
 use super::terrain::{SEA_LEVEL, Terrain};
 use crate::bike::model::imported::{read, texture};
 use crate::geometry::{forward, random01};
-use crate::track::{NARROW_EASE, Track};
+use crate::track::{NARROW_EASE, Track, WALL_DISTANCE};
 
 /// The two gates over the road, and the post of the water wheel, by their
 /// names in `props.bin`; the props are by [`name`].
@@ -271,7 +271,51 @@ pub fn spawn_japan(
     }
     let meadows = spawn_flowers(world, terrain, japan.flowers, flowers, &taken, assets);
     taken.extend(meadows);
+    // No tree in the way of the landmarks, from where the road comes at
+    // them (the flowers grow there as anywhere).
+    for prop in japan.props.iter().filter(|prop| prop.model.landmark()) {
+        let (position, _) = spot(track, prop);
+        taken.extend(in_view(track, position));
+    }
     taken
+}
+
+/// How far a landmark is seen from (m), and how wide of straight ahead
+/// (rad), coming along the road at it.
+const VIEW_RANGE: f32 = 220.0;
+const VIEW_ANGLE: f32 = 0.6;
+/// How wide the ground is kept clear of trees either side of a line from
+/// the road to a landmark (m), and every how far along the road one is
+/// drawn (m).
+const VIEW_CLEAR: f32 = 4.5;
+const VIEW_EVERY: f32 = 16.0;
+
+/// The ground to keep clear of trees so that a landmark at `position` is in
+/// view all the way as the road comes at it: along lines from the road,
+/// where it is ahead of the riders, to it, past the road's walls (circles
+/// along each, as footprints for the trees to keep out of).
+fn in_view(track: &Track, position: Vec2) -> Vec<Footprint> {
+    let mut clear = Vec::new();
+    let step = track.step_length();
+    let every = (VIEW_EVERY / step).round().max(1.0) as usize;
+    let n = track.sample_count();
+    for index in (0..n).step_by(every) {
+        let here = track.offset_point(index, 0.0);
+        let ahead = (track.offset_point(index + 1, 0.0) - here).normalize_or_zero();
+        let to = position - here;
+        let distance = to.length();
+        if !(WALL_DISTANCE..VIEW_RANGE).contains(&distance) || ahead.angle_to(to).abs() > VIEW_ANGLE
+        {
+            continue;
+        }
+        let toward = to / distance;
+        let mut along = WALL_DISTANCE + VIEW_CLEAR;
+        while along < distance {
+            clear.push((here + toward * along, VIEW_CLEAR));
+            along += VIEW_CLEAR * 1.5;
+        }
+    }
+    clear
 }
 
 /// A clearing of maple leaves (see [`MapleGround`]): a carpet of reds,
@@ -622,7 +666,6 @@ fn facing(direction: Vec2) -> Quat {
 mod tests {
     use super::*;
     use crate::circuits::CIRCUITS;
-    use crate::track::WALL_DISTANCE;
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
@@ -863,6 +906,32 @@ mod tests {
     }
 
     #[test]
+    fn no_tree_stands_in_the_way_of_a_landmark() {
+        for circuit in &CIRCUITS {
+            let Some(japan) = &circuit.scenery.japan else {
+                continue;
+            };
+            let track = Track::new(&circuit.layout);
+            for prop in japan.props.iter().filter(|prop| prop.model.landmark()) {
+                let (position, _) = spot(&track, prop);
+                let clear = in_view(&track, position);
+                // Ground kept clear from past the road's walls up to it,
+                // from some way along the road coming at it.
+                let near = clear
+                    .iter()
+                    .map(|&(at, _)| at.distance(position))
+                    .fold(f32::MAX, f32::min);
+                assert!(near < 2.0 * VIEW_CLEAR, "{:?}: {near} m", prop.model);
+                let from = clear
+                    .iter()
+                    .map(|&(at, _)| at.distance(position))
+                    .fold(0.0, f32::max);
+                assert!(from > 60.0, "{:?} seen from {from} m", prop.model);
+            }
+        }
+    }
+
+    #[test]
     fn props_stand_clear_of_the_roads_and_in_the_water_where_they_should() {
         for circuit in &CIRCUITS {
             let Some(japan) = &circuit.scenery.japan else {
@@ -882,12 +951,15 @@ mod tests {
                     circuit.name,
                     prop.model
                 );
+                // Boats at sea, shrines on stilts in the water or on land,
+                // and everything else on land (the great torii on its
+                // islet).
                 let wet = terrain.height(position) < SEA_LEVEL;
-                let at_sea = matches!(
-                    prop.model,
-                    PropModel::GreatTorii | PropModel::StiltShrine | PropModel::FishingBoat
-                );
-                assert_eq!(wet, at_sea, "{}: {:?}", circuit.name, prop.model);
+                match prop.model {
+                    PropModel::FishingBoat => assert!(wet, "{}: a boat ashore", circuit.name),
+                    PropModel::StiltShrine => {}
+                    _ => assert!(!wet, "{}: {:?} in the water", circuit.name, prop.model),
+                }
             }
         }
     }

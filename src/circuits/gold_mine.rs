@@ -199,10 +199,12 @@ pub const GOLD_MINE: Circuit = Circuit {
             Bridge {
                 span: BRIDGE,
                 style: BridgeStyle::Wooden,
+                fence: WOODEN_FENCE,
             },
             Bridge {
                 span: GULLY,
                 style: BridgeStyle::Truss,
+                fence: 0.0,
             },
         ],
         gantries: &[

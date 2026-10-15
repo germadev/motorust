@@ -38,7 +38,18 @@ const EDGE: f32 = 14.0;
 /// them left to grass, between them. The other fields are in flower all
 /// over, but at their ragged edges.
 const FIELD: f32 = 190.0;
-const GRASS_SHARE: f32 = 0.22;
+const GRASS_SHARE: f32 = 0.12;
+/// How near their borders two fields mingle (how much nearer one's seed
+/// than the other's, times their size), in islands and fingers of one in
+/// the other this big (m), so that no border is a line.
+const MINGLE: f32 = 0.16;
+const MINGLE_SIZE: f32 = 16.0;
+/// Gaps of grass in the fields, in drifts this big (m), taking about this
+/// share of a field's middle (as a threshold of their noise), and more
+/// where it mingles with the next: the fields thin out into each other.
+const GAPS_SIZE: f32 = 26.0;
+const GAPS: f32 = 0.34;
+const GAPS_AT_BORDER: f32 = 0.22;
 /// How far the borders between fields wind, times their size, and how
 /// ragged they are (m, over a few metres).
 const WINDING: f32 = 0.55;
@@ -168,14 +179,21 @@ impl FlowerMap {
     /// What is in flower at `point`, if anything (whether the ground there
     /// is grass, dry and so on is the terrain's to say).
     pub fn at(&self, point: Vec2) -> Option<FlowerKind> {
-        if point.cmplt(self.bounds.0).any() || point.cmpgt(self.bounds.1).any() {
-            return None;
-        }
         if self
             .roads
             .nearest(point, ROAD_CELL)
             .is_some_and(|(road, distance)| distance < road.wall + CLEAR_OF_WALL)
         {
+            return None;
+        }
+        self.field_at(point)
+    }
+
+    /// What the field at `point` is in flower with, if anything, whatever
+    /// road runs there: over a tunnel, say, where the road is under the
+    /// ground.
+    pub fn field_at(&self, point: Vec2) -> Option<FlowerKind> {
+        if point.cmplt(self.bounds.0).any() || point.cmpgt(self.bounds.1).any() {
             return None;
         }
         for (f, field) in self.fields.iter().enumerate() {
@@ -190,10 +208,24 @@ impl FlowerMap {
                 FlowerArea::Everywhere => FIELD,
                 _ => KIND_PATCH,
             };
-            let plot = plot_at(point, size, salt);
+            let (plot, next, border) = plots_at(point, size, salt);
+            let near = 1.0 - smoothstep(0.0, MINGLE, border);
+            // Near the border, islands and fingers of the next field.
+            let noise = |size: f32, offset: f32| {
+                fbm(point / size + Vec2::splat(salt as f32 * 0.37 + offset), 3)
+            };
+            let plot = if noise(MINGLE_SIZE, 3.3) < 0.5 * near {
+                next
+            } else {
+                plot
+            };
             // Where they are everywhere, some fields are left to grass.
             if matches!(field.area, FlowerArea::Everywhere) && random01(plot ^ 0x5eed) < GRASS_SHARE
             {
+                return None;
+            }
+            // Gaps of grass, in drifts, more where the fields mingle.
+            if noise(GAPS_SIZE, 17.0) < GAPS + GAPS_AT_BORDER * near {
                 return None;
             }
             let pick = random01(plot) * kinds;
@@ -204,9 +236,11 @@ impl FlowerMap {
 }
 
 /// Which of the plots of land of about `size` metres `point` is in (a key
-/// for it, with `salt` mixed in): the cells round seeds scattered on a grid,
-/// their borders winding and ragged as those of fields.
-fn plot_at(point: Vec2, size: f32, salt: u32) -> u32 {
+/// for it, with `salt` mixed in), the next nearest, and how far it is from
+/// the border between them (how much nearer its seed is, times their size):
+/// the cells round seeds scattered on a grid, their borders winding and
+/// ragged as those of fields.
+fn plots_at(point: Vec2, size: f32, salt: u32) -> (u32, u32, f32) {
     let wind = |offset: f32| fbm(point / size * 1.5 + Vec2::splat(offset + salt as f32), 3) - 0.5;
     let rag = |offset: f32| fbm(point / (3.0 * RAGGED) + Vec2::splat(offset), 2) - 0.5;
     let wound = point / size
@@ -218,19 +252,22 @@ fn plot_at(point: Vec2, size: f32, salt: u32) -> u32 {
             ^ (cell.y as i32).wrapping_mul(19_349_663) as u32
             ^ salt.wrapping_mul(83_492_791)
     };
-    let mut nearest = (f32::MAX, 0);
+    let (mut nearest, mut next) = ((f32::MAX, 0), (f32::MAX, 0));
     for dz in -1..=1 {
         for dx in -1..=1 {
             let cell = cell + Vec2::new(dx as f32, dz as f32);
             let id = key(cell);
             let seed = cell + Vec2::new(random01(id), random01(id ^ 0x9e37_79b9)) * 0.8 + 0.1;
-            let distance = wound.distance_squared(seed);
+            let distance = wound.distance(seed);
             if distance < nearest.0 {
+                next = nearest;
                 nearest = (distance, id);
+            } else if distance < next.0 {
+                next = (distance, id);
             }
         }
     }
-    nearest.1
+    (nearest.1, next.1, next.0 - nearest.0)
 }
 
 /// The colour of moss phlox at `point` (linear RGBA): in drifts of its
@@ -532,6 +569,75 @@ mod tests {
                 (circuit, track, terrain)
             })
             .collect()
+    }
+
+    #[test]
+    fn fields_thin_out_and_mingle_at_their_borders() {
+        // Ghost Island's fields everywhere: in their middles, a few gaps of
+        // grass; near their borders, more, and islands of the next field on
+        // this side of the border, so that no border is a line.
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == "Ghost Island")
+            .unwrap();
+        let track = Track::new(&circuit.layout);
+        let fields = circuit.scenery.japan.as_ref().unwrap().flowers;
+        let map = FlowerMap::new(&track, fields);
+        let f = fields
+            .iter()
+            .position(|field| matches!(field.area, FlowerArea::Everywhere))
+            .unwrap();
+        let salt = f as u32 * 7919;
+        let (mut middle, mut middle_gaps) = (0, 0);
+        let (mut border, mut border_gaps, mut crossed) = (0, 0, 0);
+        let (min, max) = track.bounds();
+        for z in (min.y as i32..max.y as i32).step_by(7) {
+            for x in (min.x as i32..max.x as i32).step_by(7) {
+                let point = Vec2::new(x as f32, z as f32);
+                // Only where this field is the one there, away from roads.
+                let earlier = fields[..f].iter().any(|field| {
+                    fullness(&field.area, point, &map.roads, map.lap)
+                        .is_some_and(|full| full >= 0.5)
+                });
+                if earlier || map.roads.nearest(point, ROAD_CELL).is_some() {
+                    continue;
+                }
+                let (plot, next, gap) = plots_at(point, FIELD, salt);
+                let grassy = |plot: u32| random01(plot ^ 0x5eed) < GRASS_SHARE;
+                if grassy(plot) || grassy(next) {
+                    continue;
+                }
+                let kind = |plot: u32| {
+                    let kinds = fields[f].kinds;
+                    kinds[((random01(plot) * kinds.len() as f32) as usize).min(kinds.len() - 1)]
+                };
+                let here = map.field_at(point);
+                if gap > 0.4 {
+                    middle += 1;
+                    middle_gaps += usize::from(here.is_none());
+                } else if gap < 0.03 && kind(plot) != kind(next) {
+                    border += 1;
+                    border_gaps += usize::from(here.is_none());
+                    crossed += usize::from(here == Some(kind(next)));
+                }
+            }
+        }
+        assert!(middle > 1000 && border > 200, "{middle} {border}");
+        let share = |n: usize, of: usize| n as f32 / of as f32;
+        let middle_share = share(middle_gaps, middle);
+        assert!(
+            (0.03..0.25).contains(&middle_share),
+            "{middle_share} gaps in the middle"
+        );
+        let border_share = share(border_gaps, border);
+        assert!(
+            border_share > middle_share + 0.15,
+            "{border_share} gaps at the borders"
+        );
+        assert!(
+            share(crossed, border) > 0.15,
+            "the next field across the border"
+        );
     }
 
     #[test]

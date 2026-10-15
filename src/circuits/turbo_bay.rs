@@ -130,6 +130,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         bridges: &[Bridge {
             span: BRIDGE,
             style: BridgeStyle::RedArches,
+            fence: 0.0,
         }],
         gantries: &[
             Gantry {
