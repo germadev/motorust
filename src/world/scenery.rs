@@ -559,12 +559,14 @@ pub enum PropModel {
 /// right if negative), facing the road; or anywhere, at `position` (x, z)
 /// facing `heading` (see [`crate::geometry`]). It stands on the ground, or
 /// in the sea, with its foot a little under the water; `scale` times as big
-/// as made (see [`Prop::scaled`]).
+/// as made (see [`Prop::scaled`]), and leaning `lean` radians towards its
+/// side that was -X as made (see [`Prop::leaning`]).
 #[derive(Clone, Copy, Debug)]
 pub struct Prop {
     pub model: PropModel,
     pub spot: Spot,
     pub scale: f32,
+    pub lean: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -579,6 +581,7 @@ pub const fn by_road(model: PropModel, along: f32, lateral: f32) -> Prop {
         model,
         spot: Spot::Road { along, lateral },
         scale: 1.0,
+        lean: 0.0,
     }
 }
 
@@ -586,6 +589,13 @@ impl Prop {
     /// The same prop, `scale` times as big.
     pub const fn scaled(self, scale: f32) -> Self {
         Prop { scale, ..self }
+    }
+
+    /// The same prop leaning `lean` radians about its foot, towards its side
+    /// that was -X as made: a tree leaning out over what its crown spreads
+    /// over.
+    pub const fn leaning(self, lean: f32) -> Self {
+        Prop { lean, ..self }
     }
 }
 
@@ -598,6 +608,7 @@ pub const fn standing(model: PropModel, x: f32, z: f32, heading: f32) -> Prop {
             heading,
         },
         scale: 1.0,
+        lean: 0.0,
     }
 }
 

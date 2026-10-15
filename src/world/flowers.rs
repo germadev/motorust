@@ -33,18 +33,22 @@ use crate::track::Track;
 
 /// How wide the ragged edge of a field is (m): it thins out across it.
 const EDGE: f32 = 14.0;
-/// Where the fields are everywhere, how big their patches are (m), and the
-/// noise below which there is only grass between them; the other fields
-/// are in flower all over, but at their ragged edges.
-const PATCH: f32 = 40.0;
-const GAPS: f32 = 0.4;
+/// Where the fields are everywhere, how big each is (m): broad fields of one
+/// kind, a couple of hundred metres across, not patches; and the share of
+/// them left to grass, between them. The other fields are in flower all
+/// over, but at their ragged edges.
+const FIELD: f32 = 190.0;
+const GRASS_SHARE: f32 = 0.22;
+/// How far the borders between fields wind, times their size, and how
+/// ragged they are (m, over a few metres).
+const WINDING: f32 = 0.55;
+const RAGGED: f32 = 5.0;
 /// How far past the roads' bounds the flowers grow (m): over the island,
 /// not on the mountains across the sea.
 const ISLAND: f32 = 200.0;
-/// How big the patches of each kind are, where a field has several (m):
-/// broad swathes where it is everywhere.
-const KIND_PATCH: f32 = 52.0;
-const WIDE_KIND_PATCH: f32 = 130.0;
+/// How big the swathes of each kind are, where a field that is not
+/// everywhere has several (m).
+const KIND_PATCH: f32 = 90.0;
 /// How far the flowers keep from the walls of the roads (m): the shoulders
 /// stay grass.
 const CLEAR_OF_WALL: f32 = 2.0;
@@ -65,7 +69,7 @@ const PHLOX_MOTTLE: f32 = 6.0;
 /// far from the centre line of a road (m); how far they keep from whatever
 /// else stands on the ground (m, past its footprint), and how steep the
 /// ground they grow on may be.
-const SPACING: f32 = 3.4;
+const SPACING: f32 = 3.7;
 const SHAKE: f32 = 0.45;
 const CLUMP_REACH: f32 = 34.0;
 const CLEAR: f32 = 0.5;
@@ -180,22 +184,53 @@ impl FlowerMap {
             if full.is_none_or(|full| full < 0.5) {
                 continue;
             }
-            let offset = Vec2::splat(f as f32 * 13.7);
-            let everywhere = matches!(field.area, FlowerArea::Everywhere);
-            if everywhere && fbm(point / PATCH + offset, 2) < GAPS {
+            let salt = f as u32 * 7919;
+            let kinds = field.kinds.len() as f32;
+            let size = match field.area {
+                FlowerArea::Everywhere => FIELD,
+                _ => KIND_PATCH,
+            };
+            let plot = plot_at(point, size, salt);
+            // Where they are everywhere, some fields are left to grass.
+            if matches!(field.area, FlowerArea::Everywhere) && random01(plot ^ 0x5eed) < GRASS_SHARE
+            {
                 return None;
             }
-            let scale = if everywhere {
-                WIDE_KIND_PATCH
-            } else {
-                KIND_PATCH
-            };
-            let pick = (fbm(point / scale + offset + 41.0, 2) - 0.3) / 0.4;
-            let kinds = field.kinds.len() as f32;
-            return Some(field.kinds[(pick.clamp(0.0, 0.999) * kinds) as usize]);
+            let pick = random01(plot) * kinds;
+            return Some(field.kinds[(pick as usize).min(field.kinds.len() - 1)]);
         }
         None
     }
+}
+
+/// Which of the plots of land of about `size` metres `point` is in (a key
+/// for it, with `salt` mixed in): the cells round seeds scattered on a grid,
+/// their borders winding and ragged as those of fields.
+fn plot_at(point: Vec2, size: f32, salt: u32) -> u32 {
+    let wind = |offset: f32| fbm(point / size * 1.5 + Vec2::splat(offset + salt as f32), 3) - 0.5;
+    let rag = |offset: f32| fbm(point / (3.0 * RAGGED) + Vec2::splat(offset), 2) - 0.5;
+    let wound = point / size
+        + Vec2::new(wind(3.1), wind(11.7)) * 2.0 * WINDING
+        + Vec2::new(rag(5.3), rag(19.9)) * 2.0 * RAGGED / size;
+    let cell = wound.floor();
+    let key = |cell: Vec2| {
+        (cell.x as i32).wrapping_mul(73_856_093) as u32
+            ^ (cell.y as i32).wrapping_mul(19_349_663) as u32
+            ^ salt.wrapping_mul(83_492_791)
+    };
+    let mut nearest = (f32::MAX, 0);
+    for dz in -1..=1 {
+        for dx in -1..=1 {
+            let cell = cell + Vec2::new(dx as f32, dz as f32);
+            let id = key(cell);
+            let seed = cell + Vec2::new(random01(id), random01(id ^ 0x9e37_79b9)) * 0.8 + 0.1;
+            let distance = wound.distance_squared(seed);
+            if distance < nearest.0 {
+                nearest = (distance, id);
+            }
+        }
+    }
+    nearest.1
 }
 
 /// The colour of moss phlox at `point` (linear RGBA): in drifts of its

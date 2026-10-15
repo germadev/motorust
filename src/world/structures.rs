@@ -569,6 +569,13 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         }
         // La roca de encima, en franjas de lado a lado.
         const STRIPS: usize = 12;
+        // Whether its top is gentle enough for grass, judged the whole way
+        // across at once, its rugged hump left out: grass and rock lie in
+        // bands across it, as on the slopes round it, not in a chequer.
+        let level = |k: usize| (edge(k, -1.0) + edge(k, 1.0)) / 2.0;
+        let along = (level(j) - level(i)) / step;
+        let across = (edge(i, 1.0) - edge(i, -1.0)) / (2.0 * TUNNEL_SHELL);
+        let gentle = 1.0 / (1.0 + along * along + across * across).sqrt() > CLIFF_NORMAL_Y;
         for k in 0..STRIPS {
             let (a, b) = (
                 -TUNNEL_SHELL + 2.0 * TUNNEL_SHELL * k as f32 / STRIPS as f32,
@@ -581,11 +588,16 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 (at(i, b, rock_top(i, b)), Vec2::new(vi, b / 4.0)),
             ];
             // Through natural rock, grass grows where the top is gentle, as
-            // on the hills around.
+            // on the hills around (where a road passes over, by the slope
+            // down to it).
             let [p, q, r, _] = corners.map(|(p, _)| p);
             let face = (q - p).cross(r - p).normalize_or_zero();
             let face = if face.y < 0.0 { -face } else { face };
-            if soil == Soil::Rock && face.y > CLIFF_NORMAL_Y {
+            let grassy = match deck(i, (a + b) / 2.0) {
+                Some(_) => face.y > CLIFF_NORMAL_Y,
+                None => gentle,
+            };
+            if soil == Soil::Rock && grassy {
                 let center = corners.iter().map(|(p, _)| *p).sum::<Vec3>() / 4.0;
                 let tint = terrain.grass_color(center, face);
                 grass.quad(

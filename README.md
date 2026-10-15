@@ -69,9 +69,10 @@ all round.
 on an island of feudal Japan that crosses the castle hill twice: first through
 it, by a tunnel at the end of the castle street, and at the end of the lap
 over it, through the castle. On the way: a coast road in esses, a boardwalk
-across an inlet, the susuki hills at up to 10 %, a lake ringed with flowers,
+across an inlet, the susuki hills at up to 12 %, a lake ringed with flowers,
 a temple and the castle ridge where the road splits three ways, a red ridge
-and a bamboo forest. Its own Japanese scenery is on its way.
+and a bamboo hill it winds down in tight esses, under a volcano across the
+strait.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

@@ -1,32 +1,32 @@
 //! Tsushima Isle: a lap of an island of feudal Japan, after Ghost of
 //! Tsushima, its stretches each in a colour of their own. It crosses the
 //! castle hill twice, in a figure of eight: first through it, by a tunnel at
-//! the end of the castle street, and at the end of the lap over it, 29 m
+//! the end of the castle street, and at the end of the lap over it, 33 m
 //! above, through the castle.
 //!
 //! 1. The castle street, north, over a crest where the bike takes off,
-//!    straight at the castle hill and into the tunnel under it.
+//!    straight at the castle hill and into the tunnel under it, at its foot.
 //! 2. Out onto the coast, round to the right, and east along it in esses,
 //!    past the great torii standing in the sea.
 //! 3. The shrine on the water: a boardwalk, narrower than the road, straight
 //!    across an inlet, with a crest in the middle where the bike takes off.
-//! 4. Up the susuki hills in esses at up to 10 %, south over their rolling
-//!    top, two crests where the bike takes off, and down at 10 % to the lake.
+//! 4. Up the susuki hills in esses at up to 12 %, south over their rolling
+//!    top, two crests where the bike takes off, and down at 12 % to the lake.
 //! 5. Round the lake, clockwise, three sides of it, along a shrine's
 //!    vermilion fence on the lake's side: fields of flowers down to the
-//!    water and, on its south shore, the great maple over its clearing of
-//!    red leaves.
-//! 6. North from the lake past the temple, where the road splits three ways:
-//!    the lap snakes through its courtyard, a way to the left swings out
-//!    early over a hump and one to the right runs straight on and out
-//!    through a dip.
-//! 7. Up the red ridge in bends at up to 10 %, most of the way through a
+//!    water, a water wheel on its shore and, on the outside of the bend at
+//!    its foot, the great maple over its clearing of red leaves.
+//! 6. North from the lake to the temple, where the road splits in two: the
+//!    lap snakes through its courtyard and a way to the left swings out
+//!    early over a hump.
+//! 7. Up the red ridge in bends at up to 12 %, most of the way through a
 //!    narrow corridor of torii, as at Fushimi Inari in Kyoto, to its top,
 //!    53 m up, and round to the left onto the castle ridge, west.
 //! 8. Down along the castle ridge, where the road splits three ways again,
 //!    the other way round, and over the tunnel through the castle hill.
-//! 9. Down through the bamboo in esses, and round to the left into the
-//!    castle street.
+//! 9. Up the bamboo hill at 12 %, and down it through the bamboo at 11 % in
+//!    a run of tight esses, four bends winding like a river, and round to
+//!    the left into the castle street.
 
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -38,14 +38,18 @@ use crate::track::{Banking, Branch, Layout, Narrowing, WALL_DISTANCE};
 use crate::world::scenery::*;
 
 /// Where things are, in metres from the finish line.
-const CASTLE_STREET: Span = span(5740.0, 430.0);
-const TUNNEL: Span = span(440.0, 620.0);
+const CASTLE_STREET: Span = span(5821.0, TUNNEL.from);
+/// The tunnel through the castle hill, opening at the foot of its slope at
+/// the end of the castle street.
+const TUNNEL: Span = span(360.0, 620.0);
 const COAST: Span = span(640.0, 1422.0);
 const BOARDWALK: Span = span(1422.0, 1622.0);
 /// How far from the centre line the fences of the boardwalk stand (m): it
 /// is narrower than the asphalt of the road.
 const BOARDWALK_WALL: f32 = 6.0;
 const LAKE_SHORE: Span = span(2700.0, 3400.0);
+/// Along the great maple's clearing, round the foot of the lake.
+const MAPLE_FENCE: Span = span(3010.0, 3165.0);
 const RED_RIDGE: Span = span(3764.0, 4322.0);
 /// The corridor of torii up the red ridge, after Fushimi Inari's thousand
 /// gates in Kyoto: narrower than the road, the gates standing over it where
@@ -53,8 +57,9 @@ const RED_RIDGE: Span = span(3764.0, 4322.0);
 const TORII_CORRIDOR: Span = span(3830.0, 4120.0);
 const TORII_WALL: f32 = 6.5;
 const CROSSING: Span = span(4672.0, 4880.0);
-const BAMBOO: Span = span(4880.0, 5600.0);
-/// Where the road splits three ways: by the temple, and on the castle ridge.
+const BAMBOO: Span = span(4880.0, 5675.0);
+/// Where the road splits: in two by the temple, and three ways on the castle
+/// ridge.
 const TEMPLE_SPLIT: (f32, f32) = (3414.0, 3764.0);
 const CASTLE_SPLIT: (f32, f32) = (4322.0, 4672.0);
 
@@ -87,8 +92,14 @@ pub const TSUSHIMA: Circuit = Circuit {
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
-        // Hardly banked where the road splits, as in Gold Mine.
+        // Banked round the lake, and hardly banked where the road splits,
+        // as in Gold Mine.
         banking: &[
+            Banking {
+                from: 2860.0,
+                to: 3300.0,
+                factor: 2.5,
+            },
             Banking {
                 from: TEMPLE_SPLIT.0,
                 to: TEMPLE_SPLIT.1,
@@ -114,8 +125,9 @@ pub const TSUSHIMA: Circuit = Circuit {
                 wall: TORII_WALL,
             },
         ],
-        // The road splits three ways twice: a way to the left of the lap
-        // over a hump and one to its right through a dip.
+        // The road splits in two by the temple, a way to the left of the lap
+        // over a hump, and three ways on the castle ridge: one to the left
+        // and one to the right.
         branches: &[
             // By the temple, to the left, over a hump.
             Branch {
@@ -125,15 +137,6 @@ pub const TSUSHIMA: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &TEMPLE_LEFT_RISE,
-            },
-            // By the temple, to the right, through a dip.
-            Branch {
-                from: TEMPLE_SPLIT.0,
-                to: TEMPLE_SPLIT.1,
-                approach: &TEMPLE_RIGHT,
-                vertical_loop: None,
-                exit: &[],
-                rise: &TEMPLE_RIGHT_RISE,
             },
             // On the castle ridge, to the left, over a hump.
             Branch {
@@ -167,7 +170,7 @@ pub const TSUSHIMA: Circuit = Circuit {
         terraces: &[Terrace {
             center: MAPLE_GROUND,
             radius: 16.0,
-            height: 7.9,
+            height: 2.4,
             skirt: 10.0,
         }],
         mountains,
@@ -195,14 +198,20 @@ pub const TSUSHIMA: Circuit = Circuit {
                 side: Side::Right,
                 style: WallStyle::Stone,
             },
+            // Before the great maple, on the outside of the bend, the
+            // shrine's vermilion fence too: its clearing shows through it.
+            WallRun {
+                span: MAPLE_FENCE,
+                side: Side::Left,
+                style: WallStyle::ShrineFence,
+            },
             WallRun {
                 span: LAKE_SHORE,
                 side: Side::Left,
                 style: WallStyle::Hedge,
             },
             // On the lake's side, a shrine's vermilion fence, low and open:
-            // the flowers, the great maple's clearing and the water show
-            // through it.
+            // the flowers and the water show through it.
             WallRun {
                 span: LAKE_SHORE,
                 side: Side::Right,
@@ -342,7 +351,8 @@ pub const TSUSHIMA: Circuit = Circuit {
                 approach_every: 15.0,
             }],
             props: &PROPS,
-            // Under the great maple, beside the road round the lake.
+            // Under the great maple, beside the road round the foot of the
+            // lake.
             maple_grounds: &[MapleGround {
                 center: MAPLE_GROUND,
                 radius: 14.0,
@@ -361,7 +371,7 @@ pub const TSUSHIMA: Circuit = Circuit {
                 Petals {
                     area: PetalArea::Round {
                         center: MAPLE_GROUND,
-                        radius: 30.0,
+                        radius: 36.0,
                     },
                     kind: PetalKind::Maple,
                 },
@@ -394,14 +404,14 @@ const FLOWERS: [FlowerField; 7] = [
     // Red spider lilies on the lake's open shore, seen across the water.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(845.0, 140.0),
+            center: Vec2::new(836.0, 100.0),
             inner: 0.0,
             outer: 60.0,
         },
         kinds: &[FlowerKind::SpiderLily],
     },
     // All round the lake, from its water up to the road's fence: carpets of
-    // moss phlox in bands of magenta, pink, lavender and white.
+    // moss phlox in drifts of magenta, pink, lavender and white.
     FlowerField {
         area: FlowerArea::Round {
             center: LAKE,
@@ -453,41 +463,46 @@ const FLOWERS: [FlowerField; 7] = [
 /// The props of feudal Japan, made with Meshy: landmarks out in the open,
 /// and statues, lanterns, shrines and houses by the road.
 const PROPS: [Prop; 43] = [
-    // The great torii standing in the sea off the coast road, facing it.
-    standing(PropModel::GreatTorii, 430.0, -945.0, PI).scaled(1.4),
-    // The castle keep on its hill, over the mouth of the tunnel, looking
-    // down the castle street.
+    // The great torii standing in the sea off the coast road, facing it,
+    // ahead of the road as it swings along the shore.
+    standing(PropModel::GreatTorii, 512.0, -910.0, PI).scaled(1.4),
+    // The castle keep on its hill, over the tunnel, looking down the castle
+    // street.
     standing(PropModel::CastleKeep, -55.0, -455.0, PI).scaled(1.6),
-    // The temple and its pagoda, beside its split, facing the road.
-    standing(PropModel::TempleHall, 575.0, 60.0, -FRAC_PI_2),
-    standing(PropModel::Pagoda, 585.0, -15.0, -FRAC_PI_2),
+    // The temple and its pagoda on the outside of the bend at the end of
+    // its split, facing the road: straight ahead all the way through the
+    // split, the pagoda over the temple's roofs.
+    standing(PropModel::TempleHall, 752.0, -262.0, FRAC_PI_2),
+    standing(PropModel::Pagoda, 742.0, -312.0, 1.83),
     // The shrine on stilts in the inlet, beside the boardwalk.
     standing(PropModel::StiltShrine, 760.0, -755.0, 0.0),
-    // The great maple beside the road round the lake, on the water's edge
-    // of its clearing of red leaves, its crown spreading over it towards
-    // the road, and a stone lantern either side of the clearing; a wayside
-    // shrine on the islet.
+    // The great maple on the outside of the bend round the foot of the
+    // lake, straight ahead all the way down to it: at the far side of its
+    // clearing of red leaves, its crown spreading over it towards the road
+    // and the riders coming, leaning out a little over it; and a stone
+    // lantern either side of the clearing. A wayside shrine on the islet.
     standing(
         PropModel::GreatMaple,
-        MAPLE_GROUND.x + 1.7,
-        MAPLE_GROUND.y - 11.9,
-        -1.72,
+        MAPLE_GROUND.x + 2.0,
+        MAPLE_GROUND.y + 11.9,
+        1.215,
+    )
+    .leaning(0.12),
+    standing(
+        PropModel::StoneLantern,
+        MAPLE_GROUND.x - 18.1,
+        MAPLE_GROUND.y - 3.6,
+        -0.5,
     ),
     standing(
         PropModel::StoneLantern,
-        MAPLE_GROUND.x + 17.7,
-        MAPLE_GROUND.y + 5.4,
-        PI,
-    ),
-    standing(
-        PropModel::StoneLantern,
-        MAPLE_GROUND.x - 19.1,
-        MAPLE_GROUND.y + 0.2,
-        PI,
+        MAPLE_GROUND.x + 17.9,
+        MAPLE_GROUND.y - 4.4,
+        0.55,
     ),
     standing(PropModel::Hokora, ISLET.x, ISLET.y, 2.36),
-    // A water wheel on the lake's shore.
-    standing(PropModel::WaterWheel, 776.5, 348.4, -0.9),
+    // A water wheel on the lake's shore, ahead on the way down to it.
+    standing(PropModel::WaterWheel, 946.7, 400.2, -0.29),
     // Fishing boats off the coast.
     standing(PropModel::FishingBoat, 250.0, -925.0, 1.2),
     standing(PropModel::FishingBoat, 560.0, -935.0, -0.4),
@@ -533,10 +548,10 @@ const PROPS: [Prop; 43] = [
     by_road(PropModel::Jizo, 5360.0, 14.5),
     by_road(PropModel::Jizo, 5520.0, -14.5),
     // And one more by the castle street.
-    by_road(PropModel::Jizo, 5800.0, 14.5),
+    by_road(PropModel::Jizo, 5881.0, 14.5),
 ];
 
-const CONTROL_POINTS: [Vec2; 81] = [
+const CONTROL_POINTS: [Vec2; 110] = [
     // 1. The castle street, north (-Z), and the tunnel under the castle hill.
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -140.0),
@@ -619,17 +634,47 @@ const CONTROL_POINTS: [Vec2; 81] = [
     Vec2::new(140.0, -525.0),
     Vec2::new(90.0, -525.0),
     Vec2::new(-40.0, -523.0),
-    // 9. Down through the bamboo in esses, and round to the left into the
-    // castle street.
-    Vec2::new(-100.0, -505.0),
-    Vec2::new(-150.0, -470.0),
-    Vec2::new(-185.0, -420.0),
-    Vec2::new(-185.0, -355.0),
-    Vec2::new(-150.0, -300.0),
-    Vec2::new(-128.0, -235.0),
-    Vec2::new(-140.0, -165.0),
-    Vec2::new(-178.0, -100.0),
-    Vec2::new(-196.0, -30.0),
+    // 9. Up the bamboo hill, and down it in a run of tight esses, four
+    // bends winding like a river, and round to the left into the castle
+    // street.
+    Vec2::new(-58.2, -523.0),
+    Vec2::new(-76.5, -523.0),
+    Vec2::new(-94.5, -523.0),
+    Vec2::new(-112.7, -521.5),
+    Vec2::new(-129.5, -514.7),
+    Vec2::new(-143.8, -503.8),
+    Vec2::new(-157.5, -491.7),
+    Vec2::new(-168.9, -477.6),
+    Vec2::new(-175.6, -460.9),
+    Vec2::new(-175.5, -442.8),
+    Vec2::new(-168.8, -426.2),
+    Vec2::new(-157.3, -412.1),
+    Vec2::new(-143.6, -400.0),
+    Vec2::new(-130.2, -388.0),
+    Vec2::new(-119.2, -373.5),
+    Vec2::new(-113.2, -356.4),
+    Vec2::new(-114.1, -338.5),
+    Vec2::new(-121.5, -322.0),
+    Vec2::new(-133.3, -308.4),
+    Vec2::new(-147.1, -296.4),
+    Vec2::new(-160.4, -284.0),
+    Vec2::new(-170.9, -269.5),
+    Vec2::new(-176.2, -252.1),
+    Vec2::new(-174.5, -234.1),
+    Vec2::new(-166.5, -218.0),
+    Vec2::new(-154.2, -204.5),
+    Vec2::new(-140.4, -192.7),
+    Vec2::new(-127.4, -180.2),
+    Vec2::new(-117.2, -165.1),
+    Vec2::new(-112.8, -147.8),
+    Vec2::new(-115.3, -129.8),
+    Vec2::new(-124.0, -113.9),
+    Vec2::new(-136.4, -100.9),
+    Vec2::new(-150.3, -89.0),
+    Vec2::new(-163.4, -76.3),
+    Vec2::new(-173.1, -61.3),
+    Vec2::new(-178.3, -43.9),
+    Vec2::new(-180.7, -26.0),
     Vec2::new(-188.0, 45.0),
     Vec2::new(-155.0, 112.0),
     Vec2::new(-98.0, 150.0),
@@ -638,10 +683,11 @@ const CONTROL_POINTS: [Vec2; 81] = [
 ];
 
 /// Through the tunnel near the sea; rolling along the coast; up the susuki
-/// hills, 36 m, and down to the lake; up past the temple and the red ridge,
-/// 45 m, and down along the castle ridge, over the tunnel, 29 m above it,
-/// and through the bamboo into the castle street.
-const ELEVATION: [(f32, f32); 60] = [
+/// hills, 30 m, and down to the lake; up past the temple and the red ridge,
+/// 45 m, and down along the castle ridge, over the tunnel, 33 m above it;
+/// up the bamboo hill, 15 m, and down its esses, 45 m, into the castle
+/// street. Up and down at up to 12 %.
+const ELEVATION: [(f32, f32); 71] = [
     // The castle street, over a crest where the bike flies, and the tunnel.
     (0.0, 0.0),
     (110.0, 0.4),
@@ -664,11 +710,13 @@ const ELEVATION: [(f32, f32); 60] = [
     (1540.0, 7.2),
     (1585.0, 5.8),
     (1650.0, 3.6),
-    // Up the susuki hills, at up to 9 %.
+    // Up the susuki hills, at up to 12 %.
     (1760.0, 6.0),
-    (1880.0, 15.0),
-    (2000.0, 25.5),
-    (2120.0, 32.0),
+    (1820.0, 9.0),
+    (1900.0, 18.0),
+    (1980.0, 27.0),
+    (2060.0, 32.4),
+    (2125.0, 33.4),
     (2200.0, 33.6),
     // Over their top, two crests where the bike flies, shaped like the one
     // in the castle street.
@@ -679,24 +727,28 @@ const ELEVATION: [(f32, f32); 60] = [
     (2535.0, 38.4),
     (2575.0, 36.8),
     (2620.0, 35.0),
-    // Down to the lake, at up to 10 %, and round it.
-    (2700.0, 27.5),
-    (2780.0, 19.5),
-    (2860.0, 12.5),
-    (2940.0, 8.0),
-    (3020.0, 6.5),
-    (3200.0, 6.0),
+    // Down to the lake, at up to 12 %, and round it low, just over the
+    // water.
+    (2700.0, 27.4),
+    (2780.0, 18.4),
+    (2860.0, 9.4),
+    (2940.0, 3.4),
+    (3020.0, 1.0),
+    (3100.0, 0.6),
+    (3200.0, 0.8),
+    (3290.0, 3.8),
     (3364.0, 6.5),
     // Climbing steadily through the temple's split.
     (3414.0, 7.0),
     (3764.0, 19.0),
-    // Up the red ridge, at up to 10 %, and over its top in the bend onto
+    // Up the red ridge, at up to 12 %, and over its top in the bend onto
     // the castle ridge.
     (3814.0, 21.0),
-    (3900.0, 28.5),
-    (4000.0, 38.0),
-    (4090.0, 46.0),
-    (4170.0, 50.2),
+    (3880.0, 26.0),
+    (3960.0, 35.4),
+    (4040.0, 44.6),
+    (4110.0, 49.6),
+    (4170.0, 51.0),
     (4230.0, 51.2),
     (4290.0, 49.6),
     // Down steadily through the castle's split (steeper before it and after
@@ -705,17 +757,24 @@ const ELEVATION: [(f32, f32); 60] = [
     (4322.0, 48.2),
     (4672.0, 36.2),
     (4722.0, 34.0),
-    (4780.0, 31.3),
-    (4852.0, 28.0),
-    // Down through the bamboo into the castle street.
-    (4950.0, 23.0),
-    (5040.0, 18.5),
-    (5170.0, 13.5),
-    (5310.0, 9.5),
-    (5460.0, 5.5),
-    (5610.0, 2.8),
-    (5738.0, 1.0),
-    (5810.0, 0.3),
+    (4780.0, 33.4),
+    (4840.0, 33.6),
+    // Up the bamboo hill at up to 12 %, over its top in the first bend, and
+    // down its esses at 11 % into the castle street.
+    (4900.0, 37.0),
+    (4960.0, 43.5),
+    (5010.0, 47.5),
+    (5050.0, 48.4),
+    (5090.0, 46.5),
+    (5150.0, 40.0),
+    (5230.0, 31.0),
+    (5310.0, 22.0),
+    (5390.0, 13.5),
+    (5460.0, 7.5),
+    (5530.0, 4.2),
+    (5650.0, 2.2),
+    (5800.0, 1.0),
+    (5900.0, 0.3),
 ];
 
 /// The ways off the lap, each through points to one side of it (m along the
@@ -746,33 +805,6 @@ const TEMPLE_LEFT: [Vec2; 11] = [
     Vec2::new(692.0, -72.2),
     // 3752 m, 2 m.
     Vec2::new(695.5, -96.6),
-];
-
-/// By the temple, to the right: it runs straight on where the lap swings
-/// left, and out round a wide curve back to it.
-const TEMPLE_RIGHT: [Vec2; 11] = [
-    // 3426 m, -1 m.
-    Vec2::new(695.0, 209.7),
-    // 3454 m, -15 m.
-    Vec2::new(701.2, 178.1),
-    // 3476 m, -40 m.
-    Vec2::new(715.9, 145.2),
-    // 3538 m, -65 m.
-    Vec2::new(735.8, 114.4),
-    // 3598 m, -64 m.
-    Vec2::new(754.2, 81.4),
-    // 3626 m, -57 m.
-    Vec2::new(764.4, 48.4),
-    // 3644 m, -44 m.
-    Vec2::new(761.4, 15.4),
-    // 3666 m, -25 m.
-    Vec2::new(745.0, -17.6),
-    // 3698 m, -9 m.
-    Vec2::new(721.3, -50.8),
-    // 3728 m, -3 m.
-    Vec2::new(705.3, -75.0),
-    // 3752 m, -0 m.
-    Vec2::new(697.4, -96.9),
 ];
 
 /// On the castle ridge, as in Gold Mine's first split, to the left: it runs
@@ -869,45 +901,6 @@ const TEMPLE_LEFT_RISE: [(f32, f32); 35] = [
     (298.3, 0.04),
     (304.3, 0.01),
     (310.3, 0.00),
-];
-
-/// How much higher than the lap beside it the way to the right of the temple
-/// runs: through a dip where it is far from the lap, gentle at its edges (m
-/// along it, m).
-const TEMPLE_RIGHT_RISE: [(f32, f32); 33] = [
-    (61.9, 0.00),
-    (67.9, -0.01),
-    (73.9, -0.06),
-    (79.9, -0.14),
-    (85.9, -0.29),
-    (91.9, -0.49),
-    (97.9, -0.75),
-    (103.9, -1.06),
-    (109.9, -1.42),
-    (115.9, -1.80),
-    (121.9, -2.19),
-    (127.9, -2.58),
-    (133.9, -2.97),
-    (139.9, -3.36),
-    (145.9, -3.72),
-    (151.9, -4.00),
-    (157.9, -4.10),
-    (163.9, -3.98),
-    (169.9, -3.70),
-    (175.9, -3.34),
-    (181.9, -2.95),
-    (187.9, -2.56),
-    (193.9, -2.17),
-    (199.9, -1.78),
-    (205.9, -1.40),
-    (211.9, -1.04),
-    (217.9, -0.73),
-    (223.9, -0.48),
-    (229.9, -0.28),
-    (235.9, -0.14),
-    (241.9, -0.05),
-    (247.9, -0.01),
-    (253.9, 0.00),
 ];
 
 /// How much higher than the lap beside it the way to the left on the castle
@@ -1049,14 +1042,14 @@ const SHORE: [Vec2; 49] = [
 /// and how far the shore wanders (m); and the islet in it, with a wayside
 /// shrine.
 const LAKE: Vec2 = Vec2::new(870.0, 270.0);
-const LAKE_RADIUS: f32 = 100.0;
+const LAKE_RADIUS: f32 = 150.0;
 const LAKE_WANDER: f32 = 8.0;
 const ISLET: Vec2 = Vec2::new(885.0, 255.0);
 const ISLET_RADIUS: f32 = 16.0;
 /// The clearing of red leaves under the great maple: beside the road round
-/// the lake, 31 m from its centre line on the lake's side, between the road
-/// and the water.
-const MAPLE_GROUND: Vec2 = Vec2::new(851.2, 412.6);
+/// the foot of the lake, 35 m from its centre line on the outside of the
+/// bend, away from the water.
+const MAPLE_GROUND: Vec2 = Vec2::new(875.4, 479.9);
 
 /// How far `point` is from the lake's shore: negative in its water, and
 /// positive on the islet.
@@ -1069,19 +1062,24 @@ fn lakes(point: Vec2) -> f32 {
 
 /// The castle hill the castle street runs into, by a tunnel, and the lap
 /// comes back over: its middle, its radius and its height (m).
-const CASTLE_HILL: Massif = climbed_massif(0.0, -530.0, 210.0, 46.0);
+const CASTLE_HILL: Massif = climbed_massif(0.0, -530.0, 210.0, 34.0);
 
-const MASSIFS: [Massif; 10] = [
+/// The hills, each about as high as the road over its top, so that the road
+/// runs over them and along their flanks, never sunk between banks cut on
+/// both sides.
+const MASSIFS: [Massif; 11] = [
     CASTLE_HILL,
     // The castle ridge, east of it, and the red ridge, east of that, which
     // the road climbs from the temple.
-    climbed_massif(300.0, -530.0, 230.0, 50.0),
-    climbed_massif(600.0, -460.0, 260.0, 58.0),
+    climbed_massif(300.0, -530.0, 230.0, 42.0),
+    climbed_massif(600.0, -460.0, 260.0, 48.0),
     // The susuki hills.
-    climbed_massif(1040.0, -330.0, 300.0, 40.0),
-    climbed_massif(1050.0, 20.0, 240.0, 38.0),
-    // The slopes the bamboo grows on, west of the castle.
-    climbed_massif(-130.0, -420.0, 200.0, 32.0),
+    climbed_massif(1040.0, -330.0, 300.0, 36.0),
+    climbed_massif(1050.0, 20.0, 240.0, 34.0),
+    // The bamboo hill west of the castle, which the road climbs and winds
+    // down, and its lower slopes south of it.
+    climbed_massif(-170.0, -430.0, 190.0, 46.0),
+    climbed_massif(-200.0, -230.0, 150.0, 22.0),
     // Crags on the red ridge, away from the road.
     massif(520.0, -330.0, 40.0, 22.0),
     massif(800.0, -420.0, 45.0, 24.0),
@@ -1091,14 +1089,17 @@ const MASSIFS: [Massif; 10] = [
 ];
 
 const CUTTINGS: [Cutting; 2] = [
-    // The rock round the mouths of the tunnel, under the castle.
+    // The rock over the tunnel under the castle, from up the hill's slope,
+    // and the rock the road is cut through out of its mouth by the sea (the
+    // other opens at the foot of the hill, under its slope, not in a wall of
+    // rock).
     Cutting {
-        span: span(TUNNEL.from - 60.0, TUNNEL.to + 60.0),
+        span: span(TUNNEL.from + 60.0, TUNNEL.to + 110.0),
         side: Side::Left,
         height: 16.0,
     },
     Cutting {
-        span: span(TUNNEL.from - 60.0, TUNNEL.to + 60.0),
+        span: span(TUNNEL.from + 60.0, TUNNEL.to + 110.0),
         side: Side::Right,
         height: 16.0,
     },
@@ -1173,32 +1174,74 @@ mod tests {
                 .map(|index| grade(index as f32 * step).abs())
                 .fold(0.0, f32::max)
         };
-        // Up the susuki hills, and down them to the lake, at nearly 10 %.
+        // Up the susuki hills, and down them to the lake, at nearly 12 %.
         assert!(height(2300.0) - height(SUSUKI_HILLS.from) > 30.0);
-        assert!(steepest(span(1700.0, 2300.0)) > 0.085);
-        assert!(steepest(span(2600.0, 2900.0)) > 0.085);
+        assert!(steepest(span(1700.0, 2300.0)) > 0.115);
+        assert!(steepest(span(2600.0, 2900.0)) > 0.115);
         // Up the red ridge to its top, 30 m and more, and down from the
         // castle to town.
         let top = (track.index_at(RED_RIDGE.from)..track.index_at(RED_RIDGE.to))
             .map(|index| track.elevations()[index])
             .fold(f32::MIN, f32::max);
         assert!(top - height(RED_RIDGE.from) > 30.0, "{top} m at the top");
-        assert!(steepest(RED_RIDGE) > 0.085);
+        assert!(steepest(RED_RIDGE) > 0.115);
         assert!(height(CROSSING.from) - height(0.0) > 35.0);
+        // Up the bamboo hill, and down it, 40 m and more, at 11 % most of
+        // the way.
+        let hill = (track.index_at(BAMBOO.from)..track.index_at(BAMBOO.to))
+            .map(|index| track.elevations()[index])
+            .fold(f32::MIN, f32::max);
+        assert!(hill - height(CROSSING.to) > 12.0, "{hill} m at the top");
+        assert!(hill - height(BAMBOO.to) > 40.0, "{hill} m at the top");
+        assert!(steepest(span(CROSSING.to, CROSSING.to + 150.0)) > 0.115);
+        let down = (track.index_at(BAMBOO.from)..track.index_at(BAMBOO.to))
+            .filter(|&index| grade(index as f32 * step) < -0.105)
+            .count() as f32
+            * step;
+        assert!(down > 200.0, "{down} m at 11 %");
+    }
+
+    #[test]
+    fn the_road_winds_down_the_bamboo_hill_in_tight_esses() {
+        // Four tight bends and more, one after the other, each the other
+        // way.
+        let track = Track::new(&TSUSHIMA.layout);
+        let bends: Vec<f32> = (track.index_at(BAMBOO.from)..track.index_at(BAMBOO.to))
+            .map(|index| track.curvature(index))
+            .filter(|curvature| curvature.abs() > 1.0 / 50.0)
+            .fold(Vec::new(), |mut bends, curvature| {
+                if bends
+                    .last()
+                    .is_none_or(|last: &f32| last.signum() != curvature.signum())
+                {
+                    bends.push(curvature);
+                }
+                bends
+            });
+        assert!(bends.len() >= 5, "{} bends", bends.len());
+        let tightest = (track.index_at(BAMBOO.from)..track.index_at(BAMBOO.to))
+            .map(|index| 1.0 / track.curvature(index).abs())
+            .fold(f32::MAX, f32::min);
+        assert!(tightest < 42.0, "{tightest} m");
     }
 
     #[test]
     fn the_road_rounds_a_lake_with_an_islet_and_crosses_an_inlet_on_the_boardwalk() {
         let track = Track::new(&TSUSHIMA.layout);
         let lap = track.lap_length();
-        // Three sides of the lake, about 75 m from its shore all the way,
-        // with the lake on the right.
+        // Three sides of the lake, close by its shore all the way, with the
+        // lake on the right, and low, just over the water.
         let mut round = 0.0;
         for index in 0..track.sample_count() {
             let point = track.centerline()[index];
             let shore = lakes(point);
-            assert!(shore > 40.0, "{shore} m from the lake at {index}");
-            if LAKE_SHORE.contains(index as f32 * track.step_length(), lap) && shore < 85.0 {
+            assert!(shore > 15.0, "{shore} m from the lake at {index}");
+            let along = index as f32 * track.step_length();
+            if span(2950.0, 3250.0).contains(along, lap) {
+                let height = track.elevations()[index];
+                assert!(height < 6.0, "{height} m up by the lake at {along}");
+            }
+            if LAKE_SHORE.contains(along, lap) && shore < 40.0 {
                 round += track.step_length();
                 let lake_side = (LAKE - point).dot(track.offset_point(index, 1.0) - point);
                 assert!(lake_side < 0.0, "the lake on the left at {index}");

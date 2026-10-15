@@ -1341,8 +1341,9 @@ mod tests {
                 first_flight = Some(step as f32 * DT);
             }
         }
-        // A hop off the road, not a glide down the hill.
-        assert!(highest < 0.6, "{highest} m above the road");
+        // A hop off the road, not a glide down the hill (a little higher
+        // on the steepest hills, at 12 %, banked as they wind).
+        assert!(highest < 0.65, "{highest} m above the road");
         let first_flight = first_flight.expect("it comes down");
         assert!(first_flight < 0.5, "{first_flight} s in the air");
     }

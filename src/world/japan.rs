@@ -60,7 +60,7 @@ const LOG_HEIGHT: f32 = 0.3;
 /// they sway (m); how far downwind they drift as they fall, per metre
 /// fallen; and how far from a camera they are drawn (m).
 const PETALS_ON_ROAD: f32 = 1.0 / 32.0;
-const PETALS_ROUND: f32 = 1.0 / 14.0;
+const PETALS_ROUND: f32 = 1.0 / 5.0;
 const PETAL_FALL_FROM: f32 = 13.0;
 const PETAL_FALL: (f32, f32) = (0.7, 1.5);
 const PETAL_SWAY: (f32, f32) = (0.4, 1.6);
@@ -375,14 +375,15 @@ fn spawn_corridors(
 
 /// Where a prop stands and which way it faces.
 fn spot(track: &Track, prop: &Prop) -> (Vec2, Quat) {
-    match prop.spot {
+    let (position, facing) = match prop.spot {
         Spot::Road { along, lateral } => {
             let index = track.index_at(along);
             let point = track.offset_point(index, lateral);
             (point, facing(track.offset_point(index, 0.0) - point))
         }
         Spot::At { position, heading } => (position, facing(forward(heading))),
-    }
+    };
+    (position, facing * Quat::from_rotation_z(prop.lean))
 }
 
 /// A prop, standing on the ground (on the lowest of it under its box, so

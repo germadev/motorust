@@ -1034,6 +1034,7 @@ pub fn grass_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
     const OLIVE: Color = Color::srgb(0.86, 0.84, 0.58);
     const SWATHES: [Color; 5] = [BLUISH, DEEP, FRESH, YELLOW, OLIVE];
     const FOREST: Color = Color::srgb(0.2, 0.31, 0.29);
+    const DARK_FOREST: Color = Color::srgb(0.13, 0.21, 0.2);
     const EARTHY: Color = Color::srgb(1.0, 0.9, 0.74);
     let at = Vec2::new(p.x, p.z);
     // The swathes, from one green to the next along the noise.
@@ -1060,16 +1061,18 @@ pub fn grass_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
         &EARTHY,
         (steepness * 1.8 + (detail - 0.5) * 0.3).clamp(0.0, 0.5),
     );
-    // Forests up the hills and over the wild land.
+    // Forests up the hills and over the wild land, darkest there: the
+    // shadowy conifers at the foot of the volcano.
     let forest = smoothstep(FOREST_FROM, FOREST_FULL, p.y).max(wild);
     tint.mix(&FOREST, forest * 0.9)
+        .mix(&DARK_FOREST, wild * 0.8)
 }
 
-/// A tint `shade` times as light (linear RGBA), its green a little less
-/// vivid the darker it is.
+/// A tint `shade` times as light (linear RGBA), its green less vivid the
+/// darker it is: a dark grass is a dull one, not a lawn's vivid green.
 fn shaded(tint: Color, shade: f32) -> [f32; 4] {
     let linear = tint.to_linear();
-    let green = shade * (0.66 + 0.34 * shade);
+    let green = shade * (0.45 + 0.55 * shade);
     [
         linear.red * shade,
         linear.green * green,
@@ -1600,6 +1603,9 @@ mod tests {
             let meadow = luma(grass_tint(at(20.0), up, 0.0));
             assert!(luma(grass_tint(at(220.0), up, 0.0)) < 0.6 * meadow);
             assert!(luma(grass_tint(at(20.0), up, 1.0)) < 0.6 * meadow);
+            // Darkest in the wild, at the foot of the mountains.
+            let hill = luma(grass_tint(at(220.0), up, 0.0));
+            assert!(luma(grass_tint(at(220.0), up, 1.0)) < 0.75 * hill);
         }
         // A circuit's shade darkens it, its green the most.
         let tint = Color::srgb(0.9, 1.0, 0.8);
