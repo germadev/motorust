@@ -7,7 +7,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Three tracks** with steep slopes, crests and banked curves (see
+- **Six tracks** with steep slopes, crests and banked curves (see
   [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
@@ -74,6 +74,15 @@ a temple and the castle ridge where the road splits three ways, a red ridge
 and a bamboo hill it winds down in tight esses, under a volcano across the
 strait.
 
+**Fellowship Road**, after The Fellowship of the Ring, follows the journey of
+the film in its order: Hobbiton and the Shire, Bree, up and over Weathertop,
+down through the Trollshaws to the Ford of Bruinen, Rivendell's valley under
+its waterfalls, where the road splits, over the pass of Caradhras and then
+back down round the mountain and through the mines of Moria, 38 m under the
+pass, Lothlórien, where it splits three ways, and down the middle of the
+Anduin between the two kings of the Argonath, past Amon Hen and home again.
+Its own scenery, modelled with Meshy, is on the way.
+
 More about each one in [docs/tracks.md](docs/tracks.md).
 
 ## Quick start
@@ -109,7 +118,7 @@ or English: the system's language at first, changed in Options.
 ## Documentation
 
 - [Playing](docs/gameplay.md): handling, bikes, menus, options and sound.
-- [Tracks](docs/tracks.md): the five tracks, and how to edit one or add a new one.
+- [Tracks](docs/tracks.md): the six tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions.

@@ -863,7 +863,7 @@ impl<'a> Shaper<'a> {
             .collect();
         let lap = track.lap_length();
         let polygon: Option<Vec<Vec2>> = match scenery.coast {
-            Coast::Function(_) => None,
+            Coast::Function(_) | Coast::Inland(_) => None,
             Coast::AroundTrack(margins) => Some(
                 (0..track.sample_count())
                     .step_by(2)
@@ -896,7 +896,7 @@ impl<'a> Shaper<'a> {
     /// Distancia (con signo) a la costa: positiva tierra adentro.
     fn coast(&self, point: Vec2) -> f32 {
         match (&self.scenery.coast, &self.shore) {
-            (Coast::Function(coast), _) => coast(point),
+            (Coast::Function(coast) | Coast::Inland(coast), _) => coast(point),
             (coast, Some((polygon, min, max))) => {
                 // Lejos de la isla, basta con la distancia a la caja.
                 let outside = (*min - point).max(point - *max).max(Vec2::ZERO);
@@ -997,9 +997,10 @@ impl<'a> Shaper<'a> {
             smoothstep(FLAT, FLAT + 25.0, distance),
         );
         let mut blend = smoothstep(FLAT + 10.0, FLAT + 170.0, distance);
-        if self.shore.is_some() {
+        if self.shore.is_some() || matches!(self.scenery.coast, Coast::Inland(_)) {
             // En una isla la costa está cerca: el terreno baja hasta el mar
-            // en cuanto se pasan los muros.
+            // en cuanto se pasan los muros. Inland, so it does to the rivers
+            // and lakes.
             let to_sea = smoothstep(35.0, 0.0, self.coast(point));
             blend = blend.max(to_sea * smoothstep(FLAT, FLAT + 6.0, distance));
         }

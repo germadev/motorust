@@ -101,7 +101,7 @@ This is not WasmFS: WasmFS is Emscripten's file system for programs built with E
 
 ### Size
 
-Without the music, the `.wasm` file was measured at about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. Ghost Island's props and Japanese trees have since added about 4.2 MB of models (mostly JPEG and vertex data, which compress little), not measured in a web build yet. The music (`assets/music/`, nine 192 kbps MP3s: the five tracks' songs, three chill ones and the menus') adds about **37.9 MB**, which compression does not shrink: about **122 MB**, or **71 MB gzipped**, in all. The JavaScript glue is about 120 KB.
+Without the music, the `.wasm` file was measured at about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. Ghost Island's props and Japanese trees have since added about 4.2 MB of models (mostly JPEG and vertex data, which compress little), not measured in a web build yet. The music (`assets/music/`, ten 192 kbps MP3s: the six tracks' songs, three chill ones and the menus') adds about **41.9 MB**, which compression does not shrink: about **126 MB**, or **75 MB gzipped**, in all. The JavaScript glue is about 120 KB.
 
 ## Continuous integration
 

@@ -156,6 +156,11 @@ pub enum Coast {
     /// `Function` does to the sea's. The land drops to them right beyond the
     /// walls where their shores are near, as it does to the sea.
     OutlineWithLakes(&'static [Vec2], fn(Vec2) -> f32),
+    /// Inland, with no sea: the function gives the signed distance to the
+    /// shores of the rivers and lakes, negative in the water, as `Function`
+    /// does; but, as round an island's lakes, the land drops to them right
+    /// beyond the walls where their shores are near.
+    Inland(fn(Vec2) -> f32),
 }
 
 /// Cómo se cierra la carretera por los lados.
