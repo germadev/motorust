@@ -21,6 +21,10 @@ use bevy::{
 pub struct WorldTextures {
     pub grass: Handle<Image>,
     pub rock: Handle<Image>,
+    /// The rock without its warm tint: grey granite (see [`Soil::Granite`]).
+    ///
+    /// [`Soil::Granite`]: super::scenery::Soil::Granite
+    pub granite: Handle<Image>,
     pub sand: Handle<Image>,
     pub asphalt: Handle<Image>,
     pub wall: Handle<Image>,
@@ -84,6 +88,10 @@ impl FromWorld for WorldTextures {
             include_bytes!("../../assets/textures/rock.jpg"),
             TextureEnhance::Rock,
         );
+        let granite = tiled(
+            include_bytes!("../../assets/textures/rock.jpg"),
+            TextureEnhance::Granite,
+        );
         let sand = tiled(
             include_bytes!("../../assets/textures/sand.jpg"),
             TextureEnhance::Sand,
@@ -113,6 +121,7 @@ impl FromWorld for WorldTextures {
         Self {
             grass,
             rock,
+            granite,
             sand,
             asphalt,
             wall,
@@ -162,10 +171,16 @@ fn sampler(vertical: ImageAddressMode) -> ImageSampler {
     })
 }
 
+/// How much of the rock photo's colour granite keeps (see
+/// [`TextureEnhance::Granite`]).
+const GRANITE_COLOR: f32 = 0.15;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextureEnhance {
     Grass,
     Rock,
+    /// The rock, grey (see [`WorldTextures::granite`]).
+    Granite,
     Sand,
     Asphalt,
     Wall,
@@ -277,7 +292,7 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
                     r = (r * 0.92 + 0.03).clamp(0.0, 1.0);
                     b = (b * 0.85).clamp(0.0, 1.0);
                 }
-                TextureEnhance::Rock => {
+                TextureEnhance::Rock | TextureEnhance::Granite => {
                     // Dual-phase seamless blend to break the prominent continuous horizontal crack in rock.jpg
                     let half_w = width / 2;
                     let half_h = height / 2;
@@ -330,6 +345,14 @@ fn enhance_texture(image: &mut Image, kind: TextureEnhance) {
                     r = (r * ratio * 1.06 + 0.015).clamp(0.0, 1.0);
                     g = (g * ratio * 1.02 + 0.01).clamp(0.0, 1.0);
                     b = (b * ratio * 0.96).clamp(0.0, 1.0);
+                    if kind == TextureEnhance::Granite {
+                        // Grey, keeping a trace of the photo's colour, and a
+                        // touch cool, as granite in the shade of a gorge.
+                        let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                        r = lum + (r - lum) * GRANITE_COLOR;
+                        g = lum + (g - lum) * GRANITE_COLOR;
+                        b = ((lum + (b - lum) * GRANITE_COLOR) * 1.04).min(1.0);
+                    }
                 }
                 TextureEnhance::Sand => {
                     let high_pass = [

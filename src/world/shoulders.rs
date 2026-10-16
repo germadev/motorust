@@ -81,7 +81,7 @@ fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
         (Soil::Mine, Ground::Grass | Ground::Rock) => Surface::Dirt(Dust::Desert),
         (_, Ground::Sand) => Surface::Dirt(Dust::Sand),
         (_, Ground::Grass) => Surface::Grass,
-        (Soil::Rock, Ground::Rock) => Surface::Dirt(Dust::Sand),
+        (Soil::Rock | Soil::Granite, Ground::Rock) => Surface::Dirt(Dust::Sand),
         (Soil::Checkered, Ground::Rock) => Surface::Dirt(Dust::Earth),
         // Only on the tallest mountains, never by a road.
         (_, Ground::Snow) => Surface::Grass,

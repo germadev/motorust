@@ -12,6 +12,7 @@ mod lamps;
 mod landmarks;
 mod lettering;
 mod lod;
+mod middle_earth;
 mod mine;
 mod props;
 mod quads;
@@ -68,6 +69,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
             .init_resource::<japan::ModelledProps>()
+            .init_resource::<middle_earth::FellowshipProps>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
@@ -460,6 +462,7 @@ fn build_world(
 struct Builder<'w> {
     textures: Res<'w, textures::WorldTextures>,
     props: Res<'w, japan::ModelledProps>,
+    fellowship: Res<'w, middle_earth::FellowshipProps>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
     meshes: ResMut<'w, Assets<Mesh>>,
@@ -502,6 +505,7 @@ fn build(
     let mut assets = Assets3d {
         textures: &builder.textures,
         props: &builder.props,
+        fellowship: &builder.fellowship,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -567,8 +571,9 @@ fn build(
 /// Dónde guardar las mallas, los materiales y las imágenes del mundo.
 pub struct Assets3d<'a> {
     pub textures: &'a textures::WorldTextures,
-    /// The props made with Meshy (see [`japan`]).
+    /// The props made with Meshy (see [`japan`] and [`middle_earth`]).
     pub props: &'a japan::ModelledProps,
+    pub fellowship: &'a middle_earth::FellowshipProps,
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub images: &'a mut Assets<Image>,

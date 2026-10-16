@@ -88,6 +88,15 @@ impl SeaColors {
                 shallow: rgb(0.82, 0.38, 0.12),
                 foam: rgb(0.96, 0.86, 0.62),
             },
+            // Deep green-grey where it is deep, as the glacial rivers and
+            // lakes of high country, a clearer teal over the shallows and
+            // greyish white water where it breaks.
+            Water::River => Self {
+                deep: rgb(0.07, 0.18, 0.2),
+                open: rgb(0.11, 0.27, 0.29),
+                shallow: rgb(0.27, 0.45, 0.42),
+                foam: rgb(0.88, 0.9, 0.88),
+            },
         }
     }
 }
@@ -488,20 +497,31 @@ mod tests {
     }
 
     #[test]
-    fn the_sea_is_blue_and_the_water_of_a_mine_red() {
+    fn the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey() {
         let sea = SeaColors::of(Water::Sea);
         let iron = SeaColors::of(Water::Iron);
+        let river = SeaColors::of(Water::River);
         for color in [sea.deep, sea.open, sea.shallow] {
             assert!(color.z > color.x && color.z > color.y);
         }
         for color in [iron.deep, iron.open, iron.shallow] {
             assert!(color.x > 2.0 * color.y && color.x > 2.0 * color.z);
         }
-        // The Gold Mine's lake and river are red, every other track's sea
-        // blue.
+        // Green and blue about even, far less saturated than the sea.
+        for color in [river.deep, river.open, river.shallow] {
+            assert!((color.y - color.z).abs() < 0.05 && color.y > color.x + 0.1);
+            assert!(color.z - color.x < 0.2);
+        }
+        // The Gold Mine's lake and river are red, Fellowship Road's rivers
+        // and lakes green-grey, every other track's sea blue.
         for circuit in &crate::circuits::CIRCUITS {
-            let red = circuit.scenery.mine.is_some();
-            let wanted = if red { Water::Iron } else { Water::Sea };
+            let wanted = if circuit.scenery.mine.is_some() {
+                Water::Iron
+            } else if circuit.scenery.middle_earth.is_some() {
+                Water::River
+            } else {
+                Water::Sea
+            };
             assert_eq!(circuit.scenery.water, wanted, "{}", circuit.name);
         }
     }

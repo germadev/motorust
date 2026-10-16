@@ -228,6 +228,7 @@ pub const BAY: Circuit = Circuit {
         mine: None,
         desert: None,
         japan: None,
+        middle_earth: None,
     },
 };
 

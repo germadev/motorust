@@ -21,6 +21,9 @@ pub const SEA_LEVEL: f32 = -1.0;
 /// Hasta esta distancia de la línea central, el terreno es la prolongación de
 /// la carretera (incluido el arcén hasta los muros).
 const FLAT: f32 = WALL_DISTANCE + 1.5;
+/// How far from a bridge the ground keeps under its deck (m), and from
+/// where it is the ground as anywhere else.
+const BRIDGE_REACH: (f32, f32) = (FLAT + 12.0, FLAT + 22.0);
 /// Lo que queda el terreno por debajo de la carretera, para que no asome.
 const UNDER_ROAD: f32 = 0.03;
 const FINE_SPACING: f32 = 3.5;
@@ -168,11 +171,8 @@ impl Terrain {
         // Lo más caro es buscar la carretera más cercana a cada punto: se
         // reparte entre los núcleos del procesador.
         let heights = on_cores(&points, threads, heights_of);
-        let flowers = scenery
-            .japan
-            .as_ref()
-            .filter(|japan| !japan.flowers.is_empty())
-            .map(|japan| FlowerMap::new(track, japan.flowers));
+        let fields = scenery.flower_fields();
+        let flowers = (!fields.is_empty()).then(|| FlowerMap::new(track, fields));
         // And what the ground looks like at each point, but for the way it
         // faces: the flowers in it are worked out with the roads near too.
         let grid: Vec<Vec3> = points
@@ -577,6 +577,9 @@ impl Terrain {
                                         soil_vertex_color(p, normal)
                                     }
                                     (Soil::Mine, ..) => canyon_vertex_color(ground_type, p, normal),
+                                    (Soil::Granite, Ground::Rock, _) => {
+                                        granite_vertex_color(p, normal)
+                                    }
                                     (_, Ground::Grass, _) => {
                                         let outside = (self.fine.0 - Vec2::new(p.x, p.z))
                                             .max(Vec2::new(p.x, p.z) - self.fine.1)
@@ -600,7 +603,7 @@ impl Terrain {
             }
         }
         let rock_tile = match self.soil {
-            Soil::Rock | Soil::Mine => ROCK_TILE,
+            Soil::Rock | Soil::Mine | Soil::Granite => ROCK_TILE,
             Soil::Checkered => SOIL_TILE,
         };
         let ground = |ground: Ground, flowers: Option<FlowerKind>, mesh: Mesh| GroundMesh {
@@ -659,6 +662,7 @@ pub fn spawn_terrain(
             (Ground::Sand, _) => (Some(&textures.sand), 0.88, 0.28),
             (Ground::Rock, Soil::Rock | Soil::Mine) => (Some(&textures.rock), 0.78, 0.42),
             (Ground::Rock, Soil::Checkered) => (Some(&textures.soil), 0.92, 0.2),
+            (Ground::Rock, Soil::Granite) => (Some(&textures.granite), 0.82, 0.4),
             // Snow, white but for its shading (see `ground_vertex_color`).
             (Ground::Snow, _) => (None, 0.55, 0.35),
         };
@@ -1062,7 +1066,11 @@ impl<'a> Shaper<'a> {
         if bridge > 0.0 {
             let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
             let wild = self.pit(point, wild);
-            height = height.lerp(wild.min(road - 2.5), bridge);
+            // Near the bridge, that is: further off, the ground as anywhere
+            // else, so that cliffs may rise beside a long bridge over a
+            // river (as the Argonath's, either side of the causeway).
+            let near = 1.0 - smoothstep(BRIDGE_REACH.0, BRIDGE_REACH.1, distance);
+            height = height.lerp(wild.min(road - 2.5), bridge * near);
         }
         height
     }
@@ -1189,6 +1197,14 @@ fn rock_projection(point: Vec3, face: Vec3) -> Vec2 {
         let u = if face.z > 0.0 { -point.x } else { point.x };
         Vec2::new(u, -point.y)
     }
+}
+
+/// Grey granite's colour at `p`: the rock's strata and patches, without
+/// their ochre and gold.
+fn granite_vertex_color(p: Vec3, normal: Vec3) -> [f32; 4] {
+    let [r, g, b, a] = ground_vertex_color(Ground::Rock, p, normal);
+    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    [lum * 0.98, lum, lum * 1.03, a]
 }
 
 pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {

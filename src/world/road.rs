@@ -38,6 +38,8 @@ const RAILING_HEIGHT: f32 = 1.05;
 const RAILING_GREEN: Color = Color::srgb(0.08, 0.42, 0.28);
 /// The lacquered vermilion of a shrine's fence.
 const SHRINE_VERMILION: Color = Color::srgb(0.8, 0.17, 0.07);
+/// The weathered wood of a fence along the Shire's lanes.
+const FENCE_WOOD: Color = Color::srgb(0.42, 0.33, 0.24);
 const WALL_THICKNESS: f32 = 0.6;
 /// Lo que se hunde el muro en el suelo, para que no flote en las cuestas.
 const WALL_FOOTING: f32 = 0.5;
@@ -220,7 +222,7 @@ fn spawn_surface(
     let planked = |index: usize| {
         road.number == 0
             && scenery.bridges.iter().any(|bridge| {
-                bridge.style == BridgeStyle::Wooden
+                bridge.style.wooden()
                     && bridge.span.contains(index as f32 * line.step_length(), lap)
             })
     };
@@ -338,10 +340,11 @@ fn spawn_surface(
         }
     }
     // The see-through ones: the seafront's painted railing, a shrine's
-    // lacquered fence.
+    // lacquered fence, a wooden fence along a lane.
     for (wanted, color, roughness) in [
         (WallStyle::Railing, RAILING_GREEN, 0.5),
         (WallStyle::ShrineFence, SHRINE_VERMILION, 0.7),
+        (WallStyle::Fence, FENCE_WOOD, 0.9),
     ] {
         let mesh = railing(road, color, |index, side| {
             style(index, side) == Some(wanted)
@@ -372,7 +375,7 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
         // Wooden bridges have their own fence (see `structures`).
         return match bridge.style {
             BridgeStyle::RedArches | BridgeStyle::Truss => Some(WallStyle::Concrete),
-            BridgeStyle::Wooden => None,
+            BridgeStyle::Wooden | BridgeStyle::OldWooden => None,
         };
     }
     let run = scenery
@@ -507,7 +510,11 @@ fn profile(style: WallStyle) -> Profile {
             3,
             Vec2::splat(WALL_TILE),
         ),
-        WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing | WallStyle::ShrineFence => (
+        WallStyle::Checkered
+        | WallStyle::Timber
+        | WallStyle::Railing
+        | WallStyle::ShrineFence
+        | WallStyle::Fence => (
             &[
                 (0.0, foot),
                 (0.0, WALL_HEIGHT),
@@ -1300,7 +1307,9 @@ mod tests {
                     BridgeStyle::RedArches | BridgeStyle::Truss => {
                         assert_eq!(wall, Some(WallStyle::Concrete))
                     }
-                    BridgeStyle::Wooden => assert_eq!(wall, None, "{}", circuit.name),
+                    BridgeStyle::Wooden | BridgeStyle::OldWooden => {
+                        assert_eq!(wall, None, "{}", circuit.name)
+                    }
                 }
                 // Off the bridge, the walls are back.
                 let off = wall_style(scenery, lap, span.to + 20.0, Side::Left);

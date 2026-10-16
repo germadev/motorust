@@ -64,8 +64,17 @@ pub fn spawn_props(
     occupied.extend(super::desert::spawn_desert(
         world, track, terrain, scenery, assets,
     ));
+    // The flowers are of feudal Japan or of Middle-earth.
+    let (japanese, middle) = if scenery.japan.is_some() {
+        (flowers, FlowerPlan::default())
+    } else {
+        (FlowerPlan::default(), flowers)
+    };
     occupied.extend(super::japan::spawn_japan(
-        world, track, terrain, scenery, flowers, assets,
+        world, track, terrain, scenery, japanese, assets,
+    ));
+    occupied.extend(super::middle_earth::spawn_middle_earth(
+        world, track, terrain, scenery, middle, assets,
     ));
     let houses = place_houses(track, terrain, &scenery.houses, &occupied);
     for house in &houses {

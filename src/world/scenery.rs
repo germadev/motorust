@@ -181,6 +181,9 @@ pub enum WallStyle {
     /// A low vermilion fence of posts and rails, as round a shrine: like
     /// the railing, the ground beyond it shows through.
     ShrineFence,
+    /// A low fence of weathered wooden posts and rails, as along the lanes
+    /// of the Shire: the ground beyond it shows through.
+    Fence,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -194,6 +197,9 @@ pub enum Soil {
     /// A desert canyon of red and ochre rock over dry, dusty earth; its
     /// tunnels are mine galleries propped with timber and lit by lanterns.
     Mine,
+    /// Grey granite and schist, bare and hard, as the Argonath are carved
+    /// from: the rock of the high country of *The Lord of the Rings*.
+    Granite,
 }
 
 /// The light of a track: a summer day; the last hours of a clear autumn
@@ -204,6 +210,10 @@ pub enum SkyStyle {
     Day,
     GoldenHour,
     Dusk,
+    /// A summer evening in high country, the sun low and golden, graded as
+    /// a film is: the light of New Zealand, where *The Lord of the Rings*
+    /// was shot.
+    HighCountry,
 }
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
@@ -212,6 +222,9 @@ pub enum SkyStyle {
 pub enum Water {
     Sea,
     Iron,
+    /// The rivers and lakes of high country: deep green and grey, clearer
+    /// over the shallows.
+    River,
 }
 
 /// An open-pit mine round the water (see [`Scenery::pit`]): benches cut in
@@ -242,6 +255,13 @@ pub struct Bridge {
 /// How high the fence of a wooden bridge usually stands over its deck (m).
 pub const WOODEN_FENCE: f32 = 1.2;
 
+impl BridgeStyle {
+    /// Whether it is of wood, old or new, with its own fence.
+    pub fn wooden(self) -> bool {
+        matches!(self, BridgeStyle::Wooden | BridgeStyle::OldWooden)
+    }
+}
+
 /// How a bridge is built.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BridgeStyle {
@@ -249,6 +269,9 @@ pub enum BridgeStyle {
     RedArches,
     /// A wooden deck of planks on log piers, with a wooden fence on each side.
     Wooden,
+    /// The same, old and weathered: its boards silver-grey, patched darker
+    /// and mossy, its posts leaning a little and its rails sagging.
+    OldWooden,
     /// A concrete deck between two steel through trusses, braced across
     /// overhead, on concrete piers, as in West Way (Moto Racer).
     Truss,
@@ -426,6 +449,20 @@ pub struct Scenery {
     /// The scenery of feudal Japan, from models made with Meshy, or `None`:
     /// see [`Japan`].
     pub japan: Option<Japan>,
+    /// The scenery of Middle-earth, from models made with Meshy, or `None`:
+    /// see [`MiddleEarth`].
+    pub middle_earth: Option<MiddleEarth>,
+}
+
+impl Scenery {
+    /// The fields of flowers, of feudal Japan or of Middle-earth.
+    pub fn flower_fields(&self) -> &'static [FlowerField] {
+        match (&self.japan, &self.middle_earth) {
+            (Some(japan), _) => japan.flowers,
+            (None, Some(middle_earth)) => middle_earth.flowers,
+            (None, None) => &[],
+        }
+    }
 }
 
 /// The scenery of feudal Japan, as at Ghost Island (see
@@ -506,6 +543,8 @@ pub enum PetalKind {
     Maple,
     /// White cherry petals.
     Cherry,
+    /// The golden leaves of the mallorns.
+    Gold,
 }
 
 /// A clearing carpeted with red maple leaves, ringed with low logs, as
@@ -593,39 +632,72 @@ impl PropModel {
 
 /// A prop and where it stands, facing: by the road, `along` metres from the
 /// finish line and `lateral` metres to the left of its centre line (to the
-/// right if negative), facing the road; or anywhere, at `position` (x, z)
-/// facing `heading` (see [`crate::geometry`]). It stands on the ground, or
-/// in the sea, with its foot a little under the water; `scale` times as big
-/// as made (see [`Prop::scaled`]), and leaning `lean` radians towards its
-/// side that was -X as made (see [`Prop::leaning`]).
+/// right if negative), facing the road; over the road, facing along it; or
+/// anywhere, at `position` (x, z) facing `heading` (see
+/// [`crate::geometry`]). It stands on the ground, or in the water, with its
+/// foot a little under it; `scale` times as big as made (see
+/// [`Prop::scaled`]), turned `turn` radians from that (see
+/// [`Prop::turned`]), and leaning `lean` radians towards its side that was
+/// -X as made (see [`Prop::leaning`]). Its model is one of feudal Japan's
+/// ([`PropModel`]) or of Middle-earth's ([`MiddleEarthModel`]).
 #[derive(Clone, Copy, Debug)]
-pub struct Prop {
-    pub model: PropModel,
+pub struct Prop<M = PropModel> {
+    pub model: M,
     pub spot: Spot,
     pub scale: f32,
+    pub turn: f32,
     pub lean: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Spot {
-    Road { along: f32, lateral: f32 },
-    At { position: Vec2, heading: f32 },
+    Road {
+        along: f32,
+        lateral: f32,
+    },
+    /// Over the middle of the road, as a gate the road runs through.
+    Over {
+        along: f32,
+    },
+    At {
+        position: Vec2,
+        heading: f32,
+    },
 }
 
 /// A prop by the road (see [`Prop`]).
-pub const fn by_road(model: PropModel, along: f32, lateral: f32) -> Prop {
+pub const fn by_road<M: Copy>(model: M, along: f32, lateral: f32) -> Prop<M> {
     Prop {
         model,
         spot: Spot::Road { along, lateral },
         scale: 1.0,
+        turn: 0.0,
         lean: 0.0,
     }
 }
 
-impl Prop {
+/// A prop over the road, facing along it (see [`Prop`]).
+pub const fn over_road<M: Copy>(model: M, along: f32) -> Prop<M> {
+    Prop {
+        model,
+        spot: Spot::Over { along },
+        scale: 1.0,
+        turn: 0.0,
+        lean: 0.0,
+    }
+}
+
+impl<M: Copy> Prop<M> {
     /// The same prop, `scale` times as big.
     pub const fn scaled(self, scale: f32) -> Self {
         Prop { scale, ..self }
+    }
+
+    /// The same prop turned `turn` radians about its foot (anticlockwise
+    /// seen from above): one by the road turned to face the riders coming
+    /// along it.
+    pub const fn turned(self, turn: f32) -> Self {
+        Prop { turn, ..self }
     }
 
     /// The same prop leaning `lean` radians about its foot, towards its side
@@ -637,7 +709,7 @@ impl Prop {
 }
 
 /// A prop anywhere (see [`Prop`]).
-pub const fn standing(model: PropModel, x: f32, z: f32, heading: f32) -> Prop {
+pub const fn standing<M: Copy>(model: M, x: f32, z: f32, heading: f32) -> Prop<M> {
     Prop {
         model,
         spot: Spot::At {
@@ -645,8 +717,84 @@ pub const fn standing(model: PropModel, x: f32, z: f32, heading: f32) -> Prop {
             heading,
         },
         scale: 1.0,
+        turn: 0.0,
         lean: 0.0,
     }
+}
+
+/// The scenery of Middle-earth, as at Fellowship Road (see
+/// [`crate::world::middle_earth`]): props made with Meshy standing about,
+/// hobbit holes in their grassy banks, fields of flowers and leaves
+/// drifting down.
+pub struct MiddleEarth {
+    pub props: &'static [Prop<MiddleEarthModel>],
+    pub flowers: &'static [FlowerField],
+    pub petals: &'static [Petals],
+}
+
+/// One of the props of Middle-earth, made with Meshy (see
+/// [`crate::world::middle_earth`]), in the order of the film.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MiddleEarthModel {
+    /// The front of a hobbit hole, with its round door (green, yellow, red
+    /// or blue), set into a grassy bank, a chimney rising out of it.
+    HobbitDoorGreen,
+    HobbitDoorYellow,
+    HobbitDoorRed,
+    HobbitDoorBlue,
+    /// Bag End: the grandest hobbit hole, its picket fence before its
+    /// garden, set into its hill.
+    BagEnd,
+    /// The great pine of the party field.
+    PartyTree,
+    /// The gnarled oak on the hill over Bag End.
+    BagEndOak,
+    /// The mill of Bywater, its wheel turning.
+    Mill,
+    /// The Green Dragon of Bywater: a long, low inn under rounded thatch.
+    GreenDragon,
+    /// Its sign on its post.
+    GreenDragonSign,
+    /// Gandalf's cart, loaded with fireworks.
+    GandalfCart,
+    LogPile,
+    Scarecrow,
+    /// The old tree the hobbits hid under, its roots arched over a hollow.
+    RootTree,
+    /// The ferry raft over the Brandywine.
+    Ferry,
+    /// Bree's gate, over the road.
+    BreeGate,
+    /// The Prancing Pony: three storeys over an archway into its yard.
+    PrancingPony,
+    /// Houses of Bree: a wide one under thatch, a tall, narrow one.
+    BreeHouseA,
+    BreeHouseB,
+    /// The ring of ruins of Amon Sûl on Weathertop, and a broken arch.
+    WeathertopRuin,
+    RuinArch,
+    /// The three trolls turned to stone.
+    StoneTrolls,
+    /// The Last Homely House of Rivendell, an elven tower, the domed
+    /// pavilion and the lamps of its paths.
+    LastHomelyHouse,
+    ElvenTower,
+    Gazebo,
+    ElvenLamp,
+    /// The Doors of Durin, closed, in the Walls of Moria.
+    DurinDoors,
+    /// A mallorn of Lothlórien with its flet and its stair round its trunk.
+    MallornFlet,
+    /// Galadriel's swan ship, the sailing ship of the elves and an elven
+    /// rowing boat.
+    SwanShip,
+    ElvenShip,
+    ElvenBoat,
+    /// The kings of the Argonath: the first crowned, the second helmed.
+    ArgonathA,
+    ArgonathB,
+    /// The seat of seeing on Amon Hen.
+    AmonHenSeat,
 }
 
 /// The roadside of a desert of the American West, as in West Way (Moto

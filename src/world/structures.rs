@@ -14,7 +14,7 @@ use super::scenery::{
 };
 use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, GroundMesh, Terrain};
 use super::textures::WorldTextures;
-use crate::geometry::{fbm, smoothstep};
+use crate::geometry::{fbm, random01, smoothstep};
 use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
 
 /// Alto de las paredes del túnel hasta el techo (m), y lo que se abomba la
@@ -80,6 +80,9 @@ const PLANK_TILE: f32 = 4.0;
 const PLANK_LIFT: f32 = 0.02;
 const POST_WOOD: Color = Color::srgb(0.34, 0.2, 0.09);
 const RAIL_WOOD: Color = Color::srgb(0.52, 0.33, 0.15);
+/// An old bridge's wood, weathered grey.
+const OLD_POST_WOOD: Color = Color::srgb(0.3, 0.27, 0.23);
+const OLD_RAIL_WOOD: Color = Color::srgb(0.42, 0.39, 0.34);
 
 /// The meshes of the tunnels and the bridges, with their materials, and
 /// the lamps of the tunnels: worked out away from the main thread, with the
@@ -123,6 +126,12 @@ pub fn structure_pieces(
                 perceptual_roughness: 0.9,
                 ..default()
             },
+            Soil::Granite => StandardMaterial {
+                base_color: Color::srgb(0.78, 0.78, 0.8),
+                base_color_texture: Some(textures.granite.clone()),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
             Soil::Checkered => StandardMaterial {
                 base_color_texture: Some(textures.soil.clone()),
                 perceptual_roughness: 0.9,
@@ -132,7 +141,7 @@ pub fn structure_pieces(
         // Warm and lit by the lamps, as in Moto Racer; through checkerboard
         // earth, a cave of it.
         let lining = match scenery.soil {
-            Soil::Rock | Soil::Mine => StandardMaterial {
+            Soil::Rock | Soil::Mine | Soil::Granite => StandardMaterial {
                 base_color: Color::srgb(0.95, 0.78, 0.52),
                 base_color_texture: Some(textures.panels.clone()),
                 emissive: LinearRgba::rgb(0.12, 0.08, 0.035),
@@ -177,11 +186,16 @@ pub fn structure_pieces(
             fog_enabled: false,
             ..default()
         };
+        // Through granite, the frame is cut from it, as a dwarves' gate.
+        let frame = match scenery.soil {
+            Soil::Granite => rock.clone(),
+            _ => concrete.clone(),
+        };
         for (mesh, material) in [
             (parts.rock, rock),
             (parts.grass, grass),
             (parts.lining, lining),
-            (parts.portals, concrete.clone()),
+            (parts.portals, frame),
             (parts.sidewalks, concrete),
             (parts.lights, lights),
             (parts.checker, checker),
@@ -196,13 +210,14 @@ pub fn structure_pieces(
     }
     for bridge in scenery.bridges {
         let indices = indices(track, bridge.span, lap);
-        if bridge.style == BridgeStyle::Wooden {
-            let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices, bridge.fence);
+        if bridge.style.wooden() {
+            let old = bridge.style == BridgeStyle::OldWooden;
+            let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices, bridge.fence, old);
             pieces.push((
                 planks,
                 StandardMaterial {
                     base_color_texture: Some(textures.planks.clone()),
-                    perceptual_roughness: 0.85,
+                    perceptual_roughness: if old { 0.95 } else { 0.85 },
                     ..default()
                 },
             ));
@@ -401,8 +416,11 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
             top.lerp(deck, reach).max((earth + 0.05).min(deck))
         })
     };
-    let inner = WALL_DISTANCE;
-    let sidewalk_from = track.half_width();
+    // The walls where they stand, closer in where the road narrows (as at
+    // a gate the road goes through into the tunnel), and the walkways
+    // between them and the asphalt.
+    let inner = |k: usize| track.wall_at(k);
+    let sidewalk_from = |k: usize| track.half_width_at(k);
     for pair in indices.windows(2) {
         let (i, j) = (pair[0], pair[1]);
         let (vi, vj) = ((i as f32 * step) / 4.0, (i as f32 * step + step) / 4.0);
@@ -411,96 +429,95 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
             Vec3::new(toward.x, 0.0, toward.y)
         };
         for side in [1.0, -1.0] {
-            let wall = side * inner;
+            let wall = |k: usize| side * inner(k);
             // Pared: el tablero abajo y el revestimiento hasta el techo.
             checker.quad(
                 [
-                    (at(i, wall, -1.5), Vec2::new(vi * 4.0, 2.0)),
-                    (at(j, wall, -1.5), Vec2::new(vj * 4.0, 2.0)),
-                    (at(j, wall, TUNNEL_CHECKER), Vec2::new(vj * 4.0, 0.0)),
-                    (at(i, wall, TUNNEL_CHECKER), Vec2::new(vi * 4.0, 0.0)),
+                    (at(i, wall(i), -1.5), Vec2::new(vi * 4.0, 2.0)),
+                    (at(j, wall(j), -1.5), Vec2::new(vj * 4.0, 2.0)),
+                    (at(j, wall(j), TUNNEL_CHECKER), Vec2::new(vj * 4.0, 0.0)),
+                    (at(i, wall(i), TUNNEL_CHECKER), Vec2::new(vi * 4.0, 0.0)),
                 ],
-                inward(wall),
+                inward(side),
                 Color::WHITE,
             );
             lining.quad(
                 [
-                    (at(i, wall, TUNNEL_CHECKER), Vec2::new(vi, 1.5)),
-                    (at(j, wall, TUNNEL_CHECKER), Vec2::new(vj, 1.5)),
-                    (at(j, wall, TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
-                    (at(i, wall, TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
+                    (at(i, wall(i), TUNNEL_CHECKER), Vec2::new(vi, 1.5)),
+                    (at(j, wall(j), TUNNEL_CHECKER), Vec2::new(vj, 1.5)),
+                    (at(j, wall(j), TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
+                    (at(i, wall(i), TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
                 ],
-                inward(wall),
+                inward(side),
                 Color::WHITE,
             );
             // Aceras.
-            let walk = side * sidewalk_from;
+            let walk = |k: usize| side * sidewalk_from(k);
             // Siguen el peralte, como el arcén que tapan.
             let ground = |k: usize, lateral: f32| {
                 track.surface_point(k, lateral) + Vec3::Y * (SURFACE_Y + 0.03)
             };
             sidewalks.quad(
                 [
-                    (ground(i, walk), Vec2::new(vi, 0.0)),
-                    (ground(j, walk), Vec2::new(vj, 0.0)),
-                    (ground(j, wall), Vec2::new(vj, 1.0)),
-                    (ground(i, wall), Vec2::new(vi, 1.0)),
+                    (ground(i, walk(i)), Vec2::new(vi, 0.0)),
+                    (ground(j, walk(j)), Vec2::new(vj, 0.0)),
+                    (ground(j, wall(j)), Vec2::new(vj, 1.0)),
+                    (ground(i, wall(i)), Vec2::new(vi, 1.0)),
                 ],
                 Vec3::Y,
                 Color::WHITE,
             );
             // Their kerb, down to under the asphalt: nothing shows through
             // the step between them.
-            let kerb = |k: usize| ground(k, walk) - Vec3::Y * 0.12;
+            let kerb = |k: usize| ground(k, walk(k)) - Vec3::Y * 0.12;
             sidewalks.quad(
                 [
                     (kerb(i), Vec2::new(vi, 0.05)),
                     (kerb(j), Vec2::new(vj, 0.05)),
-                    (ground(j, walk), Vec2::new(vj, 0.0)),
-                    (ground(i, walk), Vec2::new(vi, 0.0)),
+                    (ground(j, walk(j)), Vec2::new(vj, 0.0)),
+                    (ground(i, walk(i)), Vec2::new(vi, 0.0)),
                 ],
-                inward(wall),
+                inward(side),
                 Color::srgb(0.85, 0.85, 0.85),
             );
             // Lámparas en las paredes, a media altura.
             if i % TUNNEL_LIGHT_EVERY == 0 {
-                let lamp = wall - side * 0.05;
+                let lamp = |k: usize| wall(k) - side * 0.05;
                 lights.quad(
                     [
-                        (at(i, lamp, 3.6), Vec2::ZERO),
-                        (at(j, lamp, 3.6), Vec2::X),
-                        (at(j, lamp, 4.4), Vec2::ONE),
-                        (at(i, lamp, 4.4), Vec2::Y),
+                        (at(i, lamp(i), 3.6), Vec2::ZERO),
+                        (at(j, lamp(j), 3.6), Vec2::X),
+                        (at(j, lamp(j), 4.4), Vec2::ONE),
+                        (at(i, lamp(i), 4.4), Vec2::Y),
                     ],
-                    inward(wall),
+                    inward(side),
                     Color::WHITE,
                 );
                 // Its light on the wall round it, brightest at the lamp,
                 // and on the walkway under it.
                 let (before, after) = around(i, 1, 2);
-                let glow = wall - side * 0.02;
+                let glow = |k: usize| wall(k) - side * 0.02;
                 let (low, high) = (4.0 - POOL_ON_WALL, (4.0 + POOL_ON_WALL).min(TUNNEL_HEIGHT));
                 let v = |height: f32| 0.5 - (height - 4.0) / (2.0 * POOL_ON_WALL);
                 pools.quad(
                     [
-                        (at(before, glow, low), Vec2::new(0.0, v(low))),
-                        (at(after, glow, low), Vec2::new(1.0, v(low))),
-                        (at(after, glow, high), Vec2::new(1.0, v(high))),
-                        (at(before, glow, high), Vec2::new(0.0, v(high))),
+                        (at(before, glow(before), low), Vec2::new(0.0, v(low))),
+                        (at(after, glow(after), low), Vec2::new(1.0, v(low))),
+                        (at(after, glow(after), high), Vec2::new(1.0, v(high))),
+                        (at(before, glow(before), high), Vec2::new(0.0, v(high))),
                     ],
-                    inward(wall),
+                    inward(side),
                     Color::WHITE,
                 );
                 let floor = |k: usize, lateral: f32| {
                     track.surface_point(k, lateral) + Vec3::Y * (SURFACE_Y + 0.045)
                 };
-                let (near, far) = (side * sidewalk_from, wall - side * 0.02);
                 pools.quad(
                     [
-                        (floor(before, near), Vec2::new(0.0, 0.0)),
-                        (floor(after, near), Vec2::new(1.0, 0.0)),
-                        (floor(after, far), Vec2::new(1.0, 0.5)),
-                        (floor(before, far), Vec2::new(0.0, 0.5)),
+                        (floor(before, walk(before)), Vec2::new(0.0, 0.0)),
+                        (floor(after, walk(after)), Vec2::new(1.0, 0.0)),
+                        (floor(after, glow(after)), Vec2::new(1.0, 0.5)),
+                        (floor(before, glow(before)), Vec2::new(0.0, 0.5)),
                     ],
                     Vec3::Y,
                     Color::srgb(0.6, 0.6, 0.6),
@@ -515,17 +532,23 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                     (at(j, shell, rock_top(j, shell)), Vec2::new(vj, 0.0)),
                     (at(i, shell, rock_top(i, shell)), Vec2::new(vi, 0.0)),
                 ],
-                -inward(wall),
+                -inward(side),
                 Color::WHITE,
             );
         }
         // El techo, por dentro, con dos filas de luces.
         lining.quad(
             [
-                (at(i, -inner, TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
-                (at(j, -inner, TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
-                (at(j, inner, TUNNEL_HEIGHT), Vec2::new(vj, inner / 2.0)),
-                (at(i, inner, TUNNEL_HEIGHT), Vec2::new(vi, inner / 2.0)),
+                (at(i, -inner(i), TUNNEL_HEIGHT), Vec2::new(vi, 0.0)),
+                (at(j, -inner(j), TUNNEL_HEIGHT), Vec2::new(vj, 0.0)),
+                (
+                    at(j, inner(j), TUNNEL_HEIGHT),
+                    Vec2::new(vj, inner(j) / 2.0),
+                ),
+                (
+                    at(i, inner(i), TUNNEL_HEIGHT),
+                    Vec2::new(vi, inner(i) / 2.0),
+                ),
             ],
             Vec3::NEG_Y,
             Color::WHITE,
@@ -534,8 +557,8 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         if i % TUNNEL_RIB_EVERY == 0 {
             let rib = TUNNEL_HEIGHT - 0.3;
             lining.beam(
-                at(i, -inner, rib),
-                at(i, inner, rib),
+                at(i, -inner(i), rib),
+                at(i, inner(i), rib),
                 0.6,
                 0.6,
                 Color::srgb(0.8, 0.8, 0.8),
@@ -607,7 +630,7 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
                 Some(_) => face.y > CLIFF_NORMAL_Y,
                 None => gentle,
             };
-            if soil == Soil::Rock && grassy {
+            if matches!(soil, Soil::Rock | Soil::Granite) && grassy {
                 let center = corners.iter().map(|(p, _)| *p).sum::<Vec3>() / 4.0;
                 let corners = corners.map(|(p, _)| (p, Vec2::new(p.x, p.z) / GRASS_TILE));
                 // In a field of flowers, its flowers: the top is the hill
@@ -652,6 +675,7 @@ fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]
         let ahead = crate::geometry::forward(heading);
         let facing = Vec3::new(ahead.x, 0.0, ahead.y) * outward;
         let top = |lateral: f32| rock_top(end, lateral);
+        let inner = inner(end);
         let framed = inner + FRAME;
         let lintel = TUNNEL_HEIGHT + FRAME;
         // La roca: a los lados del marco y por encima.
@@ -883,12 +907,16 @@ fn truss_bridge_meshes(track: &Track, terrain: &Terrain, indices: &[usize]) -> (
 /// A wooden bridge: planks laid across from fence to fence over the road and
 /// on the sides and underside of the deck (the first mesh), and the logs
 /// (the second): a fence of posts and two rails on each side, and piers of
-/// two logs and a crossbeam down to the water.
+/// two logs and a crossbeam down to the water. An `old` one is weathered
+/// (see [`BridgeStyle::OldWooden`]): its boards in strips of silver-grey,
+/// darker and mossy, its wood grey, its posts leaning and its rails sagging,
+/// here and there a lower rail gone.
 fn wooden_bridge_meshes(
     track: &Track,
     terrain: &Terrain,
     indices: &[usize],
     fence_height: f32,
+    old: bool,
 ) -> (Mesh, Mesh) {
     let mut planks = MeshBuilder::default();
     let mut logs = MeshBuilder::default();
@@ -906,6 +934,13 @@ fn wooden_bridge_meshes(
             k as f32 * step / PLANK_TILE,
             (k + 1) as f32 * step / PLANK_TILE,
         );
+        // Old boards, strip by strip: weathered silver-grey, some darker
+        // and damp, some green with moss.
+        let board = if old {
+            weathered(i as u32)
+        } else {
+            Color::WHITE
+        };
         // The boards run across the road: along them is U.
         for (lift, facing) in [(Vec3::ZERO, Vec3::Y), (down, Vec3::NEG_Y)] {
             planks.quad(
@@ -916,7 +951,7 @@ fn wooden_bridge_meshes(
                     (deck(i, edge(i)) - lift, Vec2::new(across, v0)),
                 ],
                 facing,
-                Color::WHITE,
+                board,
             );
         }
         for side in [-1.0, 1.0] {
@@ -930,25 +965,47 @@ fn wooden_bridge_meshes(
                     (deck(i, side * edge(i)) - down, Vec2::new(thick, v0)),
                 ],
                 out,
-                Color::WHITE,
+                board,
             );
-            // The fence: a post every other point, rails between them.
-            let fence =
-                |i: usize, height: f32| deck(i, side * (track.wall_at(i) + 0.2)) + Vec3::Y * height;
+            // The fence: a post every other point, rails between them; old,
+            // the posts lean, the rails sag and here and there the lower one
+            // is gone.
+            let (post_wood, rail_wood) = if old {
+                (OLD_POST_WOOD, OLD_RAIL_WOOD)
+            } else {
+                (POST_WOOD, RAIL_WOOD)
+            };
+            let seed =
+                |at: usize, n: u32| random01(at as u32 * 13 + n + if side > 0.0 { 7 } else { 0 });
+            let sag = |at: usize| if old { 0.12 * (seed(at, 1) - 0.5) } else { 0.0 };
+            let fence = |i: usize, height: f32| {
+                deck(i, side * (track.wall_at(i) + 0.2)) + Vec3::Y * (height + sag(i))
+            };
             for (at, wanted) in [(i, k % 2 == 0), (j, k + 2 == indices.len())] {
                 if !wanted {
                     continue;
                 }
+                let lean = if old {
+                    Vec3::new(seed(at, 2) - 0.5, 0.0, seed(at, 3) - 0.5) * 0.3
+                } else {
+                    Vec3::ZERO
+                };
                 logs.beam(
                     fence(at, -0.3),
-                    fence(at, fence_height),
+                    fence(at, fence_height) + lean,
                     0.3,
                     0.3,
-                    POST_WOOD,
+                    post_wood,
                 );
             }
-            for height in [fence_height - 0.12, fence_height * 0.5] {
-                logs.beam(fence(i, height), fence(j, height), 0.17, 0.17, RAIL_WOOD);
+            for (rail, height) in [fence_height - 0.12, fence_height * 0.5]
+                .into_iter()
+                .enumerate()
+            {
+                if old && rail == 1 && seed(i, 4) < 0.12 {
+                    continue;
+                }
+                logs.beam(fence(i, height), fence(j, height), 0.17, 0.17, rail_wood);
             }
         }
     }
@@ -971,6 +1028,23 @@ fn wooden_bridge_meshes(
         );
     }
     (planks.build(), logs.build())
+}
+
+/// The tint of an old bridge's boards at strip `k` (over the planks'
+/// texture, which is a warm brown: the tints take the red out of it, to a
+/// grey): mostly weathered silver-grey, some strips darker and damp, some
+/// green with moss.
+fn weathered(k: u32) -> Color {
+    let pick = random01(k * 31 + 5);
+    let shade = 0.88 + 0.24 * random01(k * 17 + 3);
+    let [r, g, b] = if pick < 0.2 {
+        [0.4, 0.47, 0.6]
+    } else if pick < 0.32 {
+        [0.48, 0.66, 0.55]
+    } else {
+        [0.62, 0.74, 0.96]
+    };
+    Color::srgb(r * shade, g * shade, b * shade)
 }
 
 /// Un cartel con un rótulo, sobre dos postes detrás del muro, mirando a los
@@ -1332,11 +1406,7 @@ mod tests {
         let mut checked = 0;
         for circuit in &CIRCUITS {
             let scenery = &circuit.scenery;
-            if !scenery
-                .bridges
-                .iter()
-                .any(|bridge| bridge.style != BridgeStyle::Wooden)
-            {
+            if !scenery.bridges.iter().any(|bridge| !bridge.style.wooden()) {
                 continue;
             }
             let track = Track::new(&circuit.layout);
@@ -1345,7 +1415,7 @@ mod tests {
             for bridge in scenery.bridges {
                 let indices = indices(&track, bridge.span, lap);
                 let (deck, _) = match bridge.style {
-                    BridgeStyle::Wooden => continue,
+                    BridgeStyle::Wooden | BridgeStyle::OldWooden => continue,
                     BridgeStyle::RedArches => bridge_meshes(&track, &terrain, &indices),
                     BridgeStyle::Truss => truss_bridge_meshes(&track, &terrain, &indices),
                 };
