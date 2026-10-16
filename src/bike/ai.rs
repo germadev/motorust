@@ -1286,10 +1286,40 @@ mod tests {
     }
 
     #[test]
+    fn turbo_bay_s_seafront_runs_into_its_first_bend_with_no_crest() {
+        // Flat out to the end of the seafront and braking for the banked
+        // right-hander at the water's edge, the bike stays on the road: no
+        // crest throws it off, even at top speed.
+        let circuit = crate::circuits::CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == "Turbo Bay")
+            .expect("Turbo Bay is a circuit");
+        let track = Track::new(&circuit.layout);
+        let top = BikeTuning::default().max_speed;
+        for along in (100..480).step_by(2) {
+            let index = track.index_at(along as f32);
+            let crest = track.crest(&crate::track::Nearest {
+                point: track.centerline()[index],
+                distance: 0.0,
+                index,
+                t: 0.0,
+                lateral: 0.0,
+                road: 0,
+            });
+            assert!(
+                crest * top * top < crate::bike::GRAVITY,
+                "a crest of {:.0} m at {along} m",
+                1.0 / crest
+            );
+        }
+    }
+
+    #[test]
     fn crests_only_throw_the_bikes_into_the_air_on_the_straights() {
         // Flying, a bike neither turns nor leans: a crest in a bend, or one
-        // that lands in a bend, would straighten it up. Turbo Bay's seafront
-        // drops into its corner over a crest on purpose, as in Moto Racer.
+        // that lands in a bend, would straighten it up. Turbo Bay's mountain
+        // road goes over its top into the dive at the lighthouse on a bend,
+        // on purpose.
         for circuit in crate::circuits::CIRCUITS
             .iter()
             .filter(|circuit| circuit.name != "Turbo Bay")

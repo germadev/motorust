@@ -48,12 +48,17 @@ pub struct WorldPlugin;
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "sea.wgsl");
-        // Without the renderer (in the tests), the sea's material is only an
-        // asset.
+        embedded_asset!(app, "lake.wgsl");
+        // Without the renderer (in the tests), the sea's and the lakes'
+        // materials are only assets.
         if app.is_plugin_added::<PbrPlugin>() {
-            app.add_plugins(MaterialPlugin::<sea::SeaMaterial>::default());
+            app.add_plugins((
+                MaterialPlugin::<sea::SeaMaterial>::default(),
+                MaterialPlugin::<dam::LakeMaterial>::default(),
+            ));
         } else {
-            app.init_asset::<sea::SeaMaterial>();
+            app.init_asset::<sea::SeaMaterial>()
+                .init_asset::<dam::LakeMaterial>();
         }
         let current = CurrentCircuit::default();
         app.add_plugins((
@@ -158,6 +163,8 @@ struct Prepared {
     roadside: Roadside,
     /// The meshes of the roads, tunnels and bridges, with their materials.
     pieces: Vec<(Mesh, StandardMaterial)>,
+    /// The lakes behind its dams, which mirror what stands round them.
+    lakes: Vec<dam::PreparedLake>,
     /// The lamps of its tunnels and mine (see [`lamps`]).
     lamps: Vec<lamps::Lamp>,
     /// Its grass beside the roads, drawn only near the camera.
@@ -205,6 +212,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         structures::structure_pieces(&track, &terrain, scenery, textures);
     pieces.extend(structures);
     ground.extend(tops);
+    let lakes = dam::prepare_lakes(&track, &terrain, scenery, textures);
     let grass = tufts::tuft_pieces(
         &track,
         &terrain,
@@ -236,6 +244,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         shore_image,
         roadside,
         pieces,
+        lakes,
         lamps,
         grass,
         trees,
@@ -463,6 +472,7 @@ struct Builder<'w> {
     props: Res<'w, japan::ModelledProps>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
+    lake_materials: ResMut<'w, Assets<dam::LakeMaterial>>,
     meshes: ResMut<'w, Assets<Mesh>>,
     materials: ResMut<'w, Assets<StandardMaterial>>,
     images: ResMut<'w, Assets<Image>>,
@@ -485,6 +495,7 @@ fn build(
         shore_image,
         roadside,
         pieces,
+        lakes,
         lamps,
         grass,
         trees,
@@ -500,6 +511,16 @@ fn build(
     let sea_material = builder
         .sea_materials
         .add(shore.material(shore_image, scenery.water));
+    let lakes: Vec<_> = lakes
+        .into_iter()
+        .map(|lake| {
+            let (mesh, material) = lake.into_parts(&mut builder.images);
+            (
+                builder.meshes.add(mesh),
+                builder.lake_materials.add(material),
+            )
+        })
+        .collect();
     let mut assets = Assets3d {
         textures: &builder.textures,
         props: &builder.props,
@@ -529,6 +550,9 @@ fn build(
                 MeshMaterial3d(sea_material),
                 Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
             ));
+            for (mesh, material) in lakes {
+                world.spawn((Mesh3d(mesh), MeshMaterial3d(material), NotShadowCaster));
+            }
             for (mesh, material) in pieces {
                 // What is see-through or glows (light, dust) casts no
                 // shadow.

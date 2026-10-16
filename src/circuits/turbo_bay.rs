@@ -7,9 +7,9 @@
 //! 1. The start straight is a seafront promenade heading north: railing,
 //!    beach and sea on the left; palms and tall, colourful hotels on the
 //!    right.
-//! 2. A crest, then a steep banked right-hander drops to the water's edge
-//!    and the road climbs east into a tunnel through the ridge at the
-//!    island's waist.
+//! 2. On level into a steep banked right-hander at the water's edge, and
+//!    the road climbs east into a tunnel through the ridge at the island's
+//!    waist.
 //! 3. Out of the tunnel, past an old-style grand hotel on a headland above
 //!    the south-east bay, to a pass between rocks.
 //! 4. The east coast road rises and falls behind a white barrier, with the
@@ -20,25 +20,28 @@
 //!    left-hander.
 //! 6. Back up through a forest it rolls over a hump, dips and rises again, then
 //!    runs down the ridge and crosses over the tunnel, down the shore of the
-//!    bay to a bridge with red arches over the river mouth, through the town
-//!    and back to the seafront.
+//!    bay to a bridge with red arches over the river mouth.
+//! 7. Up a gorge to an arch dam; away from it up the hillside to a hairpin
+//!    over the east coast, and back down straight onto its crest, narrow,
+//!    the lake mirroring the hills on the left over a low parapet; down
+//!    through the town and back to the seafront.
 
 use bevy::prelude::*;
 
 use super::{Ambience, Circuit, Song};
 use crate::geometry::{fbm, smoothstep};
-use crate::track::{Banking, Layout, WALL_DISTANCE};
+use crate::track::{Banking, Layout, Narrowing, WALL_DISTANCE};
 use crate::world::scenery::*;
 
-/// The height of the lake behind the dam (m over the sea), a few metres
-/// under the road along its crest.
-const LAKE_LEVEL: f32 = 40.5;
+/// The height of the lake behind the dam (m over the sea), a couple of
+/// metres under the road along its crest, so it shows over the parapet.
+const LAKE_LEVEL: f32 = 41.0;
 /// The square with the monument, by the far end of the crest, on the
 /// lake's side, as at El Atazar.
 const SQUARE: Vec2 = Vec2::new(76.0, 462.0);
 
 /// Where things are, in metres from the finish line.
-const SEAFRONT: Span = span(4200.0, 250.0);
+const SEAFRONT: Span = span(4304.0, 250.0);
 const TUNNEL: Span = span(505.0, 625.0);
 const ROCK_PASS: Span = span(870.0, 990.0);
 const EAST_COAST: Span = span(1000.0, 1280.0);
@@ -49,8 +52,13 @@ const FOREST: Span = span(1660.0, 2160.0);
 const BAY_SHORE: Span = span(2460.0, 2710.0);
 const BRIDGE: Span = span(2720.0, 2805.0);
 const GORGE: Span = span(2830.0, 3100.0);
-const CREST: Span = span(3600.0, 3758.0);
-const TOWN: Span = span(3880.0, 4190.0);
+/// Down the hillside straight at the dam, the crest and the lake below.
+const DESCENT: Span = span(3480.0, 3706.0);
+const CREST: Span = span(3706.0, 3858.0);
+/// The road over the crest is narrow, as a dam's: its walls this far from
+/// the middle (m), closing in on the way down to it.
+const CREST_WALL: f32 = 5.5;
+const TOWN: Span = span(3984.0, 4294.0);
 
 /// The lighthouse, on the northern cape.
 const LIGHTHOUSE: Vec2 = Vec2::new(480.0, -1046.0);
@@ -80,13 +88,26 @@ pub const TURBO_BAY: Circuit = Circuit {
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
-        // The drop to the water after the seafront, banked like a velodrome.
-        banking: &[Banking {
-            from: 330.0,
-            to: 470.0,
-            factor: 2.5,
+        // The drop to the water after the seafront, banked like a velodrome;
+        // and the crest of the dam, level across like a dam's, so its low
+        // parapet on the lake's side does not stand up into the view.
+        banking: &[
+            Banking {
+                from: 330.0,
+                to: 470.0,
+                factor: 2.5,
+            },
+            Banking {
+                from: CREST.from,
+                to: CREST.to,
+                factor: 0.0,
+            },
+        ],
+        narrows: &[Narrowing {
+            from: CREST.from,
+            to: CREST.to,
+            wall: CREST_WALL,
         }],
-        narrows: &[],
         branches: &[],
     },
     scenery: Scenery {
@@ -174,6 +195,13 @@ pub const TURBO_BAY: Circuit = Circuit {
                 side: Side::Right,
                 style: WallStyle::Concrete,
             },
+            // A railing on the way down to the dam, so the lake shows below
+            // over it.
+            WallRun {
+                span: DESCENT,
+                side: Side::Left,
+                style: WallStyle::Railing,
+            },
         ],
         tunnels: &[TUNNEL],
         bridges: &[
@@ -236,7 +264,7 @@ pub const TURBO_BAY: Circuit = Circuit {
                 accent: None,
             },
             Billboard {
-                along: 3980.0,
+                along: 4084.0,
                 side: Side::Right,
                 text: "BEVY",
                 color: Color::srgb(0.1, 0.1, 0.1),
@@ -254,13 +282,13 @@ pub const TURBO_BAY: Circuit = Circuit {
             Row {
                 span: CREST,
                 side: Side::Left,
-                lateral: WALL_DISTANCE + 0.5,
+                lateral: CREST_WALL + 0.3,
                 every: 30.0,
             },
             Row {
                 span: span(CREST.from + 15.0, CREST.to),
                 side: Side::Right,
-                lateral: WALL_DISTANCE + 0.5,
+                lateral: CREST_WALL + 0.3,
                 every: 30.0,
             },
         ],
@@ -304,7 +332,7 @@ pub const TURBO_BAY: Circuit = Circuit {
             },
         ],
         hotels: &[Row {
-            span: span(4220.0, 230.0),
+            span: span(4324.0, 230.0),
             side: Side::Right,
             lateral: WALL_DISTANCE + 30.0,
             every: 38.0,
@@ -380,30 +408,35 @@ pub const TURBO_BAY: Circuit = Circuit {
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
-            // Off to the left below the dam, round the hairpin, and off the
-            // crest down to the town.
+            // Round to the left below the dam, round the hairpin, and off
+            // the crest down to the town.
             ChevronSign {
-                along: 3090.0,
+                along: 3040.0,
                 side: Side::Right,
                 direction: ChevronDirection::Left,
             },
             ChevronSign {
-                along: 3345.0,
-                side: Side::Left,
-                direction: ChevronDirection::Right,
-            },
-            ChevronSign {
-                along: 3385.0,
-                side: Side::Left,
-                direction: ChevronDirection::Right,
-            },
-            ChevronSign {
-                along: 3540.0,
+                along: 3080.0,
                 side: Side::Right,
                 direction: ChevronDirection::Left,
             },
             ChevronSign {
-                along: 3800.0,
+                along: 3325.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 3370.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 3415.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 3904.0,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
@@ -435,13 +468,24 @@ pub const TURBO_BAY: Circuit = Circuit {
                 side: Side::Left,
                 distance: 50,
             },
+            // Before the turn below the dam, and before the hairpin.
             BrakeMarker {
-                along: 3220.0,
+                along: 2925.0,
+                side: Side::Right,
+                distance: 100,
+            },
+            BrakeMarker {
+                along: 2955.0,
+                side: Side::Right,
+                distance: 50,
+            },
+            BrakeMarker {
+                along: 3205.0,
                 side: Side::Left,
                 distance: 100,
             },
             BrakeMarker {
-                along: 3250.0,
+                along: 3235.0,
                 side: Side::Left,
                 distance: 50,
             },
@@ -461,7 +505,7 @@ pub const TURBO_BAY: Circuit = Circuit {
     },
 };
 
-const CONTROL_POINTS: [Vec2; 65] = [
+const CONTROL_POINTS: [Vec2; 69] = [
     // 1. The seafront, north (-Z).
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -95.0),
@@ -513,21 +557,27 @@ const CONTROL_POINTS: [Vec2; 65] = [
     // 7. Up the gorge, beside the river, towards the dam.
     Vec2::new(176.0, 135.0),
     Vec2::new(186.0, 210.0),
-    Vec2::new(188.0, 285.0),
-    Vec2::new(188.0, 312.0),
-    // Off to the left below the dam, and up the hairpin.
-    Vec2::new(197.0, 346.0),
-    Vec2::new(222.0, 368.0),
-    Vec2::new(265.0, 376.0),
-    Vec2::new(340.0, 364.0),
-    Vec2::new(398.0, 362.0),
-    Vec2::new(438.0, 377.0),
-    Vec2::new(453.0, 410.0),
-    Vec2::new(438.0, 443.0),
-    Vec2::new(398.0, 455.0),
-    Vec2::new(345.0, 440.0),
-    // Into the crest round a left-hander, as the road does at El Atazar.
-    Vec2::new(295.0, 432.0),
+    Vec2::new(188.0, 250.0),
+    Vec2::new(188.0, 288.8),
+    // Round to the left below the dam's near end, and up the hillside away
+    // from it, east-north-east above the bay.
+    Vec2::new(194.3, 311.5),
+    Vec2::new(211.7, 327.8),
+    Vec2::new(235.1, 332.7),
+    Vec2::new(257.2, 324.8),
+    Vec2::new(284.7, 305.7),
+    Vec2::new(325.6, 277.0),
+    Vec2::new(366.6, 248.3),
+    Vec2::new(407.5, 219.6),
+    // A hairpin to the right, high over the east coast, and back down the
+    // hillside straight at the dam, the crest and the lake below ahead.
+    Vec2::new(443.3, 211.6),
+    Vec2::new(474.3, 231.3),
+    Vec2::new(482.3, 267.3),
+    Vec2::new(462.6, 298.2),
+    Vec2::new(413.5, 332.6),
+    Vec2::new(364.4, 367.0),
+    Vec2::new(315.2, 401.5),
     // 8. Over the crest of the dam: an arch 125 m in radius, bowed towards
     //    the lake on the left.
     Vec2::new(249.7, 447.4),
@@ -550,13 +600,12 @@ const CONTROL_POINTS: [Vec2; 65] = [
 /// in a dive to the foot of the lighthouse, back up through the forest,
 /// rolling, and down the ridge, about 18 m over the tunnel, to the bridge
 /// and the town.
-const ELEVATION: [(f32, f32); 69] = [
+const ELEVATION: [(f32, f32); 70] = [
     (0.0, 0.0),
     (160.0, 0.5),
-    (230.0, 3.0),
-    // The crest at the end of the seafront: flat out, the bike flies.
-    (290.0, 7.0),
-    (340.0, 5.0),
+    // On level to the end of the seafront and into the bend at the water's
+    // edge, with no crest to unsettle the bike as it brakes for it.
+    (300.0, 1.0),
     (420.0, 1.5),
     (480.0, 2.5),
     (540.0, 6.5),
@@ -606,32 +655,37 @@ const ELEVATION: [(f32, f32); 69] = [
     // Down into the gorge, and up it beside the river.
     (2830.0, 11.0),
     (2880.0, 8.5),
-    (2950.0, 6.5),
-    (3010.0, 6.0),
-    (3070.0, 7.0),
-    // Off below the dam, and up the hairpin to the crest.
-    (3109.0, 8.5),
-    (3154.0, 12.0),
-    (3230.0, 18.0),
-    (3288.0, 22.5),
-    (3331.0, 26.0),
-    (3368.0, 29.0),
-    (3405.0, 32.0),
-    (3448.0, 35.0),
-    (3503.0, 38.5),
-    (3554.0, 40.5),
+    (2950.0, 7.0),
+    (3016.0, 7.5),
+    // Round below the dam's near end, and up the hillside away from it.
+    (3065.0, 10.5),
+    (3112.0, 14.5),
+    (3170.0, 20.5),
+    (3235.0, 27.0),
+    (3296.0, 33.0),
+    // Round the hairpin, high over the coast.
+    (3370.0, 40.5),
+    (3446.0, 46.5),
+    // Over the top and down the hillside onto the dam, the lake below.
+    (3506.0, 49.5),
+    (3566.0, 49.0),
+    (3626.0, 46.5),
+    (3664.0, 43.3),
+    (3690.0, 41.9),
     // The crest, level, the lake a few metres under it.
-    (3602.0, 41.5),
-    (3678.0, 41.5),
-    (3755.0, 41.5),
+    (3706.0, 41.5),
+    (3744.0, 41.5),
+    (3782.0, 41.5),
+    (3820.0, 41.5),
+    (3858.0, 41.5),
     // Down the far side to the town and the seafront.
-    (3796.0, 39.5),
-    (3844.0, 35.0),
-    (3899.0, 29.5),
-    (3960.0, 23.0),
-    (4045.0, 14.0),
-    (4125.0, 7.0),
-    (4191.0, 2.5),
+    (3900.0, 40.2),
+    (3948.0, 36.0),
+    (4003.0, 30.0),
+    (4064.0, 23.0),
+    (4149.0, 14.0),
+    (4229.0, 7.0),
+    (4295.0, 2.5),
 ];
 
 /// The island, clockwise from the south-west: the beach off the seafront,
@@ -700,9 +754,9 @@ const COAST: [Vec2; 72] = [
     Vec2::new(222.0, 66.0),
     Vec2::new(262.0, 82.0),
     Vec2::new(330.0, 112.0),
-    Vec2::new(400.0, 165.0),
-    Vec2::new(470.0, 250.0),
-    Vec2::new(492.0, 350.0),
+    Vec2::new(410.0, 160.0),
+    Vec2::new(500.0, 240.0),
+    Vec2::new(505.0, 350.0),
     Vec2::new(495.0, 480.0),
     Vec2::new(430.0, 570.0),
     Vec2::new(390.0, 665.0),
@@ -734,11 +788,11 @@ const MASSIFS: [Massif; 16] = [
     massif(250.0, -760.0, 35.0, 14.0),
     massif(50.0, 55.0, 32.0, 12.0),
     // The mountains round the lake behind the dam, and the hill the road
-    // climbs in the hairpin up to the crest.
+    // climbs in a hairpin, away from the dam, before coming down onto it.
     climbed_massif(10.0, 610.0, 170.0, 62.0),
     climbed_massif(200.0, 790.0, 180.0, 70.0),
     climbed_massif(390.0, 610.0, 170.0, 64.0),
-    climbed_massif(320.0, 440.0, 100.0, 42.0),
+    climbed_massif(345.0, 318.0, 90.0, 52.0),
     // Islets.
     massif(-140.0, -120.0, 26.0, 11.0),
     massif(680.0, -430.0, 30.0, 14.0),
@@ -820,17 +874,19 @@ fn mountains(point: Vec2) -> f32 {
     smoothstep(1700.0, 2600.0, distance) * facing * 240.0 * (0.35 + 0.65 * fbm(point / 280.0, 4))
 }
 
-/// The lake behind the dam: along the crest, then round the mountains to
-/// the south.
-const LAKE: [Vec2; 16] = [
-    Vec2::new(106.0, 447.0),
-    Vec2::new(140.0, 464.0),
+/// The lake behind the dam: along the crest, then out under the hillside
+/// the road comes down, in sight from it, and round the mountains to the
+/// south.
+const LAKE: [Vec2; 17] = [
+    Vec2::new(106.3, 447.4),
+    Vec2::new(140.4, 464.2),
     Vec2::new(178.0, 470.0),
-    Vec2::new(216.0, 464.0),
-    Vec2::new(250.0, 447.0),
-    Vec2::new(268.0, 480.0),
-    Vec2::new(285.0, 525.0),
-    Vec2::new(300.0, 575.0),
+    Vec2::new(215.6, 464.2),
+    Vec2::new(249.7, 447.4),
+    Vec2::new(276.0, 462.0),
+    Vec2::new(306.0, 482.0),
+    Vec2::new(318.0, 520.0),
+    Vec2::new(305.0, 570.0),
     Vec2::new(290.0, 625.0),
     Vec2::new(255.0, 660.0),
     Vec2::new(195.0, 672.0),

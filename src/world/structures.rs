@@ -1367,8 +1367,10 @@ mod tests {
                     }
                 };
                 let middle = indices[indices.len() / 2];
-                let beside = track.half_width() + 0.5;
-                let by_the_wall = WALL_DISTANCE - 0.3;
+                // From the asphalt's edge out to the walls, which close in
+                // where the road over it is narrow.
+                let beside = track.half_width_at(middle);
+                let by_the_wall = track.wall_at(middle) - 0.3;
                 for lateral in [-by_the_wall, -beside, beside, by_the_wall] {
                     let road = track.surface_point(middle, lateral);
                     let top = top_at(&deck, Vec2::new(road.x, road.z)).unwrap_or_else(|| {

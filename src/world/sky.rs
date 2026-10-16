@@ -236,7 +236,7 @@ impl Palette {
 
     /// The colour of the sky (sRGB) towards `toward`: by its height above
     /// the horizon, and brighter towards the sun.
-    fn sky_color(&self, toward: Vec3) -> Color {
+    pub(crate) fn sky_color(&self, toward: Vec3) -> Color {
         let elevation = toward.y.clamp(-1.0, 1.0).asin();
         let low = smoothstep(0.0, 0.18, elevation);
         let high = smoothstep(0.12, 1.2, elevation);
