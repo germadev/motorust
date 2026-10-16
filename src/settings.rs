@@ -1291,20 +1291,22 @@ pub fn fullscreen_keys(keyboard: &ButtonInput<KeyCode>) -> bool {
     held && keyboard.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter])
 }
 
-/// The shortcuts of a gamepad: Select held with Start switches fullscreen,
-/// with Y (the top face button) the sound off and on.
+/// The shortcuts of a gamepad: Select held with R3 (the right stick
+/// pressed in) switches fullscreen, with Y (the top face button) the sound
+/// off and on.
 pub const SHORTCUT_HELD: GamepadButton = GamepadButton::Select;
-pub const FULLSCREEN_BUTTON: GamepadButton = GamepadButton::Start;
+pub const FULLSCREEN_BUTTON: GamepadButton = GamepadButton::RightThumb;
 pub const MUTE_BUTTON: GamepadButton = GamepadButton::North;
 
 /// While the controls are tried out (Options > Control > Mapping, Test),
-/// Select with Start ends the test instead of switching fullscreen.
+/// no key or button works anything: the shortcuts (Select with R3 or with
+/// Y, Alt or Cmd with Enter, M) are tried out like any others, as the
+/// menu's (the test ends with Esc, or B held down, see
+/// [`crate::mapping`]).
 #[derive(Resource, Clone, Copy, Default, Debug)]
 pub struct ControlsTest {
     /// Whether they are being tried out.
     pub on: bool,
-    /// Whether Select with Start was pressed meanwhile, to end it.
-    pub ended: bool,
 }
 
 /// Asks for the sound to be turned off, or back on (M, or Select and Y).
@@ -1331,8 +1333,8 @@ pub struct ShortcutHold {
 /// Reads the shortcuts of a gamepad's buttons, taking their presses out
 /// of them so that nothing else acts on them: Select (which restarts the
 /// race) goes down unseen and, if no shortcut is made while it is held,
-/// counts as pressed when it is let go of; Start (which pauses or accepts)
-/// and Y held with Select are the shortcut's.
+/// counts as pressed when it is let go of; R3 and Y held with Select are
+/// the shortcut's.
 pub fn read_shortcut(
     buttons: &mut ButtonInput<GamepadButton>,
     hold: &mut ShortcutHold,
@@ -1368,19 +1370,19 @@ pub fn read_shortcut(
     shortcut
 }
 
-/// The gamepads' shortcuts: fullscreen (or, trying the controls out, the
-/// end of the test) and sound.
+/// The gamepads' shortcuts: fullscreen and sound (but not while the
+/// controls are tried out).
 fn gamepad_shortcuts(
     mut gamepads: Query<(Entity, &mut Gamepad)>,
     mut holds: Local<bevy::platform::collections::HashMap<Entity, ShortcutHold>>,
     mut settings: ResMut<Settings>,
-    mut test: ResMut<ControlsTest>,
+    test: Res<ControlsTest>,
     mut mute: MessageWriter<ToggleMute>,
 ) {
     for (entity, mut gamepad) in &mut gamepads {
         let hold = holds.entry(entity).or_default();
         match read_shortcut(gamepad.bypass_change_detection().digital_mut(), hold) {
-            Some(Shortcut::Fullscreen) if test.on => test.ended = true,
+            Some(_) if test.on => {}
             Some(Shortcut::Fullscreen) => settings.fullscreen = !settings.fullscreen,
             Some(Shortcut::Mute) => {
                 mute.write(ToggleMute);
@@ -1390,10 +1392,14 @@ fn gamepad_shortcuts(
     }
 }
 
-/// With the fullscreen keys ([`fullscreen_keys`]), conmuta la pantalla completa. Se guarda como si
-/// se hubiera elegido en Opciones.
-fn toggle_fullscreen(keyboard: Res<ButtonInput<KeyCode>>, mut settings: ResMut<Settings>) {
-    if !fullscreen_keys(&keyboard) {
+/// With the fullscreen keys ([`fullscreen_keys`]), switches fullscreen,
+/// kept as if chosen in Options. Not while the controls are tried out.
+fn toggle_fullscreen(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    test: Res<ControlsTest>,
+    mut settings: ResMut<Settings>,
+) {
+    if test.on || !fullscreen_keys(&keyboard) {
         return;
     }
     settings.fullscreen = !settings.fullscreen;
@@ -1791,32 +1797,30 @@ mod tests {
     }
 
     #[test]
-    fn trying_the_controls_select_with_start_ends_the_test_instead() {
-        let press = |test: bool| {
+    fn trying_the_controls_the_gamepads_shortcuts_do_nothing() {
+        // Whether fullscreen switched, and the sound was asked to go off.
+        let press = |test: bool, second: GamepadButton| {
             let mut app = App::new();
             app.add_message::<ToggleMute>()
                 .insert_resource(Settings::default())
-                .insert_resource(ControlsTest {
-                    on: test,
-                    ended: false,
-                })
+                .insert_resource(ControlsTest { on: test })
                 .add_systems(Update, gamepad_shortcuts);
             let mut pad = Gamepad::default();
             pad.digital_mut().press(GamepadButton::Select);
-            pad.digital_mut().press(GamepadButton::Start);
+            pad.digital_mut().press(second);
             app.world_mut().spawn(pad);
             app.update();
-            (
-                app.world().resource::<Settings>().fullscreen,
-                app.world().resource::<ControlsTest>().ended,
-            )
+            let muted = !app.world().resource::<Messages<ToggleMute>>().is_empty();
+            (app.world().resource::<Settings>().fullscreen, muted)
         };
-        assert_eq!(press(false), (true, false));
-        assert_eq!(press(true), (false, true));
+        assert_eq!(press(false, FULLSCREEN_BUTTON), (true, false));
+        assert_eq!(press(false, MUTE_BUTTON), (false, true));
+        assert_eq!(press(true, FULLSCREEN_BUTTON), (false, false));
+        assert_eq!(press(true, MUTE_BUTTON), (false, false));
     }
 
     #[test]
-    fn select_with_start_or_y_is_a_shortcut_and_alone_it_restarts_on_release() {
+    fn select_with_r3_or_y_is_a_shortcut_and_alone_it_restarts_on_release() {
         use GamepadButton as B;
         let mut buttons = ButtonInput::<GamepadButton>::default();
         let mut hold = ShortcutHold::default();
@@ -1834,18 +1838,25 @@ mod tests {
         // Select down: nobody sees it yet.
         assert_eq!(frame(&mut buttons, &[B::Select], &[]), None);
         assert!(!buttons.just_pressed(B::Select));
-        // With Start: fullscreen, and Start does not pause.
+        // With R3: fullscreen, and R3 does nothing else.
         assert_eq!(
-            frame(&mut buttons, &[B::Start], &[]),
+            frame(&mut buttons, &[B::RightThumb], &[]),
             Some(Shortcut::Fullscreen)
         );
-        assert!(!buttons.just_pressed(B::Start));
+        assert!(!buttons.just_pressed(B::RightThumb));
+        // Start is not a shortcut's: it pauses, even with Select held.
+        assert_eq!(frame(&mut buttons, &[B::Start], &[]), None);
+        assert!(buttons.just_pressed(B::Start));
         // With Y: the sound.
         assert_eq!(frame(&mut buttons, &[B::North], &[]), Some(Shortcut::Mute));
         assert!(!buttons.just_pressed(B::North));
         // Let go of after a shortcut: Select does nothing.
         assert_eq!(
-            frame(&mut buttons, &[], &[B::Select, B::Start, B::North]),
+            frame(
+                &mut buttons,
+                &[],
+                &[B::Select, B::RightThumb, B::Start, B::North]
+            ),
             None
         );
         assert!(!buttons.just_pressed(B::Select));
@@ -1855,9 +1866,9 @@ mod tests {
         assert!(buttons.just_pressed(B::Select));
         frame(&mut buttons, &[], &[]);
         assert!(!buttons.pressed(B::Select) && !buttons.just_pressed(B::Select));
-        // Start alone still pauses.
-        frame(&mut buttons, &[B::Start], &[]);
-        assert!(buttons.just_pressed(B::Start));
+        // Start and R3 alone are pressed as ever.
+        frame(&mut buttons, &[B::Start, B::RightThumb], &[]);
+        assert!(buttons.just_pressed(B::Start) && buttons.just_pressed(B::RightThumb));
     }
 
     #[test]
@@ -1903,13 +1914,14 @@ mod tests {
             ..default()
         })
         .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ControlsTest>()
         .add_systems(Update, toggle_fullscreen);
         let modifier = if cfg!(target_os = "macos") {
             KeyCode::SuperLeft
         } else {
             KeyCode::AltLeft
         };
-        let mut press = |keys: &[KeyCode]| {
+        let press = |app: &mut App, keys: &[KeyCode]| {
             let mut keyboard = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
             keyboard.release_all();
             keyboard.clear();
@@ -1920,9 +1932,12 @@ mod tests {
             app.world().resource::<Settings>().fullscreen
         };
         // Enter solo no hace nada; con la otra tecla, conmuta pantalla completa.
-        assert!(!press(&[KeyCode::Enter]));
-        assert!(press(&[modifier, KeyCode::Enter]));
-        assert!(!press(&[modifier, KeyCode::Enter]));
+        assert!(!press(&mut app, &[KeyCode::Enter]));
+        assert!(press(&mut app, &[modifier, KeyCode::Enter]));
+        assert!(!press(&mut app, &[modifier, KeyCode::Enter]));
+        // Not while the controls are tried out.
+        app.insert_resource(ControlsTest { on: true });
+        assert!(!press(&mut app, &[modifier, KeyCode::Enter]));
     }
 
     #[test]

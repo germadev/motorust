@@ -854,7 +854,10 @@ mod tests {
         assert_eq!(keys[1].badges[1].label, Label::Text("Enter".into()));
         let xbox = shortcut_prompts(ActiveDevice::Xbox, Language::English);
         assert_eq!(xbox[1].badges[0].label, Label::Text("View".into()));
-        assert_eq!(xbox[1].badges[1].label, Label::Text("Menu".into()));
+        // Fullscreen: Select with the right stick pressed in.
+        assert_eq!(xbox[1].badges[1].label, Label::Text("RS".into()));
+        let playstation = shortcut_prompts(ActiveDevice::PlayStation, Language::English);
+        assert_eq!(playstation[1].badges[1].label, Label::Text("R3".into()));
     }
 
     #[test]

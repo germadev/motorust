@@ -2,6 +2,7 @@
 //! Accesible tanto desde la pantalla de bienvenida como desde el menú de pausa.
 
 use bevy::prelude::*;
+use bevy::ui::{UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
 use crate::gamepads::{ActiveController, Gamepads};
@@ -28,10 +29,131 @@ use crate::ui::{
 };
 use crate::world::detail::{Detail, Level};
 
-/// Height of the panel (px): the tab with the most options (Control) fits.
+/// Height of the panel (px), the same on every tab: a tab with more options
+/// than it holds scrolls them (see [`ListScroll`]).
 const PANEL_HEIGHT: f32 = 600.0;
 /// Room kept at the bottom of the screen for the legend (px).
 const LEGEND_SPACE: f32 = 56.0;
+
+/// The list of a tab's options (or a page's), which scrolls when they do
+/// not all fit in the panel, above Reset and Back.
+#[derive(Component)]
+struct OptionsList {
+    tab: OptionsTab,
+    page: Option<Page>,
+}
+
+/// An option's row in the list, at its place.
+#[derive(Component)]
+struct OptionsRow(usize);
+
+/// The thin bar beside the list when it scrolls, and its thumb.
+#[derive(Component)]
+struct ScrollBar;
+#[derive(Component)]
+struct ScrollThumb;
+
+/// How the list of options is scrolled (logical px): how far down, how
+/// tall a stretch of it is shown, and how tall it is.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct ListScroll {
+    offset: f32,
+    view: f32,
+    content: f32,
+}
+
+impl ListScroll {
+    /// The list `node` as it was laid out.
+    fn of(node: &ComputedNode) -> Self {
+        let logical = node.inverse_scale_factor;
+        Self {
+            offset: node.scroll_position.y * logical,
+            view: node.size.y * logical,
+            content: node.content_size.y * logical,
+        }
+    }
+
+    /// Scrolled as little as needed to show the stretch `height` tall from
+    /// `top` (down the list), and no further than its end.
+    fn showing(self, top: f32, height: f32) -> Self {
+        let mut offset = self.offset;
+        if top + height > offset + self.view {
+            offset = top + height - self.view;
+        }
+        if top < offset {
+            offset = top;
+        }
+        Self {
+            offset: offset.clamp(0.0, (self.content - self.view).max(0.0)),
+            ..self
+        }
+    }
+
+    /// The thumb of the bar beside it, if it does not all fit: where it
+    /// starts and how tall it is, as shares of the bar.
+    fn thumb(self) -> Option<(f32, f32)> {
+        (self.content > self.view + 0.5)
+            .then(|| (self.offset / self.content, self.view / self.content))
+    }
+}
+
+/// Where a row laid out in the list is: its top down the list and its
+/// height (logical px).
+fn row_in(
+    (list, list_at): (&ComputedNode, &UiGlobalTransform),
+    (row, row_at): (&ComputedNode, &UiGlobalTransform),
+) -> (f32, f32) {
+    let top = |node: &ComputedNode, at: &UiGlobalTransform| at.translation.y - node.size.y / 2.0;
+    let logical = list.inverse_scale_factor;
+    (
+        (top(row, row_at) - top(list, list_at) + list.scroll_position.y) * logical,
+        row.size.y * logical,
+    )
+}
+
+/// Keeps the chosen option in view, scrolling the list as little as needed
+/// (where the panel, built again, could not tell: coming back from a page
+/// to its row), and the bar beside it showing how far down it is.
+fn follow_the_chosen_option(
+    menu: Res<OptionsMenu>,
+    mut lists: Query<(&ComputedNode, &UiGlobalTransform, &mut ScrollPosition), With<OptionsList>>,
+    rows: Query<(&OptionsRow, &ComputedNode, &UiGlobalTransform)>,
+    mut bars: Query<&mut Visibility, With<ScrollBar>>,
+    mut thumbs: Query<&mut Node, With<ScrollThumb>>,
+) {
+    let Ok((list, list_at, mut position)) = lists.single_mut() else {
+        return;
+    };
+    let laid_out = ListScroll::of(list);
+    let mut scroll = laid_out;
+    let chosen = rows
+        .iter()
+        .find(|(row, ..)| !menu.on_tabs && row.0 == menu.selected);
+    if let Some((_, row, row_at)) = chosen {
+        let (top, height) = row_in((list, list_at), (row, row_at));
+        scroll = scroll.showing(top, height);
+    }
+    if (scroll.offset - laid_out.offset).abs() > 0.5 {
+        position.y = scroll.offset;
+    }
+    let thumb = scroll.thumb();
+    for mut visibility in &mut bars {
+        visibility.set_if_neq(if thumb.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        });
+    }
+    if let Some((top, height)) = thumb {
+        for mut node in &mut thumbs {
+            let (top, height) = (percent(top * 100.0), percent(height * 100.0));
+            if node.top != top || node.height != height {
+                node.top = top;
+                node.height = height;
+            }
+        }
+    }
+}
 
 pub struct OptionsPlugin;
 
@@ -51,21 +173,24 @@ impl Plugin for OptionsPlugin {
                     mark_controls_test,
                 )
                     .chain(),
+            )
+            .add_systems(
+                PostUpdate,
+                follow_the_chosen_option.after(UiSystems::Layout),
             );
     }
 }
 
 /// Whether the controls are being tried out, for the gamepad's shortcuts
-/// (see [`ControlsTest`]): what Select with Start did meanwhile has been
-/// read by then.
+/// (see [`ControlsTest`]).
 fn mark_controls_test(menu: Res<OptionsMenu>, mut test: ResMut<ControlsTest>) {
     let on = menu.is_open
         && menu
             .mapping
             .as_ref()
             .is_some_and(|mapping| mapping.step == Step::Test);
-    if test.on != on || test.ended {
-        *test = ControlsTest { on, ended: false };
+    if test.on != on {
+        *test = ControlsTest { on };
     }
 }
 
@@ -138,35 +263,46 @@ pub struct OptionsMenu {
     pub selected: usize,
     /// The view of the controls' mapping, while it is open.
     pub mapping: Option<Mapping>,
-    /// A page of Control's of its own, while it is open: how the stick
-    /// steers, or the keyboard.
-    pub steering: Option<Steering>,
+    /// A page of a section's of its own, while it is open: how the stick
+    /// steers, or the keyboard (Control), or the advanced options
+    /// (Graphics).
+    pub page: Option<Page>,
     pub return_to: OptionsReturn,
     pub rescan_msg_until: f32,
 }
 
-/// The pages of Control's steering, each a list of its own in the panel.
+/// The pages of a section's, each a list of its own in the panel: on
+/// Control, how the stick and the keyboard steer; on Graphics, the advanced
+/// options.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Steering {
+pub enum Page {
     Stick,
     Keyboard,
+    Advanced,
 }
 
-impl Steering {
-    /// Its row on Control, which opens it.
-    fn row(self) -> ControlItem {
+impl Page {
+    /// Where its row is in its section's options, which opens it.
+    fn row(self) -> usize {
+        let at = |items: Vec<_>, row| items.iter().position(|&item| item == row);
         match self {
-            Steering::Stick => ControlItem::StickBehaviour,
-            Steering::Keyboard => ControlItem::KeyboardBehaviour,
+            Page::Stick => at(control_items(None), ControlItem::StickBehaviour),
+            Page::Keyboard => at(control_items(None), ControlItem::KeyboardBehaviour),
+            Page::Advanced => graphics_items(None)
+                .iter()
+                .position(|&item| item == GraphicsItem::Advanced),
         }
+        .unwrap_or(0)
     }
 
     /// As the panel's title says it, after "OPCIONES >".
     fn title(self, lang: Language) -> &'static str {
         match (self, lang) {
-            (Steering::Stick, _) => "STICK",
-            (Steering::Keyboard, Language::Spanish) => "TECLADO",
-            (Steering::Keyboard, Language::English) => "KEYBOARD",
+            (Page::Stick, _) => "STICK",
+            (Page::Keyboard, Language::Spanish) => "TECLADO",
+            (Page::Keyboard, Language::English) => "KEYBOARD",
+            (Page::Advanced, Language::Spanish) => "AVANZADO",
+            (Page::Advanced, Language::English) => "ADVANCED",
         }
     }
 }
@@ -177,23 +313,20 @@ impl OptionsMenu {
         self.on_tabs = false;
         self.selected = 0;
         self.mapping = None;
-        self.steering = None;
+        self.page = None;
         self.return_to = return_to;
     }
 
     pub fn close(&mut self) {
         self.is_open = false;
         self.mapping = None;
-        self.steering = None;
+        self.page = None;
     }
 
-    /// Back from a page of Control's to Control, on the page's row.
-    fn leave_page(&mut self, page: Steering) {
-        self.steering = None;
-        self.selected = control_items(None)
-            .iter()
-            .position(|&item| item == page.row())
-            .unwrap_or(0);
+    /// Back from a page to its section, on the page's row.
+    fn leave_page(&mut self, page: Page) {
+        self.page = None;
+        self.selected = page.row();
     }
 
     /// Moves round the menu: up and down (`step`) through the row of
@@ -312,6 +445,8 @@ enum GraphicsItem {
     FarTrees,
     /// Whether the world is drawn lighter with the screen split.
     SplitDetail,
+    /// The page of the advanced options, those below.
+    Advanced,
     /// Whether the frame rate is written to a file (see
     /// [`crate::perf_log`]).
     PerformanceLog,
@@ -339,7 +474,7 @@ const GROUP_GAP: f32 = 14.0;
 /// open) begins a group of its own, with room above: on Control, the
 /// steering after the mapping, the legend after the steering, and looking
 /// for the gamepads after the legend and its shortcuts.
-fn starts_group(tab: OptionsTab, page: Option<Steering>, index: usize) -> bool {
+fn starts_group(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
     tab == OptionsTab::Control
         && page.is_none()
         && matches!(
@@ -352,24 +487,25 @@ fn starts_group(tab: OptionsTab, page: Option<Steering>, index: usize) -> bool {
 
 /// Whether the shortcuts for the sound and fullscreen go under the row at
 /// `index` of `tab` (and `page`): under Control's legend.
-fn shortcuts_after(tab: OptionsTab, page: Option<Steering>, index: usize) -> bool {
+fn shortcuts_after(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
     tab == OptionsTab::Control && control_items(page).get(index) == Some(&ControlItem::ShowLegend)
 }
 
 /// Control's options: the mapping of the controls, the pages of how the
 /// stick and the keyboard steer, the legend; or, with a page open, its
 /// own.
-fn control_items(page: Option<Steering>) -> Vec<ControlItem> {
+fn control_items(page: Option<Page>) -> Vec<ControlItem> {
     match page {
-        None => vec![
+        // (Graphics' page is not Control's.)
+        None | Some(Page::Advanced) => vec![
             ControlItem::Mapping,
             ControlItem::StickBehaviour,
             ControlItem::KeyboardBehaviour,
             ControlItem::ShowLegend,
             ControlItem::RescanGamepads,
         ],
-        Some(Steering::Stick) => vec![ControlItem::StickTurnLimit],
-        Some(Steering::Keyboard) => vec![
+        Some(Page::Stick) => vec![ControlItem::StickTurnLimit],
+        Some(Page::Keyboard) => vec![
             ControlItem::KeyboardTurnLimit,
             ControlItem::KeyboardTurnRate,
             ControlItem::KeyboardReturnRate,
@@ -386,7 +522,16 @@ fn sound_items() -> Vec<SoundItem> {
     ]
 }
 
-fn graphics_items() -> Vec<GraphicsItem> {
+/// Graphics' options; or, with its page of the advanced ones open, those:
+/// the performance log and how the frames go to the GPU.
+fn graphics_items(page: Option<Page>) -> Vec<GraphicsItem> {
+    if page == Some(Page::Advanced) {
+        return vec![
+            GraphicsItem::PerformanceLog,
+            GraphicsItem::PipelinedRendering,
+            GraphicsItem::FrameLatency,
+        ];
+    }
     if WEB {
         vec![
             GraphicsItem::Fullscreen,
@@ -414,9 +559,7 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Trees,
             GraphicsItem::FarTrees,
             GraphicsItem::SplitDetail,
-            GraphicsItem::PerformanceLog,
-            GraphicsItem::PipelinedRendering,
-            GraphicsItem::FrameLatency,
+            GraphicsItem::Advanced,
         ]);
         items
     }
@@ -434,14 +577,14 @@ fn render_scale_name(percent: u32, window: Option<&Window>) -> String {
     }
 }
 
-/// How many options `tab` (on `page` of Control's) has, besides Reset and
-/// Back.
-fn options_count(tab: OptionsTab, page: Option<Steering>) -> usize {
+/// How many options `tab` (on `page` of its, if one is open) has, besides
+/// Reset and Back.
+fn options_count(tab: OptionsTab, page: Option<Page>) -> usize {
     match tab {
         OptionsTab::Game => game_items().len(),
         OptionsTab::Control => control_items(page).len(),
         OptionsTab::Sound => sound_items().len(),
-        OptionsTab::Graphics => graphics_items().len(),
+        OptionsTab::Graphics => graphics_items(page).len(),
     }
 }
 
@@ -452,7 +595,7 @@ const FOOTER: usize = 2;
 
 /// How many options `tab` (on `page`) has, Reset and Back at its foot
 /// included.
-fn tab_items_count(tab: OptionsTab, page: Option<Steering>) -> usize {
+fn tab_items_count(tab: OptionsTab, page: Option<Page>) -> usize {
     options_count(tab, page) + FOOTER
 }
 
@@ -460,6 +603,15 @@ fn tab_items_count(tab: OptionsTab, page: Option<Steering>) -> usize {
 fn first_settings() -> &'static Settings {
     static FIRST: std::sync::OnceLock<Settings> = std::sync::OnceLock::new();
     FIRST.get_or_init(Settings::default)
+}
+
+/// Graphics' advanced options, those of its page.
+fn advanced(settings: &Settings) -> (bool, bool, u32) {
+    (
+        settings.performance_log,
+        settings.pipelined_rendering,
+        settings.frame_latency,
+    )
 }
 
 /// How the keyboard steers: the options of its page of Control's.
@@ -498,18 +650,21 @@ fn steering(
 /// buttons aside: the mapping of Control resets those).
 fn section_is_default(
     tab: OptionsTab,
-    page: Option<Steering>,
+    page: Option<Page>,
     settings: &Settings,
     debug: &DebugOptions,
 ) -> bool {
     let first = first_settings();
     let at_first = DebugOptions::default();
     match (tab, page) {
-        (OptionsTab::Control, Some(Steering::Stick)) => {
+        (OptionsTab::Control, Some(Page::Stick)) => {
             return debug.stick_limit == at_first.stick_limit;
         }
-        (OptionsTab::Control, Some(Steering::Keyboard)) => {
+        (OptionsTab::Control, Some(Page::Keyboard)) => {
             return keyboard(debug) == keyboard(&at_first);
+        }
+        (OptionsTab::Graphics, Some(Page::Advanced)) => {
+            return advanced(settings) == advanced(first);
         }
         _ => {}
     }
@@ -582,22 +737,28 @@ fn section_is_default(
 /// [`section_is_default`]).
 fn reset_section(
     tab: OptionsTab,
-    page: Option<Steering>,
+    page: Option<Page>,
     settings: &mut Settings,
     debug: &mut DebugOptions,
 ) {
     let first = first_settings();
     let at_first = DebugOptions::default();
     match (tab, page) {
-        (OptionsTab::Control, Some(Steering::Stick)) => {
+        (OptionsTab::Control, Some(Page::Stick)) => {
             debug.stick_limit = at_first.stick_limit;
             return;
         }
-        (OptionsTab::Control, Some(Steering::Keyboard)) => {
+        (OptionsTab::Control, Some(Page::Keyboard)) => {
             debug.keyboard_limit = at_first.keyboard_limit;
             debug.keyboard_rate = at_first.keyboard_rate;
             debug.keyboard_return = at_first.keyboard_return;
             debug.keyboard_reverse = at_first.keyboard_reverse;
+            return;
+        }
+        (OptionsTab::Graphics, Some(Page::Advanced)) => {
+            settings.performance_log = first.performance_log;
+            settings.pipelined_rendering = first.pipelined_rendering;
+            settings.frame_latency = first.frame_latency;
             return;
         }
         _ => {}
@@ -648,7 +809,6 @@ fn use_options_menu(
     mut gamepads: ResMut<Gamepads>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
-    test: Res<ControlsTest>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
     let request = input.read();
@@ -664,7 +824,6 @@ fn use_options_menu(
         let held = Held {
             keyboard: &input.keyboard,
             gamepads: input.gamepads.iter().collect(),
-            select_start: test.ended,
         };
         if use_mapping(
             mapping,
@@ -681,7 +840,7 @@ fn use_options_menu(
 
     // Salir / Volver con Esc o B: from a page of Control's, back to
     // Control.
-    let page = options_menu.steering;
+    let page = options_menu.page;
     if request.back {
         match page {
             Some(page) => options_menu.leave_page(page),
@@ -696,7 +855,7 @@ fn use_options_menu(
     if request.tab != 0 {
         options_menu.tab = options_menu.tab.next(request.tab);
         options_menu.selected = 0;
-        options_menu.steering = None;
+        options_menu.page = None;
         sounds.write(MenuSound::Move);
         return;
     }
@@ -709,7 +868,7 @@ fn use_options_menu(
         sounds.write(MenuSound::Move);
         // Up to the row of sections from a page of Control's: Control.
         if options_menu.on_tabs && page.is_some() {
-            options_menu.steering = None;
+            options_menu.page = None;
         }
     }
     if on_tabs || request.step != 0 {
@@ -791,10 +950,10 @@ fn use_options_menu(
                 ControlItem::StickBehaviour | ControlItem::KeyboardBehaviour
                     if request.confirm || request.side > 0 =>
                 {
-                    options_menu.steering = Some(if item == ControlItem::StickBehaviour {
-                        Steering::Stick
+                    options_menu.page = Some(if item == ControlItem::StickBehaviour {
+                        Page::Stick
                     } else {
-                        Steering::Keyboard
+                        Page::Keyboard
                     });
                     options_menu.selected = 0;
                     sounds.write(MenuSound::Confirm);
@@ -853,9 +1012,15 @@ fn use_options_menu(
             }
         }
         OptionsTab::Graphics => {
-            let items = graphics_items();
+            let items = graphics_items(page);
             let item = items[options_menu.selected.min(items.len() - 1)];
             match item {
+                // The page of its own, from its first option.
+                GraphicsItem::Advanced if request.confirm || request.side > 0 => {
+                    options_menu.page = Some(Page::Advanced);
+                    options_menu.selected = 0;
+                    sounds.write(MenuSound::Confirm);
+                }
                 GraphicsItem::Fullscreen if change != 0 => {
                     settings.fullscreen = !settings.fullscreen;
                     sounds.write(MenuSound::Move);
@@ -1145,6 +1310,11 @@ fn show_options_menu(
     ),
     // The mapping's gamepads, drawn at the interface's scale.
     (mut pad_arts, ui_scale, detail): (ResMut<PadArts>, Option<Res<UiScale>>, Option<Res<Detail>>),
+    // The list of options shown until now, as it was laid out.
+    (lists, laid_rows): (
+        Query<(&OptionsList, &ComputedNode, &UiGlobalTransform)>,
+        Query<(&OptionsRow, &ComputedNode, &UiGlobalTransform)>,
+    ),
     mut last: Local<Option<String>>,
 ) {
     let started = started.as_deref();
@@ -1236,7 +1406,7 @@ fn show_options_menu(
                 ),
             })
             .collect(),
-        OptionsTab::Control => control_items(options_menu.steering)
+        OptionsTab::Control => control_items(options_menu.page)
             .into_iter()
             .map(|item| match item {
                 ControlItem::StickBehaviour => Row::with_value(
@@ -1337,9 +1507,16 @@ fn show_options_menu(
                 ),
             })
             .collect(),
-        OptionsTab::Graphics => graphics_items()
+        OptionsTab::Graphics => graphics_items(options_menu.page)
             .into_iter()
             .map(|item| match item {
+                GraphicsItem::Advanced => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Avanzado",
+                        Language::English => "Advanced",
+                    },
+                    ">",
+                ),
                 GraphicsItem::Fullscreen => Row::check(lang.fullscreen(), settings.fullscreen),
                 GraphicsItem::FullscreenKind => Row::with_value(
                     lang.fullscreen_kind(),
@@ -1492,7 +1669,7 @@ fn show_options_menu(
         Row {
             disabled: section_is_default(
                 options_menu.tab,
-                options_menu.steering,
+                options_menu.page,
                 &settings,
                 &debug_options,
             ),
@@ -1506,7 +1683,6 @@ fn show_options_menu(
     let held = Held {
         keyboard: &keyboard,
         gamepads: gamepads.iter().collect(),
-        select_start: false,
     };
     let mut held_down: Vec<String> = keyboard
         .get_pressed()
@@ -1572,6 +1748,22 @@ fn show_options_menu(
         return;
     }
     *last = Some(wanted);
+    // Scrolled as the list shown until now, if it is the same tab's (and
+    // page's), and on as far as needed to show the option chosen now; at
+    // the top otherwise.
+    let scroll = lists
+        .iter()
+        .find(|(list, ..)| list.tab == options_menu.tab && list.page == options_menu.page)
+        .map_or_else(ListScroll::default, |(_, list, list_at)| {
+            let scroll = ListScroll::of(list);
+            laid_rows
+                .iter()
+                .find(|(row, ..)| !options_menu.on_tabs && row.0 == options_menu.selected)
+                .map_or(scroll, |(_, row, row_at)| {
+                    let (top, height) = row_in((list, list_at), (row, row_at));
+                    scroll.showing(top, height)
+                })
+        });
     for entity in &shown {
         commands.entity(entity).despawn();
     }
@@ -1660,7 +1852,7 @@ fn show_options_menu(
                     }
                     // Título
                     // On a page of Control's, which.
-                    let title = match options_menu.steering {
+                    let title = match options_menu.page {
                         Some(page) => {
                             format!("{} > {}", lang.options().to_uppercase(), page.title(lang))
                         }
@@ -1729,132 +1921,203 @@ fn show_options_menu(
                         BackgroundColor(accent.with_alpha(0.7)),
                     ));
 
-                    // Lista de opciones de la pestaña. It fills the panel, and
-                    // Reset and Back stand at its foot on every tab.
+                    // Lista de opciones de la pestaña. It fills the panel,
+                    // scrolling when they do not all fit (the chosen one
+                    // kept in view, a thin bar beside it), above Reset and
+                    // Back, which stay where they are.
                     let (size, padding, gap) = (20.0, 5.0, 3.0);
+                    let thumb = scroll.thumb();
                     panel
-                        .spawn((Node {
+                        .spawn(Node {
                             flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Stretch,
                             flex_grow: 1.0,
-                            row_gap: px(gap),
+                            flex_basis: px(0),
+                            min_height: px(0),
                             ..default()
-                        },))
-                        .with_children(|items_container| {
-                            for (index, row) in rows.iter().enumerate() {
-                                let chosen =
-                                    !options_menu.on_tabs && index == options_menu.selected;
-                                // Chosen, in the colour of the section.
-                                let (chosen_background, chosen_text) = if row.disabled || row.danger
-                                {
-                                    row.chosen_colors()
-                                } else {
-                                    (accent, INK)
-                                };
-                                let color = TextColor(if chosen {
-                                    chosen_text
-                                } else if row.disabled {
-                                    Color::srgba(1.0, 1.0, 1.0, 0.4)
-                                } else {
-                                    Color::WHITE
-                                });
-
-                                items_container
-                                    .spawn((
-                                        Node {
-                                            justify_content: if row.value.is_some()
-                                                || row.check.is_some()
-                                            {
-                                                JustifyContent::SpaceBetween
+                        })
+                        .with_children(|frame| {
+                            frame
+                                .spawn((
+                                    OptionsList {
+                                        tab: options_menu.tab,
+                                        page: options_menu.page,
+                                    },
+                                    Node {
+                                        flex_direction: FlexDirection::Column,
+                                        align_items: AlignItems::Stretch,
+                                        flex_grow: 1.0,
+                                        min_height: px(0),
+                                        row_gap: px(gap),
+                                        overflow: Overflow::scroll_y(),
+                                        ..default()
+                                    },
+                                    ScrollPosition(Vec2::new(0.0, scroll.offset)),
+                                ))
+                                .with_children(|items_container| {
+                                    for (index, row) in rows.iter().enumerate() {
+                                        let chosen =
+                                            !options_menu.on_tabs && index == options_menu.selected;
+                                        // Chosen, in the colour of the section.
+                                        let (chosen_background, chosen_text) =
+                                            if row.disabled || row.danger {
+                                                row.chosen_colors()
                                             } else {
-                                                JustifyContent::Center
-                                            },
-                                            align_items: AlignItems::Center,
-                                            column_gap: px(30),
-                                            padding: UiRect::axes(px(ROW_INSET), px(padding)),
-                                            margin: if starts_group(
-                                                options_menu.tab,
-                                                options_menu.steering,
-                                                index,
-                                            ) {
-                                                UiRect::top(px(GROUP_GAP))
-                                            } else {
-                                                UiRect::ZERO
-                                            },
-                                            border_radius: BorderRadius::all(px(8)),
-                                            ..default()
-                                        },
-                                        BackgroundColor(if chosen {
-                                            chosen_background
+                                                (accent, INK)
+                                            };
+                                        let color = TextColor(if chosen {
+                                            chosen_text
+                                        } else if row.disabled {
+                                            Color::srgba(1.0, 1.0, 1.0, 0.4)
                                         } else {
-                                            Color::NONE
-                                        }),
-                                    ))
-                                    .with_children(|line| {
-                                        line.spawn((
-                                            Text::new(&row.label),
-                                            text_font(&font, size),
-                                            color,
-                                        ));
-                                        // The value and the box, together
-                                        // on the right.
-                                        line.spawn(Node {
-                                            align_items: AlignItems::Center,
-                                            column_gap: px(14),
-                                            ..default()
-                                        })
-                                        .with_children(
-                                            |right| {
-                                                if let Some(value) = &row.value {
-                                                    right.spawn((
-                                                        Text::new(value),
-                                                        text_font(&font, size),
-                                                        color,
-                                                    ));
-                                                }
-                                                if let Some(on) = row.check {
-                                                    spawn_check(
-                                                        right,
-                                                        &icons,
-                                                        on,
-                                                        chosen,
-                                                        row.disabled,
-                                                        accent,
-                                                    );
-                                                }
-                                            },
-                                        );
-                                    });
-                                // Under the legend, in a lighter hand: the
-                                // shortcuts for the sound and fullscreen,
-                                // on the device in use.
-                                if shortcuts_after(options_menu.tab, options_menu.steering, index) {
-                                    items_container
-                                        .spawn(Node {
-                                            padding: UiRect::axes(px(ROW_INSET), px(2)),
-                                            ..default()
-                                        })
-                                        .with_children(|note| {
-                                            let prompts = shortcut_prompts(active_dev, lang);
-                                            spawn_light_prompts(note, &font, &icons, &prompts);
+                                            Color::WHITE
                                         });
-                                }
-                            }
-                            // The foot, side by side.
-                            items_container
-                                .spawn(Node {
-                                    justify_content: JustifyContent::Center,
-                                    column_gap: px(16),
-                                    margin: UiRect::top(Val::Auto),
-                                    ..default()
-                                })
-                                .with_children(|foot| {
-                                    for (place, row) in footer.iter().enumerate() {
-                                        let chosen = !options_menu.on_tabs
-                                            && options_menu.selected == rows.len() + place;
-                                        spawn_foot_button(foot, &font, row, accent, chosen);
+
+                                        items_container
+                                            .spawn((
+                                                OptionsRow(index),
+                                                Node {
+                                                    flex_shrink: 0.0,
+                                                    justify_content: if row.value.is_some()
+                                                        || row.check.is_some()
+                                                    {
+                                                        JustifyContent::SpaceBetween
+                                                    } else {
+                                                        JustifyContent::Center
+                                                    },
+                                                    align_items: AlignItems::Center,
+                                                    column_gap: px(30),
+                                                    padding: UiRect::axes(
+                                                        px(ROW_INSET),
+                                                        px(padding),
+                                                    ),
+                                                    margin: if starts_group(
+                                                        options_menu.tab,
+                                                        options_menu.page,
+                                                        index,
+                                                    ) {
+                                                        UiRect::top(px(GROUP_GAP))
+                                                    } else {
+                                                        UiRect::ZERO
+                                                    },
+                                                    border_radius: BorderRadius::all(px(8)),
+                                                    ..default()
+                                                },
+                                                BackgroundColor(if chosen {
+                                                    chosen_background
+                                                } else {
+                                                    Color::NONE
+                                                }),
+                                            ))
+                                            .with_children(|line| {
+                                                line.spawn((
+                                                    Text::new(&row.label),
+                                                    text_font(&font, size),
+                                                    color,
+                                                ));
+                                                // The value and the box, together
+                                                // on the right.
+                                                line.spawn(Node {
+                                                    align_items: AlignItems::Center,
+                                                    column_gap: px(14),
+                                                    ..default()
+                                                })
+                                                .with_children(|right| {
+                                                    if let Some(value) = &row.value {
+                                                        right.spawn((
+                                                            Text::new(value),
+                                                            text_font(&font, size),
+                                                            color,
+                                                        ));
+                                                    }
+                                                    if let Some(on) = row.check {
+                                                        spawn_check(
+                                                            right,
+                                                            &icons,
+                                                            on,
+                                                            chosen,
+                                                            row.disabled,
+                                                            accent,
+                                                        );
+                                                    }
+                                                });
+                                            });
+                                        // Under the legend, in a lighter hand: the
+                                        // shortcuts for the sound and fullscreen,
+                                        // on the device in use.
+                                        if shortcuts_after(
+                                            options_menu.tab,
+                                            options_menu.page,
+                                            index,
+                                        ) {
+                                            items_container
+                                                .spawn(Node {
+                                                    flex_shrink: 0.0,
+                                                    padding: UiRect::axes(px(ROW_INSET), px(2)),
+                                                    ..default()
+                                                })
+                                                .with_children(|note| {
+                                                    let prompts =
+                                                        shortcut_prompts(active_dev, lang);
+                                                    spawn_light_prompts(
+                                                        note, &font, &icons, &prompts,
+                                                    );
+                                                });
+                                        }
                                     }
                                 });
+                            // Beside it, in the panel's margin: the bar, its thumb
+                            // as tall as the share of the options shown, as far
+                            // down as the list is scrolled.
+                            frame
+                                .spawn((
+                                    ScrollBar,
+                                    Node {
+                                        position_type: PositionType::Absolute,
+                                        top: px(0),
+                                        bottom: px(0),
+                                        right: px(-14),
+                                        width: px(4),
+                                        border_radius: BorderRadius::all(px(2)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.08)),
+                                    if thumb.is_some() {
+                                        Visibility::Inherited
+                                    } else {
+                                        Visibility::Hidden
+                                    },
+                                ))
+                                .with_children(|bar| {
+                                    let (top, height) = thumb.unwrap_or((0.0, 1.0));
+                                    bar.spawn((
+                                        ScrollThumb,
+                                        Node {
+                                            position_type: PositionType::Absolute,
+                                            left: px(0),
+                                            right: px(0),
+                                            top: percent(top * 100.0),
+                                            height: percent(height * 100.0),
+                                            border_radius: BorderRadius::all(px(2)),
+                                            ..default()
+                                        },
+                                        BackgroundColor(accent.with_alpha(0.7)),
+                                    ));
+                                });
+                        });
+                    // The foot, side by side, where it is on every tab.
+                    panel
+                        .spawn(Node {
+                            justify_content: JustifyContent::Center,
+                            column_gap: px(16),
+                            flex_shrink: 0.0,
+                            ..default()
+                        })
+                        .with_children(|foot| {
+                            for (place, row) in footer.iter().enumerate() {
+                                let chosen = !options_menu.on_tabs
+                                    && options_menu.selected == rows.len() + place;
+                                spawn_foot_button(foot, &font, row, accent, chosen);
+                            }
                         });
                 });
 
@@ -1892,13 +2155,87 @@ mod tests {
         assert!(!shortcuts_after(OptionsTab::Game, None, legend));
         assert!((0..8).all(|index| !starts_group(OptionsTab::Game, None, index)));
         // A page of Control's: its own options, in no groups.
-        let keyboard = Some(Steering::Keyboard);
+        let keyboard = Some(Page::Keyboard);
         assert_eq!(control_items(keyboard).len(), 4);
         assert!((0..4).all(|index| !starts_group(OptionsTab::Control, keyboard, index)));
         assert_eq!(
-            control_items(Some(Steering::Stick)),
+            control_items(Some(Page::Stick)),
             [ControlItem::StickTurnLimit]
         );
+    }
+
+    #[test]
+    fn the_list_scrolls_as_little_as_needed_to_show_the_chosen_option() {
+        let list = ListScroll {
+            offset: 0.0,
+            view: 300.0,
+            content: 420.0,
+        };
+        // In view: as it is.
+        assert_eq!(list.showing(100.0, 34.0), list);
+        // Below: down until its foot is at the list's; above, up until its
+        // top is at the list's.
+        let down = list.showing(380.0, 34.0);
+        assert_eq!(down.offset, 114.0);
+        assert_eq!(down.showing(37.0, 34.0).offset, 37.0);
+        // Never past either end.
+        assert_eq!(list.showing(400.0, 40.0).offset, 120.0);
+        assert_eq!(down.showing(-5.0, 34.0).offset, 0.0);
+        // The bar: its thumb as tall as the share shown, as far down as the
+        // list is scrolled; none when it all fits.
+        assert_eq!(down.thumb(), Some((114.0 / 420.0, 300.0 / 420.0)));
+        let fits = ListScroll {
+            content: 300.0,
+            ..list
+        };
+        assert_eq!(fits.thumb(), None);
+        assert_eq!(fits.showing(250.0, 34.0).offset, 0.0);
+    }
+
+    #[test]
+    fn graphics_keeps_its_advanced_options_on_a_page_of_their_own() {
+        let main = graphics_items(None);
+        let advanced = graphics_items(Some(Page::Advanced));
+        assert_eq!(
+            advanced,
+            [
+                GraphicsItem::PerformanceLog,
+                GraphicsItem::PipelinedRendering,
+                GraphicsItem::FrameLatency
+            ]
+        );
+        assert!(advanced.iter().all(|item| !main.contains(item)));
+        assert_eq!(main.last(), Some(&GraphicsItem::Advanced));
+        // Back to its row on Graphics.
+        let mut menu = OptionsMenu::default();
+        menu.open(OptionsReturn::Welcome);
+        menu.tab = OptionsTab::Graphics;
+        menu.page = Some(Page::Advanced);
+        menu.leave_page(Page::Advanced);
+        assert_eq!(main[menu.selected], GraphicsItem::Advanced);
+        // Reset there puts back its own options only.
+        let mut settings = Settings {
+            performance_log: false,
+            frame_latency: 3,
+            shadows: ShadowQuality::Low,
+            ..default()
+        };
+        let mut debug = DebugOptions::default();
+        let page = Some(Page::Advanced);
+        assert!(!section_is_default(
+            OptionsTab::Graphics,
+            page,
+            &settings,
+            &debug
+        ));
+        reset_section(OptionsTab::Graphics, page, &mut settings, &mut debug);
+        assert!(section_is_default(
+            OptionsTab::Graphics,
+            page,
+            &settings,
+            &debug
+        ));
+        assert_eq!(settings.shadows, ShadowQuality::Low);
     }
 
     #[test]
@@ -1906,19 +2243,19 @@ mod tests {
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
         menu.tab = OptionsTab::Control;
-        menu.steering = Some(Steering::Keyboard);
+        menu.page = Some(Page::Keyboard);
         menu.selected = 2;
-        menu.leave_page(Steering::Keyboard);
-        assert_eq!(menu.steering, None);
+        menu.leave_page(Page::Keyboard);
+        assert_eq!(menu.page, None);
         assert_eq!(
             control_items(None)[menu.selected],
             ControlItem::KeyboardBehaviour
         );
         // Closing the options leaves no page open for the next time.
-        menu.steering = Some(Steering::Stick);
+        menu.page = Some(Page::Stick);
         menu.close();
         menu.open(OptionsReturn::Welcome);
-        assert_eq!(menu.steering, None);
+        assert_eq!(menu.page, None);
     }
 
     #[test]
@@ -2017,7 +2354,7 @@ mod tests {
             assert!(section_is_default(tab, None, &settings, &debug), "{tab:?}");
         }
         // On a page of Control's, its own options only.
-        let (stick, keyboard) = (Some(Steering::Stick), Some(Steering::Keyboard));
+        let (stick, keyboard) = (Some(Page::Stick), Some(Page::Keyboard));
         debug.stick_limit = TurnLimit::Off;
         debug.keyboard_reverse = ReverseRate::Slow;
         let control = OptionsTab::Control;

@@ -3,11 +3,11 @@
 //! that change section), drawn with the keys or buttons held down lit while
 //! testing or remapping (and, on the keyboard, the ones that do something
 //! tinted), each action with
-//! its keys or buttons underneath, and at its foot, beside Back: "Remap"
-//! waits for the key or button to remap and then for the new one, or
-//! several pressed together, that is to do its action instead; "Test" lets
-//! the keys or buttons be tried out, lighting what they do, without working
-//! the menu; "Reset" puts the device's back as they were at first. The
+//! its keys or buttons underneath, and at its foot, beside Back: "Test"
+//! lets the keys or buttons be tried out, lighting what they do, without
+//! working the menu; "Remap" waits for the key or button to remap and then
+//! for the new one, or several pressed together, that is to do its action
+//! instead; "Reset" puts the device's back as they were at first. The
 //! keyboard and the gamepad are mapped apart. The header (the devices) is
 //! in Control's colour, what stands out below it in a neutral one.
 
@@ -17,7 +17,7 @@ use crate::hud::UiFont;
 use crate::legend::{Glyph, Label, button_badge, section_badges, spawn_lone_badge};
 use crate::locale::Language;
 use crate::pad_art::{DrawnPad, PadArt};
-use crate::settings::{ACTIONS, Action, Controls, FULLSCREEN_BUTTON, SHORTCUT_HELD, key_name};
+use crate::settings::{ACTIONS, Action, Controls, key_name};
 use crate::ui::{ActiveDevice, MenuSound, Request, UiIcons, text_font};
 
 /// Seconds to press the key or button before the remapping is called off.
@@ -64,10 +64,11 @@ pub enum MapFocus {
     Back,
 }
 
-/// The buttons at the foot of the view, side by side.
+/// The buttons at the foot of the view, side by side: Test (chosen as the
+/// view opens, and down from the devices), Remap, Reset and Back.
 const BUTTONS: [MapFocus; 4] = [
-    MapFocus::Remap,
     MapFocus::Test,
+    MapFocus::Remap,
     MapFocus::Reset,
     MapFocus::Back,
 ];
@@ -96,7 +97,7 @@ pub enum Step {
         held: Vec<Pressed>,
     },
     /// Trying the keys or buttons out: each one held lit, with what it
-    /// does, until Esc or Select with Start.
+    /// does, until Esc, or on a gamepad B held for [`END_HOLD`] s.
     Test,
 }
 
@@ -122,16 +123,25 @@ pub struct Mapping {
     pub step: Step,
     /// What was just done, and until when (s).
     pub note: Option<(Note, f32)>,
+    /// Trying the controls out, since when (s) a gamepad's B has been held
+    /// down, to end the test once it has been for [`END_HOLD`] s.
+    pub ending: Option<f32>,
 }
 
+/// The gamepad's button that ends a test of the controls held down, and for
+/// how long (s): long enough not to end it by trying B out.
+const END_BUTTON: GamepadButton = GamepadButton::East;
+const END_HOLD: f32 = 3.0;
+
 impl Mapping {
-    /// The view of `device`, with "Remap" chosen.
+    /// The view of `device`, with "Test" chosen.
     pub fn open(device: MapDevice) -> Self {
         Self {
             device,
-            focus: MapFocus::Remap,
+            focus: BUTTONS[0],
             step: Step::Idle,
             note: None,
+            ending: None,
         }
     }
 
@@ -150,7 +160,7 @@ impl Mapping {
         }
         if request.step != 0 {
             self.focus = if self.focus == MapFocus::Devices {
-                MapFocus::Remap
+                BUTTONS[0]
             } else {
                 MapFocus::Devices
             };
@@ -169,9 +179,6 @@ impl Mapping {
 pub struct Held<'a> {
     pub keyboard: &'a ButtonInput<KeyCode>,
     pub gamepads: Vec<&'a Gamepad>,
-    /// Whether Select with Start was just pressed on a gamepad: the
-    /// shortcut takes it (see [`crate::settings::ControlsTest`]).
-    pub select_start: bool,
 }
 
 impl Held<'_> {
@@ -345,8 +352,16 @@ pub fn use_mapping(
             false
         }
         Step::Test => {
-            if cancel || input.select_start {
+            // B held down on a gamepad, since when.
+            let holding = input
+                .gamepads
+                .iter()
+                .any(|gamepad| gamepad.pressed(END_BUTTON));
+            mapping.ending = holding.then(|| mapping.ending.unwrap_or(now));
+            let held_long = mapping.ending.is_some_and(|since| now - since >= END_HOLD);
+            if cancel || held_long {
                 mapping.step = Step::Idle;
+                mapping.ending = None;
                 sounds.write(MenuSound::Move);
             }
             false
@@ -365,7 +380,7 @@ pub fn use_mapping(
             }
             match mapping.focus {
                 MapFocus::Devices => {
-                    mapping.focus = MapFocus::Remap;
+                    mapping.focus = BUTTONS[0];
                     sounds.write(MenuSound::Move);
                 }
                 MapFocus::Remap => {
@@ -655,7 +670,7 @@ pub fn spawn_mapping(panel: &mut ChildSpawnerCommands, mapping: &Mapping, look: 
             status_line(panel);
         }
     }
-    // At the foot, side by side: remap, test, reset and back.
+    // At the foot, side by side: test, remap, reset and back.
     panel
         .spawn(Node {
             justify_content: JustifyContent::Center,
@@ -678,7 +693,7 @@ pub fn spawn_mapping(panel: &mut ChildSpawnerCommands, mapping: &Mapping, look: 
                 (true, Language::Spanish) => "Probando...",
                 (true, Language::English) => "Testing...",
             };
-            let labels = [remap, test, lang.reset(), lang.back()];
+            let labels = [test, remap, lang.reset(), lang.back()];
             for (focus, label) in BUTTONS.into_iter().zip(labels) {
                 spawn_button(
                     foot,
@@ -1150,9 +1165,12 @@ fn status(mapping: &Mapping, look: &MappingLook) -> (String, Color) {
             let held = look.held.all_held(mapping.device);
             if held.is_empty() {
                 let end = format!(
-                    "Esc / {}+{}",
-                    input_name(Pressed::Button(SHORTCUT_HELD), look),
-                    input_name(Pressed::Button(FULLSCREEN_BUTTON), look)
+                    "Esc / {} {}",
+                    input_name(Pressed::Button(END_BUTTON), look),
+                    match lang {
+                        Language::Spanish => "pulsado 3 s",
+                        Language::English => "held 3 s",
+                    }
                 );
                 let text = match (lang, keyboard) {
                     (Language::Spanish, true) => {
@@ -1239,8 +1257,8 @@ mod tests {
         controls: Controls,
         keyboard: ButtonInput<KeyCode>,
         now: f32,
-        /// Select with Start just pressed this frame.
-        select_start: bool,
+        /// A gamepad, its buttons held as the test says.
+        pad: Gamepad,
     }
 
     impl Bench {
@@ -1250,7 +1268,7 @@ mod tests {
                 controls: Controls::default(),
                 keyboard: ButtonInput::default(),
                 now: 0.0,
-                select_start: false,
+                pad: Gamepad::default(),
             }
         }
 
@@ -1265,8 +1283,7 @@ mod tests {
             self.now += 0.1;
             let held = Held {
                 keyboard: &self.keyboard,
-                gamepads: Vec::new(),
-                select_start: self.select_start,
+                gamepads: vec![&self.pad],
             };
             let mut world = World::new();
             world.init_resource::<Messages<MenuSound>>();
@@ -1287,6 +1304,7 @@ mod tests {
     #[test]
     fn remap_waits_for_the_key_to_remap_then_for_the_new_one() {
         let mut bench = Bench::new();
+        bench.mapping.focus = MapFocus::Remap;
         let confirm = Request {
             confirm: true,
             ..request()
@@ -1321,6 +1339,7 @@ mod tests {
     #[test]
     fn several_keys_pressed_together_make_a_combination() {
         let mut bench = Bench::new();
+        bench.mapping.focus = MapFocus::Remap;
         bench.frame(
             Request {
                 confirm: true,
@@ -1349,6 +1368,7 @@ mod tests {
     #[test]
     fn a_key_that_does_nothing_or_esc_calls_it_off() {
         let mut bench = Bench::new();
+        bench.mapping.focus = MapFocus::Remap;
         let confirm = Request {
             confirm: true,
             ..request()
@@ -1368,13 +1388,14 @@ mod tests {
     fn the_view_is_walked_and_resets_its_device() {
         let mut bench = Bench::new();
         bench.controls.remap(KeyCode::KeyW, &[KeyCode::KeyI]);
-        // Across from Remap: Test, then Reset.
+        // Test chosen at first, Remap after it, then Reset.
+        assert_eq!(bench.mapping.focus, MapFocus::Test);
         let across = Request {
             side: 1,
             ..request()
         };
         bench.frame(across, &[], &[]);
-        assert_eq!(bench.mapping.focus, MapFocus::Test);
+        assert_eq!(bench.mapping.focus, MapFocus::Remap);
         bench.frame(across, &[], &[]);
         assert_eq!(bench.mapping.focus, MapFocus::Reset);
         bench.frame(
@@ -1432,7 +1453,6 @@ mod tests {
         let held = Held {
             keyboard: &bench.keyboard,
             gamepads: Vec::new(),
-            select_start: false,
         };
         assert!(held.does(&bench.controls, MapDevice::Keyboard, Action::Throttle));
         assert!(!held.does(&bench.controls, MapDevice::Keyboard, Action::Brake));
@@ -1458,7 +1478,6 @@ mod tests {
             let held = Held {
                 keyboard: &bench.keyboard,
                 gamepads: Vec::new(),
-                select_start: false,
             };
             lights_up(&bench.mapping, &held, Pressed::Key(KeyCode::ArrowRight))
         };
@@ -1471,7 +1490,54 @@ mod tests {
     }
 
     #[test]
-    fn select_with_start_ends_a_test_and_waiting_does_not() {
+    fn while_testing_the_menu_does_nothing() {
+        let mut bench = Bench::new();
+        bench.frame(
+            Request {
+                confirm: true,
+                ..request()
+            },
+            &[KeyCode::Enter],
+            &[KeyCode::Enter],
+        );
+        assert_eq!(bench.mapping.step, Step::Test);
+        // Arrows across and down, A (confirm), B (back) and the shoulder
+        // buttons: the view stays as it is, still testing.
+        let requests = [
+            Request {
+                side: 1,
+                ..request()
+            },
+            Request {
+                step: 1,
+                ..request()
+            },
+            Request {
+                confirm: true,
+                ..request()
+            },
+            Request {
+                back: true,
+                ..request()
+            },
+            Request {
+                tab: 1,
+                ..request()
+            },
+        ];
+        for request in requests {
+            assert!(!bench.frame(request, &[], &[]));
+            assert_eq!(bench.mapping.step, Step::Test);
+            assert_eq!(bench.mapping.focus, MapFocus::Test);
+            assert_eq!(bench.mapping.device, MapDevice::Keyboard);
+        }
+        // Esc ends it.
+        bench.frame(request(), &[KeyCode::Escape], &[]);
+        assert_eq!(bench.mapping.step, Step::Idle);
+    }
+
+    #[test]
+    fn b_held_for_three_seconds_ends_a_test_and_waiting_does_not() {
         let mut bench = Bench::new();
         bench.mapping.focus = MapFocus::Test;
         bench.frame(
@@ -1487,9 +1553,21 @@ mod tests {
             bench.frame(request(), &[], &[]);
         }
         assert_eq!(bench.mapping.step, Step::Test);
-        // Select with Start on a gamepad ends it.
-        bench.select_start = true;
+        // B pressed and let go of: tried out, still on.
+        bench.pad.digital_mut().press(END_BUTTON);
         bench.frame(request(), &[], &[]);
+        bench.pad.digital_mut().release(END_BUTTON);
+        bench.frame(request(), &[], &[]);
+        assert_eq!(bench.mapping.step, Step::Test);
+        // Held: on until three seconds, then over.
+        bench.pad.digital_mut().press(END_BUTTON);
+        for _ in 0..29 {
+            bench.frame(request(), &[], &[]);
+        }
+        assert_eq!(bench.mapping.step, Step::Test);
+        for _ in 0..3 {
+            bench.frame(request(), &[], &[]);
+        }
         assert_eq!(bench.mapping.step, Step::Idle);
     }
 }
