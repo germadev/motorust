@@ -11,6 +11,13 @@
 //! A change of scale makes no new pipeline for the world, only textures of
 //! another size (the sharpening's pipeline, and the interface's without
 //! multisampling, are made the first time), so it can be changed in a race.
+//!
+//! The world is never drawn at more pixels than the screen itself has. A
+//! Mac's scaled display modes (a 1440p monitor "looking like" 2048 × 1152
+//! in HiDPI, a laptop's "more space") give the window more pixels than the
+//! panel, and macOS shrinks the whole picture to fit it: what is drawn past
+//! the panel's own is never seen. So the share is of the window as the
+//! panel would show it ([`NativeShare`]), at most the window.
 
 use bevy::anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening;
 use bevy::camera::{CameraUpdateSystems, ImageRenderTarget, RenderTarget};
@@ -18,7 +25,7 @@ use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use bevy::ui::IsDefaultUiCamera;
-use bevy::window::{PrimaryWindow, WindowRef};
+use bevy::window::{Monitor, OnMonitor, PrimaryMonitor, PrimaryWindow, WindowRef};
 
 use crate::world::detail::{Detail, choose_detail};
 
@@ -26,7 +33,9 @@ pub struct RenderScalePlugin;
 
 impl Plugin for RenderScalePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_scaled_world)
+        app.init_resource::<NativeShare>()
+            .add_systems(Startup, spawn_scaled_world)
+            .add_systems(Update, (find_native_sizes, follow_native_share).chain())
             // With the detail of the frame before, as the split screen's
             // halves in `Update`: both change together.
             .add_systems(
@@ -57,6 +66,118 @@ pub fn render_size(window: UVec2, percent: u32) -> UVec2 {
         .round()
         .as_uvec2()
         .max(UVec2::ONE)
+}
+
+/// How much of each side of the window the screen's own pixels cover (0 to
+/// 1): 1 unless the display mode gives the window more pixels than the
+/// panel has (see the module's notes), as 0.625 for a 1440p panel drawn at
+/// 4096 × 2304. The world is drawn at most at that share.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct NativeShare(pub f32);
+
+impl Default for NativeShare {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+/// The pixels the world is drawn at in a window of `window` physical
+/// pixels at `percent` % of the screen's own (see [`NativeShare`]).
+pub fn drawn_size(window: UVec2, percent: u32, native: NativeShare) -> UVec2 {
+    let share = native.0.clamp(0.0, 1.0);
+    let base = if share < 1.0 {
+        (window.as_vec2() * share)
+            .round()
+            .as_uvec2()
+            .max(UVec2::ONE)
+    } else {
+        window
+    };
+    render_size(base, percent)
+}
+
+/// A monitor's own resolution, the panel's pixels, where it differs from
+/// the display mode's ([`Monitor::physical_width`] and height): found once
+/// for each monitor, on macOS (see [`native`]).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct NativeSize(pub UVec2);
+
+/// Finds the panel's own resolution of each monitor that is new or has
+/// changed (its display mode).
+fn find_native_sizes(
+    mut commands: Commands,
+    monitors: Query<(Entity, &Monitor), Changed<Monitor>>,
+) {
+    for (entity, monitor) in &monitors {
+        match native_size(monitor) {
+            Some(size) => {
+                info!(
+                    "Screen {}: {} × {} pixels drawn, {} × {} its own",
+                    monitor.name.as_deref().unwrap_or("?"),
+                    monitor.physical_width,
+                    monitor.physical_height,
+                    size.x,
+                    size.y
+                );
+                commands.entity(entity).insert(NativeSize(size));
+            }
+            None => {
+                commands.entity(entity).remove::<NativeSize>();
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn native_size(monitor: &Monitor) -> Option<UVec2> {
+    native::panel_size(
+        UVec2::new(monitor.physical_width, monitor.physical_height),
+        monitor.physical_position,
+    )
+}
+
+/// Elsewhere a display mode is the screen's own pixels, or fewer.
+#[cfg(not(target_os = "macos"))]
+fn native_size(_monitor: &Monitor) -> Option<UVec2> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+mod native;
+
+/// The share of the window the screen's own pixels cover (see
+/// [`NativeShare`]): of the monitor it is on, or else the main one.
+fn follow_native_share(
+    window: Query<Option<&OnMonitor>, With<PrimaryWindow>>,
+    monitors: Query<(&Monitor, Option<&NativeSize>, Has<PrimaryMonitor>)>,
+    mut share: ResMut<NativeShare>,
+) {
+    let Ok(on) = window.single() else {
+        return;
+    };
+    let monitor = on
+        .and_then(|on| monitors.get(on.0).ok())
+        .or_else(|| monitors.iter().find(|(_, _, primary)| *primary));
+    let now = monitor.map_or(NativeShare::default(), |(monitor, native, _)| {
+        native_share(
+            UVec2::new(monitor.physical_width, monitor.physical_height),
+            native.map(|native| native.0),
+        )
+    });
+    share.set_if_neq(now);
+}
+
+/// How much of each side of a display mode of `mode` pixels a panel of
+/// `native` pixels covers: 1 when it has as many or more, or is unknown.
+pub fn native_share(mode: UVec2, native: Option<UVec2>) -> NativeShare {
+    let Some(native) = native.filter(|native| native.min_element() > 0) else {
+        return NativeShare::default();
+    };
+    if mode.min_element() == 0 {
+        return NativeShare::default();
+    }
+    let share = (native.as_vec2() / mode.as_vec2()).min_element();
+    NativeShare(share.min(1.0))
 }
 
 /// The share of the window's resolution the world is drawn at now (%): as
@@ -91,7 +212,8 @@ fn target_image(size: UVec2) -> Image {
 #[allow(clippy::type_complexity)]
 fn scale_the_world(
     mut commands: Commands,
-    detail: Option<Res<Detail>>,
+    // The detail (with the scale chosen) and the screen's own share.
+    (detail, native): (Option<Res<Detail>>, Res<NativeShare>),
     window: Query<&Window, With<PrimaryWindow>>,
     mut images: ResMut<Assets<Image>>,
     mut shown: Query<(&mut Sprite, &mut Visibility), With<ScaledWorld>>,
@@ -106,7 +228,7 @@ fn scale_the_world(
         return;
     };
     let full = window.physical_size();
-    let size = render_size(full, render_percent(detail.as_deref()));
+    let size = drawn_size(full, render_percent(detail.as_deref()), *native);
     let scaled = size != full;
     if scaled {
         // An image of the size wanted: a new one when the size changes, so
@@ -189,6 +311,39 @@ mod tests {
         assert_eq!(render_size(retina, 5), render_size(retina, LEAST));
         assert_eq!(render_size(UVec2::ZERO, 50), UVec2::ONE);
         assert_eq!(render_percent(None), 100);
+    }
+
+    #[test]
+    fn the_world_is_never_drawn_at_more_pixels_than_the_screen_has() {
+        // A 1440p monitor in a HiDPI mode that looks like 2048 × 1152: the
+        // window has 4096 × 2304 pixels, the panel 2560 × 1440.
+        let hidpi = UVec2::new(4096, 2304);
+        let share = native_share(hidpi, Some(UVec2::new(2560, 1440)));
+        assert_eq!(share, NativeShare(0.625));
+        assert_eq!(drawn_size(hidpi, 100, share), UVec2::new(2560, 1440));
+        assert_eq!(drawn_size(hidpi, 85, share), UVec2::new(2176, 1224));
+        // A window on it drawn by its own share too.
+        assert_eq!(
+            drawn_size(UVec2::new(2048, 1152), 100, share),
+            UVec2::new(1280, 720)
+        );
+        // A panel with as many pixels as the mode, or more, or unknown,
+        // changes nothing.
+        let retina = UVec2::new(3024, 1898);
+        for native in [
+            Some(retina),
+            Some(UVec2::new(6000, 4000)),
+            None,
+            Some(UVec2::ZERO),
+        ] {
+            let share = native_share(retina, native);
+            assert_eq!(share, NativeShare::default());
+            assert_eq!(drawn_size(retina, 70, share), render_size(retina, 70));
+        }
+        assert_eq!(
+            native_share(UVec2::ZERO, Some(retina)),
+            NativeShare::default()
+        );
     }
 
     #[test]

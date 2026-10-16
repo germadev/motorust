@@ -27,7 +27,7 @@ use crate::circuits::CurrentCircuit;
 use crate::menu::GameState;
 use crate::pause::Pause;
 use crate::race::Rules;
-use crate::render_scale::{render_percent, render_size};
+use crate::render_scale::{NativeShare, drawn_size, render_percent};
 use crate::settings::Settings;
 use crate::welcome::GameMode;
 use crate::world::Dressed;
@@ -536,11 +536,12 @@ fn log_performance(
         Option<Res<SystemInfo>>,
         Query<(&Dressed, &InheritedVisibility)>,
     ),
-    (start, store, entities, detail): (
+    (start, store, entities, detail, native): (
         Res<FrameStart>,
         Option<Res<DiagnosticsStore>>,
         &Entities,
         Option<Res<Detail>>,
+        Option<Res<NativeShare>>,
     ),
     mut log: ResMut<PerfLog>,
 ) {
@@ -584,7 +585,11 @@ fn log_performance(
         render: window.map_or_else(
             || "none".into(),
             |window| {
-                let size = render_size(window.physical_size(), render_percent(detail.as_deref()));
+                let size = drawn_size(
+                    window.physical_size(),
+                    render_percent(detail.as_deref()),
+                    native.as_deref().copied().unwrap_or_default(),
+                );
                 format!("{}x{}", size.x, size.y)
             },
         ),

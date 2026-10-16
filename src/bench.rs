@@ -46,7 +46,7 @@ use crate::perf_log::{
     CpuClock, FrameStart, PerfLog, Stretch, Summary, folder, log_name, process_cpu,
 };
 use crate::race::{Mode, Progress, Rules};
-use crate::render_scale::render_size;
+use crate::render_scale::{NativeShare, drawn_size};
 use crate::settings::{Antialiasing, FpsLimit, Settings, ShadowQuality};
 use crate::track::Track;
 use crate::ui::text_font;
@@ -259,9 +259,10 @@ fn players_said(players: u32) -> String {
 }
 
 /// The pixels the world is drawn at in a window of `window` physical
-/// pixels at the render scale of `settings`, as shown on the screen.
-pub fn resolution_said(settings: &Settings, window: UVec2) -> String {
-    let size = render_size(window, settings.render_scale);
+/// pixels at the render scale of `settings`, at most the screen's own (see
+/// [`NativeShare`]), as shown on the screen.
+pub fn resolution_said(settings: &Settings, window: UVec2, native: NativeShare) -> String {
+    let size = drawn_size(window, settings.render_scale, native);
     format!(
         "3D {} × {} · {} %",
         size.x,
@@ -480,7 +481,7 @@ impl Bench {
 
     /// What it is doing, shown on the screen under the frame rate: the lap,
     /// the setting on and how far round.
-    fn on_screen(&self, settings: &Settings, window: UVec2) -> String {
+    fn on_screen(&self, settings: &Settings, window: UVec2, native: NativeShare) -> String {
         let Some(range) = self.laps.get(self.lap) else {
             return String::new();
         };
@@ -514,7 +515,7 @@ impl Bench {
             setting.and_then(|setting| self.scenarios.get(range.start + setting))
         {
             lines.push(scenario.name.to_string());
-            lines.push(resolution_said(settings, window));
+            lines.push(resolution_said(settings, window, native));
             lines.push(settings_said(settings, first.players));
         }
         lines.push(doing);
@@ -633,13 +634,18 @@ fn spawn_bench_label(mut commands: Commands, font: Res<UiFont>) {
 fn show_bench(
     bench: Res<Bench>,
     settings: Res<Settings>,
+    native: Option<Res<NativeShare>>,
     window: Query<&Window, With<PrimaryWindow>>,
     mut label: Single<&mut Text, With<BenchLabel>>,
 ) {
     let window = window
         .single()
         .map_or(UVec2::ZERO, |window| window.physical_size());
-    let text = bench.on_screen(&settings, window);
+    let text = bench.on_screen(
+        &settings,
+        window,
+        native.as_deref().copied().unwrap_or_default(),
+    );
     if label.0 != text {
         label.0 = text;
     }
@@ -1194,9 +1200,22 @@ mod tests {
         assert!(settings_said(&settings, 2).ends_with(" · all the detail"));
         // The pixels the world is drawn at.
         let retina = UVec2::new(3024, 1898);
-        assert_eq!(resolution_said(&settings, retina), "3D 3024 × 1898 · 100 %");
+        let whole = NativeShare::default();
+        assert_eq!(
+            resolution_said(&settings, retina, whole),
+            "3D 3024 × 1898 · 100 %"
+        );
         settings.render_scale = 70;
-        assert_eq!(resolution_said(&settings, retina), "3D 2117 × 1329 · 70 %");
+        assert_eq!(
+            resolution_said(&settings, retina, whole),
+            "3D 2117 × 1329 · 70 %"
+        );
+        // On a 1440p monitor in HiDPI, never more than its own pixels.
+        settings.render_scale = 100;
+        assert_eq!(
+            resolution_said(&settings, UVec2::new(4096, 2304), NativeShare(0.625)),
+            "3D 2560 × 1440 · 100 %"
+        );
     }
 
     #[test]

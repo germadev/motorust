@@ -17,6 +17,7 @@ use crate::mapping::{
 };
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
 use crate::pause::{DebugOptions, ReturnRate, ReverseRate, SteerRate, TurnLimit};
+use crate::render_scale::{NativeShare, drawn_size};
 use crate::settings::{
     ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
     DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS, LIGHTS_HOLDS,
@@ -565,13 +566,19 @@ fn graphics_items(page: Option<Page>) -> Vec<GraphicsItem> {
     }
 }
 
-/// A render scale as it is shown: the share and, under 100 %, the pixels
-/// the world is drawn at in `window` ("70 % (2117 × 1329)").
-fn render_scale_name(percent: u32, window: Option<&Window>) -> String {
+/// A render scale as it is shown: the share and, when it is not the whole
+/// window, the pixels the world is drawn at in `window` ("70 % (2117 ×
+/// 1329)"), at most the screen's own (see [`NativeShare`]).
+fn render_scale_name(percent: u32, window: Option<&Window>, native: NativeShare) -> String {
     match window {
-        Some(window) if percent < 100 && window.physical_width() > 0 => {
-            let size = crate::render_scale::render_size(window.physical_size(), percent);
-            format!("{percent} % ({} × {})", size.x, size.y)
+        Some(window) if window.physical_width() > 0 => {
+            let full = window.physical_size();
+            let size = drawn_size(full, percent, native);
+            if size == full {
+                format!("{percent} %")
+            } else {
+                format!("{percent} % ({} × {})", size.x, size.y)
+            }
         }
         _ => format!("{percent} %"),
     }
@@ -1309,7 +1316,12 @@ fn show_options_menu(
         Query<&Name, With<Gamepad>>,
     ),
     // The mapping's gamepads, drawn at the interface's scale.
-    (mut pad_arts, ui_scale, detail): (ResMut<PadArts>, Option<Res<UiScale>>, Option<Res<Detail>>),
+    (mut pad_arts, ui_scale, detail, native): (
+        ResMut<PadArts>,
+        Option<Res<UiScale>>,
+        Option<Res<Detail>>,
+        Option<Res<NativeShare>>,
+    ),
     // The list of options shown until now, as it was laid out.
     (lists, laid_rows): (
         Query<(&OptionsList, &ComputedNode, &UiGlobalTransform)>,
@@ -1328,6 +1340,7 @@ fn show_options_menu(
 
     let lang = settings.language;
     let window_inner = window.iter().next();
+    let native = native.as_deref().copied().unwrap_or_default();
     let now = time.elapsed_secs();
     // Beside a setting that takes effect when the game starts again.
     let restart = match lang {
@@ -1541,14 +1554,14 @@ fn show_options_menu(
                         let now = crate::render_scale::render_percent(detail.as_deref());
                         Row::disabled(
                             label,
-                            performance_said(&render_scale_name(now, window_inner), lang),
+                            performance_said(&render_scale_name(now, window_inner, native), lang),
                         )
                     } else {
                         Row::with_value(
                             label,
                             format!(
                                 "<  {}  >",
-                                render_scale_name(settings.render_scale, window_inner)
+                                render_scale_name(settings.render_scale, window_inner, native)
                             ),
                         )
                     }
