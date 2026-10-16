@@ -181,6 +181,9 @@ pub enum WallStyle {
     /// A low vermilion fence of posts and rails, as round a shrine: like
     /// the railing, the ground beyond it shows through.
     ShrineFence,
+    /// A low concrete parapet, as along a dam's crest on its lake's side:
+    /// the water shows over it, a little way down.
+    Parapet,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock

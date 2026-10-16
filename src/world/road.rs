@@ -34,6 +34,8 @@ pub(super) const WALL_HEIGHT: f32 = 1.1;
 const HEDGE: Color = Color::srgb(0.55, 0.85, 0.4);
 /// Las barreras de hormigón son algo más bajas, y los setos, más altos.
 const CONCRETE_HEIGHT: f32 = 1.0;
+/// A dam's low parapet over its lake.
+pub(crate) const PARAPET_HEIGHT: f32 = 0.45;
 const HEDGE_HEIGHT: f32 = 1.3;
 /// La barandilla: alto (un poste en cada punto del trazado) y color.
 const RAILING_HEIGHT: f32 = 1.05;
@@ -306,6 +308,15 @@ fn spawn_surface(
             },
         ),
         (
+            WallStyle::Parapet,
+            StandardMaterial {
+                base_color: Color::srgb(0.92, 0.92, 0.9),
+                base_color_texture: Some(textures.plaster.clone()),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
+        ),
+        (
             WallStyle::Hedge,
             StandardMaterial {
                 base_color: hedge_color(scenery.grass_shade),
@@ -371,8 +382,18 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
         .iter()
         .find(|bridge| bridge.span.contains(along, lap))
     {
-        // Wooden bridges have their own fence (see `structures`).
+        // Wooden bridges have their own fence (see `structures`). Along a
+        // dam's crest, a low parapet on the lake's side, so the water shows
+        // over it, a little way down.
         return match bridge.style {
+            BridgeStyle::Dam
+                if scenery
+                    .dams
+                    .iter()
+                    .any(|dam| dam.crest == bridge.span && dam.lake_side == side) =>
+            {
+                Some(WallStyle::Parapet)
+            }
             BridgeStyle::RedArches | BridgeStyle::Truss | BridgeStyle::Dam => {
                 Some(WallStyle::Concrete)
             }
@@ -460,6 +481,7 @@ struct Profile {
 ///   flat stones that juts out on both sides;
 /// - concrete: a New Jersey barrier, its foot sloping out to the road;
 /// - hedge: rounded, wider at the top than at the root;
+/// - a dam's parapet: a low, thick block of concrete;
 /// - checkerboard earth and timber: blocks, straight up.
 fn profile(style: WallStyle) -> Profile {
     let foot = -WALL_FOOTING;
@@ -516,6 +538,19 @@ fn profile(style: WallStyle) -> Profile {
             ],
             0.12,
             3,
+            Vec2::splat(WALL_TILE),
+        ),
+        WallStyle::Parapet => (
+            &[
+                (0.0, foot),
+                (0.0, PARAPET_HEIGHT - 0.05),
+                (0.05, PARAPET_HEIGHT),
+                (WALL_THICKNESS - 0.05, PARAPET_HEIGHT),
+                (WALL_THICKNESS, PARAPET_HEIGHT - 0.05),
+                (WALL_THICKNESS, foot),
+            ],
+            0.04,
+            2,
             Vec2::splat(WALL_TILE),
         ),
         WallStyle::Checkered | WallStyle::Timber | WallStyle::Railing | WallStyle::ShrineFence => (
@@ -1277,6 +1312,13 @@ mod tests {
         // A stone wall's coping juts out over its face.
         let stone = profile(WallStyle::Stone);
         assert!(stone.points.iter().any(|p| p.x < 0.0));
+        // A dam's parapet is low, so the lake shows over it, and as thick
+        // as a wall.
+        let parapet = profile(WallStyle::Parapet);
+        let top = parapet.points.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+        assert!((0.3..0.6).contains(&top), "{top}");
+        let far = parapet.points.iter().map(|p| p.x).fold(f32::MIN, f32::max);
+        assert_eq!(far, WALL_THICKNESS);
     }
 
     #[test]
@@ -1369,8 +1411,29 @@ mod tests {
                 let middle = span.from + span.length(lap) / 2.0;
                 let wall = wall_style(scenery, lap, middle, Side::Left);
                 match bridge.style {
-                    BridgeStyle::RedArches | BridgeStyle::Truss | BridgeStyle::Dam => {
+                    BridgeStyle::RedArches | BridgeStyle::Truss => {
                         assert_eq!(wall, Some(WallStyle::Concrete))
+                    }
+                    // A dam's crest: a low parapet over the lake, a barrier
+                    // over the drop on the other side.
+                    BridgeStyle::Dam => {
+                        let dam = scenery
+                            .dams
+                            .iter()
+                            .find(|dam| dam.crest == span)
+                            .expect("a dam's crest is a dam's");
+                        for side in [Side::Left, Side::Right] {
+                            assert_eq!(
+                                wall_style(scenery, lap, middle, side),
+                                Some(if side == dam.lake_side {
+                                    WallStyle::Parapet
+                                } else {
+                                    WallStyle::Concrete
+                                }),
+                                "{}",
+                                circuit.name
+                            );
+                        }
                     }
                     BridgeStyle::Wooden => assert_eq!(wall, None, "{}", circuit.name),
                 }
