@@ -1,7 +1,7 @@
 # Atajos para desarrollar motorust. `make` a secas muestra la lista.
 
 .DEFAULT_GOAL := help
-.PHONY: help install up preview build test bench bench.push linux-deps
+.PHONY: help install up preview build app test bench bench.push linux-deps
 
 CARGO ?= cargo
 # Como root (contenedores, CI) no hace falta sudo, y a veces ni existe.
@@ -48,6 +48,13 @@ preview: ## Lanza la última build generada (sin recompilar)
 
 build: ## Compila la versión optimizada en target/release/motorust
 	$(CARGO) build --release
+
+# Only on macOS: the bundle Finder and the Dock launch, which macOS knows
+# for a game and so gives its Game Mode in fullscreen.
+app: ## (macOS) Compila y monta target/release/Motorust.app, para abrirlo desde Finder o el Dock
+	@[ "$$(uname)" = Darwin ] || { echo "make app es solo para macOS"; exit 1; }
+	$(CARGO) build --release
+	@tools/make-app.sh target/release/motorust "dev-$$(git rev-parse --short HEAD)" target/release
 
 test: ## Pasa los tests
 	$(CARGO) test

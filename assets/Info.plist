@@ -22,5 +22,10 @@
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- A racing game: macOS turns its Game Mode on when it goes fullscreen. -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.racing-games</string>
+    <key>LSSupportsGameMode</key>
+    <true/>
 </dict>
 </plist>

@@ -11,6 +11,8 @@ mod circuits;
 mod gamepads;
 mod geometry;
 mod hud;
+#[cfg(target_os = "macos")]
+mod latency;
 mod legend;
 mod lobby;
 pub mod locale;
@@ -121,6 +123,9 @@ fn init_crash_handler() {
 
 fn main() {
     init_crash_handler();
+    // On macOS, no App Nap, timers on time and no sleep while it runs.
+    #[cfg(target_os = "macos")]
+    latency::begin();
 
     // Los ajustes guardados deciden cómo se abre la ventana.
     let settings = settings::Settings::load();
