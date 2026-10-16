@@ -47,6 +47,21 @@ To compile even faster while developing, link Bevy dynamically:
 cargo run --features bevy/dynamic_linking
 ```
 
+## Starting part way round the lap
+
+To look at the scenery of a stretch without riding all the way to it, start
+the game with the distance you want, in metres along the lap:
+
+```sh
+cargo run -- --from 3700        # or MOTORUST_FROM=3700 make up
+```
+
+The whole grid stands there instead of behind the finish line, in whatever
+track and mode are chosen (the distance wraps round, so 3700 on a 1.6 km
+track is 500 m). It is for development only: the lap and the times are
+counted from the finish line as ever, so the first lap is short and its
+time means nothing. See `src/debug_start.rs`.
+
 The executable is self-contained: the 3D models, textures and font are embedded with `include_bytes!`, so you do not need to copy the `assets/` folder to play (see [models.md](models.md)). On Windows the release build opens without a console window (`windows_subsystem = "windows"` in `src/main.rs`); debug builds keep it so log output stays visible.
 
 ## Web version

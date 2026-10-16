@@ -54,7 +54,10 @@ impl Plugin for TrackSelectPlugin {
                     show_track,
                     show_rules,
                     show_legend,
-                    aerial_camera,
+                    // From above, or from the road as the menus before it
+                    // (then the start menu's camera flies on, see
+                    // `crate::welcome`).
+                    aerial_camera.run_if(from_above),
                 )
                     .run_if(in_state(GameState::Tracks)),
             );
@@ -474,6 +477,18 @@ fn show_legend(
     );
 }
 
+/// Whether the track is chosen from the road, as in the menus before it:
+/// the start menu's camera goes on flying over it (see
+/// [`crate::settings::TrackView`]).
+pub fn from_the_road(settings: Res<Settings>) -> bool {
+    settings.track_view.at_the_road()
+}
+
+/// Whether it is chosen from above, turning round the whole lap.
+fn from_above(settings: Res<Settings>) -> bool {
+    !settings.track_view.at_the_road()
+}
+
 /// La cámara gira despacio alrededor de la pista, desde lo alto.
 fn aerial_camera(
     time: Res<Time>,
@@ -504,8 +519,16 @@ mod tests {
     use super::*;
     use crate::circuits::{CIRCUITS, CurrentCircuit};
 
+    /// Both views: the camera from above runs for one of them, and for
+    /// the other the start menu's flies on (see `crate::welcome`).
     #[test]
     fn track_select_systems_initialize_without_conflicts() {
+        for view in crate::settings::TRACK_VIEWS {
+            track_select_runs_with(view);
+        }
+    }
+
+    fn track_select_runs_with(view: crate::settings::TrackView) {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -513,7 +536,10 @@ mod tests {
             .init_asset::<Font>()
             .init_asset::<Image>()
             .init_state::<GameState>()
-            .init_resource::<Settings>()
+            .insert_resource(Settings {
+                track_view: view,
+                ..Settings::default()
+            })
             .init_resource::<ButtonInput<KeyCode>>()
             .add_message::<MenuSound>()
             .init_resource::<crate::hud::UiFont>()

@@ -22,7 +22,7 @@ use crate::settings::{
     ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
     DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS, LIGHTS_HOLDS,
     RACE_STARTS, RENDER_SCALES, RESOLUTIONS, RaceStart, SHADOW_QUALITIES, START_LIGHTS, Settings,
-    ShadowQuality, StartedWith, WEB, cycle,
+    ShadowQuality, StartedWith, TRACK_VIEWS, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
@@ -387,6 +387,8 @@ impl OptionsMenu {
 enum GameItem {
     Language,
     Difficulty,
+    /// How the track is seen while it is chosen.
+    TrackView,
     RaceStart,
     /// How many red lights the start has.
     StartLights,
@@ -459,6 +461,7 @@ fn game_items() -> Vec<GameItem> {
     vec![
         GameItem::Language,
         GameItem::Difficulty,
+        GameItem::TrackView,
         GameItem::RaceStart,
         GameItem::StartLights,
         GameItem::LightsHold,
@@ -680,6 +683,7 @@ fn section_is_default(
             (
                 settings.language,
                 settings.difficulty,
+                settings.track_view,
                 settings.start,
                 settings.start_lights,
                 settings.lights_hold,
@@ -689,6 +693,7 @@ fn section_is_default(
             ) == (
                 first.language,
                 first.difficulty,
+                first.track_view,
                 first.start,
                 first.start_lights,
                 first.lights_hold,
@@ -774,6 +779,7 @@ fn reset_section(
         OptionsTab::Game => {
             settings.language = first.language;
             settings.difficulty = first.difficulty;
+            settings.track_view = first.track_view;
             settings.start = first.start;
             settings.start_lights = first.start_lights;
             settings.lights_hold = first.lights_hold;
@@ -915,6 +921,10 @@ fn use_options_menu(
                 }
                 GameItem::Difficulty if change != 0 => {
                     settings.difficulty = cycle(&DIFFICULTIES, settings.difficulty, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GameItem::TrackView if change != 0 => {
+                    settings.track_view = cycle(&TRACK_VIEWS, settings.track_view, change);
                     sounds.write(MenuSound::Move);
                 }
                 GameItem::RaceStart if change != 0 => {
@@ -1362,6 +1372,13 @@ fn show_options_menu(
                         Language::English => "Difficulty",
                     },
                     format!("<  {}  >", settings.difficulty.name(lang)),
+                ),
+                GameItem::TrackView => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Vista al elegir pista",
+                        Language::English => "View when choosing the track",
+                    },
+                    format!("<  {}  >", settings.track_view.name(lang)),
                 ),
                 GameItem::RaceStart => Row::with_value(
                     match lang {
@@ -2305,7 +2322,7 @@ mod tests {
         assert_eq!(menu.tab, OptionsTab::Graphics);
     }
 
-    use crate::settings::{Controls, Difficulty};
+    use crate::settings::{Controls, Difficulty, TrackView};
 
     #[test]
     fn reset_and_back_stand_side_by_side_at_the_foot() {
@@ -2378,6 +2395,42 @@ mod tests {
         assert_eq!(debug.stick_limit, TurnLimit::Off);
         reset_section(control, stick, &mut settings, &mut debug);
         assert!(section_is_default(control, None, &settings, &debug));
+    }
+
+    #[test]
+    fn game_offers_the_view_of_the_track_and_starts_from_the_road() {
+        // From the road at first, so that the camera of the start menu
+        // and the modes goes on into the track screen.
+        let first = Settings::default();
+        assert_eq!(first.track_view, TrackView::Trackside);
+        assert!(first.track_view.at_the_road());
+        assert!(game_items().contains(&GameItem::TrackView));
+        // Both views are offered, each with a name of its own in both
+        // languages, and only one of them is from the road.
+        assert_eq!(TRACK_VIEWS.len(), 2);
+        for lang in [Language::Spanish, Language::English] {
+            let names: Vec<&str> = TRACK_VIEWS.iter().map(|view| view.name(lang)).collect();
+            assert_ne!(names[0], names[1], "{lang:?}");
+            assert!(names.iter().all(|name| !name.is_empty()), "{lang:?}");
+        }
+        assert_eq!(
+            TRACK_VIEWS.iter().filter(|view| view.at_the_road()).count(),
+            1
+        );
+        // Changed, the section is no longer as it was, and Reset puts it
+        // back.
+        let mut settings = first.clone();
+        let mut debug = DebugOptions::default();
+        settings.track_view = cycle(&TRACK_VIEWS, settings.track_view, 1);
+        assert_eq!(settings.track_view, TrackView::Aerial);
+        assert!(!section_is_default(
+            OptionsTab::Game,
+            None,
+            &settings,
+            &debug
+        ));
+        reset_section(OptionsTab::Game, None, &mut settings, &mut debug);
+        assert_eq!(settings.track_view, first.track_view);
     }
 
     #[test]

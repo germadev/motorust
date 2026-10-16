@@ -20,8 +20,10 @@ use super::Assets3d;
 use super::flowers::{FlowerPlan, spawn_flowers};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
+use super::road::WALL_HEIGHT;
 use super::scenery::{
-    Japan, MapleGround, PetalArea, PetalKind, Petals, Prop, PropModel, Scenery, Spot, ToriiCorridor,
+    Japan, MapleGround, PetalArea, PetalKind, Petals, Plinth, Prop, PropModel, PropRow, Scenery,
+    Side, Spot, ToriiCorridor, by_road,
 };
 use super::terrain::{SEA_LEVEL, Terrain};
 use crate::bike::model::imported::{read, texture};
@@ -41,6 +43,33 @@ const WIDE_OPENING: f32 = 11.63;
 const ROAD_OPENING: f32 = 6.6;
 /// How fast a water wheel turns (rad/s).
 const WHEEL_RATE: f32 = 0.6;
+/// The plinth a small prop by the road stands on (see [`Plinths`]): how
+/// far its top stands over the road beside it (m), so that the prop is
+/// seen whole over the wall ([`WALL_HEIGHT`]); how high it is over its own
+/// ground at the least, where the ground stands higher than the road; and
+/// at the most, so that it is a plinth and not a tower where the ground
+/// falls away from the road.
+const PLINTH_OVER_ROAD: f32 = WALL_HEIGHT - 0.5;
+const PLINTH_LEAST: f32 = 0.3;
+const PLINTH_MOST: f32 = 2.0;
+/// How far its top spreads past the foot of the prop on it, how much wider
+/// its own foot is than its top (it is battered), how far it is sunk into
+/// the ground so that it never floats on a slope, and how many metres of
+/// it a tile of its texture covers (m).
+const PLINTH_MARGIN: f32 = 0.24;
+const PLINTH_BATTER: f32 = 0.1;
+const PLINTH_FOOTING: f32 = 0.4;
+/// How far under the road the ground beside it may be for a prop of a row
+/// to stand there (m): further down, not even its plinth would show it
+/// over the wall, so there is none (the props put by hand stand where
+/// they are put).
+const PLINTH_DROP: f32 = 1.6;
+const PLINTH_TILE: f32 = 1.2;
+/// How far either way from a small prop by the road the wall is the
+/// shrine's low fence instead (m), so that it never hides it; and how far
+/// from anything already standing one of a row keeps (m).
+const FENCE_OPENING: f32 = 7.0;
+const PROP_APART: f32 = 2.0;
 /// How far under the water the foot of a prop standing in it is (m): the
 /// great torii and the shrine on stilts stand in shallow water; a boat
 /// floats.
@@ -66,6 +95,31 @@ const PETAL_FALL: (f32, f32) = (0.7, 1.5);
 const PETAL_SWAY: (f32, f32) = (0.4, 1.6);
 const PETAL_DRIFT: Vec2 = Vec2::new(0.45, 0.2);
 const PETALS_SEEN: f32 = 170.0;
+
+/// How far down the road the riders are when a prop that faces them
+/// looks at them (m, see [`Prop::facing_riders`]).
+const RIDERS_BACK: f32 = 110.0;
+
+/// How big a prop stands, times the size it was made (`props.bin`), over
+/// what its spot says ([`Prop::scaled`]): the wayside shrine came the size
+/// of a doll's house, and the torii of logs stands on a hilltop, to be
+/// seen from far down the road.
+fn size(model: PropModel) -> f32 {
+    match model {
+        PropModel::Hokora | PropModel::LogTorii => 1.8,
+        _ => 1.0,
+    }
+}
+
+/// How big a prop stands in all, and how far it reaches from its middle
+/// (m), from the box round its mesh.
+fn scale_of(prop: &Prop) -> f32 {
+    prop.scale * size(prop.model)
+}
+
+fn reach_of(prop: &Prop, low: Vec3, high: Vec3) -> f32 {
+    scale_of(prop) * (high.x - low.x).max(high.z - low.z) / 2.0
+}
 
 /// Every prop's name in `props.bin`.
 fn name(model: PropModel) -> &'static str {
@@ -246,11 +300,30 @@ pub fn spawn_japan(
         return Vec::new();
     };
     spawn_corridors(world, track, terrain, japan, assets.props);
+    let mut plinths = Plinths::default();
     let mut taken: Vec<Footprint> = japan
         .props
         .iter()
-        .map(|prop| spawn_prop(world, track, terrain, prop, assets.props))
+        .map(|prop| spawn_prop(world, track, terrain, prop, assets.props, &mut plinths))
         .collect();
+    // The rows' props, each where nothing stands already.
+    for prop in row_props(track, terrain, japan) {
+        let (position, _) = spot(track, &prop);
+        let clear = taken
+            .iter()
+            .all(|&(at, reach)| at.distance(position) > reach + PROP_APART);
+        if clear {
+            taken.push(spawn_prop(
+                world,
+                track,
+                terrain,
+                &prop,
+                assets.props,
+                &mut plinths,
+            ));
+        }
+    }
+    plinths.spawn(world, assets);
     spawn_petals(world, track, terrain, japan.petals, assets);
     if !japan.maple_grounds.is_empty() {
         let material = assets.materials.add(StandardMaterial {
@@ -423,26 +496,235 @@ fn spot(track: &Track, prop: &Prop) -> (Vec2, Quat) {
         Spot::Road { along, lateral } => {
             let index = track.index_at(along);
             let point = track.offset_point(index, lateral);
-            (point, facing(track.offset_point(index, 0.0) - point))
+            // The road beside it, or, where it faces the riders, the road
+            // they are coming up at it.
+            let looks = if prop.facing_riders {
+                track.index_at(along - RIDERS_BACK)
+            } else {
+                index
+            };
+            (point, facing(track.offset_point(looks, 0.0) - point))
         }
         Spot::At { position, heading } => (position, facing(forward(heading))),
     };
     (position, facing * Quat::from_rotation_z(prop.lean))
 }
 
+/// The plinths the small props by the road stand on: one mesh for the
+/// stone ones and one for the wooden, so that all of each draw together.
+#[derive(Default)]
+struct Plinths {
+    stone: MeshBuilder,
+    wood: MeshBuilder,
+}
+
+impl Plinths {
+    /// A plinth under the prop at `at`, square to it (`rotation`), its top
+    /// `half` metres from its middle and at `top`, from the ground at
+    /// `ground`: battered, and sunk into the ground so that it never
+    /// floats on a slope.
+    fn block(&mut self, kind: Plinth, at: Vec2, rotation: Quat, half: f32, ground: f32, top: f32) {
+        let mesh = match kind {
+            Plinth::Stone => &mut self.stone,
+            Plinth::Wood => &mut self.wood,
+        };
+        let point = |on: Vec2, height: f32| Vec3::new(on.x, height, on.y);
+        let yaw = Quat::from_rotation_y(rotation.to_euler(EulerRot::YXZ).0);
+        let corners = |spread: f32| {
+            [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(x, z): (f32, f32)| {
+                let turned = yaw * Vec3::new(x * spread, 0.0, z * spread);
+                at + Vec2::new(turned.x, turned.z)
+            })
+        };
+        let tops = corners(half);
+        let feet = corners(half + PLINTH_BATTER);
+        let foot = ground - PLINTH_FOOTING;
+        let high = (top - foot) / PLINTH_TILE;
+        for side in 0..4 {
+            let next = (side + 1) % 4;
+            let run = tops[side].distance(tops[next]) / PLINTH_TILE;
+            let middle = (tops[side] + tops[next]) / 2.0 - at;
+            mesh.quad(
+                [
+                    (point(feet[side], foot), Vec2::new(0.0, high)),
+                    (point(feet[next], foot), Vec2::new(run, high)),
+                    (point(tops[next], top), Vec2::new(run, 0.0)),
+                    (point(tops[side], top), Vec2::ZERO),
+                ],
+                Vec3::new(middle.x, 0.0, middle.y),
+                Color::WHITE,
+            );
+        }
+        mesh.quad(
+            tops.map(|corner| (point(corner, top), (corner - at) / PLINTH_TILE)),
+            Vec3::Y,
+            Color::WHITE,
+        );
+    }
+
+    /// Spawns them, of the walls' stone and of the roadside's planks.
+    fn spawn(self, world: &mut ChildSpawnerCommands, assets: &mut Assets3d) {
+        for (built, material) in [
+            (
+                self.stone,
+                StandardMaterial {
+                    base_color_texture: Some(assets.textures.wall.clone()),
+                    perceptual_roughness: 0.95,
+                    ..default()
+                },
+            ),
+            (
+                self.wood,
+                StandardMaterial {
+                    base_color: Color::srgb(0.8, 0.68, 0.56),
+                    base_color_texture: Some(assets.textures.planks.clone()),
+                    perceptual_roughness: 0.9,
+                    ..default()
+                },
+            ),
+        ] {
+            if built.is_empty() {
+                continue;
+            }
+            let mesh = assets.meshes.add(built.build());
+            let material = assets.materials.add(material);
+            world.spawn((Mesh3d(mesh), MeshMaterial3d(material)));
+        }
+    }
+}
+
+/// Where the props of a row stand, metres along the lap, and which kind
+/// stands at each: one every [`Row::every`] metres of its span, from half
+/// a step into it (as a row of lamps is laid out), round the finish line
+/// and all, the row's kinds in turn.
+fn row_steps(row: &PropRow, lap: f32) -> impl Iterator<Item = (f32, PropModel)> + use<> {
+    let every = row.row.every.max(1.0);
+    let count = (row.row.span.length(lap) / every).floor() as usize;
+    let from = row.row.span.from + every / 2.0;
+    let models = row.models;
+    (0..count)
+        .filter(move |_| !models.is_empty())
+        .map(move |k| {
+            (
+                (from + k as f32 * every).rem_euclid(lap),
+                models[k % models.len()],
+            )
+        })
+}
+
+/// The props of the rows ([`PropRow`]): the same small one every so many
+/// metres along a span, and none where another road runs.
+fn row_props(track: &Track, terrain: &Terrain, japan: &Japan) -> Vec<Prop> {
+    let lap = track.lap_length();
+    japan
+        .rows
+        .iter()
+        .flat_map(|row: &PropRow| {
+            row_steps(row, lap)
+                .map(|(along, model)| by_road(model, along, row.row.side.sign() * row.row.lateral))
+        })
+        .filter(|prop| {
+            let Spot::Road { along, .. } = prop.spot else {
+                return false;
+            };
+            let (position, _) = spot(track, prop);
+            let ground = terrain.height(position);
+            let road = track.surface_point(track.index_at(along), 0.0).y;
+            ground > SEA_LEVEL
+                && ground > road - PLINTH_DROP
+                && !track.on_other_road(0, position, |road, nearest| {
+                    road.wall_at(nearest.index) + 2.0
+                })
+        })
+        .collect()
+}
+
+/// The side of the road a prop stands on, by how far it is from the
+/// centre line (positive to the left, as [`by_road`] has it).
+fn side_at(lateral: f32) -> Side {
+    if lateral >= 0.0 {
+        Side::Left
+    } else {
+        Side::Right
+    }
+}
+
+/// Whether the wall at `along` on `side` is the shrine's low fence
+/// because a small prop stands there (one put by hand or one of a row):
+/// a wall as high as the prop would hide it, plinth and all.
+pub(super) fn prop_fence(japan: &Japan, lap: f32, along: f32, side: Side) -> bool {
+    let apart = |at: f32| {
+        let gap = (along - at).rem_euclid(lap);
+        gap.min(lap - gap)
+    };
+    let by_hand = japan.props.iter().any(|prop| match prop.spot {
+        Spot::Road { along: at, lateral } => {
+            prop.model.plinth().is_some() && side_at(lateral) == side && apart(at) < FENCE_OPENING
+        }
+        Spot::At { .. } => false,
+    });
+    by_hand
+        || japan.rows.iter().any(|row| {
+            row.row.side == side
+                && row_steps(row, lap)
+                    .any(|(at, model)| model.plinth().is_some() && apart(at) < FENCE_OPENING)
+        })
+}
+
+/// What a prop stands on: a plinth under a small one by the road, so that
+/// it is seen over the wall; nothing under those standing away from it,
+/// where no wall hides them.
+fn stands_on(prop: &Prop) -> Option<Plinth> {
+    match prop.spot {
+        Spot::Road { .. } => prop.model.plinth(),
+        Spot::At { .. } => None,
+    }
+}
+
+/// How high the top of a prop's plinth stands (m): over the road beside
+/// it, so that the prop is seen whole over the wall, and over the ground
+/// it stands on, never more than [`PLINTH_MOST`] where the ground falls
+/// away from the road.
+fn plinth_top(track: &Track, prop: &Prop, ground: f32) -> f32 {
+    let Spot::Road { along, .. } = prop.spot else {
+        return ground;
+    };
+    let road = track.surface_point(track.index_at(along), 0.0).y;
+    (road + PLINTH_OVER_ROAD).clamp(ground + PLINTH_LEAST, ground + PLINTH_MOST)
+}
+
+/// Where a prop stands and which way it faces: at its spot, and, by the
+/// road, never so close that it overhangs the wall, however big it is
+/// (the bigger ones of the rows stand a little further out).
+fn stand(track: &Track, prop: &Prop, reach: f32) -> (Vec2, Quat) {
+    let (position, rotation) = spot(track, prop);
+    let Spot::Road { along, lateral } = prop.spot else {
+        return (position, rotation);
+    };
+    let least = WALL_DISTANCE + reach * 0.7 + 0.2;
+    if lateral.abs() >= least {
+        return (position, rotation);
+    }
+    let out = track.offset_point(track.index_at(along), lateral.signum() * least);
+    (out, rotation)
+}
+
 /// A prop, standing on the ground (on the lowest of it under its box, so
-/// that it never floats), or in the sea a little under the water, or
-/// floating on it. A water wheel turns. Returns the ground it takes.
+/// that it never floats), or on a plinth by the road ([`Plinths`]), or in
+/// the sea a little under the water, or floating on it. A water wheel
+/// turns. Returns the ground it takes.
 fn spawn_prop(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
     prop: &Prop,
     props: &ModelledProps,
+    plinths: &mut Plinths,
 ) -> Footprint {
     let piece = props.piece(name(prop.model));
-    let (position, rotation) = spot(track, prop);
-    let reach = prop.scale * (piece.high.x - piece.low.x).max(piece.high.z - piece.low.z) / 2.0;
+    let scale = scale_of(prop);
+    let reach = reach_of(prop, piece.low, piece.high);
+    let (position, rotation) = stand(track, prop, reach);
     let ground = [Vec2::ZERO, Vec2::X, -Vec2::X, Vec2::Y, -Vec2::Y]
         .into_iter()
         .map(|offset| terrain.height(position + offset * 0.6 * reach))
@@ -451,14 +733,24 @@ fn spawn_prop(
         PropModel::FishingBoat => SEA_LEVEL - DRAUGHT,
         _ => ground.max(SEA_LEVEL - WADE),
     };
+    // A small one by the road stands on its plinth, which takes a little
+    // more ground than the prop itself.
+    let (foot, taken) = match stands_on(prop) {
+        Some(kind) => {
+            let top = plinth_top(track, prop, foot);
+            plinths.block(kind, position, rotation, reach + PLINTH_MARGIN, foot, top);
+            (top, reach + PLINTH_MARGIN + PLINTH_BATTER)
+        }
+        None => (foot, reach),
+    };
     let material = MeshMaterial3d(props.material.clone());
     if prop.model == PropModel::WaterWheel {
         // The wheel and its post have their origin at the middle of the
         // axle, as high over the ground as the post reaches down.
         let frame = props.piece(WHEEL_FRAME);
-        let axle = Transform::from_xyz(position.x, foot - prop.scale * frame.low.y, position.y)
+        let axle = Transform::from_xyz(position.x, foot - scale * frame.low.y, position.y)
             .with_rotation(rotation)
-            .with_scale(Vec3::splat(prop.scale));
+            .with_scale(Vec3::splat(scale));
         world.spawn((Mesh3d(frame.mesh.clone()), material.clone(), axle));
         world.spawn((Mesh3d(piece.mesh.clone()), material, axle, Turning));
     } else {
@@ -467,10 +759,10 @@ fn spawn_prop(
             material,
             Transform::from_xyz(position.x, foot, position.y)
                 .with_rotation(rotation)
-                .with_scale(Vec3::splat(prop.scale)),
+                .with_scale(Vec3::splat(scale)),
         ));
     }
-    (position, reach)
+    (position, taken)
 }
 
 /// A petal in the air: the ground under where it falls, how high it falls
@@ -963,8 +1255,8 @@ mod tests {
             let pack = pack();
             for prop in japan.props {
                 let (low, high) = bounds(piece(&pack, name(prop.model)));
-                let reach = prop.scale * (high.x - low.x).max(high.z - low.z) / 2.0;
-                let (position, _) = spot(&track, prop);
+                let reach = reach_of(prop, low, high);
+                let (position, _) = stand(&track, prop, reach);
                 let road = track.nearest(position).distance;
                 assert!(
                     road - reach * 0.7 > WALL_DISTANCE,
@@ -982,6 +1274,133 @@ mod tests {
                     _ => assert!(!wet, "{}: {:?} in the water", circuit.name, prop.model),
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_small_prop_by_the_road_stands_on_a_plinth_that_shows_it_over_the_wall() {
+        let pack = pack();
+        let mut stood = 0;
+        for circuit in &CIRCUITS {
+            let Some(japan) = &circuit.scenery.japan else {
+                continue;
+            };
+            let track = Track::new(&circuit.layout);
+            let terrain = Terrain::new(&track, &circuit.scenery);
+            let lap = track.lap_length();
+            let rows = row_props(&track, &terrain, japan);
+            for prop in japan.props.iter().chain(rows.iter()) {
+                let Spot::Road { along, lateral } = prop.spot else {
+                    continue;
+                };
+                if stands_on(prop).is_none() {
+                    continue;
+                }
+                let (position, _) = spot(&track, prop);
+                let ground = terrain.height(position);
+                let top = plinth_top(&track, prop, ground);
+                let road = track.surface_point(track.index_at(along), 0.0).y;
+                let said = format!("{:?} at {along} m of {}", prop.model, circuit.name);
+                // It stands on its plinth, which is a plinth and not a
+                // tower where the ground falls away from the road.
+                assert!(top > ground + PLINTH_LEAST - 1e-3, "{said}: sunk");
+                assert!(top < ground + PLINTH_MOST + 1e-3, "{said}: a tower");
+                // Its head shows over the wall, where the riders see it.
+                let (low, high) = bounds(piece(&pack, name(prop.model)));
+                let head = top + scale_of(prop) * (high.y - low.y);
+                assert!(head > road + WALL_HEIGHT + 0.2, "{said}: hidden");
+                // And the wall there is the shrine's low fence.
+                assert!(
+                    prop_fence(japan, lap, along, side_at(lateral)),
+                    "{said}: walled"
+                );
+                stood += 1;
+            }
+        }
+        assert!(stood > 60, "only {stood} small props by the road");
+    }
+
+    #[test]
+    fn a_prop_that_faces_the_riders_looks_down_the_road_they_come_up() {
+        for circuit in &CIRCUITS {
+            let Some(japan) = &circuit.scenery.japan else {
+                continue;
+            };
+            let track = Track::new(&circuit.layout);
+            let mut faced = 0;
+            for prop in japan.props.iter().filter(|prop| prop.facing_riders) {
+                let Spot::Road { along, .. } = prop.spot else {
+                    panic!("{:?} faces the riders of no road", prop.model);
+                };
+                let (position, rotation) = spot(&track, prop);
+                let looks = rotation * Vec3::Z;
+                let looks = Vec2::new(looks.x, looks.z).normalize();
+                // It looks at the riders, not at the road beside it: the
+                // way to them is nearer its own than the way to the road.
+                let toward =
+                    |at: f32| (track.offset_point(track.index_at(at), 0.0) - position).normalize();
+                let riders = toward(along - RIDERS_BACK);
+                let beside = toward(along);
+                assert!(
+                    looks.dot(riders) > looks.dot(beside) + 0.01,
+                    "{:?} of {} looks beside it, not up the road",
+                    prop.model,
+                    circuit.name
+                );
+                assert!(looks.dot(riders) > 0.99, "{:?} looks askew", prop.model);
+                faced += 1;
+            }
+            assert!(faced > 0 || japan.props.is_empty());
+        }
+    }
+
+    #[test]
+    fn the_rows_fill_the_road_without_crowding_what_stands_already() {
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.scenery.japan.is_some())
+            .expect("a circuit of feudal Japan");
+        let japan = circuit.scenery.japan.as_ref().unwrap();
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let pack = pack();
+        let rows = row_props(&track, &terrain, japan);
+        assert!(rows.len() > 50, "only {} props in the rows", rows.len());
+        // Of every kind, and none of them the whole roadside: the small
+        // props are seen as often as one another.
+        let mut kinds: Vec<(PropModel, usize)> = Vec::new();
+        for prop in &rows {
+            match kinds.iter_mut().find(|(model, _)| *model == prop.model) {
+                Some((_, count)) => *count += 1,
+                None => kinds.push((prop.model, 1)),
+            }
+        }
+        assert!(kinds.len() >= 6, "only {} kinds in the rows", kinds.len());
+        for (model, count) in &kinds {
+            assert!(*count >= 3, "only {count} of {model:?}");
+            assert!(
+                5 * count <= 2 * rows.len(),
+                "{count} of {model:?} of {}",
+                rows.len()
+            );
+        }
+        for prop in &rows {
+            let (low, high) = bounds(piece(&pack, name(prop.model)));
+            let (position, _) = stand(&track, prop, reach_of(prop, low, high));
+            // None of them in the water nor on another road.
+            assert!(
+                terrain.height(position) > SEA_LEVEL,
+                "{:?} in the water",
+                prop.model
+            );
+            // Each stands clear of the roads, as those put by hand do.
+            let reach = reach_of(prop, low, high);
+            let road = track.nearest(position).distance;
+            assert!(
+                road - reach * 0.7 > WALL_DISTANCE,
+                "{:?} {road} m from the road",
+                prop.model
+            );
         }
     }
 }
