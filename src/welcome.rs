@@ -16,6 +16,7 @@ use bevy::ui::UiSystems;
 use bevy::window::PrimaryWindow;
 
 use crate::camera::CameraGlide;
+use crate::circuits::CurrentCircuit;
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::legend::{Keys, menu_prompts, music_toggle_prompt, spawn_legend};
@@ -29,6 +30,7 @@ use crate::ui::{
     spawn_logo, spawn_panel, spawn_title, ui_pixels, version_label,
 };
 use crate::vector_art::{Art, VectorArt, advance};
+use crate::world::scenery::{Scenery, span};
 
 /// La cámara recorre la pista a esta velocidad (m/s), a un lado del centro
 /// de la carretera (m, positivo a la izquierda) y a esta altura sobre ella;
@@ -40,6 +42,13 @@ const FLYBY_HEIGHT: f32 = 6.0;
 const FLYBY_AHEAD: f32 = 45.0;
 const FLYBY_LOOK_HEIGHT: f32 = 1.5;
 const FLYBY_FOV: f32 = 0.9;
+/// How high it flies over the road through a tunnel (m): well under the
+/// rock, which stands [`crate::world::structures::TUNNEL_HEIGHT`] over the
+/// road, where at its own height it would fly into the ceiling and its
+/// lamps. It comes down to it over this many metres before the mouth, and
+/// goes back up over as many past it.
+const FLYBY_TUNNEL_HEIGHT: f32 = 2.8;
+const FLYBY_TUNNEL_FADE: f32 = 25.0;
 
 /// Size of the title of the game (px). The menu is exactly as wide.
 pub const TITLE_SIZE: f32 = 110.0;
@@ -137,7 +146,13 @@ impl Plugin for WelcomePlugin {
                     fly_over_track.run_if(
                         in_state(GameState::Welcome)
                             .or_else(in_state(GameState::Lobby))
-                            .or_else(in_state(GameState::Modes)),
+                            .or_else(in_state(GameState::Modes))
+                            // Choosing the track from the road, it flies
+                            // on, over the track being chosen.
+                            .or_else(
+                                in_state(GameState::Tracks)
+                                    .and_then(crate::track_select::from_the_road),
+                            ),
                     ),
                 ),
             )
@@ -731,10 +746,31 @@ fn fit_menu_to_title(
     }
 }
 
+/// How high the camera flies over the road `travelled` metres along a lap
+/// of `lap` metres: its own height, and under the rock through a tunnel,
+/// coming down to it before the mouth and up again past it.
+fn flyby_height(scenery: &Scenery, travelled: f32, lap: f32) -> f32 {
+    let under_rock = scenery
+        .tunnels
+        .iter()
+        .map(|tunnel| {
+            // The fade is before the mouth and past it, not inside, so it
+            // is already down as it goes in.
+            let about = span(
+                tunnel.from - FLYBY_TUNNEL_FADE,
+                tunnel.to + FLYBY_TUNNEL_FADE,
+            );
+            about.weight(travelled, lap, FLYBY_TUNNEL_FADE)
+        })
+        .fold(0.0, f32::max);
+    FLYBY_HEIGHT.lerp(FLYBY_TUNNEL_HEIGHT, under_rock)
+}
+
 /// La cámara recorre la pista despacio, un poco por encima de la carretera.
 fn fly_over_track(
     time: Res<Time>,
     track: Res<Track>,
+    circuit: Res<CurrentCircuit>,
     camera: Single<(&mut Transform, &mut Projection), With<Camera3d>>,
     mut glide: ResMut<CameraGlide>,
     mut travelled: Local<f32>,
@@ -750,7 +786,8 @@ fn fly_over_track(
             .surface_point(index, lateral)
             .lerp(track.surface_point(index + 1, lateral), samples.fract())
     };
-    let position = at(*travelled, FLYBY_SIDE) + Vec3::Y * FLYBY_HEIGHT;
+    let height = flyby_height(&circuit.get().scenery, *travelled, length);
+    let position = at(*travelled, FLYBY_SIDE) + Vec3::Y * height;
     let target = at(*travelled + FLYBY_AHEAD, 0.0) + Vec3::Y * FLYBY_LOOK_HEIGHT;
     let wanted = Transform::from_translation(position).looking_at(target, Vec3::Y);
     let (mut transform, mut projection) = camera.into_inner();
@@ -760,6 +797,52 @@ fn fly_over_track(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuits::CIRCUITS;
+    use crate::world::structures::TUNNEL_HEIGHT;
+
+    #[test]
+    fn the_camera_flies_under_the_rock_through_every_tunnel() {
+        for circuit in &CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let lap = track.sample_count() as f32 * track.step_length();
+            let height = |at: f32| flyby_height(&circuit.scenery, at, lap);
+            for tunnel in circuit.scenery.tunnels {
+                let length = (tunnel.to - tunnel.from).rem_euclid(lap);
+                // All the way through, well under the rock.
+                for step in 0..=20 {
+                    let at = tunnel.from + length * step as f32 / 20.0;
+                    let flying = height(at);
+                    assert!(
+                        flying < TUNNEL_HEIGHT - 1.5,
+                        "{}: {flying} m at {at} m, under rock {TUNNEL_HEIGHT} m",
+                        circuit.name
+                    );
+                }
+                // Already down at the mouth, and at its own height well
+                // before it and well past it.
+                assert!(height(tunnel.from) < FLYBY_TUNNEL_HEIGHT + 1e-3);
+                assert!(height(tunnel.to) < FLYBY_TUNNEL_HEIGHT + 1e-3);
+                for away in [
+                    tunnel.from - 2.0 * FLYBY_TUNNEL_FADE,
+                    tunnel.to + 2.0 * FLYBY_TUNNEL_FADE,
+                ] {
+                    assert!(
+                        (height(away) - FLYBY_HEIGHT).abs() < 1e-3,
+                        "{}: {} m at {away} m",
+                        circuit.name,
+                        height(away)
+                    );
+                }
+            }
+            // With no tunnel it flies at its own height all the way round.
+            if circuit.scenery.tunnels.is_empty() {
+                for step in 0..40 {
+                    let at = lap * step as f32 / 40.0;
+                    assert!((height(at) - FLYBY_HEIGHT).abs() < 1e-3, "{}", circuit.name);
+                }
+            }
+        }
+    }
 
     #[test]
     fn the_welcome_screen_offers_what_was_asked() {

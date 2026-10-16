@@ -19,7 +19,7 @@ use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
 
 /// Alto de las paredes del túnel hasta el techo (m), y lo que se abomba la
 /// roca de encima.
-const TUNNEL_HEIGHT: f32 = 6.5;
+pub(crate) const TUNNEL_HEIGHT: f32 = 6.5;
 const TUNNEL_ROCK: f32 = 15.0;
 /// Hasta dónde llega la roca del túnel a cada lado de la línea central (m).
 pub const TUNNEL_SHELL: f32 = WALL_DISTANCE + 12.0;

@@ -21,7 +21,7 @@ mod sea;
 mod shadow_fade;
 mod shoulders;
 pub mod sky;
-mod structures;
+pub(crate) mod structures;
 mod terrain;
 mod textures;
 mod trees;

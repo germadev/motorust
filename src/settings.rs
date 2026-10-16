@@ -88,6 +88,9 @@ pub struct Settings {
     pub show_total_time: bool,
     /// How fast the rivals ride, and how much time the checkpoints give.
     pub difficulty: Difficulty,
+    /// How the track is seen while it is chosen: from the road, as in the
+    /// menus before it, or from above.
+    pub track_view: TrackView,
     /// Whether each frame is drawn while the next one is simulated
     /// (Bevy's pipelined rendering): more frames per second when the CPU
     /// holds them back, a frame more between the controls and the screen.
@@ -205,6 +208,40 @@ impl From<&Settings> for StartedWith {
     }
 }
 
+/// How the track is shown while it is chosen (see
+/// [`crate::track_select`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum TrackView {
+    /// From the road, as in the menus before it: the camera goes on along
+    /// the track it was already flying over, so nothing jumps between the
+    /// start menu, the modes and the track.
+    #[default]
+    Trackside,
+    /// From high above, turning slowly round the whole track: the lap is
+    /// seen whole, as a map of it.
+    Aerial,
+}
+
+/// The views that can be chosen, in order.
+pub const TRACK_VIEWS: [TrackView; 2] = [TrackView::Trackside, TrackView::Aerial];
+
+impl TrackView {
+    /// Whether the track is seen from the road while it is chosen (the
+    /// other view is from above).
+    pub fn at_the_road(self) -> bool {
+        matches!(self, TrackView::Trackside)
+    }
+
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (TrackView::Trackside, Language::Spanish) => "A pie de pista",
+            (TrackView::Trackside, Language::English) => "Trackside",
+            (TrackView::Aerial, Language::Spanish) => "Aérea",
+            (TrackView::Aerial, Language::English) => "Aerial",
+        }
+    }
+}
+
 /// How a race starts.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum RaceStart {
@@ -306,6 +343,7 @@ impl Default for Settings {
             centre_results: false,
             show_total_time: false,
             difficulty: Difficulty::default(),
+            track_view: TrackView::default(),
             pipelined_rendering: true,
             modelled_trees: true,
             lighter_far_trees: false,
