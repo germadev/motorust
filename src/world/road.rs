@@ -373,7 +373,9 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
     {
         // Wooden bridges have their own fence (see `structures`).
         return match bridge.style {
-            BridgeStyle::RedArches | BridgeStyle::Truss => Some(WallStyle::Concrete),
+            BridgeStyle::RedArches | BridgeStyle::Truss | BridgeStyle::Dam => {
+                Some(WallStyle::Concrete)
+            }
             BridgeStyle::Wooden => None,
         };
     }
@@ -1367,7 +1369,7 @@ mod tests {
                 let middle = span.from + span.length(lap) / 2.0;
                 let wall = wall_style(scenery, lap, middle, Side::Left);
                 match bridge.style {
-                    BridgeStyle::RedArches | BridgeStyle::Truss => {
+                    BridgeStyle::RedArches | BridgeStyle::Truss | BridgeStyle::Dam => {
                         assert_eq!(wall, Some(WallStyle::Concrete))
                     }
                     BridgeStyle::Wooden => assert_eq!(wall, None, "{}", circuit.name),

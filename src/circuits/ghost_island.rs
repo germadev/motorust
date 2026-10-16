@@ -336,6 +336,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
             style: BridgeStyle::Wooden,
             fence: 0.75,
         }],
+        dams: &[],
         gantries: &[
             Gantry {
                 along: 0.0,

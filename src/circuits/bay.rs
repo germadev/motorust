@@ -63,6 +63,7 @@ pub const BAY: Circuit = Circuit {
         ],
         tunnels: &[],
         bridges: &[],
+        dams: &[],
         gantries: &[
             Gantry {
                 along: 0.0,

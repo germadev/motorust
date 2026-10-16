@@ -194,7 +194,12 @@ pub fn structure_pieces(
             pieces.push((mesh, material));
         }
     }
+    pieces.extend(super::dam::dam_pieces(track, terrain, scenery, textures));
     for bridge in scenery.bridges {
+        // A dam's crest is the dam (see `dam`).
+        if bridge.style == BridgeStyle::Dam {
+            continue;
+        }
         let indices = indices(track, bridge.span, lap);
         if bridge.style == BridgeStyle::Wooden {
             let (planks, logs) = wooden_bridge_meshes(track, terrain, &indices, bridge.fence);
@@ -315,7 +320,7 @@ fn passing_over(
 }
 
 /// Los puntos del trazado de un tramo, en orden de carrera.
-fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
+pub(super) fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
     let first = track.index_at(span.from);
     let count = (span.length(lap) / track.step_length()).round() as usize;
     (0..=count)
@@ -1348,6 +1353,18 @@ mod tests {
                     BridgeStyle::Wooden => continue,
                     BridgeStyle::RedArches => bridge_meshes(&track, &terrain, &indices),
                     BridgeStyle::Truss => truss_bridge_meshes(&track, &terrain, &indices),
+                    // A dam's crest is the dam's own concrete.
+                    BridgeStyle::Dam => {
+                        let dam = scenery
+                            .dams
+                            .iter()
+                            .find(|dam| dam.crest == bridge.span)
+                            .expect("a dam's crest is a dam's");
+                        (
+                            super::super::dam::dam_mesh(&track, &terrain, dam),
+                            Mesh::from(Cuboid::default()),
+                        )
+                    }
                 };
                 let middle = indices[indices.len() / 2];
                 let beside = track.half_width() + 0.5;

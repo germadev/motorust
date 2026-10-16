@@ -14,10 +14,11 @@
 //!    the south-east bay, to a pass between rocks.
 //! 4. The east coast road rises and falls behind a white barrier, with the
 //!    sea on the right.
-//! 5. A mountain road climbs on north in S-bends between rock walls, dips,
-//!    and climbs again to the summit at the island's northern tip, 52 m up,
-//!    round a long left-hander with the sea and a lighthouse below.
-//! 6. Down through a forest it rolls over a hump, dips and rises again, then
+//! 5. A mountain road climbs on north in S-bends between rock walls, 40 m
+//!    up, with the lighthouse straight ahead below, and dives steeply at it
+//!    to the foot of its tower on the northern cape, round a long
+//!    left-hander.
+//! 6. Back up through a forest it rolls over a hump, dips and rises again, then
 //!    runs down the ridge and crosses over the tunnel, down the shore of the
 //!    bay to a bridge with red arches over the river mouth, through the town
 //!    and back to the seafront.
@@ -29,16 +30,30 @@ use crate::geometry::{fbm, smoothstep};
 use crate::track::{Banking, Layout, WALL_DISTANCE};
 use crate::world::scenery::*;
 
+/// The height of the lake behind the dam (m over the sea), a few metres
+/// under the road along its crest.
+const LAKE_LEVEL: f32 = 40.5;
+/// The square with the monument, by the far end of the crest, on the
+/// lake's side, as at El Atazar.
+const SQUARE: Vec2 = Vec2::new(76.0, 462.0);
+
 /// Where things are, in metres from the finish line.
-const SEAFRONT: Span = span(3020.0, 250.0);
+const SEAFRONT: Span = span(4200.0, 250.0);
 const TUNNEL: Span = span(505.0, 625.0);
 const ROCK_PASS: Span = span(870.0, 990.0);
 const EAST_COAST: Span = span(1000.0, 1280.0);
 const MOUNTAIN: Span = span(1280.0, 1660.0);
+/// Down at the foot of the lighthouse, at the bottom of the dive.
+const CAPE: Span = span(1560.0, 1700.0);
 const FOREST: Span = span(1660.0, 2160.0);
 const BAY_SHORE: Span = span(2460.0, 2710.0);
 const BRIDGE: Span = span(2720.0, 2805.0);
-const TOWN: Span = span(2830.0, 3010.0);
+const GORGE: Span = span(2830.0, 3100.0);
+const CREST: Span = span(3600.0, 3758.0);
+const TOWN: Span = span(3880.0, 4190.0);
+
+/// The lighthouse, on the northern cape.
+const LIGHTHOUSE: Vec2 = Vec2::new(480.0, -1046.0);
 
 const RED: Color = Color::srgb(0.8, 0.08, 0.06);
 
@@ -77,7 +92,11 @@ pub const TURBO_BAY: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::Outline(&COAST),
         hills: 22.0,
-        greens: Greens::Lawn,
+        // Not the arcade lawn: the many greens of real land in a
+        // Mediterranean summer, straw, olive, sage and scrub, less vivid
+        // than painted.
+        greens: Greens::Mediterranean,
+        // Those greens are as dark as they should be already.
         grass_shade: 1.0,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
@@ -89,6 +108,24 @@ pub const TURBO_BAY: Circuit = Circuit {
                 height: 15.0,
                 tilt: Vec2::ZERO,
                 skirt: 15.0,
+            },
+            // The square at the far end of the dam's crest, level with it.
+            Terrace {
+                center: SQUARE,
+                radius: 16.0,
+                height: 43.4,
+                tilt: Vec2::ZERO,
+                skirt: 14.0,
+            },
+            // The lighthouse's cape: low, level and bare, a little above
+            // the road at the bottom of the dive, so the tower is seen
+            // whole from it.
+            Terrace {
+                center: LIGHTHOUSE,
+                radius: 12.0,
+                height: 23.0,
+                tilt: Vec2::ZERO,
+                skirt: 30.0,
             },
         ],
         mountains,
@@ -114,23 +151,51 @@ pub const TURBO_BAY: Circuit = Circuit {
                 side: Side::Right,
                 style: WallStyle::Concrete,
             },
-            // The mountain road, with the sea on the right.
+            // The mountain road, with the sea on the right, and a railing
+            // round the cape, so nothing hides the lighthouse.
             WallRun {
-                span: MOUNTAIN,
+                span: span(MOUNTAIN.from, CAPE.from),
                 side: Side::Right,
                 style: WallStyle::Concrete,
+            },
+            WallRun {
+                span: CAPE,
+                side: Side::Right,
+                style: WallStyle::Railing,
             },
             WallRun {
                 span: BAY_SHORE,
                 side: Side::Left,
                 style: WallStyle::Concrete,
             },
+            // Up the gorge, a barrier over the drop to the river.
+            WallRun {
+                span: GORGE,
+                side: Side::Right,
+                style: WallStyle::Concrete,
+            },
         ],
         tunnels: &[TUNNEL],
-        bridges: &[Bridge {
-            span: BRIDGE,
-            style: BridgeStyle::RedArches,
-            fence: 0.0,
+        bridges: &[
+            Bridge {
+                span: BRIDGE,
+                style: BridgeStyle::RedArches,
+                fence: 0.0,
+            },
+            Bridge {
+                span: CREST,
+                style: BridgeStyle::Dam,
+                fence: 0.0,
+            },
+        ],
+        dams: &[Dam {
+            crest: CREST,
+            lake_side: Side::Left,
+            lake: &LAKE,
+            level: LAKE_LEVEL,
+            river: &RIVER,
+            road_bank: Side::Right,
+            monument: Some(SQUARE),
         }],
         gantries: &[
             Gantry {
@@ -145,6 +210,11 @@ pub const TURBO_BAY: Circuit = Circuit {
             },
             Gantry {
                 along: 1980.0,
+                color: RED,
+                text: Some("CHECKPOINT"),
+            },
+            Gantry {
+                along: 2980.0,
                 color: RED,
                 text: Some("CHECKPOINT"),
             },
@@ -166,19 +236,34 @@ pub const TURBO_BAY: Circuit = Circuit {
                 accent: None,
             },
             Billboard {
-                along: 2880.0,
+                along: 3980.0,
                 side: Side::Right,
                 text: "BEVY",
                 color: Color::srgb(0.1, 0.1, 0.1),
                 accent: None,
             },
         ],
-        lamps: &[Row {
-            span: SEAFRONT,
-            side: Side::Left,
-            lateral: WALL_DISTANCE + 0.9,
-            every: 40.0,
-        }],
+        lamps: &[
+            Row {
+                span: SEAFRONT,
+                side: Side::Left,
+                lateral: WALL_DISTANCE + 0.9,
+                every: 40.0,
+            },
+            // Along the crest of the dam, on its parapets.
+            Row {
+                span: CREST,
+                side: Side::Left,
+                lateral: WALL_DISTANCE + 0.5,
+                every: 30.0,
+            },
+            Row {
+                span: span(CREST.from + 15.0, CREST.to),
+                side: Side::Right,
+                lateral: WALL_DISTANCE + 0.5,
+                every: 30.0,
+            },
+        ],
         trees: &[
             Species::Broadleaf,
             Species::Cypress,
@@ -219,7 +304,7 @@ pub const TURBO_BAY: Circuit = Circuit {
             },
         ],
         hotels: &[Row {
-            span: span(3040.0, 230.0),
+            span: span(4220.0, 230.0),
             side: Side::Right,
             lateral: WALL_DISTANCE + 30.0,
             every: 38.0,
@@ -233,8 +318,8 @@ pub const TURBO_BAY: Circuit = Circuit {
         ],
         // On the northern cape, below the summit.
         lighthouses: &[Lighthouse {
-            position: Vec2::new(480.0, -1046.0),
-            height: 24.0,
+            position: LIGHTHOUSE,
+            height: 28.0,
         }],
         boats: &[
             Boat {
@@ -295,8 +380,30 @@ pub const TURBO_BAY: Circuit = Circuit {
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
+            // Off to the left below the dam, round the hairpin, and off the
+            // crest down to the town.
             ChevronSign {
-                along: 2810.0,
+                along: 3090.0,
+                side: Side::Right,
+                direction: ChevronDirection::Left,
+            },
+            ChevronSign {
+                along: 3345.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 3385.0,
+                side: Side::Left,
+                direction: ChevronDirection::Right,
+            },
+            ChevronSign {
+                along: 3540.0,
+                side: Side::Right,
+                direction: ChevronDirection::Left,
+            },
+            ChevronSign {
+                along: 3800.0,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
@@ -329,13 +436,13 @@ pub const TURBO_BAY: Circuit = Circuit {
                 distance: 50,
             },
             BrakeMarker {
-                along: 2690.0,
-                side: Side::Right,
+                along: 3220.0,
+                side: Side::Left,
                 distance: 100,
             },
             BrakeMarker {
-                along: 2720.0,
-                side: Side::Right,
+                along: 3250.0,
+                side: Side::Left,
                 distance: 50,
             },
         ],
@@ -345,7 +452,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         loops: &[],
         rings: &[],
         waterfalls: &[],
-        sky: SkyStyle::Day,
+        sky: SkyStyle::Mediterranean,
         water: Water::Sea,
         pit: None,
         mine: None,
@@ -354,7 +461,7 @@ pub const TURBO_BAY: Circuit = Circuit {
     },
 };
 
-const CONTROL_POINTS: [Vec2; 42] = [
+const CONTROL_POINTS: [Vec2; 65] = [
     // 1. The seafront, north (-Z).
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -95.0),
@@ -398,22 +505,52 @@ const CONTROL_POINTS: [Vec2; 42] = [
     Vec2::new(258.0, -530.0),
     Vec2::new(240.0, -450.0),
     Vec2::new(200.0, -260.0),
-    // Down the shore of the bay to the bridge, the town and the seafront.
+    // Down the shore of the bay to the bridge over the river mouth.
     Vec2::new(185.0, -180.0),
     Vec2::new(178.0, -95.0),
     Vec2::new(176.0, -10.0),
     Vec2::new(170.0, 60.0),
-    Vec2::new(135.0, 108.0),
-    Vec2::new(78.0, 122.0),
-    Vec2::new(30.0, 100.0),
-    Vec2::new(4.0, 50.0),
+    // 7. Up the gorge, beside the river, towards the dam.
+    Vec2::new(176.0, 135.0),
+    Vec2::new(186.0, 210.0),
+    Vec2::new(188.0, 285.0),
+    Vec2::new(188.0, 312.0),
+    // Off to the left below the dam, and up the hairpin.
+    Vec2::new(197.0, 346.0),
+    Vec2::new(222.0, 368.0),
+    Vec2::new(265.0, 376.0),
+    Vec2::new(340.0, 364.0),
+    Vec2::new(398.0, 362.0),
+    Vec2::new(438.0, 377.0),
+    Vec2::new(453.0, 410.0),
+    Vec2::new(438.0, 443.0),
+    Vec2::new(398.0, 455.0),
+    Vec2::new(345.0, 440.0),
+    // Into the crest round a left-hander, as the road does at El Atazar.
+    Vec2::new(295.0, 432.0),
+    // 8. Over the crest of the dam: an arch 125 m in radius, bowed towards
+    //    the lake on the left.
+    Vec2::new(249.7, 447.4),
+    Vec2::new(215.6, 464.2),
+    Vec2::new(178.0, 470.0),
+    Vec2::new(140.4, 464.2),
+    Vec2::new(106.3, 447.4),
+    // 9. Down the far side, through the town and back to the seafront.
+    Vec2::new(73.0, 424.0),
+    Vec2::new(38.0, 390.0),
+    Vec2::new(16.0, 340.0),
+    Vec2::new(6.0, 280.0),
+    Vec2::new(8.0, 195.0),
+    Vec2::new(6.0, 115.0),
+    Vec2::new(2.0, 50.0),
 ];
 
 /// Up and down all the way: from the seafront to the water's edge, up
-/// through the tunnel and along the coast, up the mountain to the summit,
-/// 52 m up, down through the forest, rolling, and down the ridge, about 18 m
-/// over the tunnel, to the bridge and the town.
-const ELEVATION: [(f32, f32); 47] = [
+/// through the tunnel and along the coast, up the mountain, 40 m up, down
+/// in a dive to the foot of the lighthouse, back up through the forest,
+/// rolling, and down the ridge, about 18 m over the tunnel, to the bridge
+/// and the town.
+const ELEVATION: [(f32, f32); 69] = [
     (0.0, 0.0),
     (160.0, 0.5),
     (230.0, 3.0),
@@ -435,23 +572,26 @@ const ELEVATION: [(f32, f32); 47] = [
     (1120.0, 22.0),
     (1180.0, 18.5),
     (1240.0, 22.0),
-    // Up the mountain, with a dip half way.
+    // Up the mountain to its top, with the lighthouse straight ahead below.
     (1310.0, 28.0),
     (1380.0, 35.0),
-    (1430.0, 36.5),
-    (1470.0, 36.0),
-    (1530.0, 41.5),
-    (1590.0, 47.5),
-    // The summit.
-    (1650.0, 52.0),
-    (1710.0, 50.5),
-    // Down through the forest, over a hump, a dip and up again.
-    (1770.0, 45.0),
-    (1830.0, 46.5),
-    (1890.0, 42.0),
-    (1950.0, 39.5),
-    (2030.0, 42.0),
-    (2110.0, 44.0),
+    (1430.0, 38.5),
+    // The dive to the cape, steep and straight at the lighthouse.
+    (1480.0, 34.0),
+    (1530.0, 28.0),
+    (1580.0, 22.0),
+    // Down at the foot of the lighthouse, round the cape.
+    (1630.0, 17.5),
+    (1680.0, 18.0),
+    // Back up the west side into the forest, over a hump, a dip and up
+    // again.
+    (1740.0, 23.5),
+    (1800.0, 30.0),
+    (1870.0, 36.5),
+    (1930.0, 35.0),
+    (1990.0, 37.5),
+    (2060.0, 41.5),
+    (2120.0, 43.5),
     (2190.0, 41.0),
     (2270.0, 33.0),
     (2340.0, 28.0),
@@ -463,17 +603,42 @@ const ELEVATION: [(f32, f32); 47] = [
     (2620.0, 17.0),
     (2690.0, 13.5),
     (2760.0, 12.0),
-    (2830.0, 11.5),
-    (2890.0, 9.0),
-    (2950.0, 6.0),
-    (3010.0, 3.0),
+    // Down into the gorge, and up it beside the river.
+    (2830.0, 11.0),
+    (2880.0, 8.5),
+    (2950.0, 6.5),
+    (3010.0, 6.0),
+    (3070.0, 7.0),
+    // Off below the dam, and up the hairpin to the crest.
+    (3109.0, 8.5),
+    (3154.0, 12.0),
+    (3230.0, 18.0),
+    (3288.0, 22.5),
+    (3331.0, 26.0),
+    (3368.0, 29.0),
+    (3405.0, 32.0),
+    (3448.0, 35.0),
+    (3503.0, 38.5),
+    (3554.0, 40.5),
+    // The crest, level, the lake a few metres under it.
+    (3602.0, 41.5),
+    (3678.0, 41.5),
+    (3755.0, 41.5),
+    // Down the far side to the town and the seafront.
+    (3796.0, 39.5),
+    (3844.0, 35.0),
+    (3899.0, 29.5),
+    (3960.0, 23.0),
+    (4045.0, 14.0),
+    (4125.0, 7.0),
+    (4191.0, 2.5),
 ];
 
 /// The island, clockwise from the south-west: the beach off the seafront,
 /// the north-west point, the north bay up to a rocky headland, the northern
 /// cape round the mountain, the east coast, the hotel headland, the south-east bay with the
 /// river mouth that runs in under the bridge, and the south coast.
-const COAST: [Vec2; 60] = [
+const COAST: [Vec2; 72] = [
     Vec2::new(-40.0, 190.0),
     Vec2::new(-50.0, 110.0),
     Vec2::new(-47.0, 30.0),
@@ -530,15 +695,29 @@ const COAST: [Vec2; 60] = [
     Vec2::new(112.0, 56.0),
     Vec2::new(150.0, 52.0),
     Vec2::new(190.0, 54.0),
+    // The south of the island, round the gorge, the dam and its lake, and
+    // up the beach beside the road down to the town.
     Vec2::new(222.0, 66.0),
-    Vec2::new(246.0, 108.0),
-    Vec2::new(232.0, 160.0),
-    Vec2::new(190.0, 178.0),
-    Vec2::new(130.0, 170.0),
-    Vec2::new(70.0, 178.0),
+    Vec2::new(262.0, 82.0),
+    Vec2::new(330.0, 112.0),
+    Vec2::new(400.0, 165.0),
+    Vec2::new(470.0, 250.0),
+    Vec2::new(492.0, 350.0),
+    Vec2::new(495.0, 480.0),
+    Vec2::new(430.0, 570.0),
+    Vec2::new(390.0, 665.0),
+    Vec2::new(320.0, 735.0),
+    Vec2::new(220.0, 770.0),
+    Vec2::new(110.0, 765.0),
+    Vec2::new(20.0, 730.0),
+    Vec2::new(-40.0, 650.0),
+    Vec2::new(-62.0, 550.0),
+    Vec2::new(-66.0, 450.0),
+    Vec2::new(-62.0, 350.0),
+    Vec2::new(-55.0, 260.0),
 ];
 
-const MASSIFS: [Massif; 13] = [
+const MASSIFS: [Massif; 16] = [
     // The ridge at the waist, which the tunnel goes through and the road
     // comes back over.
     massif(262.0, -372.0, 55.0, 13.0),
@@ -549,12 +728,17 @@ const MASSIFS: [Massif; 13] = [
     massif(560.0, -330.0, 40.0, 18.0),
     massif(420.0, -520.0, 100.0, 34.0),
     massif(350.0, -610.0, 60.0, 24.0),
-    // A crag inside the mountain road, the lighthouse cape, a headland on
-    // the north bay, and rocks above the river and the town.
+    // A crag inside the mountain road, a headland on the north bay, and
+    // rocks above the river and the town.
     massif(420.0, -880.0, 70.0, 22.0),
-    massif(482.0, -1040.0, 30.0, 10.0),
     massif(250.0, -760.0, 35.0, 14.0),
     massif(50.0, 55.0, 32.0, 12.0),
+    // The mountains round the lake behind the dam, and the hill the road
+    // climbs in the hairpin up to the crest.
+    climbed_massif(10.0, 610.0, 170.0, 62.0),
+    climbed_massif(200.0, 790.0, 180.0, 70.0),
+    climbed_massif(390.0, 610.0, 170.0, 64.0),
+    climbed_massif(320.0, 440.0, 100.0, 42.0),
     // Islets.
     massif(-140.0, -120.0, 26.0, 11.0),
     massif(680.0, -430.0, 30.0, 14.0),
@@ -608,17 +792,17 @@ const CUTTINGS: [Cutting; 10] = [
         side: Side::Left,
         height: 12.0,
     },
-    // A rock wall on the inside of the bay shore, and on the right after
-    // the town.
+    // A rock wall on the inside of the bay shore, and the gorge's wall on
+    // the left, across the road from the river.
     Cutting {
         span: span(2590.0, 2690.0),
         side: Side::Right,
         height: 12.0,
     },
     Cutting {
-        span: span(2970.0, 3050.0),
-        side: Side::Right,
-        height: 14.0,
+        span: span(GORGE.from + 20.0, GORGE.to - 10.0),
+        side: Side::Left,
+        height: 30.0,
     },
 ];
 
@@ -635,3 +819,37 @@ fn mountains(point: Vec2) -> f32 {
     );
     smoothstep(1700.0, 2600.0, distance) * facing * 240.0 * (0.35 + 0.65 * fbm(point / 280.0, 4))
 }
+
+/// The lake behind the dam: along the crest, then round the mountains to
+/// the south.
+const LAKE: [Vec2; 16] = [
+    Vec2::new(106.0, 447.0),
+    Vec2::new(140.0, 464.0),
+    Vec2::new(178.0, 470.0),
+    Vec2::new(216.0, 464.0),
+    Vec2::new(250.0, 447.0),
+    Vec2::new(268.0, 480.0),
+    Vec2::new(285.0, 525.0),
+    Vec2::new(300.0, 575.0),
+    Vec2::new(290.0, 625.0),
+    Vec2::new(255.0, 660.0),
+    Vec2::new(195.0, 672.0),
+    Vec2::new(135.0, 660.0),
+    Vec2::new(95.0, 625.0),
+    Vec2::new(80.0, 575.0),
+    Vec2::new(82.0, 525.0),
+    Vec2::new(98.0, 486.0),
+];
+
+/// The river from under the dam down the gorge to its mouth, under the red
+/// bridge, and how high the gorge's far wall stands over it.
+const RIVER: [(Vec2, f32); 8] = [
+    (Vec2::new(178.0, 470.0), 40.0),
+    (Vec2::new(170.0, 430.0), 40.0),
+    (Vec2::new(161.0, 390.0), 41.0),
+    (Vec2::new(152.0, 330.0), 40.0),
+    (Vec2::new(146.0, 250.0), 34.0),
+    (Vec2::new(140.0, 170.0), 26.0),
+    (Vec2::new(134.0, 100.0), 16.0),
+    (Vec2::new(130.0, 45.0), 6.0),
+];

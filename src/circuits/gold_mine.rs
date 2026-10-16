@@ -207,6 +207,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 fence: 0.0,
             },
         ],
+        dams: &[],
         gantries: &[
             Gantry {
                 along: 0.0,
