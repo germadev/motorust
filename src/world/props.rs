@@ -51,7 +51,7 @@ pub fn spawn_props(
         occupied.push(spawn_grandstand(world, track, terrain, grandstand, assets));
     }
     for row in scenery.lamps {
-        spawn_lamps(world, track, terrain, row, assets);
+        spawn_lamps(world, track, terrain, scenery, row, assets);
     }
     if let Some((along, lateral)) = scenery.grand_hotel {
         occupied.push(spawn_grand_hotel(
@@ -114,11 +114,12 @@ pub fn spawn_props(
     ));
     landmarks::spawn_rings(world, track, scenery.rings, assets);
     landmarks::spawn_waterfalls(world, track, terrain, scenery.waterfalls, assets);
-    spawn_trees(world, trees, &occupied, assets);
-    spawn_buoys(world, scenery.buoys, assets);
     for lighthouse in scenery.lighthouses {
         spawn_lighthouse(world, terrain, lighthouse, assets);
+        occupied.push(lighthouse_clearing(lighthouse));
     }
+    spawn_trees(world, trees, &occupied, assets);
+    spawn_buoys(world, scenery.buoys, assets);
     for boat in scenery.boats {
         spawn_boat(world, boat, assets);
     }
@@ -154,6 +155,7 @@ fn spawn_lamps(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
+    scenery: &Scenery,
     row: &Row,
     assets: &mut Assets3d,
 ) {
@@ -201,8 +203,19 @@ fn spawn_lamps(
         glass,
     ));
 
+    let lap = track.lap_length();
     for (index, point) in row_points(track, row) {
-        let base = terrain.height(point);
+        // On a bridge or a dam, they stand on its deck.
+        let on_deck = scenery.bridges.iter().any(|bridge| {
+            bridge
+                .span
+                .contains(index as f32 * track.step_length(), lap)
+        });
+        let base = if on_deck {
+            track.surface_point(index, row.side.sign() * row.lateral).y
+        } else {
+            terrain.height(point)
+        };
         // Donde detrás del muro sube la roca no se ve bien una farola.
         if base - track.surface_point(index, row.side.sign() * row.lateral).y > 1.5 {
             continue;
@@ -1734,6 +1747,15 @@ fn grandstand_meshes(length: f32) -> (Mesh, Mesh, Mesh) {
 }
 
 /// Faro costero con bandas rojas y blancas, balcón y linterna luminosa.
+/// How far round a lighthouse no tree grows, for each metre of its height:
+/// it stands on a bare, windswept cape, seen whole from far off.
+const LIGHTHOUSE_CLEARING: f32 = 1.5;
+
+/// The bare ground round a lighthouse, where no tree grows.
+fn lighthouse_clearing(lighthouse: &Lighthouse) -> Footprint {
+    (lighthouse.position, lighthouse.height * LIGHTHOUSE_CLEARING)
+}
+
 fn spawn_lighthouse(
     world: &mut ChildSpawnerCommands,
     terrain: &Terrain,
@@ -2145,6 +2167,18 @@ fn parasol_mesh() -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_tree_grows_round_a_lighthouse() {
+        let lighthouse = Lighthouse {
+            position: Vec2::new(480.0, -1046.0),
+            height: 28.0,
+        };
+        let (at, radius) = lighthouse_clearing(&lighthouse);
+        assert_eq!(at, lighthouse.position);
+        // Wider than the tower is tall, so the whole of it is seen.
+        assert!(radius > lighthouse.height);
+    }
     use crate::circuits::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
 

@@ -37,6 +37,10 @@ const LOWEST_ELEVATION: f32 = -0.25;
 /// derecha en la recta de meta (0 es el norte, -Z; π/2 el este, +X).
 const SUN_ELEVATION: f32 = 0.834;
 const SUN_AZIMUTH: f32 = 0.75 * std::f32::consts::PI;
+/// Where the sun stands on Turbo Bay's Mediterranean afternoon (heading and
+/// height, as above): high in the north-north-west, so the face of its dam,
+/// which looks north down the gorge, is in the sun.
+pub const MEDITERRANEAN_SUN: (f32, f32) = (1.9 * std::f32::consts::PI, 0.72);
 
 /// The colours of the sky (sRGB): overhead, a little above the horizon, and
 /// at the horizon, where it is the colour of the fog, so the land far away
@@ -49,6 +53,9 @@ pub const HORIZON: Color = Color::srgb(0.68, 0.8, 0.94);
 /// (`SkyStyle::GoldenHour`), whose mountains stand out from across the sea.
 pub const FOG: (f32, f32) = (450.0, 3800.0);
 const GOLDEN_FOG: (f32, f32) = (2000.0, 6800.0);
+/// The haze of a Mediterranean summer: it begins nearer than on most days
+/// and thickens slowly, so the island's far side is already veiled.
+const MEDITERRANEAN_FOG: (f32, f32) = (300.0, 4200.0);
 
 /// The light of a track ([`SkyStyle`]): the sky's colours, where the sun
 /// is and the colour of its light, the light of the sky on the shade, and
@@ -80,13 +87,17 @@ pub struct Palette {
 }
 
 /// A colour grade of the whole picture: how much saturation it keeps (after
-/// tonemapping), how much contrast its midtones get, and how many stops
-/// lighter it is.
+/// tonemapping), how much contrast its midtones get, how many stops lighter
+/// it is, how much warmer its white balance (a shift of the white point's
+/// CIE *x*, so a few thousandths are already seen), and how much
+/// saturation its highlights keep, as film loses it in the bright parts.
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct Grade {
     saturation: f32,
     contrast: f32,
     exposure: f32,
+    warmth: f32,
+    highlight_saturation: f32,
 }
 
 impl Grade {
@@ -94,6 +105,8 @@ impl Grade {
         saturation: 1.0,
         contrast: 1.0,
         exposure: 0.0,
+        warmth: 0.0,
+        highlight_saturation: 1.0,
     };
 
     /// The camera's colour grading for it.
@@ -101,7 +114,9 @@ impl Grade {
         let mut grading = ColorGrading::default();
         grading.global.post_saturation = self.saturation;
         grading.global.exposure = self.exposure;
+        grading.global.temperature = self.warmth;
         grading.midtones.contrast = self.contrast;
+        grading.highlights.saturation = self.highlight_saturation;
         grading
     }
 }
@@ -135,6 +150,7 @@ impl Palette {
                     saturation: 0.82,
                     contrast: 1.15,
                     exposure: 0.25,
+                    ..Grade::NONE
                 },
             },
             SkyStyle::Day => Self {
@@ -153,6 +169,41 @@ impl Palette {
                 clouds: Color::WHITE,
                 fog: FOG,
                 grade: Grade::NONE,
+            },
+            // A clear Mediterranean summer afternoon, as a photograph shows
+            // it rather than a cartoon: the sky a deep but not vivid blue
+            // overhead, pale and milky towards the horizon, where the haze
+            // off the sea whitens it, with a bright halo round the sun; a
+            // little lower and warmer sun than on the plain day, in the
+            // north-north-west (see [`MEDITERRANEAN_SUN`]), so the shadows
+            // are longer and model the hills, with less light from
+            // the sky to fill them, so they stay dark and cool; the haze
+            // nearer, so the far side of the island and the mountains across
+            // the sea fade into it; and the picture graded as film is, with
+            // less saturation, a little more contrast in the midtones, the
+            // highlights paler and the white balance a touch warm.
+            SkyStyle::Mediterranean => Self {
+                zenith: Color::srgb(0.2, 0.39, 0.72),
+                above_horizon: Color::srgb(0.46, 0.62, 0.84),
+                horizon: Color::srgb(0.77, 0.83, 0.89),
+                glow: 0.22,
+                glow_color: Color::srgb(1.0, 0.97, 0.9),
+                sun_azimuth: MEDITERRANEAN_SUN.0,
+                sun_elevation: MEDITERRANEAN_SUN.1,
+                sun_disc: Color::srgb(1.0, 0.98, 0.94),
+                sunlight: Color::srgb(1.0, 0.95, 0.88),
+                sunlight_strength: 1.1,
+                ambient: Color::srgb(0.66, 0.76, 1.0),
+                ambient_brightness: 520.0,
+                clouds: Color::srgb(1.0, 0.98, 0.95),
+                fog: MEDITERRANEAN_FOG,
+                grade: Grade {
+                    saturation: 0.78,
+                    contrast: 1.15,
+                    exposure: 0.15,
+                    warmth: 0.006,
+                    highlight_saturation: 0.75,
+                },
             },
             // The sun low in the west-north-west, in front on the start
             // straight: violet overhead, rose above the horizon and orange
@@ -274,7 +325,7 @@ pub struct Sky;
 pub struct Clouds;
 
 /// Dirección para un rumbo (0 = norte, -Z) y una altura sobre el horizonte.
-fn direction(azimuth: f32, elevation: f32) -> Vec3 {
+pub(crate) fn direction(azimuth: f32, elevation: f32) -> Vec3 {
     Vec3::new(
         azimuth.sin() * elevation.cos(),
         elevation.sin(),
@@ -1038,7 +1089,12 @@ mod tests {
 
     #[test]
     fn the_sky_meets_the_fog_at_the_horizon() {
-        for style in [SkyStyle::Day, SkyStyle::GoldenHour, SkyStyle::Dusk] {
+        for style in [
+            SkyStyle::Day,
+            SkyStyle::Mediterranean,
+            SkyStyle::GoldenHour,
+            SkyStyle::Dusk,
+        ] {
             let palette = Palette::of(style);
             // Away from the sun, the horizon is the colour of the fog.
             let away = -palette.sun_direction() * Vec3::new(1.0, 0.0, 1.0);
@@ -1097,6 +1153,23 @@ mod tests {
         assert!(clear.grade.exposure > 0.0);
         assert_eq!(day.grade, Grade::NONE);
         assert_eq!(dusk.grade, Grade::NONE);
+        // The Mediterranean summer: graded as a photograph, less saturated,
+        // with more contrast, its highlights paler and a touch warm; its
+        // sky less vivid than the plain day's and its horizon paler, its
+        // haze nearer, but never over the sea's edge; its sun warm and
+        // lower than the plain day's, with less light from the sky.
+        let summer = Palette::of(SkyStyle::Mediterranean);
+        assert!(summer.grade.saturation < 1.0 && summer.grade.contrast > 1.0);
+        assert!(summer.grade.highlight_saturation < 1.0);
+        assert!(summer.grade.warmth > 0.0 && summer.grade.warmth < 0.02);
+        assert!(vivid(summer.sky_color(Vec3::Y)) < vivid(day.sky_color(Vec3::Y)));
+        assert!(vivid(summer.horizon) < vivid(day.horizon));
+        assert!(summer.fog.0 < day.fog.0);
+        assert!(summer.fog.1 < super::super::sea::SEA_EXTENT);
+        let warm = summer.sunlight.to_srgba();
+        assert!(warm.red > warm.blue);
+        assert!(summer.sun_elevation < day.sun_elevation);
+        assert!(summer.ambient_brightness < day.ambient_brightness);
     }
 
     /// The lowest row of cloud `data` thicker than half in column `x`, if

@@ -3,6 +3,7 @@
 //! un cielo de verano. Al cambiar de pista se vuelve a construir.
 
 mod cavern;
+mod dam;
 mod desert;
 pub mod detail;
 mod flowers;

@@ -9,7 +9,7 @@ use crate::geometry::smoothstep;
 
 /// Un tramo de la vuelta, en metros desde la meta. Puede pasar por la meta:
 /// de 2400 a 300, por ejemplo.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Span {
     pub from: f32,
     pub to: f32,
@@ -117,6 +117,11 @@ pub enum Greens {
     /// up high and towards the sun, and dark conifer forest up the hills,
     /// far from the roads and on the mountains across the sea.
     Countryside,
+    /// A Mediterranean island's in summer: straw-coloured dry grass, olive
+    /// and grey-green sage, fresher green down the hollows and by the
+    /// water, and dark scrub up the slopes before the rock, in patches of
+    /// every size with ragged edges.
+    Mediterranean,
 }
 
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un
@@ -191,12 +196,14 @@ pub enum Soil {
     Mine,
 }
 
-/// The light of a track: a summer day; the last hours of a clear autumn
+/// The light of a track: a summer day; a clear Mediterranean summer
+/// afternoon, graded as a photograph is; the last hours of a clear autumn
 /// afternoon, the sun low and golden; or a low sun setting in a warm, hazy
 /// sky.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SkyStyle {
     Day,
+    Mediterranean,
     GoldenHour,
     Dusk,
 }
@@ -247,6 +254,44 @@ pub enum BridgeStyle {
     /// A concrete deck between two steel through trusses, braced across
     /// overhead, on concrete piers, as in West Way (Moto Racer).
     Truss,
+    /// The crest of a dam: the concrete of the dam itself, down to the
+    /// gorge below it, with the lake it holds on the other side (see
+    /// [`Dam`], which says how).
+    Dam,
+}
+
+/// A dam across a gorge, as El Atazar's, with the road along its crest (a
+/// bridge of [`BridgeStyle::Dam`] over the same span): an arch of concrete
+/// bowed towards the lake it holds, its water up near the crest; on the
+/// other side its face drops nearly sheer to the river, which runs on down
+/// the gorge to the sea.
+pub struct Dam {
+    /// Where the road runs along the crest.
+    pub crest: Span,
+    /// Which side of the road the lake is on.
+    pub lake_side: Side,
+    /// The lake's shore: a smooth closed curve through these points (x,
+    /// z), drawn as a coast's is, round a middle from which every point of
+    /// it can be seen (the water is a fan from there). Where it meets the
+    /// dam it runs along the crest, so the water reaches the dam's face.
+    pub lake: &'static [Vec2],
+    /// The height of the lake's water (m over the sea): a little under the
+    /// crest.
+    pub level: f32,
+    /// The river below the dam: points (x, z) along its course, from
+    /// under the dam (its first point past the crest, so the gorge runs on
+    /// under it) down to the sea, each with how high the gorge's far
+    /// wall stands there over the sea (m). Its water is the sea's, coming up
+    /// the gorge to the foot of the dam.
+    pub river: &'static [(Vec2, f32)],
+    /// Which bank of the river (going downstream) the road up the gorge
+    /// runs along: on that side the bank only drops from the road to the
+    /// water; across the river, the gorge's far wall rises.
+    pub road_bank: Side,
+    /// Where a paved square stands by the end of the crest with a
+    /// monument in the middle, if one does (x, z): on level ground, as a
+    /// [`Terrace`] makes it.
+    pub monument: Option<Vec2>,
 }
 
 /// Un tramo con otro muro distinto del de piedra a un lado.
@@ -366,6 +411,8 @@ pub struct Scenery {
     pub walls: &'static [WallRun],
     pub tunnels: &'static [Span],
     pub bridges: &'static [Bridge],
+    /// Dams, each with the road along its crest (see [`Dam`]).
+    pub dams: &'static [Dam],
     pub gantries: &'static [Gantry],
     pub billboards: &'static [Billboard],
     /// Farolas, cada `every` metros.

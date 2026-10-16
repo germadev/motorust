@@ -10,8 +10,10 @@ use bevy::{
     asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
 };
 
+use super::dam::DamGround;
 use super::flowers::{FlowerMap, phlox_color};
 use super::scenery::{Coast, FlowerKind, Greens, Pit, Scenery, Side, Soil, span};
+use super::sky::MEDITERRANEAN_SUN;
 use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep, value_noise};
@@ -66,6 +68,10 @@ const BURIED: f32 = TUNNEL_SHELL - 2.0 * FINE_SPACING;
 /// How far past the flat ground beside a road on a mountain it climbs the
 /// ground reaches the mountainside (m).
 const SLOPE_REACH: f32 = 30.0;
+/// Along this much of each end of a dam's crest, the ground under the road
+/// goes from the road's own to the gorge's and the lake's, which the dam
+/// covers.
+const CREST_FADE: f32 = 10.0;
 /// How far across each face of an open pit runs per metre up (m): steep.
 const PIT_FACE: f32 = 0.6;
 /// How far above the water the foot of an open pit is (m).
@@ -113,6 +119,9 @@ pub struct Terrain {
     /// forest climbs them, and they are in shade where the ridges catch the
     /// light (see [`weathered`]).
     hollow: Vec<f32>,
+    /// How much the ground faces up at each point of the grid (the upward
+    /// part of its normal, from the points round it), by rows as `heights`.
+    up: Vec<f32>,
     /// How the grass is coloured, and how light (see `Scenery::greens` and
     /// `Scenery::grass_shade`).
     greens: Greens,
@@ -185,14 +194,15 @@ impl Terrain {
             .map(|&point| smoothstep(2.0, 40.0, (scenery.mountains)(point)))
             .collect();
         let hollow = hollows(&xs, &zs, &heights, &mountain);
-        let grid: Vec<(Vec3, f32, f32)> = grid
+        let up = ups(&xs, &zs, &heights);
+        let grid: Vec<(Vec3, f32, f32, f32)> = grid
             .into_iter()
-            .zip(hollow.iter().zip(&mountain))
-            .map(|(p, (&hollow, &mountain))| (p, hollow, mountain))
+            .zip(hollow.iter().zip(&mountain).zip(&up))
+            .map(|(p, ((&hollow, &mountain), &up))| (p, hollow, mountain, up))
             .collect();
-        let sites = on_cores(&grid, threads, |part: &[(Vec3, f32, f32)]| {
+        let sites = on_cores(&grid, threads, |part: &[(Vec3, f32, f32, f32)]| {
             part.iter()
-                .map(|&(p, hollow, mountain)| site(p, flowers.as_ref(), hollow, mountain))
+                .map(|&(p, hollow, mountain, up)| site(p, flowers.as_ref(), hollow, mountain, up))
                 .collect::<Vec<_>>()
         });
         Self {
@@ -205,6 +215,7 @@ impl Terrain {
             fine,
             mountain,
             hollow,
+            up,
             greens: scenery.greens,
             grass_shade: scenery.grass_shade,
         }
@@ -316,13 +327,11 @@ impl Terrain {
     /// player sees there.
     fn look_drawn(&self, point: Vec2) -> Look {
         let (corners, indices) = self.triangle_at(point);
-        let [a, b, c] = corners;
-        let face = (b - a).cross(c - a).normalize();
-        let looks = indices.map(|index| look(&self.sites[index], face));
+        let looks = indices.map(|index| look(&self.sites[index]));
         let flat = corners.map(|corner| Vec2::new(corner.x, corner.z));
         // The piece it is furthest inside of: on a border, either.
         let mut drawn = (f32::MIN, looks[0]);
-        for (piece, weights) in self.cut(corners, face, looks).into_iter().flatten() {
+        for (piece, weights) in self.cut(corners, looks).into_iter().flatten() {
             let piece_corners = weights.map(|w| flat[0] * w.x + flat[1] * w.y + flat[2] * w.z);
             let depth = inside(point, piece_corners);
             if depth > drawn.0 {
@@ -341,6 +350,7 @@ impl Terrain {
             self.flowers.as_ref(),
             self.on_grid(&self.hollow, point),
             self.on_grid(&self.mountain, point),
+            self.on_grid(&self.up, point),
         )
     }
 
@@ -350,7 +360,7 @@ impl Terrain {
     /// its edges, so that they run smoothly across the land instead of
     /// round whole triangles, in steps. Each piece has its look and its
     /// corners, as weights of the triangle's, turning the same way.
-    fn cut(&self, corners: [Vec3; 3], face: Vec3, looks: [Look; 3]) -> Pieces {
+    fn cut(&self, corners: [Vec3; 3], looks: [Look; 3]) -> Pieces {
         const ONE: [Vec3; 3] = [Vec3::X, Vec3::Y, Vec3::Z];
         let mut pieces = Pieces::default();
         if looks[0] == looks[1] && looks[1] == looks[2] {
@@ -359,7 +369,7 @@ impl Terrain {
         }
         // Where the look changes along the edge from corner k to corner l.
         let edge = |k: usize, l: usize| {
-            let t = self.border([corners[k], corners[l]], [looks[k], looks[l]], face);
+            let t = self.border([corners[k], corners[l]], [looks[k], looks[l]]);
             ONE[k].lerp(ONE[l], t)
         };
         match (0..3).find(|&k| looks[(k + 1) % 3] == looks[(k + 2) % 3]) {
@@ -389,14 +399,14 @@ impl Terrain {
     /// from `from`, at `a`, to `to`, at `b`: found by halving it, the same
     /// whichever way the edge is walked, so that the triangles either side
     /// of it agree.
-    fn border(&self, [a, b]: [Vec3; 2], [from, to]: [Look; 2], face: Vec3) -> f32 {
+    fn border(&self, [a, b]: [Vec3; 2], [from, to]: [Look; 2]) -> f32 {
         if (b.x, b.z) < (a.x, a.z) {
-            return 1.0 - self.border([b, a], [to, from], face);
+            return 1.0 - self.border([b, a], [to, from]);
         }
         let (mut near, mut far) = (0.0, 1.0);
         for _ in 0..BORDER_STEPS {
             let t = (near + far) / 2.0;
-            if look(&self.site(a.lerp(b, t)), face) == from {
+            if look(&self.site(a.lerp(b, t))) == from {
                 near = t;
             } else {
                 far = t;
@@ -486,8 +496,8 @@ impl Terrain {
                     let points = triangle.map(|k| position(corners[k].0, corners[k].1));
                     let [a, b, c] = points;
                     let face = (b - a).cross(c - a).normalize();
-                    let looks = indices.map(|index| look(&self.sites[index], face));
-                    for (look, weights) in self.cut(points, face, looks).into_iter().flatten() {
+                    let looks = indices.map(|index| look(&self.sites[index]));
+                    for (look, weights) in self.cut(points, looks).into_iter().flatten() {
                         let (ground_type, flowers) = look;
                         let builder = match look {
                             (Ground::Grass, Some(kind)) => {
@@ -739,6 +749,28 @@ type Pieces = [Option<(Look, [Vec3; 3])>; 6];
 /// How many times [`Terrain::border`] halves an edge looking for a border
 /// along it: to within a 32nd of it.
 const BORDER_STEPS: u32 = 5;
+/// How much more or less steep than it is the ground is taken to be here
+/// and there (of the upward part of its normal), so the rock of the steep
+/// faces ends raggedly, not along a contour.
+const CLIFF_RAGGED: f32 = 0.05;
+
+/// How much the ground faces up at each point of the grid (`xs` by `zs`,
+/// `heights` by rows): the upward part of its normal, from the points
+/// either side of it, as the meshes' normals are.
+fn ups(xs: &[f32], zs: &[f32], heights: &[f32]) -> Vec<f32> {
+    let (width, depth) = (xs.len(), zs.len());
+    let position = |i: usize, j: usize| Vec3::new(xs[i], heights[j * width + i], zs[j]);
+    (0..depth)
+        .flat_map(|j| (0..width).map(move |i| (i, j)))
+        .map(|(i, j)| {
+            let (left, right) = (i.saturating_sub(1), (i + 1).min(width - 1));
+            let (back, front) = (j.saturating_sub(1), (j + 1).min(depth - 1));
+            let along_x = position(right, j) - position(left, j);
+            let along_z = position(i, front) - position(i, back);
+            along_z.cross(along_x).normalize().y
+        })
+        .collect()
+}
 
 /// What the look of the ground at a point turns on but the way it faces:
 /// how high it is, the snow line and the tree line over it, and the flowers
@@ -751,19 +783,25 @@ struct Site {
     flowers: Option<FlowerKind>,
     /// How much of it is mountain across the sea.
     mountain: f32,
+    /// How much its ground faces up (the upward part of its normal,
+    /// smoothed over the grid), a little more or less here and there, so
+    /// the rock of the steep faces does not end along a contour.
+    up: f32,
 }
 
 /// What the look of the ground at `p` (x, height, z) turns on but the way
 /// it faces, where the grass is in `flowers`, `hollow` down a gully of a
 /// mountain across the sea and `mountain` its share of it.
-fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32) -> Site {
+fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32, up: f32) -> Site {
     let (snow_line, tree_line) = lines(p, hollow);
+    let ground = Vec2::new(p.x, p.z);
     Site {
         height: p.y,
         snow_line,
         tree_line,
-        flowers: flowers.and_then(|map| map.at(Vec2::new(p.x, p.z))),
+        flowers: flowers.and_then(|map| map.at(ground)),
         mountain,
+        up: up + CLIFF_RAGGED * 2.0 * (fbm(ground / 13.0 + Vec2::splat(5.0), 2) - 0.5),
     }
 }
 
@@ -791,13 +829,14 @@ fn on_cores<T: Sync, R: Send>(
     })
 }
 
-/// What the ground at `site` is drawn as, facing `face`.
-fn look(site: &Site, face: Vec3) -> Look {
+/// What the ground at `site` is drawn as: by its smoothed slope, so the
+/// borders of the cliffs run smoothly too, as the others do.
+fn look(site: &Site) -> Look {
     let ground = ground_of(
         site.height,
         site.snow_line,
         site.tree_line,
-        face,
+        Vec3::Y * site.up,
         site.mountain,
     );
     let flowers = if ground == Ground::Grass {
@@ -852,6 +891,8 @@ struct Shaper<'a> {
     /// En una isla, la costa: un polígono alrededor del circuito, y la caja
     /// que lo contiene.
     shore: Option<(Vec<Vec2>, Vec2, Vec2)>,
+    /// What the dams do to the ground round them.
+    dams: Vec<DamGround>,
 }
 
 impl<'a> Shaper<'a> {
@@ -890,6 +931,7 @@ impl<'a> Shaper<'a> {
             lap,
             road_field,
             shore,
+            dams: scenery.dams.iter().map(DamGround::new).collect(),
         }
     }
 
@@ -985,7 +1027,11 @@ impl<'a> Shaper<'a> {
         let mountains = (self.scenery.mountains)(point);
         let Some(nearest) = nearest else {
             let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
-            return self.pit(point, wild);
+            let wild = self.pit(point, wild);
+            return self
+                .dams
+                .iter()
+                .fold(wild, |height, dam| dam.shape(point, height, 1.0));
         };
         let track = self.track;
         let along = track.along(nearest);
@@ -1063,6 +1109,13 @@ impl<'a> Shaper<'a> {
             let wild = self.pit(point, wild);
             height = height.lerp(wild.min(road - 2.5), bridge);
         }
+        // A dam's river, the gorge round it and its lake: past the walls,
+        // and under its crest, which the dam covers.
+        for dam in &self.dams {
+            let free = smoothstep(FLAT, FLAT + 5.0, distance)
+                .max(dam.crest.weight(along, self.lap, CREST_FADE));
+            height = dam.shape(point, height, free);
+        }
         height
     }
 }
@@ -1112,7 +1165,7 @@ pub fn interpolate(points: &[(f32, f32)], lap: f32, along: f32) -> f32 {
 }
 
 /// Distancia con signo de un punto a un polígono cerrado: positiva dentro.
-fn signed_distance(polygon: &[Vec2], point: Vec2) -> f32 {
+pub(super) fn signed_distance(polygon: &[Vec2], point: Vec2) -> f32 {
     let mut distance = f32::INFINITY;
     let mut inside = false;
     let n = polygon.len();
@@ -1280,7 +1333,71 @@ fn greens_tint(greens: Greens, p: Vec3, normal: Vec3, wild: f32) -> Color {
     match greens {
         Greens::Lawn => lawn_tint(p, normal),
         Greens::Countryside => grass_tint(p, normal, wild),
+        Greens::Mediterranean => mediterranean_tint(p, normal, wild),
     }
+}
+
+/// A Mediterranean island's greens in summer (`Greens::Mediterranean`), as
+/// tints over the grass's texture: broad swathes of dry, straw-coloured
+/// grass, olive and grey-green sage, with patches within them and a fine
+/// mottling, all on a warped field so no edge runs straight; fresher green
+/// down the hollows and by the water, drier up high and on the slopes
+/// turned to the sun, dark scrub up the steep slopes before the rock, and
+/// the scrub over the wild land far from the roads. The texture is a lush
+/// green photo, so each tint is the colour wanted over the texture's own
+/// (linear): it already is as dark as it should be, with no `grass_shade`.
+pub fn mediterranean_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
+    // Over the grass photo's average (linear 0.153, 0.359, 0.039): dry
+    // straw, olive, sage, fresh green, dark scrub and bare earth.
+    const STRAW: Color = Color::linear_rgb(2.2, 0.76, 2.2);
+    const OLIVE: Color = Color::linear_rgb(1.1, 0.53, 1.3);
+    const SAGE: Color = Color::linear_rgb(0.98, 0.56, 2.1);
+    const FRESH: Color = Color::linear_rgb(0.8, 0.68, 0.8);
+    const SCRUB: Color = Color::linear_rgb(0.3, 0.2, 0.4);
+    const EARTH: Color = Color::linear_rgb(1.7, 0.48, 2.0);
+    const SWATHES: [Color; 5] = [SAGE, OLIVE, STRAW, OLIVE, FRESH];
+    let at = Vec2::new(p.x, p.z);
+    // Warped, so the swathes and patches have ragged edges, not round ones.
+    let warp = Vec2::new(
+        fbm(at / 70.0 + 3.0, 2) - 0.5,
+        fbm(at / 70.0 - 11.0, 2) - 0.5,
+    ) * 60.0;
+    let warped = at + warp;
+    let swathe =
+        ((fbm(warped / 110.0, 3) - 0.3) / 0.4).clamp(0.0, 1.0) * (SWATHES.len() - 1) as f32;
+    let k = (swathe as usize).min(SWATHES.len() - 2);
+    let mut tint = SWATHES[k].mix(&SWATHES[k + 1], smoothstep(0.0, 1.0, swathe - k as f32));
+    // Patches within them: drier straw, or darker scrub.
+    let patch = fbm(warped / 28.0 + 17.0, 3) - 0.5;
+    tint = if patch > 0.0 {
+        tint.mix(&STRAW, (patch * 2.4).min(0.75))
+    } else {
+        tint.mix(&SCRUB, (-patch * 2.4).min(0.75))
+    };
+    // Down the hollows and by the water, fresher; up high and towards the
+    // sun, drier.
+    let wet = 1.0 - smoothstep(BEACH_HEIGHT, BEACH_HEIGHT + 6.0, p.y);
+    let hollow = smoothstep(0.55, 0.8, fbm(at / 55.0 - 23.0, 2)) * 0.5;
+    tint = tint.mix(&FRESH, (wet * 0.7).max(hollow));
+    let sun = super::sky::direction(MEDITERRANEAN_SUN.0, MEDITERRANEAN_SUN.1);
+    let exposed = smoothstep(25.0, 60.0, p.y) * 0.3 + smoothstep(0.85, 1.0, normal.dot(sun)) * 0.25;
+    tint = tint.mix(&STRAW, exposed);
+    // Up the steep slopes, scrub, and on the steepest banks bare earth.
+    let steepness = (1.0 - normal.y).clamp(0.0, 1.0);
+    tint = tint.mix(&SCRUB, smoothstep(0.05, 0.16, steepness) * 0.6);
+    let detail = value_noise(at * 0.045 + Vec2::new(17.0, -23.0));
+    tint = tint.mix(
+        &EARTH,
+        (smoothstep(0.12, 0.2, steepness) * 0.4 + (detail - 0.5) * 0.15).clamp(0.0, 0.4),
+    );
+    // A fine mottling of lighter and darker tufts.
+    let mottle = 0.86 + 0.28 * value_noise(warped / 6.0);
+    let linear = tint.mix(&SCRUB, wild * 0.7).to_linear();
+    Color::linear_rgb(
+        linear.red * mottle,
+        linear.green * mottle,
+        linear.blue * mottle,
+    )
 }
 
 /// The arcade lawn's greens (`Greens::Lawn`), as tints over its texture:
@@ -1666,6 +1783,50 @@ mod tests {
     }
 
     #[test]
+    fn turbo_bay_dives_to_the_foot_of_its_lighthouse_in_full_view() {
+        let circuit = &CIRCUITS[1];
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let lighthouse = &circuit.scenery.lighthouses[0];
+        let elevation = |along: f32| track.elevations()[track.index_at(along)];
+        let point = |along: f32| track.centerline()[track.index_at(along)];
+        // The road drops some 20 m from the top of the mountain road to the
+        // foot of the lighthouse, in under 250 m, at over 11 % at its
+        // steepest (and never over 13 %: see `slopes_and_banking_stay_rideable`).
+        let top = (1380..1480).step_by(10).map(|a| elevation(a as f32));
+        let top = top.fold(f32::MIN, f32::max);
+        let near: Vec<f32> = (1300..1800)
+            .step_by(5)
+            .map(|a| a as f32)
+            .filter(|&a| point(a).distance(lighthouse.position) < 70.0)
+            .collect();
+        let foot = near.iter().map(|&a| elevation(a)).fold(f32::MAX, f32::min);
+        assert!(top - foot > 18.0, "{top} m down to {foot} m");
+        let steepest = (1440..1640)
+            .step_by(10)
+            .map(|a| (elevation(a as f32) - elevation(a as f32 + 10.0)) / 10.0)
+            .fold(0.0, f32::max);
+        assert!(steepest > 0.11, "{steepest}");
+        // It stands on a low cape, a little above the road.
+        let base = terrain.height(lighthouse.position);
+        assert!(base > foot && base < foot + 8.0, "{base} m over {foot} m");
+        // All the way down the dive and round its foot, the whole tower is
+        // in sight from the rider's eyes, over the ground.
+        for along in (1480..1660).step_by(10).map(|a| a as f32) {
+            let eye = point(along).extend(elevation(along) + 1.5);
+            let foot_of_tower = lighthouse.position.extend(base + 1.0);
+            for k in 1..60 {
+                let t = k as f32 / 60.0;
+                let at = eye.lerp(foot_of_tower, t);
+                assert!(
+                    terrain.height(at.truncate()) < at.z,
+                    "at {along} m, the ground hides the lighthouse"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn turbo_bay_passes_over_its_own_tunnel() {
         let circuit = &CIRCUITS[1];
         let track = Track::new(&circuit.layout);
@@ -1964,6 +2125,33 @@ mod tests {
     }
 
     #[test]
+    fn mediterranean_greens_are_many_tones_shading_into_each_other() {
+        // Over Turbo Bay's island, on level ground: dry straw (redder than
+        // the photo's green) in places and dark scrub in others...
+        let up = Vec3::Y;
+        let tint = |x: f32, z: f32| mediterranean_tint(Vec3::new(x, 15.0, z), up, 0.0).to_linear();
+        let (mut straw, mut scrub, mut count) = (0, 0, 0);
+        for i in 0..60 {
+            for j in 0..60 {
+                let t = tint(i as f32 * 17.0, j as f32 * -23.0);
+                straw += usize::from(t.red > 1.6);
+                scrub += usize::from(t.green < 0.4);
+                count += 1;
+            }
+        }
+        assert!(straw * 20 > count, "straw {straw} of {count}");
+        assert!(scrub * 20 > count, "scrub {scrub} of {count}");
+        // ...shading into each other, never in a step from one metre to the
+        // next.
+        for i in 0..2000 {
+            let (x, z) = (i as f32 * 1.0, (i as f32 * 0.37).sin() * 300.0);
+            let (a, b) = (tint(x, z), tint(x + 1.0, z));
+            let step = (a.red - b.red).abs() + (a.green - b.green).abs() + (a.blue - b.blue).abs();
+            assert!(step < 0.6, "a step of {step} at {x}, {z}");
+        }
+    }
+
+    #[test]
     fn each_track_s_greens_are_its_own() {
         for k in 0..20 {
             let p = Vec3::new(k as f32 * 83.0, 15.0 + k as f32 * 9.0, k as f32 * -47.0);
@@ -2033,7 +2221,7 @@ mod tests {
                     continue;
                 }
                 of += 1;
-                count += usize::from(look(site, Vec3::Y).0 == ground);
+                count += usize::from(look(site).0 == ground);
             }
             assert!(of > 20, "{of} points");
             count as f32 / of as f32
@@ -2083,21 +2271,21 @@ mod tests {
                 let face = (b - a).cross(c - a).normalize();
                 // On the triangle, as drawn.
                 let height = a.y - (face.x * (point.x - a.x) + face.z * (point.y - a.z)) / face.y;
-                let truth = look(&terrain.site(Vec3::new(point.x, height, point.y)), face);
+                let truth = look(&terrain.site(Vec3::new(point.x, height, point.y)));
                 if terrain.look_drawn(point) != truth {
                     cut += 1;
                 }
-                if look(&terrain.site((a + b + c) / 3.0), face) != truth {
+                if look(&terrain.site((a + b + c) / 3.0)) != truth {
                     whole += 1;
                 }
                 // Cut, a triangle's pieces cover it, turning its way.
-                let looks = indices.map(|index| look(&terrain.sites[index], face));
+                let looks = indices.map(|index| look(&terrain.sites[index]));
                 if looks[0] != looks[1] || looks[1] != looks[2] {
                     borders += 1;
                     let flat = corners.map(|corner| Vec2::new(corner.x, corner.z));
                     let area = |[p, q, r]: [Vec2; 3]| (q - p).perp_dot(r - p);
                     let pieces: Vec<f32> = terrain
-                        .cut(corners, face, looks)
+                        .cut(corners, looks)
                         .into_iter()
                         .flatten()
                         .map(|(_, weights)| {
