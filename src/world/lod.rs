@@ -63,7 +63,7 @@ pub fn paint_from_texture(mesh: &Mesh, image: &Image, level: u32) -> Mesh {
     };
     let texture = Texture::new(image, level);
     let mut sums = vec![(Vec4::ZERO, 0.0f32); source.positions.len()];
-    for triangle in source.indices.chunks_exact(3) {
+    for triangle in source.indices.as_chunks::<3>().0 {
         let corners = triangle.iter().map(|&i| Vec2::from(uvs[i as usize]));
         let corners: Vec<Vec2> = corners.collect();
         let middle = (corners[0] + corners[1] + corners[2]) / 3.0;
@@ -321,7 +321,9 @@ impl Work {
             .collect();
         let faces: Vec<[usize; 3]> = source
             .indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|t| [0, 1, 2].map(|k| welded[t[k] as usize]))
             .filter(|&[a, b, c]| a != b && b != c && a != c)
             .collect();
@@ -569,7 +571,7 @@ impl Work {
         }
         let positions: Vec<Vec3> = kept.iter().map(|&v| self.positions[v]).collect();
         let mut faces = vec![Vec3::ZERO; kept.len()];
-        for triangle in indices.chunks_exact(3) {
+        for triangle in indices.as_chunks::<3>().0 {
             let [a, b, c] = [0, 1, 2].map(|k| positions[triangle[k] as usize]);
             let cross = (b - a).cross(c - a);
             for &i in triangle {
@@ -708,14 +710,16 @@ mod tests {
             .build();
         let front: Vec<u32> = mesh.indices().unwrap().iter().map(|i| i as u32).collect();
         let back: Vec<u32> = front
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|t| [t[0], t[2], t[1]])
             .collect();
         mesh.insert_indices(Indices::U32([front, back].concat()));
         let light = simplify(&mesh, 40);
         let source = Source::of(&light);
         let facing = |up: bool| {
-            source.indices.chunks_exact(3).any(|t| {
+            source.indices.as_chunks::<3>().0.iter().any(|t| {
                 let [a, b, c] = [0, 1, 2].map(|k| source.positions[t[k] as usize]);
                 ((b - a).cross(c - a).y > 0.0) == up
             })
