@@ -3,12 +3,16 @@
 // En Windows, la versión optimizada se abre sin ventana de consola.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(not(target_arch = "wasm32"))]
+mod bench;
 mod bike;
 mod camera;
 mod circuits;
 mod gamepads;
 mod geometry;
 mod hud;
+#[cfg(target_os = "macos")]
+mod latency;
 mod legend;
 mod lobby;
 pub mod locale;
@@ -19,7 +23,9 @@ mod modes;
 mod options;
 mod pad_art;
 mod pause;
+mod perf_log;
 mod race;
+mod render_scale;
 mod settings;
 mod shapes;
 mod sound;
@@ -40,11 +46,21 @@ use bevy::prelude::*;
 /// 240 FPS y la simulación es reproducible.
 const SIMULATION_HZ: f64 = 120.0;
 
+/// The game's version and the commit it is built from (see `build.rs`), for
+/// its logs: "0.0.10 (1a2b3c4d5)", "-dirty" after it with changes not
+/// committed.
+pub const BUILD: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("MOTORUST_COMMIT"),
+    ")"
+);
+
 fn init_crash_handler() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let msg = format!(
-            "Motorust se ha cerrado por un error:\n\n{info}\n\nSe ha guardado un informe en motorust-crash.log."
+            "Motorust {BUILD} se ha cerrado por un error:\n\n{info}\n\nSe ha guardado un informe en motorust-crash.log."
         );
         let _ = std::fs::write("motorust-crash.log", &msg);
 
@@ -107,9 +123,22 @@ fn init_crash_handler() {
 
 fn main() {
     init_crash_handler();
+    // On macOS, no App Nap, timers on time and no sleep while it runs.
+    #[cfg(target_os = "macos")]
+    latency::begin();
 
     // Los ajustes guardados deciden cómo se abre la ventana.
     let settings = settings::Settings::load();
+    // The benchmark rides the tracks on its own, with the player's settings
+    // changed as it goes and never saved.
+    #[cfg(not(target_arch = "wasm32"))]
+    let bench = bench::requested();
+    #[cfg(not(target_arch = "wasm32"))]
+    let settings = if bench {
+        bench::settings(settings)
+    } else {
+        settings
+    };
     let mut app = App::new();
     let plugins = DefaultPlugins
         .set(WindowPlugin {
@@ -128,6 +157,12 @@ fn main() {
     } else {
         plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>()
     };
+    // The CPU and memory in use, for the performance log (read on another
+    // thread about once a second), only when it is written.
+    #[cfg(not(target_arch = "wasm32"))]
+    if settings.performance_log {
+        app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
+    }
     app.add_plugins(plugins)
         .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
         .insert_resource(settings::StartedWith::from(&settings))
@@ -149,8 +184,17 @@ fn main() {
             sound::SoundPlugin,
             ui::UiPlugin,
         ))
-        .add_plugins((race::RacePlugin, modes::ModesPlugin));
+        .add_plugins((
+            race::RacePlugin,
+            modes::ModesPlugin,
+            perf_log::PerfLogPlugin,
+            render_scale::RenderScalePlugin,
+        ));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);
+    #[cfg(not(target_arch = "wasm32"))]
+    if bench {
+        app.add_plugins(bench::BenchPlugin);
+    }
     app.run();
 }

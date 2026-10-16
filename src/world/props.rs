@@ -3,6 +3,7 @@
 //! mar, según el escenario de cada pista ([`Scenery`]). Todo se coloca al
 //! azar, pero siempre igual, con [`random01`].
 
+use bevy::camera::primitives::{Aabb, MeshAabb};
 use bevy::mesh::Indices;
 use bevy::prelude::*;
 
@@ -16,7 +17,7 @@ use super::scenery::{
 };
 use super::terrain::{Ground, SEA_LEVEL, Terrain};
 use super::textures::WorldTextures;
-use super::trees::{Tree, TreeModel};
+use super::trees::{LEVELS, Tree, TreeModel, lighter};
 use crate::geometry::{heading_of, random01, smoothstep, value_noise};
 use crate::shapes::{between, tube};
 use crate::track::{Track, WALL_DISTANCE};
@@ -832,8 +833,9 @@ struct PlannedTree {
 pub struct TreePlan {
     scattered: Vec<PlannedTree>,
     forests: Vec<PlannedTree>,
-    /// The variants of each species, each one mesh (see [`merged_variant`]).
-    models: Vec<(Species, Vec<Mesh>)>,
+    /// The variants of each species, each one mesh (see [`merged_variant`]),
+    /// full and lighter (see [`lighter`]).
+    models: Vec<(Species, Vec<[Mesh; LEVELS]>)>,
 }
 
 /// The colour of the bark (sRGB).
@@ -961,7 +963,11 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
             let variants = build_tree_variants(kind, &mut scratch);
             let merged = variants
                 .iter()
-                .map(|variant| merged_variant(&scratch, variant))
+                .map(|variant| {
+                    let full = merged_variant(&scratch, variant);
+                    let [first, second] = lighter(&full);
+                    [full, first, second]
+                })
                 .collect();
             (kind, merged)
         })
@@ -987,7 +993,9 @@ fn spawn_trees(
         perceptual_roughness: 0.95,
         ..default()
     });
-    let models: Vec<(Species, Vec<Handle<Mesh>>)> = plan
+    // Each variant's meshes, full and lighter, and its bounds.
+    type Variant = ([Handle<Mesh>; LEVELS], Aabb);
+    let models: Vec<(Species, Vec<Variant>)> = plan
         .models
         .iter()
         .map(|(kind, variants)| {
@@ -995,7 +1003,10 @@ fn spawn_trees(
                 *kind,
                 variants
                     .iter()
-                    .map(|mesh| assets.meshes.add(mesh.clone()))
+                    .map(|meshes| {
+                        let bounds = meshes[0].compute_aabb().expect("a tree has vertices");
+                        (meshes.clone().map(|mesh| assets.meshes.add(mesh)), bounds)
+                    })
                     .collect(),
             )
         })
@@ -1016,15 +1027,17 @@ fn spawn_trees(
     let plant = |world: &mut ChildSpawnerCommands, tree: &PlannedTree| {
         let random = |k: u32| random01(tree.seed * 8 + k);
         let variants = model(tree.kind);
-        let variant = &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
+        let (meshes, bounds) =
+            &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
         let scale = 0.75 + 0.60 * random(5);
         world.spawn((
             Tree {
-                classic: variant.clone(),
+                classic: meshes.clone(),
                 classic_material: material.clone(),
+                classic_bounds: *bounds,
                 model: TreeModel::of(tree.kind, random(7)),
             },
-            Mesh3d(variant.clone()),
+            Mesh3d(meshes[0].clone()),
             MeshMaterial3d(material.clone()),
             Transform::from_xyz(tree.position.x, tree.height, tree.position.y)
                 .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
@@ -2173,6 +2186,30 @@ mod tests {
                 assert!(wood > 0 && wood < colors.len(), "{species:?}");
                 let top = positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
                 assert!(top > 3.0, "{species:?}: {top}");
+                // Lighter far away, with as tall a crown, still in the
+                // colours of bark and leaves.
+                let triangles = |mesh: &Mesh| mesh.indices().unwrap().len() / 3;
+                let [first, second] = lighter(&tree);
+                assert!(
+                    triangles(&first) <= 200
+                        && triangles(&second) <= 60
+                        && triangles(&second) < triangles(&first)
+                        && triangles(&first) < triangles(&tree) / 2,
+                    "{species:?}: {} {} {}",
+                    triangles(&tree),
+                    triangles(&first),
+                    triangles(&second)
+                );
+                for light in [&first, &second] {
+                    let height = light
+                        .attribute(Mesh::ATTRIBUTE_POSITION)
+                        .and_then(|p| p.as_float3())
+                        .unwrap()
+                        .iter()
+                        .map(|p| p[1])
+                        .fold(f32::MIN, f32::max);
+                    assert!(height > 0.9 * top, "{species:?}: {height} of {top}");
+                }
             }
         }
     }

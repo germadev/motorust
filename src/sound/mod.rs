@@ -24,8 +24,9 @@ use crate::circuits::{Ambience, CIRCUITS, CurrentCircuit};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
+use crate::race::RaceCue;
 use crate::race::lights::StartBeep;
-use crate::settings::{DEFAULT_VOLUME, Settings, ToggleMute};
+use crate::settings::{ControlsTest, DEFAULT_VOLUME, Settings, ToggleMute};
 use crate::ui::MenuSound;
 pub use synth::Sound;
 use synth::{Controls, Mix, REDLINE, VOICES, pan};
@@ -72,7 +73,9 @@ impl Plugin for SoundPlugin {
             .add_audio_source::<music::SongSource>()
             .insert_resource(SoundControls(controls))
             .add_message::<StartBeep>()
+            .add_message::<RaceCue>()
             .add_message::<ToggleMute>()
+            .init_resource::<ControlsTest>()
             .init_resource::<Blip>()
             .init_resource::<music::FreeMusic>()
             .add_systems(OnEnter(GameState::Race), music::reset_free_music)
@@ -269,11 +272,14 @@ fn menu_blip(
     }
 }
 
-/// Lo que suena al moverse por los menús, and the beeps of the start
-/// lights.
+/// Lo que suena al moverse por los menús, the beeps of the start lights,
+/// and the moments of a race: a fanfare for a win, a chord for coming in, a
+/// sparkle for a record, a sweep for a rival out and falling notes for a
+/// player out or their time up.
 fn menu_sounds(
     mut sounds: MessageReader<MenuSound>,
     mut beeps: MessageReader<StartBeep>,
+    mut cues: MessageReader<RaceCue>,
     controls: Res<SoundControls>,
 ) {
     for sound in sounds.read() {
@@ -286,6 +292,15 @@ fn menu_sounds(
         controls.0.play(match beep {
             StartBeep::Light => Sound::StartLight,
             StartBeep::Go => Sound::StartGo,
+        });
+    }
+    for cue in cues.read() {
+        controls.0.play(match cue {
+            RaceCue::Won => Sound::Victory,
+            RaceCue::Finished => Sound::Finished,
+            RaceCue::Record => Sound::Record,
+            RaceCue::RivalOut => Sound::KnockedOut,
+            RaceCue::Lost => Sound::Defeat,
         });
     }
 }
@@ -521,14 +536,17 @@ fn pause_sounds(pause: Res<Pause>, controls: Res<SoundControls>) {
     controls.0.play(Sound::Click);
 }
 
-/// M (or Select and Y on a gamepad) silencia o devuelve el sonido.
+/// M (or Select and Y on a gamepad) turns the sound off or back on; not
+/// while the controls are tried out.
 fn toggle_mute(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut shortcut: MessageReader<ToggleMute>,
+    test: Res<ControlsTest>,
     controls: Res<SoundControls>,
 ) {
     let pad = shortcut.read().count() % 2 == 1;
-    if keyboard.just_pressed(KeyCode::KeyM) != pad {
+    let key = keyboard.just_pressed(KeyCode::KeyM) && !test.on;
+    if key != pad {
         let master = &controls.0.master;
         master.set(if master.get() > 0.0 { 0.0 } else { MASTER });
     }

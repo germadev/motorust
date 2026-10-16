@@ -106,6 +106,20 @@ pub enum Sound {
     StartLight,
     /// The start lights going out: a longer, higher beep.
     StartGo,
+    /// A player won: a bright fanfare up a major chord, the last note held
+    /// over the chord.
+    Victory,
+    /// A player crossed the line at the end, not first: two notes a fifth
+    /// apart, held.
+    Finished,
+    /// A lap record, or the most laps against the clock: a quick sparkle of
+    /// bells up high.
+    Record,
+    /// A rival went out in an elimination: a short falling sweep.
+    KnockedOut,
+    /// A player is out (eliminated or disqualified), or their time is up:
+    /// three notes falling a semitone each, the last one wavering.
+    Defeat,
 }
 
 /// Todo lo que el juego controla del sonido.
@@ -364,6 +378,36 @@ impl EngineVoice {
     }
 }
 
+/// A brassy note of `pitch` Hz, `t` s after it starts (nothing before),
+/// held for `length` s with a soft edge, fading by `fade` each second: a few
+/// harmonics, softer as they go up.
+fn brass(pitch: f32, t: f32, length: f32, fade: f32) -> f32 {
+    if t < 0.0 || t > length + 0.05 {
+        return 0.0;
+    }
+    let edges = smoothstep(0.0, 0.015, t) * (1.0 - smoothstep(length - 0.05, length + 0.05, t));
+    let wave = (1..=5)
+        .map(|harmonic| (TAU * pitch * harmonic as f32 * t).sin() / harmonic as f32)
+        .sum::<f32>();
+    wave * 0.5 * edges * (-t * fade).exp()
+}
+
+/// A bell of `pitch` Hz struck `t` s ago (nothing before): its note and a
+/// fainter one out of tune above, ringing out.
+fn bell(pitch: f32, t: f32) -> f32 {
+    if t < 0.0 {
+        return 0.0;
+    }
+    let strike = smoothstep(0.0, 0.004, t);
+    let ring = (TAU * pitch * t).sin() + 0.35 * (TAU * pitch * 2.76 * t).sin() * (-t * 6.0).exp();
+    ring * strike * (-t * 4.5).exp() * 0.6
+}
+
+/// Keeps a sum of notes within ±1, rounding off its peaks.
+fn soft_clip(value: f32) -> f32 {
+    (value * 1.2).tanh() / 1.2f32.tanh()
+}
+
 /// Un sonido suelto que está sonando.
 struct Shot {
     sound: Sound,
@@ -380,6 +424,11 @@ impl Shot {
             Sound::Confirm => 0.3,
             Sound::StartLight => 0.2,
             Sound::StartGo => 0.6,
+            Sound::Victory => 2.0,
+            Sound::Finished => 1.2,
+            Sound::Record => 1.1,
+            Sound::KnockedOut => 0.55,
+            Sound::Defeat => 1.8,
         }
     }
 
@@ -428,6 +477,65 @@ impl Shot {
                 let wave = (TAU * note * t).sin();
                 let value = (wave * 3.0).tanh() / 3.0f32.tanh() * edges * 0.3;
                 (value, 1.0, 1.0)
+            }
+            Sound::Victory => {
+                // C, E, G up to the high C, which is held over the chord.
+                let arpeggio = [523.25, 659.26, 783.99]
+                    .iter()
+                    .enumerate()
+                    .map(|(k, &note)| brass(note, t - 0.13 * k as f32, 0.16, 8.0))
+                    .sum::<f32>();
+                let top = brass(1046.5, t - 0.39, 1.5, 1.6);
+                let chord = [523.25, 659.26, 783.99]
+                    .iter()
+                    .map(|&note| brass(note, t - 0.39, 1.5, 1.6) * 0.4)
+                    .sum::<f32>();
+                (soft_clip(arpeggio + top + chord) * 0.3, 1.0, 1.0)
+            }
+            Sound::Finished => {
+                // G and the D above it, held.
+                let value = brass(392.0, t, 1.0, 2.6) + brass(587.33, t - 0.15, 0.95, 2.6);
+                (soft_clip(value) * 0.28, 1.0, 1.0)
+            }
+            Sound::Record => {
+                // E major up two octaves, quickly, in bells.
+                let value = [1318.5, 1661.2, 1975.5, 2637.0]
+                    .iter()
+                    .enumerate()
+                    .map(|(k, &note)| bell(note, t - 0.065 * k as f32))
+                    .sum::<f32>();
+                (soft_clip(value) * 0.3, 1.0, 1.0)
+            }
+            Sound::KnockedOut => {
+                // From 900 Hz down to a third of it in 0.45 s, with a little
+                // breath of noise.
+                let (from, fall, length) = (900.0, 3.0f32, 0.45);
+                let phase = from * length * (1.0 - fall.powf(-t / length)) / fall.ln();
+                let edges = smoothstep(0.0, 0.01, t) * (1.0 - smoothstep(length - 0.12, length, t));
+                self.tone += (noise.next() - self.tone) * one_pole(3000.0);
+                let value = ((TAU * phase).sin() + 0.25 * self.tone) * edges;
+                (value * 0.28, 1.0, 1.0)
+            }
+            Sound::Defeat => {
+                // G, F sharp and F, like a trombone, the F held and wavering.
+                let notes = [
+                    (392.0, 0.0, 0.32),
+                    (369.99, 0.36, 0.32),
+                    (349.23, 0.72, 1.0),
+                ];
+                let value = notes
+                    .iter()
+                    .map(|&(note, start, length)| {
+                        let at = t - start;
+                        let waver = if length > 0.5 {
+                            1.0 + 0.012 * (TAU * 6.0 * at.max(0.0)).sin() * smoothstep(0.2, 0.5, at)
+                        } else {
+                            1.0
+                        };
+                        brass(note * waver, at, length, 1.2)
+                    })
+                    .sum::<f32>();
+                (soft_clip(value) * 0.3, 1.0, 1.0)
             }
         };
         (value * left, value * right)
@@ -708,6 +816,54 @@ mod tests {
         assert!(light > 0.1 && light < 0.2, "{light} s");
         assert!(go > 2.0 * light, "{go} s");
         assert!(go_pitch > 1.3 * light_pitch, "{go_pitch} > {light_pitch}");
+    }
+
+    #[test]
+    fn the_moments_of_a_race_each_sound_their_own_way() {
+        // (how long it is heard, how loud it is, where its pitch goes)
+        let play = |sound: Sound| {
+            let controls = Arc::new(Controls::default());
+            controls.master.set(1.0);
+            let mut mixer = Mixer::new(controls.clone());
+            controls.play(sound);
+            let samples: Vec<f32> = (0..3 * SAMPLE_RATE).map(|_| mixer.frame().0).collect();
+            assert!(samples.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+            assert!(mixer.shots.is_empty(), "{sound:?} ends");
+            let heard = |s: &f32| s.abs() > 0.02;
+            let length = samples.iter().rposition(heard).unwrap_or(0) as f32 / SAMPLE_RATE as f32;
+            let loud = samples.iter().map(|s| s.abs()).fold(0.0, f32::max);
+            // How often it crosses nought over a stretch: twice its pitch.
+            let pitch = |from: f32, to: f32| {
+                let stretch = &samples
+                    [(from * SAMPLE_RATE as f32) as usize..(to * SAMPLE_RATE as f32) as usize];
+                stretch
+                    .windows(2)
+                    .filter(|pair| pair[0] < 0.0 && pair[1] >= 0.0)
+                    .count() as f32
+                    / (to - from)
+            };
+            (
+                length,
+                loud,
+                pitch(0.0, 0.1),
+                pitch(length - 0.4, length - 0.1),
+            )
+        };
+        let (victory, loud, first, last) = play(Sound::Victory);
+        assert!(victory > 1.4 && loud > 0.15, "{victory} s, {loud}");
+        assert!(last > 1.5 * first, "the fanfare goes up: {first} to {last}");
+        let (defeat, loud, first, last) = play(Sound::Defeat);
+        assert!(defeat > 1.2 && loud > 0.15, "{defeat} s, {loud}");
+        assert!(last < first, "the defeat goes down: {first} to {last}");
+        let (finished, loud, ..) = play(Sound::Finished);
+        assert!(finished > 0.6 && finished < victory && loud > 0.15);
+        let (record, loud, first, _) = play(Sound::Record);
+        assert!(
+            record > 0.4 && loud > 0.15 && first > 1000.0,
+            "high: {first}"
+        );
+        let (out, loud, ..) = play(Sound::KnockedOut);
+        assert!(out > 0.2 && out < 0.6 && loud > 0.1, "short: {out} s");
     }
 
     #[test]

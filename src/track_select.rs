@@ -28,6 +28,7 @@ use crate::track::Track;
 use crate::ui::{
     InputDevice, MenuInput, MenuSound, UiIcons, current_active_device, spawn_title, text_font,
 };
+use crate::world::CircuitLoading;
 
 /// La cámara gira alrededor de la pista a esta velocidad (rad/s), a esta
 /// distancia del centro y a esta altura (fracciones del tamaño de la pista),
@@ -311,17 +312,27 @@ pub fn laps_after(laps: u32, step: i32) -> u32 {
 /// Izquierda y derecha cambian de pista; en una carrera, arriba y abajo sus
 /// vueltas; Enter, Espacio, A o Start pasan a elegir moto, y Esc o B
 /// vuelven a los modos de juego.
+/// While the circuit chosen is still on its way ([`CircuitLoading`]),
+/// going on to the bikes waits for it.
 fn choose_track(
     mut input: MenuInput,
     mut choice: ResMut<CurrentCircuit>,
     mut rules: ResMut<Rules>,
     mut next: ResMut<NextState<GameState>>,
     mut sounds: MessageWriter<MenuSound>,
+    loading: Res<CircuitLoading>,
+    mut waiting: Local<bool>,
 ) {
     let request = input.read();
+    if *waiting && !loading.0 {
+        *waiting = false;
+        next.set(GameState::Select);
+        return;
+    }
     if request.side != 0 && CIRCUITS.len() > 1 {
         choice.0 = (choice.0 as i32 + request.side).rem_euclid(CIRCUITS.len() as i32) as usize;
         sounds.write(MenuSound::Move);
+        *waiting = false;
     }
     if rules.mode == Mode::Race && request.step != 0 {
         let laps = laps_after(rules.laps, request.step);
@@ -332,9 +343,14 @@ fn choose_track(
     }
     if request.confirm || request.start {
         sounds.write(MenuSound::Confirm);
-        next.set(GameState::Select);
+        if loading.0 {
+            *waiting = true;
+        } else {
+            next.set(GameState::Select);
+        }
     } else if request.back {
         sounds.write(MenuSound::Move);
+        *waiting = false;
         next.set(GameState::Modes);
     }
 }
@@ -376,6 +392,7 @@ fn show_rules(
 }
 
 /// Nombre, descripción, longitud y pista elegida.
+#[allow(clippy::too_many_arguments)]
 fn show_track(
     choice: Res<CurrentCircuit>,
     track: Res<Track>,
@@ -384,6 +401,7 @@ fn show_track(
     mut description: Single<&mut Text, DescriptionFilter>,
     mut length: Single<&mut Text, LengthFilter>,
     mut dots: Query<(&Dot, &mut BackgroundColor)>,
+    loading: Res<CircuitLoading>,
 ) {
     let lang = settings.language;
     let circuit = choice.get();
@@ -397,9 +415,16 @@ fn show_track(
         Language::Spanish => format!("{:.1}", track.lap_length() / 1000.0).replace('.', ","),
         Language::English => format!("{:.1}", track.lap_length() / 1000.0),
     };
-    let label = match lang {
-        Language::Spanish => format!("{kilometres} km por vuelta   ·   {} motos", ROSTER.len()),
-        Language::English => format!("{kilometres} km per lap   ·   {} bikes", ROSTER.len()),
+    // While it is on its way, says so.
+    let label = match (lang, loading.0) {
+        (Language::Spanish, true) => "Cargando el circuito…".to_string(),
+        (Language::English, true) => "Loading the track…".to_string(),
+        (Language::Spanish, false) => {
+            format!("{kilometres} km por vuelta   ·   {} motos", ROSTER.len())
+        }
+        (Language::English, false) => {
+            format!("{kilometres} km per lap   ·   {} bikes", ROSTER.len())
+        }
     };
     if length.0 != label {
         length.0 = label;
@@ -496,6 +521,7 @@ mod tests {
             .init_resource::<Rules>()
             .init_resource::<InputDevice>()
             .init_resource::<CurrentCircuit>()
+            .init_resource::<CircuitLoading>()
             .init_resource::<CameraGlide>()
             .init_resource::<UiIcons>()
             .add_plugins(TrackSelectPlugin);

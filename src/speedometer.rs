@@ -4,7 +4,8 @@
 //! black), the speeds from 0 to 360 km/h round it (from 180 a little bigger
 //! each, and from 300 red, over a red arc), a blue pointer, and the speed in
 //! figures on a translucent dark disc in the middle. The pointer glows, and
-//! the figure of the scale it points at lights up in red, with a halo.
+//! the figure of the scale it points at lights up, with no halo: blue, or
+//! bright red from the red line up.
 //!
 //! Bevy does not draw SVG, so the shapes of the design are drawn with zeno
 //! (the rasterizer Bevy already uses for the fonts, which reads SVG path
@@ -76,14 +77,10 @@ const RED: [f32; 3] = rgb(0xe2, 0x4b, 0x4a);
 /// outline as sharp as the design's.
 const LIT_BLUE: [f32; 3] = rgb(0x4c, 0xa6, 0xff);
 const POINTER_TIP: [f32; 3] = rgb(0xdc, 0xf2, 0xff);
-/// A figure of the scale lit up, and the halo round it: pale blue like the
-/// pointer, or red from the red line up.
-const LIT_FIGURE: [f32; 3] = rgb(0xa8, 0xe0, 0xff);
-const FIGURE_GLOW: [f32; 3] = rgb(0x2e, 0x96, 0xff);
-const LIT_RED: [f32; 3] = rgb(0xff, 0x6a, 0x5c);
-const RED_GLOW: [f32; 3] = rgb(0xff, 0x2a, 0x1e);
-/// How far the halo round a lit figure spreads (units of the design).
-const FIGURE_HALO: f32 = 4.0;
+/// A figure of the scale lit up: blue, or bright red from the red line up,
+/// with nothing round it.
+const LIT_FIGURE: [f32; 3] = rgb(0x3a, 0x9b, 0xff);
+const LIT_RED: [f32; 3] = rgb(0xff, 0x24, 0x1c);
 /// The box round each figure of the scale its lit image covers (units of
 /// the design).
 const LIT_BOX: Vec2 = Vec2::new(64.0, 40.0);
@@ -481,35 +478,6 @@ impl Canvas {
         }
     }
 
-    /// A halo of `color` round what `coverage` covers, spreading about
-    /// `radius` units of the design, as bright as `strength` says.
-    fn glow(&mut self, coverage: &[f32], radius: f32, color: [f32; 3], strength: f32) {
-        let size = self.size as usize;
-        let reach = ((radius * self.scale() / 2.0).round() as usize).max(1);
-        // Three box blurs each way: close to a Gaussian.
-        let mut blurred = coverage.to_vec();
-        for _ in 0..3 {
-            for along_rows in [true, false] {
-                let source = blurred.clone();
-                for line in 0..size {
-                    let at = |k: usize| {
-                        if along_rows {
-                            line * size + k
-                        } else {
-                            k * size + line
-                        }
-                    };
-                    for k in 0..size {
-                        let (from, to) = (k.saturating_sub(reach), (k + reach).min(size - 1));
-                        let sum: f32 = (from..=to).map(|j| source[at(j)]).sum();
-                        blurred[at(k)] = sum / (2 * reach + 1) as f32;
-                    }
-                }
-            }
-        }
-        self.paint_coverage(&blurred, color, strength);
-    }
-
     /// The drawing as an sRGB image, shown at its own size.
     fn image(self) -> Image {
         let size = self.size;
@@ -602,19 +570,13 @@ fn figure_size(kmh: u32) -> f32 {
     14.0 + (kmh.saturating_sub(180) / MARK_STEP) as f32
 }
 
-/// The figure for `kmh` lit up, on a drawing the size of the dial: pale
-/// blue glowing blue round it, or from the red line up bright red glowing
-/// red.
+/// The figure for `kmh` lit up, on a drawing the size of the dial: blue,
+/// or from the red line up bright red, with no halo.
 fn lit_figure_canvas(size: u32, kmh: u32) -> Canvas {
-    let (color, glow) = if kmh >= REDLINE {
-        (LIT_RED, RED_GLOW)
-    } else {
-        (LIT_FIGURE, FIGURE_GLOW)
-    };
-    let mut canvas = Canvas::new(size, glow);
+    let color = if kmh >= REDLINE { LIT_RED } else { LIT_FIGURE };
+    let mut canvas = Canvas::new(size, color);
     let at = on_dial(pointer_angle(kmh as f32), MARKS);
     let ink = canvas.letter_coverage(&kmh.to_string(), figure_size(kmh), at);
-    canvas.glow(&ink, FIGURE_HALO, glow, 1.5);
     canvas.paint_coverage(&ink, color, 1.0);
     canvas
 }
@@ -775,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn a_lit_figure_glows_blue_and_red_from_the_red_line() {
+    fn a_lit_figure_is_blue_and_red_from_the_red_line() {
         let canvas = lit_figure_canvas(302, 120);
         let center = on_dial(pointer_angle(120.0), MARKS);
         let bluest = (-5..=5)
@@ -796,8 +758,8 @@ mod tests {
             }
         }
         assert!(reddest[0] > 230 && reddest[3] > 230, "{reddest:?}");
-        // A halo round it, clear further out.
-        assert!(at(&canvas, center + Vec2::new(0.0, 9.0))[3] > 0);
+        // Nothing round it.
+        assert_eq!(at(&canvas, center + Vec2::new(0.0, 9.0))[3], 0);
         assert_eq!(at(&canvas, center + Vec2::new(0.0, 40.0))[3], 0);
         let image = lit_figure(302, 300);
         assert!(image.width() < 80 && image.height() < 50);

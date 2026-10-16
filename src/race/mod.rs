@@ -59,6 +59,7 @@ impl CheckpointTimes {
             Difficulty::Easy => (54.0, 3.0, 5.0),
             Difficulty::Medium => (62.0, 2.0, 3.0),
             Difficulty::Hard => (66.0, 1.5, 2.0),
+            Difficulty::VeryHard => (69.0, 1.0, 2.5),
         };
         Self { pace, spare, start }
     }
@@ -304,9 +305,11 @@ pub struct Progress {
     gates: usize,
     /// When it crossed the line at the end of its race (s on the clock).
     pub finished: Option<f32>,
-    /// When the lap under way began (s on the clock), and the best lap.
+    /// When the lap under way began (s on the clock), the best lap and the
+    /// last one (s).
     lap_start: f32,
     pub best_lap: Option<f32>,
+    pub last_lap: Option<f32>,
     /// Against the clock: checkpoints gone through, and the next one of
     /// the lap (an index of [`checkpoints`]).
     pub checkpoints: u32,
@@ -354,6 +357,11 @@ impl Progress {
             passed.checkpoint = true;
         }
         passed
+    }
+
+    /// How long the lap under way has taken at `clock` (s on the clock).
+    pub fn lap_time(&self, clock: f32) -> f32 {
+        (clock - self.lap_start).max(0.0)
     }
 
     /// The checkpoint just gone through (an index of [`checkpoints`]).
@@ -511,6 +519,7 @@ impl Plugin for RacePlugin {
         app.init_resource::<Rules>()
             .init_resource::<Championship>()
             .init_resource::<Standing>()
+            .add_message::<RaceCue>()
             .add_plugins((
                 hud::RaceHudPlugin,
                 lights::StartLightsPlugin,
@@ -540,6 +549,7 @@ impl Plugin for RacePlugin {
                     eliminate,
                     autopilot_the_finished,
                     finish_the_race.run_if(not(resource_exists::<Outcome>)),
+                    cue_the_moments,
                     (fill_in_the_results, watch_them_come_in)
                         .chain()
                         .run_if(resource_exists::<Outcome>),
@@ -675,6 +685,7 @@ fn follow_the_race(
             let lap_time = clock - progress.lap_start;
             progress.lap_start = clock;
             if progress.finished.is_none() {
+                progress.last_lap = Some(lap_time);
                 if progress.best_lap.is_none_or(|best| lap_time < best) {
                     progress.best_lap = Some(lap_time);
                 }
@@ -765,6 +776,119 @@ fn eliminate(
     }
     standing.out.push(last);
     standing.last_out = Some((last, standing.clock));
+}
+
+/// A moment of the race worth a sound (see [`crate::sound`]).
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RaceCue {
+    /// A player crossed the line at the end, first.
+    Won,
+    /// A player crossed the line at the end, not first.
+    Finished,
+    /// A player's lap beat the track's record, or against the clock their
+    /// laps are the most.
+    Record,
+    /// A rival went out of an elimination.
+    RivalOut,
+    /// A player went out (eliminated or disqualified), or against the clock
+    /// their time is up.
+    Lost,
+}
+
+/// What the moments of a race are cued from, as last seen.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Moments {
+    /// The players who have crossed the line at the end (bikes of the
+    /// roster), with their places.
+    finished: Vec<(usize, usize)>,
+    /// Those out, in the order they went out (bikes of the roster), and
+    /// whether each is a player.
+    out: Vec<(usize, bool)>,
+    /// The last record lap and when it was ridden (see [`Standing::record`]).
+    record: Option<(f32, f32)>,
+    /// Against the clock: whether the time is up, and whether the laps done
+    /// are the most on the track.
+    time_up: bool,
+    laps_record: bool,
+}
+
+/// The sounds for what has happened between two looks at a race: a player
+/// in, first or not; a record; someone out, a player or a rival; the time
+/// up. Going back (the race set up again) cues nothing.
+fn cues(before: &Moments, now: &Moments) -> Vec<RaceCue> {
+    let mut cues = Vec::new();
+    for &(rider, place) in &now.finished {
+        if !before.finished.iter().any(|&(r, _)| r == rider) {
+            cues.push(if place == 1 {
+                RaceCue::Won
+            } else {
+                RaceCue::Finished
+            });
+        }
+    }
+    for &(rider, player) in &now.out {
+        if !before.out.iter().any(|&(r, _)| r == rider) {
+            cues.push(if player {
+                RaceCue::Lost
+            } else {
+                RaceCue::RivalOut
+            });
+        }
+    }
+    if now.time_up && !before.time_up {
+        cues.push(RaceCue::Lost);
+    }
+    if (now.record.is_some() && now.record != before.record)
+        || (now.laps_record && !before.laps_record)
+    {
+        cues.push(RaceCue::Record);
+    }
+    cues
+}
+
+/// Cues the moments of the race as they happen (see [`cues`]).
+#[allow(clippy::type_complexity)]
+fn cue_the_moments(
+    rules: Res<Rules>,
+    standing: Res<Standing>,
+    outcome: Option<Res<Outcome>>,
+    bikes: Query<(&Rider, &Progress, Has<Player>, Has<LocalPlayer>)>,
+    mut last: Local<Moments>,
+    mut sounds: MessageWriter<RaceCue>,
+) {
+    let players: Vec<(usize, &Progress)> = bikes
+        .iter()
+        .filter(|(_, _, player, local)| *player || *local)
+        .map(|(rider, progress, ..)| (rider.0, progress))
+        .collect();
+    let place = |rider: usize| {
+        standing
+            .order
+            .iter()
+            .position(|&r| r == rider)
+            .map_or(standing.order.len(), |p| p + 1)
+    };
+    let now = Moments {
+        finished: players
+            .iter()
+            .filter(|(_, progress)| progress.finished.is_some())
+            .map(|&(rider, _)| (rider, place(rider)))
+            .collect(),
+        out: standing
+            .out
+            .iter()
+            .map(|&rider| (rider, players.iter().any(|&(r, _)| r == rider)))
+            .collect(),
+        record: standing.record,
+        time_up: rules.mode == Mode::Checkpoint
+            && standing.clock > 0.0
+            && standing.time_left <= 0.0,
+        laps_record: outcome.is_some_and(|outcome| outcome.record),
+    };
+    if *last != now {
+        sounds.write_batch(cues(&last, &now));
+        *last = now;
+    }
 }
 
 /// A player who crosses the line at the end of the race hands the bike to
@@ -1040,7 +1164,9 @@ pub fn spot_worth(track: &Track, state: &BikeState, together: usize) -> f32 {
         }
         let index = index % road.sample_count();
         bend = bend.max(road.smoothed_curvature(index, 3));
-        crest = crest.max(road.crest(&Nearest { index, ..nearest }));
+        // Asked of the whole track, which finds the road from `nearest`: a
+        // road off the lap has no roads of its own to find it among.
+        crest = crest.max(track.crest(&Nearest { index, ..nearest }));
     }
     let mut worth = (bend * 40.0).min(1.5) + (crest * 60.0).min(1.5);
     worth += (together as f32 * 0.5).min(1.5);
@@ -1093,6 +1219,59 @@ mod tests {
             .map(|k| progress.pass((from + k as f32 * 10.0).rem_euclid(LAP), LAP, &POINTS))
             .filter(|passed| passed.checkpoint || passed.lap)
             .collect()
+    }
+
+    #[test]
+    fn the_moments_of_a_race_are_cued_once_as_they_happen() {
+        let start = Moments::default();
+        assert!(cues(&start, &start).is_empty());
+        // A rival goes out, then player 1 (rider 0): a rival out, then lost.
+        let rival_out = Moments {
+            out: vec![(5, false)],
+            ..start.clone()
+        };
+        assert_eq!(cues(&start, &rival_out), [RaceCue::RivalOut]);
+        assert!(cues(&rival_out, &rival_out).is_empty(), "once");
+        let player_out = Moments {
+            out: vec![(5, false), (0, true)],
+            ..rival_out.clone()
+        };
+        assert_eq!(cues(&rival_out, &player_out), [RaceCue::Lost]);
+        // Player 2 wins, and later player 1 comes in third.
+        let won = Moments {
+            finished: vec![(1, 1)],
+            ..start.clone()
+        };
+        assert_eq!(cues(&start, &won), [RaceCue::Won]);
+        let both = Moments {
+            finished: vec![(1, 1), (0, 3)],
+            ..won.clone()
+        };
+        assert_eq!(cues(&won, &both), [RaceCue::Finished]);
+        // A lap record, and a later one; and the most laps against the clock.
+        let record = Moments {
+            record: Some((61.0, 70.0)),
+            ..start.clone()
+        };
+        assert_eq!(cues(&start, &record), [RaceCue::Record]);
+        let better = Moments {
+            record: Some((60.5, 131.0)),
+            ..record.clone()
+        };
+        assert_eq!(cues(&record, &better), [RaceCue::Record]);
+        let time_up = Moments {
+            time_up: true,
+            ..start.clone()
+        };
+        assert_eq!(cues(&start, &time_up), [RaceCue::Lost]);
+        let most_laps = Moments {
+            laps_record: true,
+            ..time_up.clone()
+        };
+        assert_eq!(cues(&time_up, &most_laps), [RaceCue::Record]);
+        // The race set up again: nothing.
+        assert!(cues(&both, &start).is_empty());
+        assert!(cues(&player_out, &start).is_empty());
     }
 
     #[test]
@@ -1158,14 +1337,21 @@ mod tests {
                 // On medium, the seconds given are a little more than a
                 // ride at 60 m/s takes, and a lot less than one at 30 m/s;
                 // more on easy, fewer on hard.
-                let [easy, medium, hard] = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard]
-                    .map(CheckpointTimes::on);
+                let [easy, medium, hard, very_hard] = [
+                    Difficulty::Easy,
+                    Difficulty::Medium,
+                    Difficulty::Hard,
+                    Difficulty::VeryHard,
+                ]
+                .map(CheckpointTimes::on);
                 let bonus = medium.bonus(stretch);
                 assert!(bonus > stretch / 60.0 && bonus < stretch / 30.0);
                 assert!(easy.bonus(stretch) > bonus && hard.bonus(stretch) < bonus);
+                assert!(very_hard.bonus(stretch) < hard.bonus(stretch));
                 assert!(medium.starting(&points) > medium.bonus(points[0]));
                 assert!(easy.starting(&points) > medium.starting(&points));
                 assert!(hard.starting(&points) < medium.starting(&points));
+                assert!(very_hard.starting(&points) < hard.starting(&points));
             }
         }
     }
@@ -1297,6 +1483,39 @@ mod tests {
         // In a group, more; hardly moving, hardly anything.
         assert!(spot_worth(&track, &riding(straight, 40.0), 2) > on_straight);
         assert!(spot_worth(&track, &riding(before_bend, 1.0), 0) < into_bend * 0.5);
+    }
+
+    #[test]
+    fn a_bike_on_a_road_off_the_lap_is_worth_watching() {
+        // Once everybody is in, the camera weighs every bike's spot; one on
+        // a branch (Ghost Island's, say) is weighed on that branch.
+        let mut weighed = 0;
+        for circuit in CIRCUITS.iter() {
+            let track = Track::new(&circuit.layout);
+            weighed += track.side_roads().len();
+            for road in 1..=track.side_roads().len() {
+                let line = track.road(road);
+                let index = line.sample_count() / 2;
+                let at = track.surface_point_on(road, index, 0.0);
+                let state = BikeState {
+                    elevation: at.y,
+                    speed: 40.0,
+                    ..BikeState::parked_at((Vec2::new(at.x, at.z), 0.0))
+                };
+                let nearest = track.nearest_at(state.position, state.elevation);
+                if nearest.road == 0 {
+                    // Where the branch still shares the lap's road.
+                    continue;
+                }
+                let worth = spot_worth(&track, &state, 0);
+                assert!(
+                    worth.is_finite() && worth >= 1.5,
+                    "{} road {road}: {worth}",
+                    circuit.name
+                );
+            }
+        }
+        assert!(weighed > 0, "some track has roads off the lap");
     }
 
     #[test]

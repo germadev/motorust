@@ -1,0 +1,58 @@
+# motorust 0.0.10 (8f70d15bc) benchmark on WZ-MacBook-Pro-de-Jesus.local
+# system: macOS 27.0.1; CPU Apple M4 Pro (12 cores); memory 48.0 GiB
+# GPU: Apple M4 Pro (Metal, )
+# window: 3024 x 1898 pixels at 2x; resolution Dynamic, fullscreen Desktop
+# trees new; pipelined rendering true; frames queued 2; frame rate unlimited
+# 10 laps, all round each track with 1 player and with 2, the settings taking turns of 2 s, each measured 10 s at least; about 18 min
+track            scenario                    fps     1% low   p50 ms   p95 ms   sim ms  cpu %
+Bahía GP         1p                        120.9       43.0     8.16    10.37     1.64     19
+Bahía GP         1p-shadows-medium         123.7       63.4     8.19    10.17     1.69     20
+Bahía GP         1p-shadows-low            136.9       62.2     7.42     8.94     1.64     20
+Bahía GP         1p-fxaa                   123.4       41.1     7.38    14.53     1.61     19
+Bahía GP         1p-no-antialiasing        139.7       51.6     6.65    10.70     1.55     21
+Bahía GP         1p-lighter-far-trees      120.6       47.1     7.71    12.96     1.61     20
+# Bahía GP with 1 player: slowest around 0.8 km (-36 %), fastest around 1.5 km (+17 %)
+Bahía GP         2p                         82.0       30.0    11.98    14.83     2.17     19
+Bahía GP         2p-full-detail             63.8       25.9    15.58    18.75     2.79     18
+# Bahía GP with 2 players: slowest around 0.6 km (-9 %), fastest around 0.4 km (+7 %)
+Turbo Bay        1p                        102.2       34.1     9.46    12.94     2.49     19
+Turbo Bay        1p-shadows-medium         116.7       37.1     8.46    10.20     2.37     19
+Turbo Bay        1p-shadows-low            131.3       44.1     7.58     9.77     2.47     22
+Turbo Bay        1p-fxaa                   116.3       47.1     8.73    10.52     2.41     20
+Turbo Bay        1p-no-antialiasing        133.9       51.8     7.04     9.68     2.36     23
+Turbo Bay        1p-lighter-far-trees      112.5       59.0     9.00    10.87     2.49     21
+# Turbo Bay with 1 player: slowest around 0.6 km (-18 %), fastest around 2.8 km (+16 %)
+Turbo Bay        2p                         78.7       25.2    12.37    15.68     3.41     19
+Turbo Bay        2p-full-detail             61.0       22.7    15.92    20.09     4.47     17
+# Turbo Bay with 2 players: slowest around 1.7 km (-7 %), fastest around 2.7 km (+10 %)
+Loop Island      1p                        111.3       32.9     8.86    10.89     2.14     20
+Loop Island      1p-shadows-medium         118.3       22.6     8.26    10.38     2.05     19
+Loop Island      1p-shadows-low            131.4       71.8     7.66     9.95     2.10     21
+Loop Island      1p-fxaa                   129.4       36.5     7.04    10.40     2.06     23
+Loop Island      1p-no-antialiasing        140.6       72.4     6.70     9.64     2.01     24
+Loop Island      1p-lighter-far-trees      121.3       58.8     8.01    10.84     2.10     22
+# Loop Island with 1 player: slowest around 0.8 km (-10 %), fastest around 1.0 km (+14 %)
+Loop Island      2p                         80.0       23.2    12.33    15.09     2.67     19
+Loop Island      2p-full-detail             63.7       27.2    15.56    18.99     3.61     18
+# Loop Island with 2 players: slowest around 1.1 km (-6 %), fastest around 1.4 km (+11 %)
+Mina Dorada      1p                        104.0       34.9     8.82    15.49     4.33     20
+Mina Dorada      1p-shadows-medium         114.3       34.4     8.15    14.59     4.15     20
+Mina Dorada      1p-shadows-low            119.5       40.5     7.66    14.63     4.28     22
+Mina Dorada      1p-fxaa                   115.7       39.8     8.27    13.10     4.18     22
+Mina Dorada      1p-no-antialiasing        125.7       45.9     7.72    12.02     4.09     23
+Mina Dorada      1p-lighter-far-trees      101.3       34.5     9.25    15.71     4.44     21
+# Mina Dorada with 1 player: slowest around 4.7 km (-16 %), fastest around 0.8 km (+14 %)
+Mina Dorada      2p                         73.0       21.8    12.84    20.93     7.24     20
+Mina Dorada      2p-full-detail             58.3       20.5    16.21    25.25     8.92     19
+# Mina Dorada with 2 players: slowest around 4.6 km (-21 %), fastest around 0.9 km (+12 %)
+Ghost Island     1p                         84.3       27.6    11.90    17.69     4.48     19
+Ghost Island     1p-shadows-medium          94.0       30.3     9.95    17.19     4.10     20
+Ghost Island     1p-shadows-low            107.2       34.7     8.72    14.54     4.02     22
+Ghost Island     1p-fxaa                    95.5       31.3     9.72    16.34     4.05     21
+Ghost Island     1p-no-antialiasing        102.6       35.1     8.92    15.27     4.02     23
+Ghost Island     1p-lighter-far-trees       92.2       36.3    10.16    16.12     4.24     22
+# Ghost Island with 1 player: slowest around 3.5 km (-13 %), fastest around 5.6 km (+19 %)
+Ghost Island     2p                         66.1       21.4    14.01    23.62     7.76     20
+Ghost Island     2p-full-detail             51.3       17.9    17.82    33.30     8.76     19
+# Ghost Island with 2 players: slowest around 4.6 km (-18 %), fastest around 2.8 km (+12 %)
+# finished

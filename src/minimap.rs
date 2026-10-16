@@ -1,7 +1,8 @@
 //! Plano de la pista: el trazado visto desde arriba (el norte, -Z, arriba),
 //! dibujado a partir de la línea central cada vez que cambia la pista. Lo
 //! usan la pantalla de elegir pista y el minimapa de la carrera, abajo a la
-//! izquierda, con un punto por moto del color de cada una.
+//! izquierda, con un punto por moto del color de cada una (with two players,
+//! one map for each, bottom left of their half of the screen).
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -47,12 +48,16 @@ const CHECKPOINT_STYLE: MarkerStyle = MarkerStyle {
 };
 
 /// Lado del minimapa de la carrera en pantalla y de los puntos de las motos
-/// (px): el del jugador, más grande y con borde blanco.
+/// (px): el del jugador, más grande y con borde blanco. With two players,
+/// each one's map in their half of the screen, a little smaller.
 const HUD_SIZE: f32 = 190.0;
+const SPLIT_HUD_SIZE: f32 = 160.0;
 const RIVAL_DOT: f32 = 9.0;
 const PLAYER_DOT: f32 = 14.0;
-/// With two players their dots carry their number, so they are bigger.
+/// With two players their dots carry their number, so they are bigger: each
+/// one's on their own map, and the other player's a little smaller.
 const NUMBERED_DOT: f32 = 19.0;
+const OTHER_PLAYER_DOT: f32 = 15.0;
 
 pub struct MinimapPlugin;
 
@@ -246,73 +251,115 @@ fn stamp(pixels: &mut [[f32; 4]], size: usize, center: Vec2, radius: f32, color:
     }
 }
 
-/// El minimapa de la carrera, abajo a la izquierda.
+/// A minimap of the race, bottom left of the screen, or of each player's
+/// half of it with two players: whose it is (`None` with one player), and
+/// how wide it is (px).
 #[derive(Component)]
-struct HudMap;
+struct HudMap {
+    viewer: Option<usize>,
+    size: f32,
+}
 
-/// El punto de una moto en el minimapa.
+/// The dot of a bike on a minimap.
 #[derive(Component)]
-struct Dot(Entity);
+struct Dot {
+    bike: Entity,
+    map: Entity,
+}
+
+/// How a bike's dot is drawn on the map of `viewer` (with two players,
+/// each one's): how wide (px), the number in it, and whether it is a
+/// player's (a white border) and how far over the rest (z).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DotStyle {
+    pub size: f32,
+    pub number: Option<usize>,
+    pub human: bool,
+    pub z: i32,
+}
+
+/// With two players, each one's dot on their own map is the biggest and
+/// over the rest, and the other player's a little smaller under it, each
+/// with its number; with one, the player's is bigger than the rivals'.
+pub fn dot_style(viewer: Option<usize>, player: bool, local: Option<usize>) -> DotStyle {
+    match local {
+        Some(index) if Some(index) == viewer || viewer.is_none() => DotStyle {
+            size: NUMBERED_DOT,
+            number: Some(index + 1),
+            human: true,
+            z: 2,
+        },
+        Some(index) => DotStyle {
+            size: OTHER_PLAYER_DOT,
+            number: Some(index + 1),
+            human: true,
+            z: 1,
+        },
+        None if player => DotStyle {
+            size: PLAYER_DOT,
+            number: None,
+            human: true,
+            z: 2,
+        },
+        None => DotStyle {
+            size: RIVAL_DOT,
+            number: None,
+            human: false,
+            z: 0,
+        },
+    }
+}
 
 fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>, game_mode: Res<GameMode>) {
-    let (node, border) = if *game_mode == GameMode::SplitScreen {
-        (
-            Node {
-                position_type: PositionType::Absolute,
-                left: px(16),
-                top: percent(50.0),
-                margin: UiRect::top(px(-HUD_SIZE / 2.0)),
-                width: px(HUD_SIZE),
-                height: px(HUD_SIZE),
-                border_radius: BorderRadius::all(px(14)),
-                border: UiRect::all(px(2)),
-                ..default()
-            },
-            BorderColor::all(Color::srgba(0.25, 0.35, 0.5, 0.7)),
-        )
+    // Bottom left: of the screen, or of each player's half, over the
+    // bottom of player 1's half and the bottom of the screen.
+    let maps: Vec<(Option<usize>, f32, Val)> = if *game_mode == GameMode::SplitScreen {
+        vec![
+            (Some(0), SPLIT_HUD_SIZE, percent(50.0)),
+            (Some(1), SPLIT_HUD_SIZE, px(0.0)),
+        ]
     } else {
-        (
+        vec![(None, HUD_SIZE, px(0.0))]
+    };
+    for (viewer, size, bottom) in maps {
+        commands.spawn((
+            HudMap { viewer, size },
+            DespawnOnExit(GameState::Race),
             Node {
                 position_type: PositionType::Absolute,
                 left: px(16),
-                bottom: px(16),
-                width: px(HUD_SIZE),
-                height: px(HUD_SIZE),
+                bottom,
+                margin: UiRect::bottom(px(16)),
+                width: px(size),
+                height: px(size),
                 border_radius: BorderRadius::all(px(14)),
                 border: UiRect::all(px(1)),
                 ..default()
             },
             BorderColor::all(Color::srgba(0.2, 0.25, 0.35, 0.4)),
-        )
-    };
-
-    commands.spawn((
-        HudMap,
-        DespawnOnExit(GameState::Race),
-        node,
-        border,
-        GlobalZIndex(10),
-        BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.65)),
-        children![(
-            ImageNode::new(map.image.clone()),
-            Node {
-                width: percent(100),
-                height: percent(100),
-                ..default()
-            },
-        )],
-    ));
+            GlobalZIndex(10),
+            BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.65)),
+            children![(
+                ImageNode::new(map.image.clone()),
+                Node {
+                    width: percent(100),
+                    height: percent(100),
+                    ..default()
+                },
+            )],
+        ));
+    }
 }
 
-/// Un punto por moto, donde está, del color de la moto; el del jugador,
-/// encima de los demás. Los puntos se crean la primera vez que se ve cada
-/// moto.
+/// Un punto por moto en cada minimapa, donde está, del color de la moto;
+/// the player's (on their own map) over the rest. Each dot is made the
+/// first time its bike is seen.
 #[allow(clippy::type_complexity)]
 fn place_dots(
     mut commands: Commands,
     map: Res<TrackMap>,
     font: Res<UiFont>,
-    hud: Single<Entity, With<HudMap>>,
+    huds: Query<(Entity, &HudMap)>,
     bikes: Query<(
         Entity,
         &BikeState,
@@ -322,63 +369,61 @@ fn place_dots(
     )>,
     mut dots: Query<(&Dot, &mut Node)>,
 ) {
-    let mut placed: HashMap<Entity, Mut<Node>> =
-        dots.iter_mut().map(|(dot, node)| (dot.0, node)).collect();
-    for (bike, state, color, player, local) in &bikes {
-        let is_human = player || local.is_some();
-        // With two players, each one's number (1 or 2) in the dot.
-        let number = local.map(|local| local.0 + 1);
-        let size = match (number, is_human) {
-            (Some(_), _) => NUMBERED_DOT,
-            (None, true) => PLAYER_DOT,
-            (None, false) => RIVAL_DOT,
-        };
-        let at = map.projection.to_map(state.position) / MAP_SIZE as f32 * HUD_SIZE - size / 2.0;
-        match placed.get_mut(&bike) {
-            Some(node) => {
-                // Solo si se ha movido: tocar el nodo obliga a recolocarlo.
-                if node.left != px(at.x) || node.top != px(at.y) {
-                    node.left = px(at.x);
-                    node.top = px(at.y);
+    let mut placed: HashMap<(Entity, Entity), Mut<Node>> = dots
+        .iter_mut()
+        .map(|(dot, node)| ((dot.map, dot.bike), node))
+        .collect();
+    for (hud, hud_map) in &huds {
+        for (bike, state, color, player, local) in &bikes {
+            let style = dot_style(hud_map.viewer, player, local.map(|local| local.0));
+            let at = map.projection.to_map(state.position) / MAP_SIZE as f32 * hud_map.size
+                - style.size / 2.0;
+            match placed.get_mut(&(hud, bike)) {
+                Some(node) => {
+                    // Solo si se ha movido: tocar el nodo obliga a recolocarlo.
+                    if node.left != px(at.x) || node.top != px(at.y) {
+                        node.left = px(at.x);
+                        node.top = px(at.y);
+                    }
                 }
-            }
-            None => {
-                let dot = commands
-                    .spawn((
-                        Dot(bike),
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: px(at.x),
-                            top: px(at.y),
-                            width: px(size),
-                            height: px(size),
-                            border: UiRect::all(px(if is_human { 2.5 } else { 1.0 })),
-                            border_radius: BorderRadius::MAX,
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(color.0),
-                        BorderColor::all(if is_human {
-                            Color::WHITE
-                        } else {
-                            Color::srgba(0.0, 0.0, 0.0, 0.8)
-                        }),
-                        ZIndex(i32::from(is_human)),
-                    ))
-                    .id();
-                if let Some(number) = number {
-                    commands.entity(dot).with_child((
-                        Text::new(number.to_string()),
-                        text_font(&font, 12.0),
-                        TextColor(Color::WHITE),
-                        TextShadow {
-                            offset: Vec2::splat(1.0),
-                            color: Color::srgba(0.0, 0.0, 0.0, 0.9),
-                        },
-                    ));
+                None => {
+                    let dot = commands
+                        .spawn((
+                            Dot { bike, map: hud },
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: px(at.x),
+                                top: px(at.y),
+                                width: px(style.size),
+                                height: px(style.size),
+                                border: UiRect::all(px(if style.human { 2.5 } else { 1.0 })),
+                                border_radius: BorderRadius::MAX,
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(color.0),
+                            BorderColor::all(if style.human {
+                                Color::WHITE
+                            } else {
+                                Color::srgba(0.0, 0.0, 0.0, 0.8)
+                            }),
+                            ZIndex(style.z),
+                        ))
+                        .id();
+                    if let Some(number) = style.number {
+                        commands.entity(dot).with_child((
+                            Text::new(number.to_string()),
+                            text_font(&font, style.size * 0.63),
+                            TextColor(Color::WHITE),
+                            TextShadow {
+                                offset: Vec2::splat(1.0),
+                                color: Color::srgba(0.0, 0.0, 0.0, 0.9),
+                            },
+                        ));
+                    }
+                    commands.entity(hud).add_child(dot);
                 }
-                commands.entity(*hud).add_child(dot);
             }
         }
     }
@@ -441,6 +486,26 @@ mod tests {
             red_pixels > 0,
             "Debe haber píxeles rojos para los checkpoints ({red_pixels})"
         );
+    }
+
+    #[test]
+    fn each_player_stands_out_on_their_own_map() {
+        // Two players: each one's dot the biggest and on top on their map,
+        // the other's smaller under it, both numbered.
+        for viewer in [0, 1] {
+            let own = dot_style(Some(viewer), false, Some(viewer));
+            let other = dot_style(Some(viewer), false, Some(1 - viewer));
+            assert_eq!(own.number, Some(viewer + 1));
+            assert_eq!(other.number, Some(2 - viewer));
+            assert!(own.size > other.size && own.z > other.z);
+            let rival = dot_style(Some(viewer), false, None);
+            assert!(other.size > rival.size && other.z > rival.z);
+            assert!(!rival.human && rival.number.is_none());
+        }
+        // One player: theirs bigger than the rivals', with no number.
+        let player = dot_style(None, true, None);
+        assert!(player.human && player.number.is_none());
+        assert!(player.size > dot_style(None, false, None).size);
     }
 
     #[test]

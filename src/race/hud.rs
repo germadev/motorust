@@ -1,13 +1,15 @@
 //! What the race shows on the screen for each player: their place, their
-//! lap, the clock and their best lap; against the clock, the time left and
-//! what each checkpoint gives; in elimination, who is out; and their place
-//! when they cross the line at the end. Once the players' race is over,
+//! lap, the clock, the time of the lap under way and their best lap; against the clock, the time left and
+//! what each checkpoint gives; in elimination, who is out (and how many are
+//! still in, which pops as it changes); and their place when they cross the
+//! line at the end. Once the players' race is over,
 //! which bike the camera watches come in, and its place when it does.
 
 use bevy::prelude::*;
 
 use super::{Mode, Outcome, Progress, Rules, Standing, Watching};
 use crate::bike::{LocalPlayer, Player, ROSTER, Race, Retired, Rider};
+use crate::geometry::smoothstep;
 use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::menu::GameState;
@@ -18,6 +20,26 @@ use crate::welcome::GameMode;
 const NOTICE: f32 = 2.5;
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.2);
 const RED: Color = Color::srgb(1.0, 0.3, 0.25);
+/// How big the place and the lap are (px), and the smaller words and
+/// totals round them ("1º / 8", "VUELTA 2 / 5"); and the times under them.
+const PLACE_SIZE: f32 = 40.0;
+const TOTAL_SIZE: f32 = 24.0;
+const TIMES_SIZE: f32 = 17.0;
+/// The times' colour; and how big the last lap's is when it beat the
+/// track's record (in gold).
+const TIMES_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, 0.85);
+const RECORD_SIZE: f32 = 21.0;
+/// How opaque what is not a figure is at the top left ("º", "/", "VUELTA",
+/// "TOTAL"), as a share of the figures'.
+const WORDS: f32 = 0.55;
+/// How far above the bottom of its line the HUD's font (Russo One) sits on
+/// its baseline, as a share of its size: a number and its total, side by
+/// side at the bottom, sit on the same baseline lifting the total by the
+/// difference.
+const BASELINE: f32 = 0.28;
+/// Seconds the total pops for when it changes, and how much bigger it gets.
+const POP: f32 = 0.8;
+const POP_GROWTH: f32 = 0.6;
 
 pub struct RaceHudPlugin;
 
@@ -26,7 +48,12 @@ impl Plugin for RaceHudPlugin {
         app.add_systems(OnEnter(GameState::Race), spawn_race_info)
             .add_systems(
                 Update,
-                (show_race_info, show_watched, show_arrivals).run_if(in_state(GameState::Race)),
+                (
+                    (show_race_info, show_place_total, show_figures).chain(),
+                    show_watched,
+                    show_arrivals,
+                )
+                    .run_if(in_state(GameState::Race)),
             );
     }
 }
@@ -41,9 +68,15 @@ struct Info {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum InfoKind {
     Place,
+    /// The word before the lap ("VUELTA"), the lap, big, and how many laps
+    /// there are after it ("/ 5").
+    LapWord,
     Lap,
+    Laps,
+    /// The race's whole time, if the options say so.
     Clock,
-    Best,
+    /// The time of the lap under way, and of the last one.
+    LapTime,
     /// Against the clock, the time left; or a big notice in the middle.
     TimeLeft,
     Notice,
@@ -61,6 +94,94 @@ enum WatchInfo {
 /// order, and when.
 #[derive(Component)]
 struct Arrivals;
+
+/// A text at the top left whose figures stand out: what is not a figure is
+/// drawn translucent. Its text and colour are written here, and
+/// [`show_figures`] lays them out in spans under it, with its font.
+#[derive(Component, Clone, Default, PartialEq)]
+struct Figured {
+    text: String,
+    color: Color,
+}
+
+/// The runs of `text` that are figures (digits, and a colon or a point
+/// between two of them, as in "1:23.4") and those that are not, in order.
+fn figure_runs(text: &str) -> Vec<(String, bool)> {
+    let chars: Vec<char> = text.chars().collect();
+    let digit = |index: Option<usize>| {
+        index
+            .and_then(|i| chars.get(i))
+            .is_some_and(char::is_ascii_digit)
+    };
+    let mut runs: Vec<(String, bool)> = Vec::new();
+    for (index, &c) in chars.iter().enumerate() {
+        let figure = c.is_ascii_digit()
+            || (matches!(c, ':' | '.') && digit(index.checked_sub(1)) && digit(Some(index + 1)));
+        match runs.last_mut() {
+            Some((run, was)) if *was == figure => run.push(c),
+            _ => runs.push((c.to_string(), figure)),
+        }
+    }
+    runs
+}
+
+/// Each [`Figured`] text laid out in spans, one for each run of figures or
+/// of what is not, the latter translucent, all in the text's font.
+#[allow(clippy::type_complexity)]
+fn show_figures(
+    mut commands: Commands,
+    texts: Query<
+        (Entity, &Figured, &TextFont, Option<&Children>),
+        Or<(Changed<Figured>, Changed<TextFont>)>,
+    >,
+    mut spans: Query<(&mut TextSpan, &mut TextColor, &mut TextFont), Without<Figured>>,
+) {
+    for (text, figured, font, children) in &texts {
+        let runs = figure_runs(&figured.text);
+        let count = runs.len();
+        let children: Vec<Entity> = children.map_or(Vec::new(), |c| c.iter().collect());
+        for (index, (run, figure)) in runs.into_iter().enumerate() {
+            let color = if figure {
+                figured.color
+            } else {
+                figured.color.with_alpha(figured.color.alpha() * WORDS)
+            };
+            match children
+                .get(index)
+                .and_then(|&span| spans.get_mut(span).ok())
+            {
+                Some((mut span, mut tint, mut span_font)) => {
+                    if span.0 != run {
+                        span.0 = run;
+                    }
+                    tint.set_if_neq(TextColor(color));
+                    if *span_font != *font {
+                        *span_font = font.clone();
+                    }
+                }
+                None => {
+                    commands.entity(text).with_child((
+                        TextSpan::new(run),
+                        font.clone(),
+                        TextColor(color),
+                    ));
+                }
+            }
+        }
+        for &extra in children.iter().skip(count) {
+            commands.entity(extra).despawn();
+        }
+    }
+}
+
+/// After a player's place, how many there are ("/ 8"), and since when (s,
+/// real time) the total it shows changed, to pop.
+#[derive(Component, Debug, Default)]
+struct PlaceTotal {
+    player: usize,
+    shown: Option<usize>,
+    changed: Option<f32>,
+}
 
 fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
     let players = if *game_mode == GameMode::SplitScreen {
@@ -158,7 +279,7 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                 },
             ))
             .with_children(|half| {
-                // Top left: place, lap, clock and best lap.
+                // Top left: place, lap, the lap's times and the race's.
                 half.spawn(Node {
                     position_type: PositionType::Absolute,
                     left: px(18),
@@ -168,19 +289,48 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                     ..default()
                 })
                 .with_children(|column| {
-                    for (kind, size, color) in [
-                        (InfoKind::Place, 40.0, Color::WHITE),
-                        (InfoKind::Lap, 22.0, Color::WHITE),
-                        (InfoKind::Clock, 20.0, Color::srgba(1.0, 1.0, 1.0, 0.85)),
-                        (InfoKind::Best, 15.0, GOLD),
-                    ] {
-                        column.spawn((
+                    let info = |kind, size, color| {
+                        (
                             Info { player, kind },
                             Text::new(""),
+                            Figured { color, ..default() },
                             text(size),
                             TextColor(color),
                             TextShadow::default(),
+                        )
+                    };
+                    // The place, and how many there are after it, apart,
+                    // to pop without moving the rest.
+                    column.spawn(beside()).with_children(|row| {
+                        row.spawn(info(InfoKind::Place, PLACE_SIZE, Color::WHITE));
+                        row.spawn((
+                            PlaceTotal {
+                                player,
+                                ..default()
+                            },
+                            after(PLACE_SIZE, TOTAL_SIZE),
+                            Text::new(""),
+                            Figured::default(),
+                            text(TOTAL_SIZE),
+                            TextColor(Color::WHITE),
+                            TextShadow::default(),
+                            UiTransform::IDENTITY,
                         ));
+                    });
+                    // The lap, as big as the place, between its word and
+                    // how many laps there are.
+                    column.spawn(beside()).with_children(|row| {
+                        let mut word = after(PLACE_SIZE, TOTAL_SIZE);
+                        word.margin.right = px(TOTAL_SIZE / 4.0);
+                        row.spawn((info(InfoKind::LapWord, TOTAL_SIZE, Color::WHITE), word));
+                        row.spawn(info(InfoKind::Lap, PLACE_SIZE, Color::WHITE));
+                        row.spawn((
+                            info(InfoKind::Laps, TOTAL_SIZE, Color::WHITE),
+                            after(PLACE_SIZE, TOTAL_SIZE),
+                        ));
+                    });
+                    for kind in [InfoKind::LapTime, InfoKind::Clock] {
+                        column.spawn(info(kind, TIMES_SIZE, TIMES_COLOR));
                     }
                 });
                 // Top middle: the time left against the clock.
@@ -226,27 +376,77 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
     }
 }
 
+/// A row of a number and, after it, a smaller total ("/ 8"), on the same
+/// baseline.
+fn beside() -> Node {
+    Node {
+        align_items: AlignItems::FlexEnd,
+        ..default()
+    }
+}
+
+/// The node of a total `size` px big after a number `number` px big:
+/// lifted onto the number's baseline.
+fn after(number: f32, size: f32) -> Node {
+    Node {
+        margin: UiRect::bottom(px(BASELINE * (number - size))),
+        ..default()
+    }
+}
+
 /// A time as minutes, seconds and tenths: 1:23.4.
 pub fn clock(seconds: f32) -> String {
     let tenths = (seconds.max(0.0) * 10.0).floor() as u32;
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
 }
 
-/// A place: 1º, 2º... in Spanish; 1st, 2nd... in English.
-pub fn ordinal(place: usize, lang: Language) -> String {
-    match lang {
-        Language::Spanish => format!("{place}º"),
-        Language::English => {
-            let suffix = match (place % 10, place % 100) {
-                (1, 11) | (2, 12) | (3, 13) => "th",
-                (1, _) => "st",
-                (2, _) => "nd",
-                (3, _) => "rd",
-                _ => "th",
+/// The lap's time: on the first lap, the time of the lap under way, with
+/// no word (`seconds`, "0:31.2"); from the second on, the last lap's
+/// instead, said so ("ÚLTIMA 1:13.9", "LAST 1:13.9").
+fn lap_times(seconds: f32, last: Option<f32>, lang: Language) -> String {
+    match last {
+        Some(last) => {
+            let word = match lang {
+                Language::Spanish => "ÚLTIMA",
+                Language::English => "LAST",
             };
-            format!("{place}{suffix}")
+            format!("{word} {}", clock(last))
         }
+        None => clock(seconds),
     }
+}
+
+/// A place, in either language: 1º, 2º, 8º...
+pub fn ordinal(place: usize) -> String {
+    format!("{place}º")
+}
+
+/// Whether the last lap of a bike that has made `progress` is the one that
+/// beat the track's record in this race.
+fn last_is_record(standing: &Standing, progress: &Progress) -> bool {
+    standing
+        .record
+        .is_some_and(|(time, _)| progress.last_lap == Some(time))
+}
+
+/// A bike's place in the race (`rider`, of the roster) and how many bikes
+/// it is among: all of them; but in elimination, while it is still in,
+/// only those still in, so that the count comes down as they go out
+/// ("2º / 6" with two of eight out). One out keeps its place among them
+/// all.
+fn place_among(standing: &Standing, mode: Mode, rider: usize) -> (usize, usize) {
+    let racers = standing.order.len();
+    let place = standing
+        .order
+        .iter()
+        .position(|&r| r == rider)
+        .map_or(racers, |p| p + 1);
+    let among = if mode == Mode::Elimination && !standing.out.contains(&rider) {
+        racers.saturating_sub(standing.out.len())
+    } else {
+        racers
+    };
+    (place, among)
 }
 
 #[allow(clippy::type_complexity)]
@@ -263,12 +463,17 @@ fn show_race_info(
         Option<&LocalPlayer>,
         Has<Retired>,
     )>,
-    mut texts: Query<(&Info, &mut Text, &mut TextColor)>,
+    mut texts: Query<(
+        &Info,
+        &mut Text,
+        &mut TextColor,
+        &mut TextFont,
+        Option<&mut Figured>,
+    )>,
 ) {
     let lang = settings.language;
     let target = rules.mode.laps(rules.laps);
-    let racers = standing.order.len();
-    for (info, mut text, mut color) in &mut texts {
+    for (info, mut text, mut color, mut font, figured) in &mut texts {
         let Some((rider, progress, _, _, retired)) =
             bikes.iter().find(|(_, _, player, local, _)| {
                 let index = local.map_or(usize::from(!*player), |local| local.0);
@@ -277,42 +482,48 @@ fn show_race_info(
         else {
             continue;
         };
-        let place = standing
-            .order
-            .iter()
-            .position(|r| *r == rider.0)
-            .map_or(racers, |p| p + 1);
+        let (place, _) = place_among(&standing, rules.mode, rider.0);
         let (wanted, tint) = match info.kind {
             // Over for the players: the results say it all.
             _ if outcome.is_some() => (String::new(), color.0),
-            InfoKind::Place if rules.mode != Mode::Checkpoint => {
-                (format!("{} / {racers}", ordinal(place, lang)), color.0)
-            }
-            InfoKind::Lap => {
-                let lap = match lang {
-                    Language::Spanish => "VUELTA",
-                    Language::English => "LAP",
-                };
-                let now = progress.laps + 1;
-                (
-                    match target {
-                        Some(laps) => format!("{lap} {}/{laps}", now.min(laps)),
-                        None => format!("{lap} {now}"),
-                    },
-                    color.0,
-                )
-            }
-            InfoKind::Clock => (clock(standing.clock), color.0),
-            InfoKind::Best => (
-                progress.best_lap.map_or(String::new(), |best| {
-                    let label = match lang {
-                        Language::Spanish => "MEJOR",
-                        Language::English => "BEST",
-                    };
-                    format!("{label} {}", clock(best))
-                }),
+            InfoKind::Place if rules.mode != Mode::Checkpoint => (ordinal(place), color.0),
+            InfoKind::LapWord => (
+                match lang {
+                    Language::Spanish => "VUELTA".into(),
+                    Language::English => "LAP".into(),
+                },
                 color.0,
             ),
+            InfoKind::Lap => {
+                let now = progress.laps + 1;
+                let now = target.map_or(now, |laps| now.min(laps));
+                (now.to_string(), color.0)
+            }
+            InfoKind::Laps => (
+                target.map_or(String::new(), |laps| format!(" / {laps}")),
+                color.0,
+            ),
+            // "TOTAL" in either language, if the options say so.
+            InfoKind::Clock if settings.show_total_time => {
+                (format!("TOTAL {}", clock(standing.clock)), color.0)
+            }
+            // The lap under way, until the line at the end.
+            // The last lap in gold, bigger, if it beat the track's record.
+            InfoKind::LapTime => {
+                let record = last_is_record(&standing, progress);
+                let size = FontSize::Px(if record { RECORD_SIZE } else { TIMES_SIZE });
+                if font.font_size != size {
+                    font.font_size = size;
+                }
+                (
+                    if progress.finished.is_some() {
+                        String::new()
+                    } else {
+                        lap_times(progress.lap_time(standing.clock), progress.last_lap, lang)
+                    },
+                    if record { GOLD } else { TIMES_COLOR },
+                )
+            }
             InfoKind::TimeLeft if rules.mode == Mode::Checkpoint => {
                 let left = standing.time_left;
                 let bonus = standing
@@ -342,12 +553,82 @@ fn show_race_info(
             }
             _ => (String::new(), color.0),
         };
+        // At the top left, laid out by `show_figures`.
+        if let Some(mut figured) = figured {
+            figured.set_if_neq(Figured {
+                text: wanted,
+                color: tint,
+            });
+            continue;
+        }
         if text.0 != wanted {
             text.0 = wanted;
         }
         if color.0 != tint {
             color.0 = tint;
         }
+    }
+}
+
+/// How much the total after a place pops (0 to 1) `elapsed` s after it
+/// changed: at once all the way, and back over [`POP`].
+pub fn pop(elapsed: f32) -> f32 {
+    if !(0.0..POP).contains(&elapsed) {
+        return 0.0;
+    }
+    let back = 1.0 - elapsed / POP;
+    smoothstep(0.0, 0.06, elapsed) * back * back
+}
+
+/// After each player's place, how many there are (" / 8"; in elimination,
+/// how many are still in), popping bigger and red as it changes: scaled from
+/// its left end, so nothing round it moves.
+#[allow(clippy::type_complexity)]
+fn show_place_total(
+    time: Res<Time<Real>>,
+    rules: Res<Rules>,
+    standing: Res<Standing>,
+    outcome: Option<Res<Outcome>>,
+    bikes: Query<(&Rider, Has<Player>, Option<&LocalPlayer>)>,
+    mut totals: Query<(
+        &mut PlaceTotal,
+        &mut Figured,
+        &mut UiTransform,
+        &ComputedNode,
+    )>,
+) {
+    let now = time.elapsed_secs();
+    for (mut total, mut figured, mut transform, node) in &mut totals {
+        let rider = bikes.iter().find_map(|(rider, player, local)| {
+            let index = local.map_or(usize::from(!player), |local| local.0);
+            (index == total.player).then_some(rider.0)
+        });
+        let among = rider
+            .filter(|_| outcome.is_none() && rules.mode != Mode::Checkpoint)
+            .map(|rider| place_among(&standing, rules.mode, rider).1);
+        // A change of the total pops; its first showing does not.
+        if among != total.shown {
+            if total.shown.is_some_and(|shown| shown > 0) && among.is_some() {
+                total.changed = Some(now);
+            }
+            total.shown = among;
+        }
+        let text = among.map_or(String::new(), |among| format!(" / {among}"));
+        let popped = total.changed.map_or(0.0, |at| pop(now - at));
+        let scale = 1.0 + POP_GROWTH * popped;
+        let width = node.size().x * node.inverse_scale_factor;
+        let popping = UiTransform {
+            translation: Val2::px(width * (scale - 1.0) / 2.0, 0.0),
+            scale: Vec2::splat(scale),
+            ..UiTransform::IDENTITY
+        };
+        if *transform != popping {
+            *transform = popping;
+        }
+        figured.set_if_neq(Figured {
+            text,
+            color: Color::WHITE.mix(&RED, popped),
+        });
     }
 }
 
@@ -389,10 +670,10 @@ fn show_watched(
                 match rules.mode.laps(rules.laps) {
                     Some(laps) if progress.finished.is_none() => format!(
                         "{name}  ·  {}  ·  {lap} {}/{laps}",
-                        ordinal(place, lang),
+                        ordinal(place),
                         (progress.laps + 1).min(laps)
                     ),
-                    _ => format!("{name}  ·  {}", ordinal(place, lang)),
+                    _ => format!("{name}  ·  {}", ordinal(place)),
                 }
             }
             (WatchInfo::Notice, Some((watching, progress)), Some(place)) => {
@@ -408,7 +689,7 @@ fn show_watched(
                         format!(
                             "{finish}  {}  {}{gap}",
                             ROSTER[watching.rider].name,
-                            ordinal(place, lang)
+                            ordinal(place)
                         )
                     }
                     _ => String::new(),
@@ -428,13 +709,12 @@ fn show_watched(
 fn show_arrivals(
     rules: Res<Rules>,
     standing: Res<Standing>,
-    settings: Res<Settings>,
     outcome: Option<Res<Outcome>>,
     bikes: Query<(&Rider, &Progress)>,
     mut text: Query<&mut Text, With<Arrivals>>,
 ) {
     let wanted = if matches!(rules.mode, Mode::Race | Mode::Arcade) && outcome.is_none() {
-        arrival_lines(&standing.order, settings.language, |rider| {
+        arrival_lines(&standing.order, |rider| {
             bikes
                 .iter()
                 .find(|(r, _)| r.0 == rider)
@@ -451,12 +731,8 @@ fn show_arrivals(
 }
 
 /// A line for each bike of `order` (bikes of the roster) that has crossed
-/// the line at the end (`finished`: when), in order: "1st  Name  1:23.4".
-fn arrival_lines(
-    order: &[usize],
-    lang: Language,
-    finished: impl Fn(usize) -> Option<f32>,
-) -> String {
+/// the line at the end (`finished`: when), in order: "1º  Name  1:23.4".
+fn arrival_lines(order: &[usize], finished: impl Fn(usize) -> Option<f32>) -> String {
     let mut arrived: Vec<(usize, f32)> = order
         .iter()
         .filter_map(|&rider| finished(rider).map(|time| (rider, time)))
@@ -468,7 +744,7 @@ fn arrival_lines(
         .map(|(index, (rider, time))| {
             format!(
                 "{}   {}   {}",
-                ordinal(index + 1, lang),
+                ordinal(index + 1),
                 ROSTER[*rider].name,
                 clock(*time)
             )
@@ -521,8 +797,8 @@ fn notice(
     if progress.finished.is_some() {
         return (
             match lang {
-                Language::Spanish => format!("¡META!  {}", ordinal(place, lang)),
-                Language::English => format!("FINISH!  {}", ordinal(place, lang)),
+                Language::Spanish => format!("¡META!  {}", ordinal(place)),
+                Language::English => format!("FINISH!  {}", ordinal(place)),
             },
             GOLD,
         );
@@ -578,6 +854,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_lap_under_way_reads_with_its_time_and_then_the_last_one() {
+        assert_eq!(lap_times(31.25, None, Language::Spanish), "0:31.2");
+        // Once a lap is done, the last one's instead.
+        assert_eq!(
+            lap_times(50.2, Some(73.9), Language::Spanish),
+            "ÚLTIMA 1:13.9"
+        );
+        assert_eq!(
+            lap_times(50.2, Some(73.9), Language::English),
+            "LAST 1:13.9"
+        );
+        // Since the lap began, at the line.
+        let progress = Progress {
+            lap_start: 40.0,
+            ..default()
+        };
+        assert_eq!(progress.lap_time(71.5), 31.5);
+        assert_eq!(progress.lap_time(30.0), 0.0);
+    }
+
+    #[test]
+    fn what_is_not_a_figure_is_told_apart() {
+        let runs = figure_runs;
+        let part = |run: &str, figure| (run.to_string(), figure);
+        assert_eq!(runs("1º"), [part("1", true), part("º", false)]);
+        assert_eq!(runs(" / 8"), [part(" / ", false), part("8", true)]);
+        assert_eq!(runs("VUELTA"), [part("VUELTA", false)]);
+        // A time is all figures, its colon and point too.
+        assert_eq!(
+            runs("TOTAL 5:50.2"),
+            [part("TOTAL ", false), part("5:50.2", true)]
+        );
+        assert_eq!(runs("12º"), [part("12", true), part("º", false)]);
+        assert!(runs("").is_empty());
+    }
+
+    #[test]
     fn times_read_as_minutes_seconds_and_tenths() {
         assert_eq!(clock(0.0), "0:00.0");
         assert_eq!(clock(83.47), "1:23.4");
@@ -591,15 +904,34 @@ mod tests {
             1 => Some(81.2),
             _ => None,
         };
-        let lines = arrival_lines(&[1, 3, 0, 2], Language::English, finished);
+        let lines = arrival_lines(&[1, 3, 0, 2], finished);
         assert_eq!(
             lines,
             format!(
-                "1st   {}   1:21.2\n2nd   {}   1:23.4",
+                "1º   {}   1:21.2\n2º   {}   1:23.4",
                 ROSTER[1].name, ROSTER[3].name
             )
         );
-        assert_eq!(arrival_lines(&[0, 2], Language::Spanish, finished), "");
+        assert_eq!(arrival_lines(&[0, 2], finished), "");
+    }
+
+    #[test]
+    fn the_last_lap_is_the_record_while_it_is_the_one_that_beat_it() {
+        let standing = Standing {
+            record: Some((70.0, 71.0)),
+            ..default()
+        };
+        let lap = |last| Progress {
+            laps: 2,
+            last_lap: last,
+            ..default()
+        };
+        assert!(last_is_record(&standing, &lap(Some(70.0))));
+        // Another lap since, or another player's.
+        assert!(!last_is_record(&standing, &lap(Some(72.5))));
+        assert!(!last_is_record(&standing, &lap(None)));
+        // No record beaten in this race.
+        assert!(!last_is_record(&Standing::default(), &lap(Some(70.0))));
     }
 
     #[test]
@@ -674,12 +1006,47 @@ mod tests {
     }
 
     #[test]
-    fn places_read_in_each_language() {
-        assert_eq!(ordinal(1, Language::Spanish), "1º");
-        assert_eq!(ordinal(1, Language::English), "1st");
-        assert_eq!(ordinal(2, Language::English), "2nd");
-        assert_eq!(ordinal(3, Language::English), "3rd");
-        assert_eq!(ordinal(4, Language::English), "4th");
-        assert_eq!(ordinal(11, Language::English), "11th");
+    fn in_elimination_a_place_is_among_those_still_in() {
+        // Eight bikes, two of them out: 7 first, then 5.
+        let standing = Standing {
+            order: vec![3, 0, 1, 2, 4, 6, 5, 7],
+            out: vec![7, 5],
+            ..default()
+        };
+        assert_eq!(place_among(&standing, Mode::Elimination, 0), (2, 6));
+        assert_eq!(place_among(&standing, Mode::Elimination, 6), (6, 6));
+        // Those out keep their place among them all.
+        assert_eq!(place_among(&standing, Mode::Elimination, 5), (7, 8));
+        assert_eq!(place_among(&standing, Mode::Elimination, 7), (8, 8));
+        // Nobody out yet: among them all.
+        let start = Standing {
+            out: Vec::new(),
+            ..standing.clone()
+        };
+        assert_eq!(place_among(&start, Mode::Elimination, 0), (2, 8));
+        // In a race, a bike out (disqualified) still counts.
+        assert_eq!(place_among(&standing, Mode::Race, 0), (2, 8));
+    }
+
+    #[test]
+    fn the_total_pops_at_once_and_settles_back() {
+        assert_eq!(pop(-0.1), 0.0);
+        assert!(pop(0.08) > 0.8, "at once");
+        // Smaller and smaller, and gone after a moment.
+        let mut last = pop(0.08);
+        for k in 2..16 {
+            let now = pop(0.05 * k as f32);
+            assert!(now < last, "{k}");
+            last = now;
+        }
+        assert_eq!(pop(POP), 0.0);
+        assert_eq!(pop(5.0), 0.0);
+    }
+
+    #[test]
+    fn places_read_alike_in_both_languages() {
+        assert_eq!(ordinal(1), "1º");
+        assert_eq!(ordinal(2), "2º");
+        assert_eq!(ordinal(11), "11º");
     }
 }

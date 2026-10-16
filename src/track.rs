@@ -8,6 +8,10 @@ use bevy::prelude::*;
 
 use crate::geometry::{forward, heading_of, smoothstep, wrap_angle};
 
+mod grid;
+
+use grid::SegmentGrid;
+
 /// Altura del asfalto sobre la hierba (si estuvieran a la misma, parpadearían).
 pub const SURFACE_Y: f32 = 0.05;
 
@@ -250,6 +254,10 @@ pub struct Track {
     side_roads: Vec<Track>,
     loops: Vec<Loop>,
     forks: Vec<Fork>,
+    /// This road's segments by where they are, to find the nearest without
+    /// going through them all (see [`Self::nearest_at`]). Empty until the
+    /// track is made: then every segment is looked at.
+    grid: SegmentGrid,
 }
 
 /// El punto de la línea central más cercano a otro.
@@ -364,7 +372,19 @@ impl Track {
         for branch in layout.branches {
             track.add_branch(branch);
         }
+        track.make_grids();
         track
+    }
+
+    /// The grids of the lap and of the roads off it, once they are all laid.
+    fn make_grids(&mut self) {
+        let n = self.centerline.len();
+        self.grid = SegmentGrid::new(self.segment_count(), |index| {
+            (self.centerline[index], self.centerline[(index + 1) % n])
+        });
+        for road in &mut self.side_roads {
+            road.make_grids();
+        }
     }
 
     /// The lap of a layout, without its branches.
@@ -384,6 +404,7 @@ impl Track {
             side_roads: Vec::new(),
             loops: Vec::new(),
             forks: Vec::new(),
+            grid: SegmentGrid::default(),
         };
         track.step = track.segments().map(|(a, b)| a.distance(b)).sum::<f32>()
             / track.centerline.len() as f32;
@@ -553,6 +574,7 @@ impl Track {
             side_roads: Vec::new(),
             loops: Vec::new(),
             forks: Vec::new(),
+            grid: SegmentGrid::default(),
         };
         let length = road.length();
         // Metres from the end at the loop, if any.
@@ -700,6 +722,16 @@ impl Track {
     /// The nearest point of the lap's own centre line, leaving out the roads
     /// off it.
     fn project_on_lap(&self, point: Vec2) -> Nearest {
+        if self.searches_grid(point) {
+            return self
+                .nearest_in_grid(point, f32::INFINITY, |_| true)
+                .expect("el trazado tiene puntos");
+        }
+        self.project_on_lap_every(point)
+    }
+
+    /// Like [`Self::project_on_lap`], going through every segment.
+    fn project_on_lap_every(&self, point: Vec2) -> Nearest {
         (0..self.sample_count())
             .map(|index| self.project(index, point))
             .min_by(|a, b| a.distance.total_cmp(&b.distance))
@@ -940,6 +972,11 @@ impl Track {
         (self.offset_point(index, GRID_LANES[column]), heading)
     }
 
+    /// How far to the left of the centre line grid slot `slot` is (m).
+    pub fn grid_lane(slot: usize) -> f32 {
+        GRID_LANES[slot % GRID_LANES.len()]
+    }
+
     /// Índice del punto de la línea central más cercano a `point`.
     #[cfg(test)]
     pub fn nearest_index(&self, point: Vec2) -> usize {
@@ -954,6 +991,32 @@ impl Track {
     }
 
     fn nearest_index_on(&self, point: Vec2, height: Option<f32>) -> usize {
+        // On the lap, each point starts a segment, and so is in its squares.
+        if !(self.closed && self.searches_grid(point)) {
+            return self.nearest_index_every(point, height);
+        }
+        let closest = |on_level: &dyn Fn(usize) -> bool, reach: f32| {
+            self.grid
+                .search(
+                    point,
+                    reach,
+                    |distance| distance * distance,
+                    |index| on_level(index).then(|| self.centerline[index].distance_squared(point)),
+                )
+                .map(|(_, index)| index)
+        };
+        let nearest = closest(&|_| true, f32::INFINITY).unwrap_or(0);
+        let reach = self.centerline[nearest].distance(point) + LEVEL_SPREAD;
+        height
+            .and_then(|height| {
+                closest(&|index| on_level_with(self.elevation[index], height), reach)
+            })
+            .filter(|&index| self.centerline[index].distance(point) <= reach)
+            .unwrap_or(nearest)
+    }
+
+    /// Like [`Self::nearest_index_on`], going through every point.
+    fn nearest_index_every(&self, point: Vec2, height: Option<f32>) -> usize {
         let closest = |on_level: &dyn Fn(usize) -> bool| {
             let mut best: Option<(f32, usize)> = None;
             for (index, at) in self.centerline.iter().enumerate() {
@@ -989,6 +1052,70 @@ impl Track {
     }
 
     fn nearest_on(&self, point: Vec2, height: Option<f32>) -> Nearest {
+        let roads = || (0..=self.side_roads.len()).map(|road| (road, self.road(road)));
+        if !roads().all(|(_, road)| road.searches_grid(point)) {
+            return self.nearest_every(point, height);
+        }
+        // The same as going through every segment of every road: the nearest
+        // of each, the first road's of equals; then, if the point is at a
+        // height, the nearest on its level that is near enough to count.
+        // Each road after the first only needs looking at as far as the
+        // nearest found so far: only one nearer can take its place.
+        let nearest_where = |reach: f32, keep: &dyn Fn(&Track, &Nearest) -> bool| {
+            roads().fold(None, |best: Option<Nearest>, (number, road)| {
+                let reach = best.map_or(reach, |best| best.distance.min(reach));
+                let here = road
+                    .nearest_in_grid(point, reach, |here| keep(road, here))
+                    .map(|here| Nearest {
+                        road: number,
+                        ..here
+                    });
+                closer(best, here)
+            })
+        };
+        let nearest = nearest_where(f32::INFINITY, &|_, _| true).expect("el trazado tiene puntos");
+        let Some(height) = height else {
+            return nearest;
+        };
+        let reach = nearest.distance + LEVEL_SPREAD;
+        nearest_where(reach, &|road, here| {
+            on_level_with(road.height_on_road(here), height)
+        })
+        .filter(|level| level.distance <= reach)
+        .unwrap_or(nearest)
+    }
+
+    /// Whether this road's grid can find the nearest segment to `point`: a
+    /// point that is not one (not a number) goes through every segment, as
+    /// does a track still being laid.
+    fn searches_grid(&self, point: Vec2) -> bool {
+        !self.grid.is_empty() && point.is_finite()
+    }
+
+    /// The nearest point of this road's segments to `point` among those
+    /// `keep` keeps, as on road 0, if any is within `reach` (m); maybe one a
+    /// little further. The lowest segment's of equals.
+    fn nearest_in_grid(
+        &self,
+        point: Vec2,
+        reach: f32,
+        keep: impl Fn(&Nearest) -> bool,
+    ) -> Option<Nearest> {
+        self.grid
+            .search(
+                point,
+                reach,
+                |distance| distance,
+                |index| {
+                    let here = self.project(index, point);
+                    keep(&here).then_some(here.distance)
+                },
+            )
+            .map(|(_, index)| self.project(index, point))
+    }
+
+    /// Like [`Self::nearest_on`], going through every segment.
+    fn nearest_every(&self, point: Vec2, height: Option<f32>) -> Nearest {
         let (mut nearest, mut on_level) = self.search(point, height, 0);
         for (road, side_road) in self.side_roads.iter().enumerate() {
             let (here, level) = side_road.search(point, height, road + 1);
@@ -1487,6 +1614,132 @@ mod tests {
             .iter()
             .map(|circuit| (circuit.name, Track::new(&circuit.layout)))
             .collect()
+    }
+
+    /// Whether two points found on the centre lines are the very same.
+    fn same(a: &Nearest, b: &Nearest) -> bool {
+        a.road == b.road
+            && a.index == b.index
+            && a.point == b.point
+            && a.distance.to_bits() == b.distance.to_bits()
+            && a.t.to_bits() == b.t.to_bits()
+            && a.lateral.to_bits() == b.lateral.to_bits()
+    }
+
+    #[test]
+    fn the_grid_finds_what_going_through_every_segment_finds() {
+        for (name, track) in every_track() {
+            let mut checked = 0;
+            for road in 0..=track.side_roads().len() {
+                let line = track.road(road);
+                // Along every road, on it, at its walls, past them and far
+                // off; at its height, up in the air, and at other roads'
+                // heights, which is where the track passes over itself.
+                for index in (0..line.segment_count()).step_by(3) {
+                    for (k, lateral) in [0.0, 3.3, -6.1, 11.4, -15.0, 40.0, -160.0]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        let point = line.offset_point(index, lateral)
+                            + Vec2::new(0.37, -0.21) * (index % 5) as f32;
+                        let ground = line.elevation[index];
+                        let other = track.elevation[(index * 7 + k * 131) % track.elevation.len()];
+                        let nearest = track.nearest(point);
+                        assert!(
+                            same(&nearest, &track.nearest_every(point, None)),
+                            "{name}: {point}"
+                        );
+                        for height in [ground, ground + 4.0, ground + 25.0, other, other - 3.0] {
+                            let grid = track.nearest_at(point, height);
+                            let every = track.nearest_every(point, Some(height));
+                            assert!(
+                                same(&grid, &every),
+                                "{name}: {point} at {height}: {grid:?} {every:?}"
+                            );
+                            assert_eq!(
+                                track.nearest_index_at(point, height),
+                                track.nearest_index_every(point, Some(height)),
+                                "{name}: {point} at {height}"
+                            );
+                        }
+                        assert!(
+                            same(
+                                &track.project_on_lap(point),
+                                &track.project_on_lap_every(point)
+                            ),
+                            "{name}: {point}"
+                        );
+                        checked += 1;
+                    }
+                }
+            }
+            assert!(checked > 1000, "{name}: {checked}");
+        }
+    }
+
+    #[test]
+    fn the_grid_finds_the_points_of_segments_corners_as_the_search_did() {
+        // On a corner's point, two segments are as near: the first counts,
+        // in the grid as when every segment was looked at.
+        for (name, track) in every_track() {
+            for index in (0..track.segment_count()).step_by(5) {
+                let point = track.centerline[index];
+                let height = track.elevation[index];
+                assert!(
+                    same(
+                        &track.nearest_at(point, height),
+                        &track.nearest_every(point, Some(height))
+                    ),
+                    "{name}: {index}"
+                );
+                assert_eq!(track.nearest_index_at(point, height), index, "{name}");
+            }
+        }
+    }
+
+    /// How long finding a bike on each track takes, with the grid and going
+    /// through every segment: `cargo test --release -- --ignored --nocapture
+    /// time_to_find`.
+    #[test]
+    #[ignore = "a measurement, not a check"]
+    fn time_to_find_a_bike_on_each_track() {
+        use std::hint::black_box;
+        use std::time::Instant;
+        for (name, track) in every_track() {
+            let points: Vec<(Vec2, f32)> = (0..track.segment_count())
+                .step_by(7)
+                .map(|index| (track.offset_point(index, 2.5), track.elevation[index] + 0.5))
+                .collect();
+            let time = |find: &dyn Fn(Vec2, f32) -> Nearest| {
+                let started = Instant::now();
+                for _ in 0..20 {
+                    for &(point, height) in &points {
+                        black_box(find(black_box(point), height));
+                    }
+                }
+                started.elapsed().as_secs_f64() * 1e6 / (20 * points.len()) as f64
+            };
+            let grid = time(&|point, height| track.nearest_at(point, height));
+            let every = time(&|point, height| track.nearest_every(point, Some(height)));
+            println!(
+                "{name:14} {:5} segments: grid {grid:6.2} µs, every segment {every:7.2} µs ({:.0}×)",
+                track.segment_count(),
+                every / grid
+            );
+        }
+    }
+
+    #[test]
+    fn a_point_that_is_not_one_still_finds_some_road() {
+        let track = track();
+        let point = Vec2::new(f32::NAN, 3.0);
+        // Not a number is not even equal to itself: the segment found is.
+        let (grid, every) = (track.nearest(point), track.nearest_every(point, None));
+        assert_eq!((grid.road, grid.index), (every.road, every.index));
+        assert_eq!(
+            track.nearest_index_at(point, 2.0),
+            track.nearest_index_every(point, Some(2.0))
+        );
     }
 
     #[test]

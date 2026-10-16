@@ -123,6 +123,8 @@ With `--keep`, the trees already in the pack stay as they are (their meshes, and
 
 All fifteen take about 1.1 MB. `cargo test` checks that every tree is in the pack, standing on the ground, with a few hundred triangles and its texture coordinates in its own cell.
 
+Far from the cameras the trees are drawn with lighter meshes made from these when the game starts (`src/world/lod.rs`): the same shape with a third of the triangles, and farther still with a tenth, painted in their vertices with the colours of their texture as it is seen from afar, so they need no texture.
+
 ## The props of feudal Japan
 
 Ghost Island's buildings, landmarks, statues, lanterns and gates were made with Meshy by the author too: the great torii in the sea, the castle keep, the temple hall and its pagoda, the shrine on stilts, an ancient maple and the great maple over its clearing, the two torii of the corridor (a wide one over the road and a narrow one over the corridor), a log torii, a wayside shrine (hokora), a Jizō, a komainu, bronze and stone lanterns, a memorial stone, a brazier, a pile of rice bales and barrels, a fishing boat, a thatched minka and a water wheel. Where each stands is in the track's data (see [tracks.md](tracks.md#scenery), `japan`), and `src/world/japan.rs` places them.

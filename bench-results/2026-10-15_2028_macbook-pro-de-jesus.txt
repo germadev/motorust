@@ -1,0 +1,48 @@
+# motorust 0.0.10 benchmark on MacBook-Pro-de-Jesus.local
+# system: macOS 26.3.1; CPU Apple M1 Pro (8 cores); memory 16.0 GiB
+# GPU: Apple M1 Pro (Metal, )
+# window: 3024 x 1898 pixels at 2x; resolution Dynamic, fullscreen Desktop
+# trees new; pipelined rendering true; frames queued 2; frame rate unlimited
+# 40 scenarios, each a race afresh, 4 s settling and 10 s measured, after one to warm up; about 12 min
+track            scenario                    fps     1% low   p50 ms   p95 ms   sim ms  cpu %
+Bahía GP         1p                        119.5       66.5     8.37    10.48     1.25     21
+Bahía GP         1p-shadows-medium         127.4       75.5     7.86    10.45     1.22     21
+Bahía GP         1p-shadows-low            137.1       86.7     7.45     9.82     1.21     21
+Bahía GP         1p-fxaa                   123.6       83.6     8.17    10.61     1.23     21
+Bahía GP         1p-no-antialiasing        136.9       87.0     7.39     9.91     1.18     23
+Bahía GP         1p-lighter-far-trees      120.4       76.7     8.47    11.19     1.24     21
+Bahía GP         2p                         90.4       67.3    11.06    12.40     1.30     20
+Bahía GP         2p-full-detail             70.7       54.6    14.14    16.47     1.62     18
+Turbo Bay        1p                        108.2       75.1     9.39    11.73     1.59     20
+Turbo Bay        1p-shadows-medium         115.2       74.6     8.67    11.63     1.55     20
+Turbo Bay        1p-shadows-low            122.5       76.8     8.10    11.15     1.53     20
+Turbo Bay        1p-fxaa                   110.6       73.0     9.02    12.00     1.55     20
+Turbo Bay        1p-no-antialiasing        121.9       76.6     8.20    11.29     1.52     21
+Turbo Bay        1p-lighter-far-trees      111.7       71.4     8.91    11.90     1.57     21
+Turbo Bay        2p                         79.6       58.7    12.59    15.20     2.02     18
+Turbo Bay        2p-full-detail             62.0       49.8    16.30    18.77     2.18     17
+Loop Island      1p                        115.5       80.4     8.80    11.08     1.46     21
+Loop Island      1p-shadows-medium         125.1       83.1     8.09    10.54     1.44     21
+Loop Island      1p-shadows-low            134.3       86.2     7.46    10.01     1.40     22
+Loop Island      1p-fxaa                   122.9       82.5     8.23    10.82     1.41     21
+Loop Island      1p-no-antialiasing        135.7       86.2     7.44    10.13     1.39     24
+Loop Island      1p-lighter-far-trees      121.4       81.3     8.34    10.86     1.43     22
+Loop Island      2p                         88.1       65.6    11.40    13.34     1.53     20
+Loop Island      2p-full-detail             67.0       52.3    14.92    17.48     1.95     18
+Mina Dorada      1p                        115.0       79.5     8.74    10.93     2.34     21
+Mina Dorada      1p-shadows-medium         126.2       82.8     7.99    10.53     2.30     22
+Mina Dorada      1p-shadows-low            136.4       89.9     7.31     9.80     2.29     23
+Mina Dorada      1p-fxaa                   125.5       83.0     8.07    10.54     2.30     22
+Mina Dorada      1p-no-antialiasing        135.2       85.5     7.50    10.08     2.29     24
+Mina Dorada      1p-lighter-far-trees      117.1       78.9     8.65    10.86     2.33     21
+Mina Dorada      2p                         85.2       67.0    11.73    13.35     2.42     20
+Mina Dorada      2p-full-detail             67.4       50.9    14.55    17.46     3.86     18
+Ghost Island     1p                         91.1       64.3    10.88    14.15     2.42     19
+Ghost Island     1p-shadows-medium          99.7       67.0     9.72    13.08     2.40     20
+Ghost Island     1p-shadows-low            109.0       71.1     8.84    12.35     2.39     21
+Ghost Island     1p-fxaa                    97.2       67.1     9.98    13.51     2.39     20
+Ghost Island     1p-no-antialiasing        107.5       58.3     8.92    12.59     2.38     22
+Ghost Island     1p-lighter-far-trees       94.1       64.2    10.30    13.83     2.42     20
+Ghost Island     2p                         69.8       52.2    14.40    17.34     3.92     19
+Ghost Island     2p-full-detail             54.4       41.8    18.66    20.99     4.05     17
+# finished

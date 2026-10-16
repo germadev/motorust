@@ -1,0 +1,25 @@
+# motorust 0.0.10 benchmark on MacBook-Pro-de-Jesus.local
+# system: macOS 26.3.1; CPU Apple M1 Pro (8 cores); memory 16.0 GiB
+# GPU: Apple M1 Pro (Metal, )
+# window: 3024 x 1898 pixels at 2x; resolution Dynamic, fullscreen Desktop
+# trees new; pipelined rendering true; frames queued 2; frame rate unlimited
+# 40 scenarios, 4 s settling and 10 s measured each, about 10 min
+track            scenario                    fps     1% low   p50 ms   p95 ms   sim ms  cpu %
+Bahía GP         1p                        115.1       46.9     8.58    10.90     1.19      0
+Bahía GP         1p-shadows-medium         135.8       91.0     7.35     9.35     1.26      0
+Bahía GP         1p-shadows-low            141.1       92.5     7.17     9.51     1.17      0
+Bahía GP         1p-fxaa                   136.7       83.9     7.46     9.96     1.18      0
+Bahía GP         1p-no-antialiasing        144.0       84.3     6.97     9.57     1.17      0
+Bahía GP         1p-lighter-far-trees      129.4       82.7     7.90    10.45     1.16      0
+Bahía GP         2p                         90.6       66.6    11.07    13.50     1.26      0
+Bahía GP         2p-full-detail             75.5       54.6    13.31    15.99     1.57      0
+Turbo Bay        1p                        108.2       76.2     9.37    11.88     1.57      0
+Turbo Bay        1p-shadows-medium         120.0       45.0     8.06    13.34     1.65      0
+Turbo Bay        1p-shadows-low            126.3       80.9     8.07    10.30     1.71      0
+Turbo Bay        1p-fxaa                   127.5       79.4     7.98    10.40     1.48      0
+Turbo Bay        1p-no-antialiasing        129.9       79.8     7.64    10.80     1.58      0
+Turbo Bay        1p-lighter-far-trees      118.9       79.1     8.54    10.90     1.72      0
+Turbo Bay        2p                         79.6       58.9    12.58    15.10     2.01      0
+Turbo Bay        2p-full-detail             67.4       52.3    14.89    17.32     2.52      0
+Loop Island      1p                        117.1       75.3     8.55    11.14     1.43      0
+Loop Island      1p-shadows-medium         132.0       81.9     7.66    10.19     1.48      0

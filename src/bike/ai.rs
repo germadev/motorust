@@ -21,6 +21,9 @@ const LOOK_AHEAD_DISTANCE: f32 = 8.0;
 const LOOK_AHEAD_TIME: f32 = 0.4;
 /// Fracción del freno con la que planea las frenadas, para llegar con margen.
 const PLANNED_BRAKING: f32 = 0.6;
+/// How much more of the brakes a rival plans with for each bit of skill
+/// past 1 (only on very hard): it brakes later.
+const DARING_BRAKING: f32 = 2.0;
 /// Metros extra que revisa por delante además de su distancia de frenado.
 const EXTRA_HORIZON: f32 = 25.0;
 /// Puntos a cada lado con los que suaviza la curvatura del trazado.
@@ -38,6 +41,10 @@ const LINE_RATE: f32 = 2.0;
 const LINE_RATE_PER_SPEED: f32 = 0.03;
 /// Si no puede pasar, se queda a esta distancia de la de delante (m).
 const FOLLOW_GAP: f32 = 4.0;
+/// A bike from this far behind to this far ahead (m) is beside a rival: it
+/// does not move across into it. Off the grid, where the bikes set off side
+/// by side, it keeps to its side of the road until there is room.
+const BESIDE: f32 = 6.0;
 /// Over the last this many metres of a branch without a loop (m), a rival
 /// gives way to a bike from this far behind to this far ahead (m) that is
 /// within this much more than the clearance across (m), going this much
@@ -57,7 +64,8 @@ const LOOP_TURN_TIME: f32 = 0.3;
 /// Un rival controlado por la máquina.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Rival {
-    /// Fracción de la punta y del agarre de la moto que se atreve a usar (0..1].
+    /// Fracción de la punta y del agarre de la moto que se atreve a usar (0..1];
+    /// past 1 only on very hard (see [`decide`]).
     pub skill: f32,
     /// Distancia a la izquierda de la línea central por la que va (m).
     pub lane: f32,
@@ -279,28 +287,39 @@ pub fn plan_line(
         Waypoint::Road(road, index) => {
             let line = track.road(road);
             let reach = (horizon / line.step_length()).ceil() as usize + 2;
+            // From a little behind, for the bikes beside it.
+            let behind = (BESIDE / line.step_length()).ceil() as usize + 1;
             let (from, count) = if line.is_closed() {
                 (
-                    (index + line.sample_count() - 2) % line.sample_count(),
-                    reach + 2,
+                    (index + line.sample_count() - behind) % line.sample_count(),
+                    reach + behind,
                 )
             } else {
-                let from = index.saturating_sub(2).min(line.segment_count() - 1);
-                (from, (reach + 2).min(line.segment_count() - from))
+                let from = index.saturating_sub(behind).min(line.segment_count() - 1);
+                (from, (reach + behind).min(line.segment_count() - from))
             };
             line.nearest_among(other.position, from, count).lateral
         }
         Waypoint::Into(..) => track.nearest_at(other.position, other.elevation).lateral,
     };
+    let gap_to = |other: &Traffic| {
+        let index = track.nearest_index_at(other.position, other.elevation) as i64;
+        ((index - here + n + n / 2) % n - n / 2) as f32 * SAMPLE_SPACING
+    };
     let ahead: Vec<(f32, f32, f32)> = traffic
         .iter()
         .filter_map(|other| {
-            let index = track.nearest_index_at(other.position, other.elevation) as i64;
-            let gap = ((index - here + n + n / 2) % n - n / 2) as f32 * SAMPLE_SPACING;
+            let gap = gap_to(other);
             let closing = speed - other.speed;
             (gap > -SAMPLE_SPACING && gap < horizon && (closing > 0.5 || gap < TRAFFIC_DISTANCE))
                 .then(|| (gap, across(other), other.speed))
         })
+        .collect();
+    // Where the bikes beside it are across the road.
+    let alongside: Vec<f32> = traffic
+        .iter()
+        .filter(|other| gap_to(other).abs() <= BESIDE)
+        .map(across)
         .collect();
     // Coming off a branch without a loop, it joins the lap on its line
     // there: it gives way to the bikes on the lap about level with it and
@@ -337,31 +356,53 @@ pub fn plan_line(
                 .iter()
                 .all(|&(_, other, _)| (other - lateral).abs() >= CLEARANCE)
     };
-    if free(rival.lane) {
-        return (rival.lane, f32::INFINITY);
-    }
-    if free(line) {
-        return (line, f32::INFINITY);
-    }
-    let gap = ahead
-        .iter()
-        .flat_map(|&(_, other, _)| [other + CLEARANCE, other - CLEARANCE])
-        .filter(|&lateral| free(lateral))
-        .min_by(|a, b| (a - line).abs().total_cmp(&(b - line).abs()));
-    if let Some(gap) = gap {
-        return (gap, f32::INFINITY);
+    let wanted = if free(rival.lane) {
+        rival.lane
+    } else if free(line) {
+        line
+    } else {
+        ahead
+            .iter()
+            .flat_map(|&(_, other, _)| [other + CLEARANCE, other - CLEARANCE])
+            .filter(|&lateral| free(lateral))
+            .min_by(|a, b| (a - line).abs().total_cmp(&(b - line).abs()))
+            .unwrap_or(line)
+    };
+    // Only as far across as the bikes beside it leave room for.
+    let target = across_to(line, wanted, &alongside);
+    if free(target) {
+        return (target, f32::INFINITY);
     }
     // Sin hueco: se pone a la velocidad de la que tiene delante.
     let leader = ahead
         .iter()
-        .filter(|&&(gap, other, _)| gap > 0.0 && (other - line).abs() < CLEARANCE)
+        .filter(|&&(gap, other, _)| gap > 0.0 && (other - target).abs() < CLEARANCE)
         .min_by(|a, b| a.0.total_cmp(&b.0));
     match leader {
         Some(&(gap, _, leader_speed)) => {
-            (line, leader_speed.max(0.0) + (gap - FOLLOW_GAP).max(0.0))
+            (target, leader_speed.max(0.0) + (gap - FOLLOW_GAP).max(0.0))
         }
-        None => (line, f32::INFINITY),
+        None => (target, f32::INFINITY),
     }
+}
+
+/// How far a rival on `line` gets towards `wanted` (m to the left of the
+/// middle of the road) with bikes beside it at `alongside`: up to the
+/// clearance short of the first one on that side, and never back.
+fn across_to(line: f32, wanted: f32, alongside: &[f32]) -> f32 {
+    let way = wanted - line;
+    alongside.iter().fold(wanted, |to, &other| {
+        let off = other - line;
+        if off * way <= 0.0 || off.abs() >= way.abs() + CLEARANCE {
+            return to;
+        }
+        let short = other - CLEARANCE * way.signum();
+        if way > 0.0 {
+            to.min(short.max(line))
+        } else {
+            to.max(short.min(line))
+        }
+    })
 }
 
 /// Lo que hace un rival en este paso, yendo por `line` (m a la izquierda de
@@ -384,8 +425,12 @@ pub fn decide(
         };
     }
     let speed = state.speed.max(0.0);
+    // Past 1 (on very hard), the corners harder (the bike grips more with
+    // the steering near its stop) and the brakes later; never faster than
+    // the bike goes.
     let grip = tuning.max_lateral_accel * rival.skill;
-    let braking = tuning.brake_decel * PLANNED_BRAKING;
+    let daring = (rival.skill - 1.0).max(0.0);
+    let braking = tuning.brake_decel * (PLANNED_BRAKING + DARING_BRAKING * daring);
     let horizon = speed * speed / (2.0 * braking) + EXTRA_HORIZON;
     let ahead = ((LOOK_AHEAD_DISTANCE + speed * LOOK_AHEAD_TIME) / SAMPLE_SPACING).round() as usize;
     let steps = (horizon / SAMPLE_SPACING) as usize;
@@ -408,7 +453,7 @@ pub fn decide(
 
     // Velocidad: la más baja que exijan las curvas de delante, contando con
     // que le dé tiempo a frenar hasta ellas.
-    let mut target_speed = (tuning.max_speed * rival.skill).min(limit);
+    let mut target_speed = (tuning.max_speed * rival.skill.min(1.0)).min(limit);
     for (step, waypoint) in way.iter().enumerate().take(steps) {
         let curvature = waypoint.curvature(track);
         if curvature < 1e-4 {
@@ -426,6 +471,7 @@ pub fn decide(
         steer_direct: 0.0,
         // Los rivales no hacen caballitos: van a por el tiempo.
         wheelie: 0.0,
+        pivot_slowing: 0.0,
     }
 }
 
@@ -448,6 +494,7 @@ mod tests {
         CrashState, fall, fall_against_wall, rejoin_pose, slide, wall_knocks_down,
     };
     use crate::bike::{BikeState, Body, Knock, advance, advance_hitting_walls};
+    use crate::settings::Difficulty;
 
     #[test]
     fn rival_laps_the_track_without_leaving_it() {
@@ -524,17 +571,24 @@ mod tests {
     #[test]
     fn against_the_clock_a_good_ride_earns_a_little_time_at_each_checkpoint() {
         use crate::race::{CheckpointTimes, checkpoints, stretch_after};
-        use crate::settings::Difficulty;
         for circuit in &crate::circuits::CIRCUITS {
             let lap = Track::new(&circuit.layout).lap_length();
             let points = checkpoints(&circuit.checkpoints(), lap);
             let times = checkpoint_times(circuit, 0.9, 1);
             assert_eq!(times.len(), points.len(), "{}", circuit.name);
+            // On very hard, a ride as good as its rivals'.
+            let very_hard = checkpoint_times(circuit, Difficulty::VeryHard.rival_skill(0.9), 1);
             for (difficulty, earns) in [
                 (Difficulty::Medium, 1.0..5.0),
                 (Difficulty::Hard, 0.3..3.5),
                 (Difficulty::Easy, 2.5..9.0),
+                (Difficulty::VeryHard, 0.0..3.0),
             ] {
+                let times = if difficulty == Difficulty::VeryHard {
+                    &very_hard
+                } else {
+                    &times
+                };
                 let given = CheckpointTimes::on(difficulty);
                 let mut left = given.starting(&points);
                 for (index, time) in times.iter().enumerate() {
@@ -895,7 +949,8 @@ mod tests {
         assert!(state.speed > 30.0, "y sigue lanzado: {}", state.speed);
     }
 
-    /// One rival of the pack in [`a_pack_of_rivals_races_without_wrecking_each_other`].
+    /// One rider of the pack in [`pack_race`] and
+    /// [`the_grid_gets_away_without_a_touch`].
     struct Racer {
         rival: Rival,
         line: Line,
@@ -904,49 +959,40 @@ mod tests {
         crash: CrashState,
     }
 
-    #[test]
-    fn a_pack_of_rivals_races_without_wrecking_each_other() {
-        // On the Bay, on Loop Island, with the rivals that take its branch
-        // going round the loop, and through the forks of Gold Mine and of
-        // Ghost Island.
-        for circuit in [
-            &crate::circuits::CIRCUITS[0],
-            &crate::circuits::CIRCUITS[2],
-            &crate::circuits::CIRCUITS[3],
-            &crate::circuits::CIRCUITS[4],
-        ] {
-            pack_race(&Track::new(&circuit.layout), circuit.name);
+    impl Racer {
+        /// On grid slot `slot` of `track`, on its line.
+        fn on_grid(track: &Track, slot: usize, rival: Rival) -> Self {
+            Racer {
+                rival,
+                line: Line(Track::grid_lane(slot)),
+                state: BikeState::parked_on(track, track.grid_slot(slot)),
+                knock: Knock::default(),
+                crash: CrashState::default(),
+            }
         }
     }
 
-    /// The rivals of [`crate::bike::GRID`] race a lap of `track` from the
-    /// grid: they all get round, hardly anyone falls, and nobody leaves the
-    /// road. Those that take the branches go round the loops.
-    fn pack_race(track: &Track, name: &str) {
+    /// What happened riding a pack for a while.
+    #[derive(Default)]
+    struct Ridden {
+        falls: usize,
+        touches: usize,
+    }
+
+    /// Rides `pack` round `track` for `seconds` as the game does, step by
+    /// step: each rider plans its line, rides it against the walls and the
+    /// others, and gets up again after a fall; `after` sees the pack after
+    /// every step.
+    fn ride_pack(
+        track: &Track,
+        pack: &mut [Racer],
+        seconds: f32,
+        mut after: impl FnMut(&[Racer]),
+    ) -> Ridden {
         let tuning = BikeTuning::default();
         let dt = 1.0 / 120.0;
-        let mut pack: Vec<Racer> = crate::bike::GRID
-            .iter()
-            .enumerate()
-            .filter_map(|(slot, rival)| {
-                rival.map(|rival| Racer {
-                    rival,
-                    line: Line(rival.lane),
-                    state: BikeState::parked_on(track, track.grid_slot(slot)),
-                    knock: Knock::default(),
-                    crash: CrashState::default(),
-                })
-            })
-            .collect();
-        let n = track.sample_count() as i64;
-        let mut last: Vec<i64> = pack
-            .iter()
-            .map(|racer| track.nearest_index(racer.state.position) as i64)
-            .collect();
-        let mut progress = vec![0; pack.len()];
-        let mut falls = 0;
-        // Long enough for a lap of the longest track.
-        for _ in 0..(100.0 / dt) as usize {
+        let mut ridden = Ridden::default();
+        for _ in 0..(seconds / dt) as usize {
             let traffic: Vec<Traffic> = pack
                 .iter()
                 .map(|racer| Traffic {
@@ -1006,7 +1052,7 @@ mod tests {
                     advance_hitting_walls(&racer.state, &input, track, &tuning, dt);
                 if let Some(hit) = wall.filter(wall_knocks_down) {
                     racer.crash = fall_against_wall(&mut racer.state, &mut racer.knock, &hit);
-                    falls += 1;
+                    ridden.falls += 1;
                 }
                 crate::bike::carry(&mut racer.state, &mut racer.knock, track, dt);
             }
@@ -1032,16 +1078,94 @@ mod tests {
                     let Some(contact) = contact else {
                         continue;
                     };
+                    ridden.touches += 1;
                     if contact.a.falls {
                         a.crash = fall(&mut a.state, &mut a.knock, &contact.a);
-                        falls += 1;
+                        ridden.falls += 1;
                     }
                     if contact.b.falls {
                         b.crash = fall(&mut b.state, &mut b.knock, &contact.b);
-                        falls += 1;
+                        ridden.falls += 1;
                     }
                 }
             }
+            after(pack);
+        }
+        ridden
+    }
+
+    #[test]
+    fn a_pack_of_rivals_races_without_wrecking_each_other() {
+        // With the rivals that take the branches going round the loops, and
+        // through the forks.
+        for circuit in &crate::circuits::CIRCUITS {
+            pack_race(
+                &Track::new(&circuit.layout),
+                circuit.name,
+                Difficulty::Medium,
+                0,
+            );
+        }
+    }
+
+    #[test]
+    fn a_very_hard_pack_races_without_wrecking_each_other() {
+        // Braking later and riding the corners harder, near enough clean:
+        // a touch at most a lap (two down), where a rival riding the lap on
+        // the side a branch leaves from is crossed by one taking it.
+        for circuit in &crate::circuits::CIRCUITS {
+            pack_race(
+                &Track::new(&circuit.layout),
+                circuit.name,
+                Difficulty::VeryHard,
+                2,
+            );
+        }
+    }
+
+    #[test]
+    fn on_very_hard_the_rivals_are_quicker_than_on_hard_and_keep_to_the_road() {
+        // The quickest rival of the grid, a lap from the grid, each way.
+        for circuit in &crate::circuits::CIRCUITS {
+            let times = |difficulty: Difficulty| -> f32 {
+                checkpoint_times(circuit, difficulty.rival_skill(0.95), 1)
+                    .iter()
+                    .sum()
+            };
+            let (hard, very_hard) = (times(Difficulty::Hard), times(Difficulty::VeryHard));
+            assert!(
+                very_hard < 0.995 * hard && very_hard > 0.95 * hard,
+                "{}: {very_hard} s against {hard} s",
+                circuit.name
+            );
+        }
+        // Up to 1 nothing changes: hard's rivals ride as they did.
+        assert_eq!(Difficulty::Hard.rival_skill(0.99), 1.0);
+    }
+
+    /// The rivals of [`crate::bike::GRID`], as fast as `difficulty` asks,
+    /// race a lap of `track` from the grid: they all get round, no more
+    /// than `most_falls` falls, and nobody leaves the road. Those that take
+    /// the branches go round the loops.
+    fn pack_race(track: &Track, name: &str, difficulty: Difficulty, most_falls: usize) {
+        let mut pack: Vec<Racer> = crate::bike::GRID
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, rival)| {
+                rival.map(|rival| {
+                    let skill = difficulty.rival_skill(rival.skill);
+                    Racer::on_grid(track, slot, Rival { skill, ..rival })
+                })
+            })
+            .collect();
+        let n = track.sample_count() as i64;
+        let mut last: Vec<i64> = pack
+            .iter()
+            .map(|racer| track.nearest_index(racer.state.position) as i64)
+            .collect();
+        let mut progress = vec![0; pack.len()];
+        // Long enough for a lap of the longest track.
+        let ridden = ride_pack(track, &mut pack, 100.0, |pack| {
             for (i, racer) in pack.iter().enumerate() {
                 assert!(
                     racer.state.ride.is_some()
@@ -1053,14 +1177,73 @@ mod tests {
                 progress[i] += (index - last[i] + n + n / 2) % n - n / 2;
                 last[i] = index;
             }
-        }
-        assert!(falls <= 2, "se caen {falls} veces en {name}");
+        });
+        assert!(
+            ridden.falls <= most_falls,
+            "se caen {} veces en {name}",
+            ridden.falls
+        );
         for (i, progress) in progress.iter().enumerate() {
             assert!(
                 *progress > n,
                 "el rival {i} no da la vuelta a {name}: {progress} de {n}"
             );
         }
+    }
+
+    #[test]
+    fn the_grid_gets_away_without_a_touch() {
+        // The rivals set off side by side, three to a row, most of them
+        // wanting a lane on the other side of the road. With the player on
+        // its slot too, keeping to its line and not riding into anyone, on
+        // every difficulty: nobody so much as touches another bike.
+        use crate::settings::DIFFICULTIES;
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            for difficulty in DIFFICULTIES {
+                let mut pack: Vec<Racer> = crate::bike::GRID
+                    .iter()
+                    .enumerate()
+                    .map(|(slot, rival)| {
+                        let rival = match rival {
+                            Some(rival) => Rival {
+                                skill: difficulty.rival_skill(rival.skill),
+                                ..*rival
+                            },
+                            None => Rival {
+                                skill: 0.97,
+                                lane: Track::grid_lane(slot),
+                                loops: false,
+                            },
+                        };
+                        Racer::on_grid(&track, slot, rival)
+                    })
+                    .collect();
+                let ridden = ride_pack(&track, &mut pack, 10.0, |_| {});
+                assert_eq!(
+                    ridden.touches, 0,
+                    "{}, {difficulty:?}: {} touches",
+                    circuit.name, ridden.touches
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_rival_moves_across_only_as_far_as_the_bikes_beside_it_leave_room() {
+        // Nobody beside: all the way.
+        assert_eq!(across_to(-4.5, 4.0, &[]), 4.0);
+        // One beside, between it and where it goes: up to the clearance
+        // short of it, and no further while it is there.
+        assert_eq!(across_to(-4.5, 4.0, &[0.0]), -CLEARANCE);
+        assert_eq!(across_to(-CLEARANCE, 4.0, &[0.0]), -CLEARANCE);
+        // Too close already: it stays where it is, never back.
+        assert_eq!(across_to(-1.0, 4.0, &[0.0]), -1.0);
+        // One on the other side, or past where it goes and the clearance:
+        // no matter.
+        assert_eq!(across_to(-4.5, 0.0, &[-6.0, 3.0]), 0.0);
+        // The nearest of those in the way, either way across.
+        assert_eq!(across_to(4.5, -4.0, &[0.0, 2.0]), 2.0 + CLEARANCE);
     }
 
     #[test]

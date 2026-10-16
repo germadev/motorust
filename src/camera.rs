@@ -19,7 +19,9 @@ use crate::geometry::{approach, smoothstep, wrap_angle};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::menu::GameState;
 use crate::race::Watching;
+use crate::render_scale::{NativeShare, drawn_size, render_percent};
 use crate::welcome::GameMode;
+use crate::world::detail::Detail;
 // The fog is the colour of the sky at the horizon: far away, the land melts
 // into the sky.
 use crate::world::sky::{FOG, HORIZON};
@@ -254,14 +256,22 @@ fn update_camera_viewports(
     windows: Query<&Window, With<PrimaryWindow>>,
     game_mode: Res<GameMode>,
     watching: Option<Res<Watching>>,
+    detail: Option<Res<Detail>>,
+    native: Option<Res<NativeShare>>,
     mut cameras: Query<(&CameraPlayer, &mut Camera)>,
 ) {
     if *game_mode == GameMode::SplitScreen && watching.is_none() {
         let Some(window) = windows.iter().next() else {
             return;
         };
-        let width = window.physical_width();
-        let height = window.physical_height();
+        // Halves of what the world is drawn on: the window, or the image
+        // the size of the render scale (see `crate::render_scale`).
+        let size = drawn_size(
+            window.physical_size(),
+            render_percent(detail.as_deref()),
+            native.as_deref().copied().unwrap_or_default(),
+        );
+        let (width, height) = (size.x, size.y);
         if width == 0 || height == 0 {
             return;
         }

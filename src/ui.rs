@@ -1,5 +1,6 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 use crate::gamepads::{ActiveController, ClaimedPads, ControllerModel, Gamepads};
 use crate::hud::UiFont;
@@ -12,6 +13,33 @@ pub const RUST_ORANGE: Color = Color::srgb(0.9, 0.4, 0.12);
 /// Cuánto hay que inclinar el stick para moverse por un menú.
 const STICK_THRESHOLD: f32 = 0.5;
 
+/// The window (logical points) the interface is laid out for, at its own
+/// size: in another, the menus and the HUD grow or shrink with its diagonal,
+/// so they take the same share of any screen.
+pub const DESIGN_WINDOW: Vec2 = Vec2::new(1600.0, 900.0);
+/// The steps the interface's scale goes in, so that resizing the window
+/// does not build the menus again at every pixel.
+const SCALE_STEP: f32 = 0.05;
+
+/// How much the interface is scaled in a window `size` points big: as its
+/// diagonal is to [`DESIGN_WINDOW`]'s, but no more than its height is to the
+/// design's, so the menus always fit in a wide screen; in steps of
+/// [`SCALE_STEP`].
+pub fn ui_scale_for(size: Vec2) -> f32 {
+    let diagonal = size.length() / DESIGN_WINDOW.length();
+    let height = size.y / DESIGN_WINDOW.y;
+    let scale = diagonal.min(height).clamp(0.4, 4.0);
+    (scale / SCALE_STEP).round() * SCALE_STEP
+}
+
+/// Physical pixels to a unit of the interface in `window`: its pixels to a
+/// point, times the interface's scale. The art drawn for the interface (the
+/// lettering, the helmets, the gamepads) is drawn at this density, so it is
+/// sharp at any scale.
+pub fn ui_pixels(window: Option<&Window>, scale: Option<&UiScale>) -> f32 {
+    window.map_or(1.0, Window::scale_factor) * scale.map_or(1.0, |scale| scale.0)
+}
+
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
@@ -19,7 +47,22 @@ impl Plugin for UiPlugin {
         app.add_message::<MenuSound>()
             .init_resource::<InputDevice>()
             .init_resource::<UiIcons>()
-            .add_systems(PreUpdate, update_input_device);
+            .add_systems(PreUpdate, (update_input_device, scale_with_window));
+    }
+}
+
+/// The interface scaled to the window (see [`ui_scale_for`]).
+fn scale_with_window(windows: Query<&Window, With<PrimaryWindow>>, scale: Option<ResMut<UiScale>>) {
+    let (Some(window), Some(mut scale)) = (windows.iter().next(), scale) else {
+        return;
+    };
+    let size = Vec2::new(window.width(), window.height());
+    if size.min_element() <= 0.0 {
+        return;
+    }
+    let wanted = ui_scale_for(size);
+    if (scale.0 - wanted).abs() > SCALE_STEP / 4.0 {
+        scale.0 = wanted;
     }
 }
 
@@ -324,16 +367,6 @@ impl Row {
             )
         }
     }
-
-    /// Background of the option when it is not chosen: none, but the main
-    /// action stands out in a faint blue.
-    pub fn idle_background(&self) -> Color {
-        if self.primary {
-            PRIMARY_BLUE.with_alpha(0.3)
-        } else {
-            Color::NONE
-        }
-    }
 }
 
 pub fn text_font(font: &UiFont, size: f32) -> TextFont {
@@ -395,10 +428,11 @@ pub fn spawn_panel(
                             border_radius: BorderRadius::all(px(10)),
                             ..default()
                         },
+                        // Nothing behind an option not chosen.
                         BackgroundColor(if chosen {
                             chosen_background
                         } else {
-                            row.idle_background()
+                            Color::NONE
                         }),
                     ))
                     .with_children(|line| {
@@ -528,11 +562,26 @@ mod tests {
     }
 
     #[test]
+    fn the_interface_grows_with_the_screen() {
+        let scale = |width: f32, height: f32| ui_scale_for(Vec2::new(width, height));
+        assert_eq!(scale(1600.0, 900.0), 1.0);
+        // With the diagonal, on 16:9 screens big and small.
+        assert!((scale(1280.0, 720.0) - 0.8).abs() < 1e-4);
+        assert!((scale(1920.0, 1080.0) - 1.2).abs() < 1e-4);
+        assert!((scale(2560.0, 1440.0) - 1.6).abs() < 1e-4);
+        // A MacBook's 16:10 screen: by its diagonal, a little bigger.
+        assert!((scale(1728.0, 1117.0) - 1.1).abs() < 1e-4);
+        // An ultrawide one: no taller than its height allows.
+        assert!((scale(3440.0, 1440.0) - 1.6).abs() < 1e-4);
+        // In steps, so a window being resized does not change it at every
+        // pixel.
+        assert_eq!(scale(1600.0, 900.0), scale(1610.0, 905.0));
+    }
+
+    #[test]
     fn the_main_action_is_blue_and_leaving_red() {
         let resume = Row::primary("Resume");
         assert_eq!(resume.chosen_colors(), (PRIMARY_BLUE, Color::WHITE));
-        assert_ne!(resume.idle_background(), Color::NONE);
         assert_eq!(Row::danger("Exit").chosen_colors().0, EXIT_RED);
-        assert_eq!(Row::new("Back").idle_background(), Color::NONE);
     }
 }

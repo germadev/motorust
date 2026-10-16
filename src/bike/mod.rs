@@ -296,6 +296,11 @@ pub struct BikeInput {
     pub steer_direct: f32,
     /// Cuánto tira del manillar para hacer el caballito, de 0 a 1.
     pub wheelie: f32,
+    /// How much slower than usual the bike and the rider go over to the
+    /// other side when the turn changes sides (0, as always, to 1): from
+    /// the keyboard or the d-pad, as Options > Control says (see
+    /// [`pause::ReverseRate`]).
+    pub pivot_slowing: f32,
 }
 
 /// Estado físico de la moto. Solo cambia en los pasos fijos de la simulación.
@@ -342,6 +347,8 @@ pub struct BikeState {
     /// [`loop_ride`]): then the position, the height and the pitch follow
     /// the running surface.
     pub ride: Option<Ride>,
+    /// Whether its lean is going over to the other side (see [`swinging`]).
+    pub swinging: bool,
 }
 
 impl BikeState {
@@ -362,6 +369,7 @@ impl BikeState {
             accel: 0.0,
             chassis: Chassis::default(),
             ride: None,
+            swinging: false,
         }
     }
 
@@ -603,10 +611,17 @@ pub fn step(
     // también se tumba deprisa hacia el lado contrario.
     let leaning_in = (target_lean.abs() > state.lean.abs() && target_lean * state.lean >= 0.0)
         || target_lean * state.lean < 0.0;
+    // Going over to the other side, as fast as the controls say (as always
+    // but with the keyboard asking for less).
+    let swinging = swinging(state.swinging, state.lean, target_lean);
     let lean_rate = if leaning_in {
         tuning.lean_in_response
     } else {
         tuning.lean_response
+    } * if swinging {
+        1.0 - input.pivot_slowing
+    } else {
+        1.0
     };
 
     let target_pitch = if state.grounded {
@@ -639,11 +654,21 @@ pub fn step(
         steer_direct,
         grass,
         lean: approach(state.lean, target_lean, lean_rate, dt),
+        swinging,
         pitch: approach(state.pitch, target_pitch, PITCH_RESPONSE, dt),
         accel,
         chassis,
         ..*state
     }
+}
+
+/// Whether something leaning `now` (positive one way, negative the other)
+/// towards `target` is going over to the other side, if it `was`: from when
+/// the target goes over, while it is still on the side it leaves and on its
+/// way out on the new one, until it is nearly there or the target comes
+/// back towards the middle.
+pub fn swinging(was: bool, now: f32, target: f32) -> bool {
+    now * target < 0.0 || (was && now * target > 0.0 && now.abs() < 0.9 * target.abs())
 }
 
 /// Pega la moto al suelo o la deja volar. Sobre el suelo sigue su altura; si
@@ -1099,9 +1124,12 @@ fn spawn_grid(
         } else {
             match *rival {
                 Some(rival) => {
-                    // As fast as the difficulty asks.
+                    // As fast as the difficulty asks. It sets off on its
+                    // slot's line, and goes over to its lane once there is
+                    // room beside it.
                     let skill = settings.difficulty.rival_skill(rival.skill);
-                    bike.insert((Rival { skill, ..rival }, ai::Line(rival.lane)));
+                    let line = ai::Line(Track::grid_lane(slot));
+                    bike.insert((Rival { skill, ..rival }, line));
                 }
                 None => {
                     bike.insert(Player);
@@ -1166,6 +1194,7 @@ fn read_controller_binding(
                 steer: 0.0,
                 steer_direct,
                 wheelie,
+                pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
             }
         }
         ControllerBinding::Arrows => {
@@ -1212,6 +1241,7 @@ fn read_controller_binding(
                 steer: 0.0,
                 steer_direct,
                 wheelie,
+                pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
             }
         }
         ControllerBinding::Gamepad(entity) => {
@@ -1268,6 +1298,7 @@ fn read_controller_binding(
                     steer: steer.clamp(-1.0, 1.0),
                     steer_direct,
                     wheelie,
+                    pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
                 }
             } else {
                 BikeInput::default()
@@ -1431,6 +1462,7 @@ fn read_player_input(
             steer: steer.clamp(-1.0, 1.0),
             steer_direct,
             wheelie,
+            pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
         };
         if throttle > 0.0 && !race.started && !race.lights {
             info!(
@@ -1568,7 +1600,7 @@ fn stick_steer(x: f32) -> f32 {
 /// What the wheels throw up: blades of grass and puffs of dust.
 type KickedUp = (With<GrassParticle>, With<DustPuff>);
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn restart_race(
     keyboard: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
@@ -1581,6 +1613,7 @@ fn restart_race(
         &mut PreviousBikeState,
         &mut Knock,
         &mut CrashState,
+        Option<&mut ai::Line>,
     )>,
     particles: Query<Entity, Or<KickedUp>>,
     autopiloted: Query<Entity, With<Autopilot>>,
@@ -1602,8 +1635,11 @@ fn restart_race(
             .entity(bike)
             .remove::<(Autopilot, Rival, ai::Line)>();
     }
-    for (grid, mut state, mut previous, mut knock, mut crash) in &mut bikes {
+    for (grid, mut state, mut previous, mut knock, mut crash, line) in &mut bikes {
         *state = BikeState::parked_on(&track, track.grid_slot(grid.0));
+        if let Some(mut line) = line {
+            line.0 = Track::grid_lane(grid.0);
+        }
         // Sin estado anterior distinto, la interpolación no dibuja un "viaje".
         previous.0 = *state;
         *knock = Knock::default();
@@ -1863,7 +1899,7 @@ mod tests {
 
     use bevy::ecs::system::RunSystemOnce;
 
-    use crate::pause::{ReturnRate, SteerRate};
+    use crate::pause::{ReturnRate, ReverseRate, SteerRate};
     use crate::track::{Dust, WALL_DISTANCE};
 
     use super::*;
@@ -2114,6 +2150,79 @@ mod tests {
             analog.value < 0.0,
             "empieza de inmediato hacia el otro lado"
         );
+    }
+
+    #[test]
+    fn going_over_to_the_other_side_is_told_from_leaning_in() {
+        // The target over to the other side: going over.
+        assert!(swinging(false, 0.5, -0.5));
+        // On its way out on the new side, if it was going over.
+        assert!(swinging(true, -0.2, -0.5));
+        assert!(!swinging(false, -0.2, -0.5), "leaning in from upright");
+        // Nearly there, or the target back towards the middle: done.
+        assert!(!swinging(true, -0.48, -0.5));
+        assert!(!swinging(true, -0.2, -0.1));
+        assert!(!swinging(true, 0.0, 0.0));
+    }
+
+    #[test]
+    fn the_keyboard_turning_the_other_way_swings_the_bike_over_as_fast_as_asked() {
+        let tuning = BikeTuning::default();
+        // Turning flat out to the left at speed, then to the right: how long
+        // until the bike leans most of the way to the right, and where it
+        // goes (the turn changes at once whatever the option).
+        let over = |rate: ReverseRate| {
+            let mut state = BikeState {
+                speed: 50.0,
+                ..parked()
+            };
+            let input = |steer_direct: f32| BikeInput {
+                throttle: 1.0,
+                steer_direct,
+                pivot_slowing: rate.slowing(steer_direct),
+                ..default()
+            };
+            for _ in 0..(1.0 / DT) as usize {
+                state = step(
+                    &state,
+                    &input(1.0),
+                    &Ground::flat(Surface::Asphalt),
+                    &tuning,
+                    DT,
+                );
+            }
+            let leaned = state.lean;
+            let mut over = None;
+            for frame in 1..=(1.0 / DT) as usize {
+                state = step(
+                    &state,
+                    &input(-1.0),
+                    &Ground::flat(Surface::Asphalt),
+                    &tuning,
+                    DT,
+                );
+                if over.is_none() && state.lean < -0.8 * leaned {
+                    over = Some(frame as f32 * DT);
+                }
+            }
+            (over.unwrap(), state.heading)
+        };
+        let (fast, heading) = over(ReverseRate::Fast);
+        let (medium, medium_heading) = over(ReverseRate::Medium);
+        let (slow, slow_heading) = over(ReverseRate::Slow);
+        assert!(fast < 0.2, "fast, as always: {fast} s");
+        assert!(
+            medium > 1.4 * fast && slow > 1.4 * medium,
+            "{fast} {medium} {slow}"
+        );
+        assert!(slow < 0.6, "slow: {slow} s");
+        // Fast is as always: no slowing at all.
+        assert_eq!(ReverseRate::Fast.slowing(1.0), 0.0);
+        // The bike's course is the same: only the lean is slower.
+        assert_eq!(heading, medium_heading);
+        assert_eq!(heading, slow_heading);
+        // Nothing slower with the stick (no keyboard turn).
+        assert_eq!(ReverseRate::Slow.slowing(0.0), 0.0);
     }
 
     #[test]

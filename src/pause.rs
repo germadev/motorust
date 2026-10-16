@@ -50,6 +50,9 @@ pub struct DebugOptions {
     /// Con el teclado o la cruceta, la rapidez con la que recupera al soltar
     /// la tecla de girar (de entrada, media).
     pub keyboard_return: ReturnRate,
+    /// With the keyboard or the d-pad, how fast the bike and the rider swing
+    /// over to the other side (fast at first: as always).
+    pub keyboard_reverse: ReverseRate,
     /// Si se ve en la carrera la leyenda con los controles (de entrada, no).
     pub show_legend: bool,
 }
@@ -61,6 +64,7 @@ impl Default for DebugOptions {
             keyboard_limit: TurnLimit::Medium,
             keyboard_rate: SteerRate::Medium,
             keyboard_return: ReturnRate::Medium,
+            keyboard_reverse: ReverseRate::Fast,
             show_legend: false,
         }
     }
@@ -150,6 +154,56 @@ impl ReturnRate {
     /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta.
     pub fn next(self, step: i32) -> Self {
         cycle(&RETURN_RATES, self, step)
+    }
+}
+
+/// How fast the bike and the rider swing over to the other side when the
+/// keyboard or the d-pad turns the other way while turning one way: as
+/// always (fast), or slower.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ReverseRate {
+    Slow,
+    Medium,
+    Fast,
+}
+
+const REVERSE_RATES: [ReverseRate; 3] = [ReverseRate::Slow, ReverseRate::Medium, ReverseRate::Fast];
+
+impl ReverseRate {
+    /// How much slower than usual the bike's lean and the rider's body go
+    /// over to the other side when the keyboard or the d-pad turns the other
+    /// way (`steer_direct`, the turn they give, not nothing): none at all
+    /// fast, as always; medium at 60 % of the usual speed, slow at 35 %. The
+    /// turn itself changes sides at once whatever the rate.
+    pub fn slowing(self, steer_direct: f32) -> f32 {
+        if steer_direct == 0.0 {
+            return 0.0;
+        }
+        match self {
+            ReverseRate::Slow => 0.65,
+            ReverseRate::Medium => 0.4,
+            ReverseRate::Fast => 0.0,
+        }
+    }
+
+    pub fn name(self, lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => match self {
+                ReverseRate::Slow => "lento",
+                ReverseRate::Medium => "medio",
+                ReverseRate::Fast => "rápido",
+            },
+            Language::English => match self {
+                ReverseRate::Slow => "slow",
+                ReverseRate::Medium => "medium",
+                ReverseRate::Fast => "fast",
+            },
+        }
+    }
+
+    /// El nivel siguiente (`step` 1) o el anterior (-1), dando la vuelta.
+    pub fn next(self, step: i32) -> Self {
+        cycle(&REVERSE_RATES, self, step)
     }
 }
 
