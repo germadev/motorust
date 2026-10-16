@@ -96,6 +96,9 @@ fn mirror(side: f32) -> Vec3 {
 pub(super) struct Rider {
     bike: Entity,
     hang: f32,
+    /// Whether it is going over to the other side (see
+    /// [`crate::bike::swinging`]).
+    swinging: bool,
     /// Dónde va la cadera en su moto.
     seat: Vec3,
 }
@@ -178,6 +181,7 @@ pub(super) fn spawn_pivots(
         Rider {
             bike,
             hang: 0.0,
+            swinging: false,
             seat: geometry.seat,
         },
     );
@@ -625,11 +629,11 @@ pub(super) fn helmet_mesh() -> Mesh {
 pub(super) fn hang_off(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
-    bikes: Query<(&BikeState, Option<&super::super::CrashState>)>,
+    bikes: Query<(&BikeState, &BikeInput, Option<&super::super::CrashState>)>,
     mut riders: Query<(&mut Rider, &mut Transform)>,
 ) {
     for (mut rider, mut transform) in &mut riders {
-        let Ok((state, crash)) = bikes.get(rider.bike) else {
+        let Ok((state, input, crash)) = bikes.get(rider.bike) else {
             continue;
         };
         if crash.is_some_and(|c| c.is_down()) {
@@ -639,7 +643,15 @@ pub(super) fn hang_off(
             continue;
         }
         let target = (state.lean / tuning.max_lean).clamp(-1.0, 1.0);
-        rider.hang = approach(rider.hang, target, POSE_RESPONSE, time.delta_secs());
+        // Over to the other side as fast as the controls say, like the bike.
+        rider.swinging = crate::bike::swinging(rider.swinging, rider.hang, target);
+        let response = POSE_RESPONSE
+            * if rider.swinging {
+                1.0 - input.pivot_slowing
+            } else {
+                1.0
+            };
+        rider.hang = approach(rider.hang, target, response, time.delta_secs());
         // Inclinación positiva = hacia la izquierda (-X): el piloto se va hacia ese lado.
         transform.translation = rider.seat - Vec3::X * HANG_OFF * rider.hang;
         transform.rotation = Quat::from_rotation_z(HANG_OFF_LEAN * rider.hang);

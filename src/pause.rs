@@ -50,8 +50,8 @@ pub struct DebugOptions {
     /// Con el teclado o la cruceta, la rapidez con la que recupera al soltar
     /// la tecla de girar (de entrada, media).
     pub keyboard_return: ReturnRate,
-    /// With the keyboard or the d-pad, how fast the turn goes over to the
-    /// other side (fast at first: at once, as always).
+    /// With the keyboard or the d-pad, how fast the bike and the rider swing
+    /// over to the other side (fast at first: as always).
     pub keyboard_reverse: ReverseRate,
     /// Si se ve en la carrera la leyenda con los controles (de entrada, no).
     pub show_legend: bool,
@@ -157,9 +157,9 @@ impl ReturnRate {
     }
 }
 
-/// How fast the keyboard or the d-pad turns the other way while turning
-/// one way: at once (fast, as always), or back through the middle, faster
-/// or slower.
+/// How fast the bike and the rider swing over to the other side when the
+/// keyboard or the d-pad turns the other way while turning one way: as
+/// always (fast), or slower.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ReverseRate {
     Slow,
@@ -170,15 +170,19 @@ pub enum ReverseRate {
 const REVERSE_RATES: [ReverseRate; 3] = [ReverseRate::Slow, ReverseRate::Medium, ReverseRate::Fast];
 
 impl ReverseRate {
-    /// How fast the turn one way unwinds back to the middle when the other
-    /// way is pressed (of the whole turn per second: from all of it, a fifth
-    /// of a second at medium, two fifths slow), or nothing: fast, it drops
-    /// at once.
-    pub fn unwind(self) -> Option<f32> {
+    /// How much slower than usual the bike's lean and the rider's body go
+    /// over to the other side when the keyboard or the d-pad turns the other
+    /// way (`steer_direct`, the turn they give, not nothing): none at all
+    /// fast, as always; medium at 60 % of the usual speed, slow at 35 %. The
+    /// turn itself changes sides at once whatever the rate.
+    pub fn slowing(self, steer_direct: f32) -> f32 {
+        if steer_direct == 0.0 {
+            return 0.0;
+        }
         match self {
-            ReverseRate::Slow => Some(2.5),
-            ReverseRate::Medium => Some(5.0),
-            ReverseRate::Fast => None,
+            ReverseRate::Slow => 0.65,
+            ReverseRate::Medium => 0.4,
+            ReverseRate::Fast => 0.0,
         }
     }
 

@@ -463,6 +463,7 @@ pub fn decide(
         steer_direct: 0.0,
         // Los rivales no hacen caballitos: van a por el tiempo.
         wheelie: 0.0,
+        pivot_slowing: 0.0,
     }
 }
 

@@ -400,11 +400,20 @@ pub fn clock(seconds: f32) -> String {
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
 }
 
-/// The lap's time, with no word: on the first lap, the time of the lap
-/// under way (`seconds`, "0:31.2"); from the second on, the last lap's
-/// instead ("1:13.9").
-fn lap_times(seconds: f32, last: Option<f32>) -> String {
-    clock(last.unwrap_or(seconds))
+/// The lap's time: on the first lap, the time of the lap under way, with
+/// no word (`seconds`, "0:31.2"); from the second on, the last lap's
+/// instead, said so ("ÚLTIMA 1:13.9", "LAST 1:13.9").
+fn lap_times(seconds: f32, last: Option<f32>, lang: Language) -> String {
+    match last {
+        Some(last) => {
+            let word = match lang {
+                Language::Spanish => "ÚLTIMA",
+                Language::English => "LAST",
+            };
+            format!("{word} {}", clock(last))
+        }
+        None => clock(seconds),
+    }
 }
 
 /// A place, in either language: 1º, 2º, 8º...
@@ -510,7 +519,7 @@ fn show_race_info(
                     if progress.finished.is_some() {
                         String::new()
                     } else {
-                        lap_times(progress.lap_time(standing.clock), progress.last_lap)
+                        lap_times(progress.lap_time(standing.clock), progress.last_lap, lang)
                     },
                     if record { GOLD } else { TIMES_COLOR },
                 )
@@ -846,9 +855,16 @@ mod tests {
 
     #[test]
     fn the_lap_under_way_reads_with_its_time_and_then_the_last_one() {
-        assert_eq!(lap_times(31.25, None), "0:31.2");
+        assert_eq!(lap_times(31.25, None, Language::Spanish), "0:31.2");
         // Once a lap is done, the last one's instead.
-        assert_eq!(lap_times(50.2, Some(73.9)), "1:13.9");
+        assert_eq!(
+            lap_times(50.2, Some(73.9), Language::Spanish),
+            "ÚLTIMA 1:13.9"
+        );
+        assert_eq!(
+            lap_times(50.2, Some(73.9), Language::English),
+            "LAST 1:13.9"
+        );
         // Since the lap began, at the line.
         let progress = Progress {
             lap_start: 40.0,
