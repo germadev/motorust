@@ -20,14 +20,21 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{PrimaryWindow, WindowRef};
 
-use crate::settings::{DEFAULT_RENDER_SCALE, Settings};
+use crate::world::detail::{Detail, choose_detail};
 
 pub struct RenderScalePlugin;
 
 impl Plugin for RenderScalePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_scaled_world)
-            .add_systems(PostUpdate, scale_the_world.before(CameraUpdateSystems));
+            // With the detail of the frame before, as the split screen's
+            // halves in `Update`: both change together.
+            .add_systems(
+                PostUpdate,
+                scale_the_world
+                    .before(CameraUpdateSystems)
+                    .before(choose_detail),
+            );
     }
 }
 
@@ -52,10 +59,11 @@ pub fn render_size(window: UVec2, percent: u32) -> UVec2 {
         .max(UVec2::ONE)
 }
 
-/// The share of the window's resolution the world is drawn at (%), as the
-/// settings say if there are any.
-pub fn render_percent(settings: Option<&Settings>) -> u32 {
-    settings.map_or(DEFAULT_RENDER_SCALE, |settings| settings.render_scale)
+/// The share of the window's resolution the world is drawn at now (%): as
+/// the options say, or as far as the performance mode has come (see
+/// [`Detail::scale`]); all of it with no detail yet.
+pub fn render_percent(detail: Option<&Detail>) -> u32 {
+    detail.map_or(100, |detail| detail.scale)
 }
 
 /// The world drawn smaller, shown over the whole window by the interface's
@@ -77,13 +85,13 @@ fn target_image(size: UVec2) -> Image {
     image
 }
 
-/// The world drawn at the render scale the settings say: into an image that
+/// The world drawn at the render scale in use: into an image that
 /// size, shown and sharpened by the interface's camera, or, at 100 %, on
 /// the window.
 #[allow(clippy::type_complexity)]
 fn scale_the_world(
     mut commands: Commands,
-    settings: Option<Res<Settings>>,
+    detail: Option<Res<Detail>>,
     window: Query<&Window, With<PrimaryWindow>>,
     mut images: ResMut<Assets<Image>>,
     mut shown: Query<(&mut Sprite, &mut Visibility), With<ScaledWorld>>,
@@ -98,7 +106,7 @@ fn scale_the_world(
         return;
     };
     let full = window.physical_size();
-    let size = render_size(full, render_percent(settings.as_deref()));
+    let size = render_size(full, render_percent(detail.as_deref()));
     let scaled = size != full;
     if scaled {
         // An image of the size wanted: a new one when the size changes, so
@@ -205,11 +213,11 @@ mod tests {
                 IsDefaultUiCamera,
             ))
             .id();
-        let mut settings = Settings {
-            render_scale: 70,
+        let mut detail = Detail {
+            scale: 70,
             ..default()
         };
-        app.insert_resource(settings.clone());
+        app.insert_resource(detail);
         app.update();
         let mut sprites = app.world_mut().query::<(&Sprite, &Visibility)>();
         let target = app.world().get::<RenderTarget>(world).unwrap();
@@ -232,8 +240,8 @@ mod tests {
         let camera = app.world().get::<Camera>(interface).unwrap();
         assert!(matches!(camera.clear_color, ClearColorConfig::Default));
         // Back at 100 %: on the window, as always.
-        settings.render_scale = 100;
-        app.insert_resource(settings);
+        detail.scale = 100;
+        app.insert_resource(detail);
         app.update();
         let target = app.world().get::<RenderTarget>(world).unwrap();
         assert!(matches!(target, RenderTarget::Window(_)), "{target:?}");

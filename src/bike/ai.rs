@@ -21,6 +21,9 @@ const LOOK_AHEAD_DISTANCE: f32 = 8.0;
 const LOOK_AHEAD_TIME: f32 = 0.4;
 /// Fracción del freno con la que planea las frenadas, para llegar con margen.
 const PLANNED_BRAKING: f32 = 0.6;
+/// How much more of the brakes a rival plans with for each bit of skill
+/// past 1 (only on very hard): it brakes later.
+const DARING_BRAKING: f32 = 2.0;
 /// Metros extra que revisa por delante además de su distancia de frenado.
 const EXTRA_HORIZON: f32 = 25.0;
 /// Puntos a cada lado con los que suaviza la curvatura del trazado.
@@ -61,7 +64,8 @@ const LOOP_TURN_TIME: f32 = 0.3;
 /// Un rival controlado por la máquina.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Rival {
-    /// Fracción de la punta y del agarre de la moto que se atreve a usar (0..1].
+    /// Fracción de la punta y del agarre de la moto que se atreve a usar (0..1];
+    /// past 1 only on very hard (see [`decide`]).
     pub skill: f32,
     /// Distancia a la izquierda de la línea central por la que va (m).
     pub lane: f32,
@@ -421,8 +425,12 @@ pub fn decide(
         };
     }
     let speed = state.speed.max(0.0);
+    // Past 1 (on very hard), the corners harder (the bike grips more with
+    // the steering near its stop) and the brakes later; never faster than
+    // the bike goes.
     let grip = tuning.max_lateral_accel * rival.skill;
-    let braking = tuning.brake_decel * PLANNED_BRAKING;
+    let daring = (rival.skill - 1.0).max(0.0);
+    let braking = tuning.brake_decel * (PLANNED_BRAKING + DARING_BRAKING * daring);
     let horizon = speed * speed / (2.0 * braking) + EXTRA_HORIZON;
     let ahead = ((LOOK_AHEAD_DISTANCE + speed * LOOK_AHEAD_TIME) / SAMPLE_SPACING).round() as usize;
     let steps = (horizon / SAMPLE_SPACING) as usize;
@@ -445,7 +453,7 @@ pub fn decide(
 
     // Velocidad: la más baja que exijan las curvas de delante, contando con
     // que le dé tiempo a frenar hasta ellas.
-    let mut target_speed = (tuning.max_speed * rival.skill).min(limit);
+    let mut target_speed = (tuning.max_speed * rival.skill.min(1.0)).min(limit);
     for (step, waypoint) in way.iter().enumerate().take(steps) {
         let curvature = waypoint.curvature(track);
         if curvature < 1e-4 {
@@ -486,6 +494,7 @@ mod tests {
         CrashState, fall, fall_against_wall, rejoin_pose, slide, wall_knocks_down,
     };
     use crate::bike::{BikeState, Body, Knock, advance, advance_hitting_walls};
+    use crate::settings::Difficulty;
 
     #[test]
     fn rival_laps_the_track_without_leaving_it() {
@@ -562,17 +571,24 @@ mod tests {
     #[test]
     fn against_the_clock_a_good_ride_earns_a_little_time_at_each_checkpoint() {
         use crate::race::{CheckpointTimes, checkpoints, stretch_after};
-        use crate::settings::Difficulty;
         for circuit in &crate::circuits::CIRCUITS {
             let lap = Track::new(&circuit.layout).lap_length();
             let points = checkpoints(&circuit.checkpoints(), lap);
             let times = checkpoint_times(circuit, 0.9, 1);
             assert_eq!(times.len(), points.len(), "{}", circuit.name);
+            // On very hard, a ride as good as its rivals'.
+            let very_hard = checkpoint_times(circuit, Difficulty::VeryHard.rival_skill(0.9), 1);
             for (difficulty, earns) in [
                 (Difficulty::Medium, 1.0..5.0),
                 (Difficulty::Hard, 0.3..3.5),
                 (Difficulty::Easy, 2.5..9.0),
+                (Difficulty::VeryHard, 0.0..3.0),
             ] {
+                let times = if difficulty == Difficulty::VeryHard {
+                    &very_hard
+                } else {
+                    &times
+                };
                 let given = CheckpointTimes::on(difficulty);
                 let mut left = given.starting(&points);
                 for (index, time) in times.iter().enumerate() {
@@ -1083,18 +1099,64 @@ mod tests {
         // With the rivals that take the branches going round the loops, and
         // through the forks.
         for circuit in &crate::circuits::CIRCUITS {
-            pack_race(&Track::new(&circuit.layout), circuit.name);
+            pack_race(
+                &Track::new(&circuit.layout),
+                circuit.name,
+                Difficulty::Medium,
+                0,
+            );
         }
     }
 
-    /// The rivals of [`crate::bike::GRID`] race a lap of `track` from the
-    /// grid: they all get round, nobody falls, and nobody leaves the road.
-    /// Those that take the branches go round the loops.
-    fn pack_race(track: &Track, name: &str) {
+    #[test]
+    fn a_very_hard_pack_races_without_wrecking_each_other() {
+        // Braking later and riding the corners harder, near enough clean:
+        // a touch at most a lap (two down), where a rival riding the lap on
+        // the side a branch leaves from is crossed by one taking it.
+        for circuit in &crate::circuits::CIRCUITS {
+            pack_race(
+                &Track::new(&circuit.layout),
+                circuit.name,
+                Difficulty::VeryHard,
+                2,
+            );
+        }
+    }
+
+    #[test]
+    fn on_very_hard_the_rivals_are_quicker_than_on_hard_and_keep_to_the_road() {
+        // The quickest rival of the grid, a lap from the grid, each way.
+        for circuit in &crate::circuits::CIRCUITS {
+            let times = |difficulty: Difficulty| -> f32 {
+                checkpoint_times(circuit, difficulty.rival_skill(0.95), 1)
+                    .iter()
+                    .sum()
+            };
+            let (hard, very_hard) = (times(Difficulty::Hard), times(Difficulty::VeryHard));
+            assert!(
+                very_hard < 0.995 * hard && very_hard > 0.95 * hard,
+                "{}: {very_hard} s against {hard} s",
+                circuit.name
+            );
+        }
+        // Up to 1 nothing changes: hard's rivals ride as they did.
+        assert_eq!(Difficulty::Hard.rival_skill(0.99), 1.0);
+    }
+
+    /// The rivals of [`crate::bike::GRID`], as fast as `difficulty` asks,
+    /// race a lap of `track` from the grid: they all get round, no more
+    /// than `most_falls` falls, and nobody leaves the road. Those that take
+    /// the branches go round the loops.
+    fn pack_race(track: &Track, name: &str, difficulty: Difficulty, most_falls: usize) {
         let mut pack: Vec<Racer> = crate::bike::GRID
             .iter()
             .enumerate()
-            .filter_map(|(slot, rival)| rival.map(|rival| Racer::on_grid(track, slot, rival)))
+            .filter_map(|(slot, rival)| {
+                rival.map(|rival| {
+                    let skill = difficulty.rival_skill(rival.skill);
+                    Racer::on_grid(track, slot, Rival { skill, ..rival })
+                })
+            })
             .collect();
         let n = track.sample_count() as i64;
         let mut last: Vec<i64> = pack
@@ -1116,7 +1178,11 @@ mod tests {
                 last[i] = index;
             }
         });
-        assert_eq!(ridden.falls, 0, "se caen {} veces en {name}", ridden.falls);
+        assert!(
+            ridden.falls <= most_falls,
+            "se caen {} veces en {name}",
+            ridden.falls
+        );
         for (i, progress) in progress.iter().enumerate() {
             assert!(
                 *progress > n,
@@ -1131,10 +1197,10 @@ mod tests {
         // wanting a lane on the other side of the road. With the player on
         // its slot too, keeping to its line and not riding into anyone, on
         // every difficulty: nobody so much as touches another bike.
-        use crate::settings::Difficulty;
+        use crate::settings::DIFFICULTIES;
         for circuit in &crate::circuits::CIRCUITS {
             let track = Track::new(&circuit.layout);
-            for difficulty in [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard] {
+            for difficulty in DIFFICULTIES {
                 let mut pack: Vec<Racer> = crate::bike::GRID
                     .iter()
                     .enumerate()

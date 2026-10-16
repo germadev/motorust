@@ -81,6 +81,8 @@ pub fn requested() -> bool {
 pub fn settings(mut settings: Settings) -> Settings {
     settings.transient = true;
     settings.fps = FpsLimit::Unlimited;
+    // Each scenario's settings as they are, not changed by the frame rate.
+    settings.performance_mode = false;
     settings.performance_log = true;
     settings
 }

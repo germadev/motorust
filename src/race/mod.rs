@@ -59,6 +59,7 @@ impl CheckpointTimes {
             Difficulty::Easy => (54.0, 3.0, 5.0),
             Difficulty::Medium => (62.0, 2.0, 3.0),
             Difficulty::Hard => (66.0, 1.5, 2.0),
+            Difficulty::VeryHard => (69.0, 1.0, 2.5),
         };
         Self { pace, spare, start }
     }
@@ -1336,14 +1337,21 @@ mod tests {
                 // On medium, the seconds given are a little more than a
                 // ride at 60 m/s takes, and a lot less than one at 30 m/s;
                 // more on easy, fewer on hard.
-                let [easy, medium, hard] = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard]
-                    .map(CheckpointTimes::on);
+                let [easy, medium, hard, very_hard] = [
+                    Difficulty::Easy,
+                    Difficulty::Medium,
+                    Difficulty::Hard,
+                    Difficulty::VeryHard,
+                ]
+                .map(CheckpointTimes::on);
                 let bonus = medium.bonus(stretch);
                 assert!(bonus > stretch / 60.0 && bonus < stretch / 30.0);
                 assert!(easy.bonus(stretch) > bonus && hard.bonus(stretch) < bonus);
+                assert!(very_hard.bonus(stretch) < hard.bonus(stretch));
                 assert!(medium.starting(&points) > medium.bonus(points[0]));
                 assert!(easy.starting(&points) > medium.starting(&points));
                 assert!(hard.starting(&points) < medium.starting(&points));
+                assert!(very_hard.starting(&points) < hard.starting(&points));
             }
         }
     }

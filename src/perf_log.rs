@@ -27,7 +27,7 @@ use crate::circuits::CurrentCircuit;
 use crate::menu::GameState;
 use crate::pause::Pause;
 use crate::race::Rules;
-use crate::render_scale::render_size;
+use crate::render_scale::{render_percent, render_size};
 use crate::settings::Settings;
 use crate::welcome::GameMode;
 use crate::world::Dressed;
@@ -61,6 +61,8 @@ pub struct Context {
     pub split_detail: bool,
     pub shadows: String,
     pub antialiasing: String,
+    /// Whether the performance mode is on.
+    pub performance: bool,
     /// The render scale (%) and the pixels the world is drawn at.
     pub render_scale: u32,
     pub render: String,
@@ -77,7 +79,7 @@ impl Context {
     fn pairs(&self) -> String {
         format!(
             "state={} mode={} players={} paused={} track={:?} trees={} lighter_far_trees={} \
-             lighter_split_screen={} shadows={} antialiasing={} render_scale={} render={} fps_limit={} \
+             lighter_split_screen={} performance_mode={} shadows={} antialiasing={} render_scale={} render={} fps_limit={} \
              resolution={} fullscreen={} pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
             self.state,
             self.mode,
@@ -87,6 +89,7 @@ impl Context {
             self.trees,
             self.far_trees,
             self.split_detail,
+            self.performance,
             self.shadows,
             self.antialiasing,
             self.render_scale,
@@ -568,6 +571,7 @@ fn log_performance(
         },
         far_trees: settings.lighter_far_trees,
         split_detail: settings.lighter_split_screen,
+        performance: settings.performance_mode,
         // The quality chosen, and the level the shadows are drawn at now.
         shadows: format!(
             "{:?}/{:?}",
@@ -575,11 +579,12 @@ fn log_performance(
             detail.as_deref().map(|detail| detail.level)
         ),
         antialiasing: format!("{:?}", settings.antialiasing),
-        render_scale: settings.render_scale,
+        // As the options say, or as far as the performance mode has come.
+        render_scale: render_percent(detail.as_deref()),
         render: window.map_or_else(
             || "none".into(),
             |window| {
-                let size = render_size(window.physical_size(), settings.render_scale);
+                let size = render_size(window.physical_size(), render_percent(detail.as_deref()));
                 format!("{}x{}", size.x, size.y)
             },
         ),

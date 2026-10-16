@@ -116,6 +116,10 @@ pub struct Settings {
     /// up to it (see [`crate::render_scale`]); the interface is always drawn
     /// at the window's own.
     pub render_scale: u32,
+    /// Whether the shadows and the render scale are lowered and raised as
+    /// the frame rate asks, to keep 60 frames a second (see
+    /// [`crate::world::detail`]), instead of as chosen.
+    pub performance_mode: bool,
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
@@ -135,10 +139,18 @@ pub enum Difficulty {
     #[default]
     Medium,
     Hard,
+    /// The rivals beyond what they dare on hard: braking later and riding
+    /// the corners harder (see [`crate::bike::ai`]).
+    VeryHard,
 }
 
 /// The difficulties that can be chosen, in order.
-pub const DIFFICULTIES: [Difficulty; 3] = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard];
+pub const DIFFICULTIES: [Difficulty; 4] = [
+    Difficulty::Easy,
+    Difficulty::Medium,
+    Difficulty::Hard,
+    Difficulty::VeryHard,
+];
 
 impl Difficulty {
     pub fn name(self, lang: Language) -> &'static str {
@@ -149,19 +161,28 @@ impl Difficulty {
             (Difficulty::Medium, Language::English) => "Medium",
             (Difficulty::Hard, Language::Spanish) => "Difícil",
             (Difficulty::Hard, Language::English) => "Hard",
+            (Difficulty::VeryHard, Language::Spanish) => "Muy difícil",
+            (Difficulty::VeryHard, Language::English) => "Very hard",
         }
     }
 
     /// How much of its bike a rival dares to use, for one that uses
-    /// `skill` on medium: less on easy, more on hard (never more than all).
+    /// `skill` on medium: less on easy, more on hard (never more than all);
+    /// on very hard, more than all for most of them: past 1, a rival brakes
+    /// later and rides the corners harder, its top speed the bike's (see
+    /// [`crate::bike::ai::decide`]).
     pub fn rival_skill(self, skill: f32) -> f32 {
         match self {
             Difficulty::Easy => skill - 0.07,
             Difficulty::Medium => skill,
             Difficulty::Hard => (skill + 0.045).min(1.0),
+            Difficulty::VeryHard => skill + VERY_HARD,
         }
     }
 }
+
+/// How much more a rival dares on very hard than on medium.
+const VERY_HARD: f32 = 0.12;
 
 /// The frame latencies that can be chosen, and Bevy's own.
 pub const FRAME_LATENCIES: [u32; 3] = [1, 2, 3];
@@ -293,6 +314,7 @@ impl Default for Settings {
             shadows: ShadowQuality::default(),
             antialiasing: Antialiasing::default(),
             render_scale: DEFAULT_RENDER_SCALE,
+            performance_mode: false,
             frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
             transient: false,
@@ -1845,7 +1867,14 @@ mod tests {
             assert!(Difficulty::Easy.rival_skill(skill) < skill - 0.05);
             assert!(Difficulty::Hard.rival_skill(skill) > skill);
             assert!(Difficulty::Hard.rival_skill(skill) <= 1.0);
+            // Very hard, more than hard: the quickest past what the bike
+            // gives (braking later and riding the corners harder).
+            let very_hard = Difficulty::VeryHard.rival_skill(skill);
+            assert!(very_hard > Difficulty::Hard.rival_skill(skill));
         }
+        assert!(Difficulty::VeryHard.rival_skill(0.95) > 1.0);
+        assert_eq!(DIFFICULTIES.last(), Some(&Difficulty::VeryHard));
+        assert_eq!(Difficulty::VeryHard.name(Language::Spanish), "Muy difícil");
     }
 
     #[test]

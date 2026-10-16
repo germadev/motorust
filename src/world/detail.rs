@@ -12,8 +12,15 @@
 //! the screen, each with its own shadows, so (unless Options > Graphics says
 //! otherwise) it is drawn lighter: the shadows at the lowest level, the
 //! grass, flowers and petals nearer and the trees lighter sooner.
+//!
+//! The performance mode (Options > Graphics) goes further down the same
+//! way, quicker, to keep 60 frames a second: the shadows and the share of
+//! the window's resolution the world is drawn at (see
+//! [`crate::render_scale`]) together, down a ladder of [`Rung`]s
+//! ([`ladder`]). Neither makes a pipeline again, so neither stutters.
 
 use bevy::anti_alias::fxaa::Fxaa;
+use bevy::camera::RenderTarget;
 use bevy::camera::visibility::VisibilityRange;
 use bevy::light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap};
 use bevy::prelude::*;
@@ -37,23 +44,6 @@ pub enum Level {
 }
 
 impl Level {
-    /// The next one down, or up, if there is one.
-    pub fn lower(self) -> Option<Self> {
-        match self {
-            Level::High => Some(Level::Medium),
-            Level::Medium => Some(Level::Low),
-            Level::Low => None,
-        }
-    }
-
-    pub fn higher(self) -> Option<Self> {
-        match self {
-            Level::High => None,
-            Level::Medium => Some(Level::High),
-            Level::Low => Some(Level::Medium),
-        }
-    }
-
     /// The level a quality chosen fixes, if it does.
     pub fn of(quality: ShadowQuality) -> Option<Self> {
         match quality {
@@ -65,12 +55,84 @@ impl Level {
     }
 }
 
-/// The detail the world is drawn with now: the shadows' level, and whether
-/// the screen is split (and drawn lighter for it).
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// The detail the world is drawn with now: the shadows' level, whether the
+/// screen is split (and drawn lighter for it), and the share of the
+/// window's resolution the world is drawn at (%, see
+/// [`crate::render_scale`]).
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Detail {
     pub level: Level,
     pub split: bool,
+    pub scale: u32,
+}
+
+impl Default for Detail {
+    fn default() -> Self {
+        Self {
+            level: Level::High,
+            split: false,
+            scale: 100,
+        }
+    }
+}
+
+/// A rung of an automatic quality's ladder: the shadows' level and the
+/// share of the window's resolution the world is drawn at (%).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rung {
+    pub level: Level,
+    pub scale: u32,
+}
+
+const fn rung(level: Level, scale: u32) -> Rung {
+    Rung { level, scale }
+}
+
+/// The shadows alone, automatic (Options > Graphics > Shadows): their three
+/// levels, the world at the render scale chosen.
+const SHADOWS: [Rung; 3] = [
+    rung(Level::High, 100),
+    rung(Level::Medium, 100),
+    rung(Level::Low, 100),
+];
+/// The performance mode with one view: the shadows and the resolution down
+/// by turns, the shadows first, as they show least.
+const PERFORMANCE: [Rung; 8] = [
+    rung(Level::High, 100),
+    rung(Level::Medium, 100),
+    rung(Level::Medium, 90),
+    rung(Level::Low, 90),
+    rung(Level::Low, 80),
+    rung(Level::Low, 70),
+    rung(Level::Low, 60),
+    rung(Level::Low, 50),
+];
+/// With two views, whose shadows are at their lowest already: the
+/// resolution alone.
+const PERFORMANCE_SPLIT: [Rung; 6] = [
+    rung(Level::Low, 100),
+    rung(Level::Low, 90),
+    rung(Level::Low, 80),
+    rung(Level::Low, 70),
+    rung(Level::Low, 60),
+    rung(Level::Low, 50),
+];
+
+/// The ladder an automatic quality goes down and up: the performance
+/// mode's (for two views drawn lighter, `split`, or one), or the shadows'
+/// alone.
+pub fn ladder(performance: bool, split: bool) -> &'static [Rung] {
+    match (performance, split) {
+        (true, false) => &PERFORMANCE,
+        (true, true) => &PERFORMANCE_SPLIT,
+        (false, _) => &SHADOWS,
+    }
+}
+
+/// The frame rate the performance mode keeps up: 60, or the cap chosen if
+/// lower.
+pub fn performance_target(settings: &Settings) -> f32 {
+    settings.fps.target().min(60.0)
 }
 
 impl Detail {
@@ -122,25 +184,56 @@ impl Detail {
     }
 }
 
-/// How long (s) each look at the frame rate takes, how long after a change
-/// (or the start of a race, or the pause) the frames are not looked at, and
-/// how soon after a step up a step down undoes it.
-const WINDOW: f32 = 2.0;
-const SETTLE: f32 = 3.0;
+/// How an automatic quality looks at the frame rate and steps: how long
+/// (s) each look takes; how long after a change (or the start of a race,
+/// or the pause) the frames are not looked at; under what share of the
+/// target it goes down, and from what share it keeps up; and whether it
+/// goes down several rungs at once when far short.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pace {
+    window: f32,
+    settle: f32,
+    falls_short: f32,
+    keeps_up: f32,
+    jumps: bool,
+}
+
+/// The shadows alone: unhurried.
+pub const SHADOWS_PACE: Pace = Pace {
+    window: 2.0,
+    settle: 3.0,
+    falls_short: 0.9,
+    keeps_up: 0.97,
+    jumps: false,
+};
+/// The performance mode: a look every second, down as soon as the rate
+/// falls a little short, as many rungs as it falls short by.
+pub const PERFORMANCE_PACE: Pace = Pace {
+    window: 1.0,
+    settle: 1.0,
+    falls_short: 0.95,
+    keeps_up: 0.98,
+    jumps: true,
+};
+/// How much faster each rung down is reckoned to draw, to tell how many
+/// to go down at once; and the most at once.
+const RUNG_GAIN: f32 = 1.1;
+const MOST_AT_ONCE: usize = 3;
+/// How soon after a step up a step down undoes it (s).
 const UNDONE: f32 = 20.0;
 /// How long the frame rate must keep up before a step up (s), at first and
 /// at most: each step up soon undone doubles it.
 const HOLD: (f32, f32) = (10.0, 300.0);
-/// Under this share of the target the level goes down; from this one it
-/// keeps up.
-const FALLS_SHORT: f32 = 0.9;
-const KEEPS_UP: f32 = 0.97;
 
-/// The automatic quality of the shadows: the level it has come to, and how
-/// the frame rate has been going.
+/// An automatic quality: how far down its ladder it has come, and how the
+/// frame rate has been going.
 #[derive(Resource, Clone, Debug, PartialEq)]
 pub struct AutoQuality {
-    pub level: Level,
+    /// The rung (0, the most detail; see [`ladder`]).
+    pub step: usize,
+    /// The ladder it is on (see [`ladder`]): the performance mode's, for
+    /// two views drawn lighter.
+    ladder: (bool, bool),
     /// The frames of the look under way (s), and when it began.
     frames: Vec<f32>,
     began: f32,
@@ -156,7 +249,8 @@ pub struct AutoQuality {
 impl Default for AutoQuality {
     fn default() -> Self {
         Self {
-            level: Level::High,
+            step: 0,
+            ladder: (false, false),
             frames: Vec::new(),
             began: 0.0,
             steady: None,
@@ -176,40 +270,59 @@ impl AutoQuality {
         self.changed = now;
     }
 
+    /// On `ladder` (see [`ladder`]): if it was on another, back to its top,
+    /// with everything it had learnt forgotten.
+    pub fn on(&mut self, ladder: (bool, bool), now: f32) {
+        if self.ladder != ladder {
+            *self = Self {
+                ladder,
+                ..Self::default()
+            };
+            self.rest(now);
+        }
+    }
+
     /// A frame of `dt` s, ending at `now` (s), aiming at `target` frames a
-    /// second: the level to draw with. Every [`WINDOW`] s it looks at the
-    /// rate: short of the target, a level down; keeping up for long enough,
-    /// a level up.
-    pub fn frame(&mut self, now: f32, dt: f32, target: f32) -> Level {
-        if now - self.changed < SETTLE {
-            return self.level;
+    /// second, at `pace`, on a ladder of `rungs`: the rung to draw with.
+    /// Every look at the rate (see [`Pace`]): short of the target, a rung
+    /// down (or as many as it is short by, if the pace jumps); keeping up
+    /// for long enough, a rung up.
+    pub fn frame(&mut self, now: f32, dt: f32, target: f32, pace: &Pace, rungs: usize) -> usize {
+        let last = rungs.saturating_sub(1);
+        self.step = self.step.min(last);
+        if now - self.changed < pace.settle {
+            return self.step;
         }
         if self.frames.is_empty() {
             self.began = now - dt;
         }
         self.frames.push(dt);
-        if now - self.began < WINDOW {
-            return self.level;
+        if now - self.began < pace.window {
+            return self.step;
         }
         let rate = self.frames.len() as f32 / self.frames.iter().sum::<f32>().max(1e-6);
         let began = self.began;
         self.frames.clear();
-        if rate < target * FALLS_SHORT {
+        if rate < target * pace.falls_short {
             self.steady = None;
-            if let Some(lower) = self.level.lower() {
+            if self.step < last {
                 // A step up soon undone: wait longer before the next one.
                 if self.stepped_up.is_some_and(|up| now - up < UNDONE) {
                     self.hold = (self.hold * 2.0).min(HOLD.1);
                 }
-                self.level = lower;
+                let down = if pace.jumps {
+                    let short = (target / rate.max(1.0)).ln() / RUNG_GAIN.ln();
+                    (short.ceil() as usize).clamp(1, MOST_AT_ONCE)
+                } else {
+                    1
+                };
+                self.step = (self.step + down).min(last);
                 self.changed = now;
             }
-        } else if rate >= target * KEEPS_UP {
+        } else if rate >= target * pace.keeps_up {
             let steady = *self.steady.get_or_insert(began);
-            if now - steady >= self.hold
-                && let Some(higher) = self.level.higher()
-            {
-                self.level = higher;
+            if now - steady >= self.hold && self.step > 0 {
+                self.step -= 1;
                 self.stepped_up = Some(now);
                 self.changed = now;
                 self.steady = None;
@@ -217,7 +330,7 @@ impl AutoQuality {
         } else {
             self.steady = None;
         }
-        self.level
+        self.step
     }
 }
 
@@ -244,49 +357,73 @@ impl Plugin for DetailPlugin {
 #[derive(Component, Clone, PartialEq)]
 struct FullReach(VisibilityRange);
 
-/// With the shadows automatic, the frame rate looked at during a race (not
-/// paused).
+/// Whether the world is drawn lighter for two views now: two share the
+/// screen, and Options > Graphics does not say to draw it all anyway.
+fn split(settings: Option<&Settings>, game_mode: Option<&GameMode>) -> bool {
+    settings.is_none_or(|settings| settings.lighter_split_screen)
+        && game_mode.is_some_and(|mode| *mode == GameMode::SplitScreen)
+}
+
+/// With the performance mode or the shadows automatic, the frame rate
+/// looked at during a race (not paused), on the ladder that goes with them.
 fn adapt_quality(
     time: Res<Time<Real>>,
     settings: Option<Res<Settings>>,
+    game_mode: Option<Res<GameMode>>,
     state: Option<Res<State<GameState>>>,
     pause: Option<Res<Pause>>,
     mut auto: ResMut<AutoQuality>,
 ) {
     let now = time.elapsed_secs();
-    let automatic = settings
-        .as_deref()
-        .is_some_and(|settings| settings.shadows == ShadowQuality::Auto);
+    let settings = settings.as_deref();
+    let performance = settings.is_some_and(|settings| settings.performance_mode);
+    let split = split(settings, game_mode.as_deref());
+    auto.on((performance, split), now);
+    let automatic =
+        performance || settings.is_some_and(|settings| settings.shadows == ShadowQuality::Auto);
     let racing = state.is_some_and(|state| *state.get() == GameState::Race)
         && pause.is_none_or(|pause| !pause.is_open());
-    if !(automatic && racing) {
+    let (Some(settings), true) = (settings, automatic && racing) else {
         auto.rest(now);
         return;
-    }
-    let target = settings.map_or(60.0, |settings| settings.fps.target());
-    auto.frame(now, time.delta_secs(), target);
+    };
+    let (target, pace) = if performance {
+        (performance_target(settings), &PERFORMANCE_PACE)
+    } else {
+        (settings.fps.target(), &SHADOWS_PACE)
+    };
+    let rungs = ladder(performance, split).len();
+    auto.frame(now, time.delta_secs(), target, pace, rungs);
 }
 
-/// The detail for the players at play: the shadows' level chosen, or come
-/// to automatically; split when two share the screen, unless Options >
-/// Graphics says to draw it all anyway.
-fn choose_detail(
+/// The detail for the players at play: with the performance mode, as far
+/// down its ladder as it has come; otherwise the shadows' level chosen, or
+/// come to automatically, and the render scale chosen. Split when two share
+/// the screen, unless Options > Graphics says to draw it all anyway.
+pub fn choose_detail(
     game_mode: Option<Res<GameMode>>,
     settings: Option<Res<Settings>>,
     auto: Res<AutoQuality>,
     mut detail: ResMut<Detail>,
 ) {
-    let lighter = settings
-        .as_deref()
-        .is_none_or(|settings| settings.lighter_split_screen);
-    let level = settings
-        .and_then(|settings| Level::of(settings.shadows))
-        .unwrap_or(auto.level);
-    let wanted = Detail {
-        level,
-        split: lighter && game_mode.is_some_and(|mode| *mode == GameMode::SplitScreen),
+    let settings = settings.as_deref();
+    let split = split(settings, game_mode.as_deref());
+    let performance = settings.is_some_and(|settings| settings.performance_mode);
+    let rungs = ladder(performance, split);
+    let reached = rungs[auto.step.min(rungs.len() - 1)];
+    let (level, scale) = match settings {
+        Some(_) if performance => (reached.level, reached.scale),
+        Some(settings) => (
+            Level::of(settings.shadows).unwrap_or(reached.level),
+            settings.render_scale,
+        ),
+        None => (reached.level, 100),
     };
-    detail.set_if_neq(wanted);
+    detail.set_if_neq(Detail {
+        level,
+        split,
+        scale,
+    });
 }
 
 /// The sun's shadows as the detail says.
@@ -347,14 +484,24 @@ fn reach_for_detail(
 /// The edges smoothed as Options > Graphics says, on every camera as it
 /// comes: all of them (the interface's too, while it draws over what the
 /// world's drew on the window) multisampled alike, four samples a pixel or
-/// one, and FXAA on the world's if chosen. With the world drawn smaller
-/// (see [`crate::render_scale`]) the interface's camera draws on its own
-/// over the window, with one sample a pixel.
+/// one, and FXAA on the world's if chosen. With the world drawn smaller,
+/// into an image (see [`crate::render_scale`]), the interface's camera
+/// draws on its own over the window, with one sample a pixel: told from
+/// where the world's cameras draw this frame, so that both change together.
 #[allow(clippy::type_complexity)]
 fn antialias(
     mut commands: Commands,
     settings: Option<Res<Settings>>,
-    cameras: Query<(Entity, Option<&Msaa>, Has<Fxaa>, Has<Camera3d>), With<Camera>>,
+    cameras: Query<
+        (
+            Entity,
+            Option<&Msaa>,
+            Has<Fxaa>,
+            Has<Camera3d>,
+            Option<&RenderTarget>,
+        ),
+        With<Camera>,
+    >,
 ) {
     let chosen = settings
         .as_deref()
@@ -364,8 +511,10 @@ fn antialias(
         Antialiasing::Fxaa => (Msaa::Off, true),
         Antialiasing::Off => (Msaa::Off, false),
     };
-    let scaled = crate::render_scale::render_percent(settings.as_deref()) < 100;
-    for (camera, current, has_fxaa, world) in &cameras {
+    let scaled = cameras
+        .iter()
+        .any(|(.., world, target)| world && matches!(target, Some(RenderTarget::Image(_))));
+    for (camera, current, has_fxaa, world, _) in &cameras {
         let msaa = if scaled && !world { Msaa::Off } else { msaa };
         if current != Some(&msaa) {
             commands.entity(camera).insert(msaa);
@@ -384,14 +533,16 @@ mod tests {
 
     #[test]
     fn each_level_draws_less_and_two_views_lighter() {
-        let at = |level, split| Detail { level, split };
+        let at = |level, split| Detail {
+            level,
+            split,
+            scale: 100,
+        };
         let levels = [Level::High, Level::Medium, Level::Low];
         for pair in levels.windows(2) {
             let (more, less) = (at(pair[0], false), at(pair[1], false));
             assert!(less.cascades().bounds.last() < more.cascades().bounds.last());
             assert!(less.cascades().bounds.len() < more.cascades().bounds.len());
-            assert_eq!(pair[0].lower(), Some(pair[1]));
-            assert_eq!(pair[1].higher(), Some(pair[0]));
             // Nothing else changes with the level: nothing pops in or out.
             assert_eq!(less.reach(), more.reach());
             assert_eq!(less.tree_levels(), more.tree_levels());
@@ -416,37 +567,138 @@ mod tests {
         let mut now = from;
         while now < from + seconds {
             now += dt;
-            auto.frame(now, dt, 60.0);
+            auto.frame(now, dt, 60.0, &SHADOWS_PACE, SHADOWS.len());
         }
         now
+    }
+
+    /// The shadows' level the automatic quality of the shadows has come to.
+    fn level(auto: &AutoQuality) -> Level {
+        SHADOWS[auto.step].level
     }
 
     #[test]
     fn the_automatic_quality_goes_down_while_short_and_back_up_when_it_keeps_up() {
         let mut auto = AutoQuality::default();
         auto.rest(0.0);
-        assert_eq!(auto.level, Level::High);
+        assert_eq!(level(&auto), Level::High);
         // At 45 fps: a level down after the settling and a look, then
         // another once that one has settled; and no lower.
         let now = run(&mut auto, 0.0, 5.5, 45.0);
-        assert_eq!(auto.level, Level::Medium);
+        assert_eq!(level(&auto), Level::Medium);
         let now = run(&mut auto, now, 5.5, 45.0);
-        assert_eq!(auto.level, Level::Low);
+        assert_eq!(level(&auto), Level::Low);
         let now = run(&mut auto, now, 10.0, 45.0);
-        assert_eq!(auto.level, Level::Low);
+        assert_eq!(level(&auto), Level::Low);
         // Keeping up at 60: not at once, but after a while, back up.
         let now = run(&mut auto, now, 8.0, 60.0);
-        assert_eq!(auto.level, Level::Low);
+        assert_eq!(level(&auto), Level::Low);
         let now = run(&mut auto, now, 10.0, 60.0);
-        assert_eq!(auto.level, Level::Medium);
+        assert_eq!(level(&auto), Level::Medium);
         // That was too much: down again, and the next step up waits twice
         // as long.
         let now = run(&mut auto, now, 5.5, 45.0);
-        assert_eq!(auto.level, Level::Low);
+        assert_eq!(level(&auto), Level::Low);
         let now = run(&mut auto, now, 16.0, 60.0);
-        assert_eq!(auto.level, Level::Low, "not after the first hold");
+        assert_eq!(level(&auto), Level::Low, "not after the first hold");
         run(&mut auto, now, 10.0, 60.0);
-        assert_eq!(auto.level, Level::Medium);
+        assert_eq!(level(&auto), Level::Medium);
+    }
+
+    /// `seconds` of frames at `fps` from `from` (s) in the performance mode
+    /// with one view, aiming at 60.
+    fn perform(auto: &mut AutoQuality, from: f32, seconds: f32, fps: f32) -> f32 {
+        let dt = 1.0 / fps;
+        let mut now = from;
+        while now < from + seconds {
+            now += dt;
+            auto.frame(now, dt, 60.0, &PERFORMANCE_PACE, PERFORMANCE.len());
+        }
+        now
+    }
+
+    #[test]
+    fn the_performance_mode_goes_down_quickly_as_far_as_it_falls_short() {
+        let mut auto = AutoQuality::default();
+        auto.on((true, false), 0.0);
+        // At 45 fps: after a second settling and a second looking, three
+        // rungs down at once (as many as it falls short by, three at most).
+        let now = perform(&mut auto, 0.0, 2.1, 45.0);
+        assert_eq!(auto.step, 3);
+        // A little short: one more, two seconds later.
+        let now = perform(&mut auto, now, 2.1, 56.0);
+        assert_eq!(auto.step, 4);
+        // Keeping up at 60 (a screen's rate): it stays, and after a while
+        // goes back up a rung.
+        let now = perform(&mut auto, now, 9.0, 60.0);
+        assert_eq!(auto.step, 4);
+        let now = perform(&mut auto, now, 3.0, 60.0);
+        assert_eq!(auto.step, 3);
+        // Far short for long: down to the last rung, and no further.
+        perform(&mut auto, now, 20.0, 20.0);
+        assert_eq!(auto.step, PERFORMANCE.len() - 1);
+        // Another ladder (two views): back to its top.
+        auto.on((true, true), 100.0);
+        assert_eq!(auto.step, 0);
+    }
+
+    #[test]
+    fn the_performance_ladder_lowers_the_shadows_and_the_resolution_by_turns() {
+        for rungs in [&PERFORMANCE[..], &PERFORMANCE_SPLIT[..], &SHADOWS[..]] {
+            assert_eq!(rungs[0].scale, 100);
+            for pair in rungs.windows(2) {
+                let (above, below) = (pair[0], pair[1]);
+                // Each one down a little less: one thing at a time.
+                let lower = below.level > above.level;
+                let smaller = below.scale < above.scale;
+                assert!(lower != smaller, "{above:?} {below:?}");
+                assert!(below.level >= above.level && below.scale <= above.scale);
+            }
+        }
+        // As the game starts, at the top; down to half the resolution.
+        assert_eq!(PERFORMANCE[0], rung(Level::High, 100));
+        assert_eq!(PERFORMANCE.last().unwrap().scale, 50);
+        // Two views: the resolution alone, the shadows at their lowest.
+        assert!(
+            PERFORMANCE_SPLIT
+                .iter()
+                .all(|rung| rung.level == Level::Low)
+        );
+        assert!(SHADOWS.iter().all(|rung| rung.scale == 100));
+        assert_eq!(ladder(true, true).len(), PERFORMANCE_SPLIT.len());
+        // 60, or the cap if lower.
+        let mut settings = Settings::default();
+        assert_eq!(performance_target(&settings), 60.0);
+        settings.fps = crate::settings::FpsLimit::Cap(30);
+        assert_eq!(performance_target(&settings), 30.0);
+        settings.fps = crate::settings::FpsLimit::Cap(144);
+        assert_eq!(performance_target(&settings), 60.0);
+    }
+
+    #[test]
+    fn the_detail_comes_from_the_performance_mode_or_from_the_options() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<GameMode>()
+            .init_resource::<DirectionalLightShadowMap>()
+            .insert_resource(Settings {
+                shadows: ShadowQuality::Medium,
+                render_scale: 70,
+                ..default()
+            })
+            .add_plugins(DetailPlugin);
+        app.update();
+        let detail = |app: &App| *app.world().resource::<Detail>();
+        assert_eq!(
+            (detail(&app).level, detail(&app).scale),
+            (Level::Medium, 70)
+        );
+        // In the performance mode, as far down its ladder as it has come.
+        app.world_mut().resource_mut::<Settings>().performance_mode = true;
+        app.update();
+        app.world_mut().resource_mut::<AutoQuality>().step = 4;
+        app.update();
+        assert_eq!((detail(&app).level, detail(&app).scale), (Level::Low, 80));
     }
 
     #[test]
@@ -455,10 +707,10 @@ mod tests {
         auto.rest(0.0);
         // A long frame or two as the race starts (pipelines being made)
         // count for nothing.
-        auto.frame(0.5, 0.5, 60.0);
-        auto.frame(1.5, 1.0, 60.0);
+        auto.frame(0.5, 0.5, 60.0, &SHADOWS_PACE, 3);
+        auto.frame(1.5, 1.0, 60.0, &SHADOWS_PACE, 3);
         run(&mut auto, 1.5, 1.4, 60.0);
-        assert_eq!(auto.level, Level::High);
+        assert_eq!(level(&auto), Level::High);
         assert!(auto.frames.is_empty(), "still settling");
     }
 
@@ -550,7 +802,7 @@ mod tests {
         app.update();
         let low = Detail {
             level: Level::Low,
-            split: false,
+            ..Detail::default()
         };
         assert_eq!(cascades(&app), low.cascades().bounds);
         assert_eq!(reach(&app), margins(&range));

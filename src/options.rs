@@ -26,7 +26,7 @@ use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
     text_font, ui_pixels,
 };
-use crate::world::detail::{AutoQuality, Level};
+use crate::world::detail::{Detail, Level};
 
 /// Height of the panel (px): the tab with the most options (Control) fits.
 const PANEL_HEIGHT: f32 = 600.0;
@@ -138,8 +138,37 @@ pub struct OptionsMenu {
     pub selected: usize,
     /// The view of the controls' mapping, while it is open.
     pub mapping: Option<Mapping>,
+    /// A page of Control's of its own, while it is open: how the stick
+    /// steers, or the keyboard.
+    pub steering: Option<Steering>,
     pub return_to: OptionsReturn,
     pub rescan_msg_until: f32,
+}
+
+/// The pages of Control's steering, each a list of its own in the panel.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Steering {
+    Stick,
+    Keyboard,
+}
+
+impl Steering {
+    /// Its row on Control, which opens it.
+    fn row(self) -> ControlItem {
+        match self {
+            Steering::Stick => ControlItem::StickBehaviour,
+            Steering::Keyboard => ControlItem::KeyboardBehaviour,
+        }
+    }
+
+    /// As the panel's title says it, after "OPCIONES >".
+    fn title(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (Steering::Stick, _) => "STICK",
+            (Steering::Keyboard, Language::Spanish) => "TECLADO",
+            (Steering::Keyboard, Language::English) => "KEYBOARD",
+        }
+    }
 }
 
 impl OptionsMenu {
@@ -148,12 +177,23 @@ impl OptionsMenu {
         self.on_tabs = false;
         self.selected = 0;
         self.mapping = None;
+        self.steering = None;
         self.return_to = return_to;
     }
 
     pub fn close(&mut self) {
         self.is_open = false;
         self.mapping = None;
+        self.steering = None;
+    }
+
+    /// Back from a page of Control's to Control, on the page's row.
+    fn leave_page(&mut self, page: Steering) {
+        self.steering = None;
+        self.selected = control_items(None)
+            .iter()
+            .position(|&item| item == page.row())
+            .unwrap_or(0);
     }
 
     /// Moves round the menu: up and down (`step`) through the row of
@@ -230,6 +270,9 @@ enum GameItem {
 enum ControlItem {
     /// The view where the keys and buttons are remapped.
     Mapping,
+    /// The pages of how the stick and the keyboard steer.
+    StickBehaviour,
+    KeyboardBehaviour,
     StickTurnLimit,
     KeyboardTurnLimit,
     KeyboardTurnRate,
@@ -257,6 +300,8 @@ enum GraphicsItem {
     /// How much of the window's resolution the world is drawn at.
     RenderScale,
     Fps,
+    /// Whether the shadows and the render scale follow the frame rate.
+    PerformanceMode,
     /// How far and fine the shadows are, or automatic.
     Shadows,
     /// How the edges are smoothed.
@@ -290,38 +335,47 @@ fn game_items() -> Vec<GameItem> {
 /// Room above a row that begins a group of its own (px).
 const GROUP_GAP: f32 = 14.0;
 
-/// Whether the row at `index` of `tab` begins a group of its own, with
-/// room above: on Control, the steering after the mapping, the legend
-/// after the steering, and looking for the gamepads after the legend and
-/// its shortcuts.
-fn starts_group(tab: OptionsTab, index: usize) -> bool {
+/// Whether the row at `index` of `tab` (on `page` of Control's, if one is
+/// open) begins a group of its own, with room above: on Control, the
+/// steering after the mapping, the legend after the steering, and looking
+/// for the gamepads after the legend and its shortcuts.
+fn starts_group(tab: OptionsTab, page: Option<Steering>, index: usize) -> bool {
     tab == OptionsTab::Control
+        && page.is_none()
         && matches!(
-            control_items().get(index),
+            control_items(page).get(index),
             Some(
-                ControlItem::StickTurnLimit | ControlItem::ShowLegend | ControlItem::RescanGamepads
+                ControlItem::StickBehaviour | ControlItem::ShowLegend | ControlItem::RescanGamepads
             )
         )
 }
 
 /// Whether the shortcuts for the sound and fullscreen go under the row at
-/// `index` of `tab`: under Control's legend.
-fn shortcuts_after(tab: OptionsTab, index: usize) -> bool {
-    tab == OptionsTab::Control && control_items().get(index) == Some(&ControlItem::ShowLegend)
+/// `index` of `tab` (and `page`): under Control's legend.
+fn shortcuts_after(tab: OptionsTab, page: Option<Steering>, index: usize) -> bool {
+    tab == OptionsTab::Control && control_items(page).get(index) == Some(&ControlItem::ShowLegend)
 }
 
-/// The mapping of the controls, and how the stick and the keyboard steer.
-fn control_items() -> Vec<ControlItem> {
-    vec![
-        ControlItem::Mapping,
-        ControlItem::StickTurnLimit,
-        ControlItem::KeyboardTurnLimit,
-        ControlItem::KeyboardTurnRate,
-        ControlItem::KeyboardReturnRate,
-        ControlItem::KeyboardReverseRate,
-        ControlItem::ShowLegend,
-        ControlItem::RescanGamepads,
-    ]
+/// Control's options: the mapping of the controls, the pages of how the
+/// stick and the keyboard steer, the legend; or, with a page open, its
+/// own.
+fn control_items(page: Option<Steering>) -> Vec<ControlItem> {
+    match page {
+        None => vec![
+            ControlItem::Mapping,
+            ControlItem::StickBehaviour,
+            ControlItem::KeyboardBehaviour,
+            ControlItem::ShowLegend,
+            ControlItem::RescanGamepads,
+        ],
+        Some(Steering::Stick) => vec![ControlItem::StickTurnLimit],
+        Some(Steering::Keyboard) => vec![
+            ControlItem::KeyboardTurnLimit,
+            ControlItem::KeyboardTurnRate,
+            ControlItem::KeyboardReturnRate,
+            ControlItem::KeyboardReverseRate,
+        ],
+    }
 }
 
 fn sound_items() -> Vec<SoundItem> {
@@ -338,6 +392,7 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Fullscreen,
             GraphicsItem::Resolution,
             GraphicsItem::RenderScale,
+            GraphicsItem::PerformanceMode,
             GraphicsItem::Shadows,
             GraphicsItem::Antialiasing,
             GraphicsItem::Trees,
@@ -353,6 +408,7 @@ fn graphics_items() -> Vec<GraphicsItem> {
             GraphicsItem::Resolution,
             GraphicsItem::RenderScale,
             GraphicsItem::Fps,
+            GraphicsItem::PerformanceMode,
             GraphicsItem::Shadows,
             GraphicsItem::Antialiasing,
             GraphicsItem::Trees,
@@ -378,11 +434,12 @@ fn render_scale_name(percent: u32, window: Option<&Window>) -> String {
     }
 }
 
-/// How many options `tab` has, besides Reset and Back.
-fn options_count(tab: OptionsTab) -> usize {
+/// How many options `tab` (on `page` of Control's) has, besides Reset and
+/// Back.
+fn options_count(tab: OptionsTab, page: Option<Steering>) -> usize {
     match tab {
         OptionsTab::Game => game_items().len(),
-        OptionsTab::Control => control_items().len(),
+        OptionsTab::Control => control_items(page).len(),
         OptionsTab::Sound => sound_items().len(),
         OptionsTab::Graphics => graphics_items().len(),
     }
@@ -393,15 +450,26 @@ fn options_count(tab: OptionsTab) -> usize {
 /// options.
 const FOOTER: usize = 2;
 
-/// How many options `tab` has, Reset and Back at its foot included.
-fn tab_items_count(tab: OptionsTab) -> usize {
-    options_count(tab) + FOOTER
+/// How many options `tab` (on `page`) has, Reset and Back at its foot
+/// included.
+fn tab_items_count(tab: OptionsTab, page: Option<Steering>) -> usize {
+    options_count(tab, page) + FOOTER
 }
 
 /// The settings as they are at first.
 fn first_settings() -> &'static Settings {
     static FIRST: std::sync::OnceLock<Settings> = std::sync::OnceLock::new();
     FIRST.get_or_init(Settings::default)
+}
+
+/// How the keyboard steers: the options of its page of Control's.
+fn keyboard(debug: &DebugOptions) -> (TurnLimit, SteerRate, ReturnRate, ReverseRate) {
+    (
+        debug.keyboard_limit,
+        debug.keyboard_rate,
+        debug.keyboard_return,
+        debug.keyboard_reverse,
+    )
 }
 
 /// How the stick and the keyboard steer, and whether the legend is shown:
@@ -428,8 +496,23 @@ fn steering(
 
 /// Whether the options of `tab` are as they are at first (the keys and
 /// buttons aside: the mapping of Control resets those).
-fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions) -> bool {
+fn section_is_default(
+    tab: OptionsTab,
+    page: Option<Steering>,
+    settings: &Settings,
+    debug: &DebugOptions,
+) -> bool {
     let first = first_settings();
+    let at_first = DebugOptions::default();
+    match (tab, page) {
+        (OptionsTab::Control, Some(Steering::Stick)) => {
+            return debug.stick_limit == at_first.stick_limit;
+        }
+        (OptionsTab::Control, Some(Steering::Keyboard)) => {
+            return keyboard(debug) == keyboard(&at_first);
+        }
+        _ => {}
+    }
     match tab {
         OptionsTab::Game => {
             (
@@ -463,6 +546,7 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
         // (Twelve at most in a tuple compared.)
         OptionsTab::Graphics => {
             settings.render_scale == first.render_scale
+                && settings.performance_mode == first.performance_mode
                 && (
                     settings.fullscreen,
                     settings.fullscreen_kind,
@@ -496,8 +580,28 @@ fn section_is_default(tab: OptionsTab, settings: &Settings, debug: &DebugOptions
 
 /// Puts the options of `tab` back as they are at first (see
 /// [`section_is_default`]).
-fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOptions) {
+fn reset_section(
+    tab: OptionsTab,
+    page: Option<Steering>,
+    settings: &mut Settings,
+    debug: &mut DebugOptions,
+) {
     let first = first_settings();
+    let at_first = DebugOptions::default();
+    match (tab, page) {
+        (OptionsTab::Control, Some(Steering::Stick)) => {
+            debug.stick_limit = at_first.stick_limit;
+            return;
+        }
+        (OptionsTab::Control, Some(Steering::Keyboard)) => {
+            debug.keyboard_limit = at_first.keyboard_limit;
+            debug.keyboard_rate = at_first.keyboard_rate;
+            debug.keyboard_return = at_first.keyboard_return;
+            debug.keyboard_reverse = at_first.keyboard_reverse;
+            return;
+        }
+        _ => {}
+    }
     match tab {
         OptionsTab::Game => {
             settings.language = first.language;
@@ -520,6 +624,7 @@ fn reset_section(tab: OptionsTab, settings: &mut Settings, debug: &mut DebugOpti
             settings.fullscreen_kind = first.fullscreen_kind;
             settings.resolution = first.resolution;
             settings.render_scale = first.render_scale;
+            settings.performance_mode = first.performance_mode;
             settings.fps = first.fps;
             settings.shadows = first.shadows;
             settings.antialiasing = first.antialiasing;
@@ -574,28 +679,38 @@ fn use_options_menu(
         return;
     }
 
-    // Salir / Volver con Esc o B
+    // Salir / Volver con Esc o B: from a page of Control's, back to
+    // Control.
+    let page = options_menu.steering;
     if request.back {
-        options_menu.close();
+        match page {
+            Some(page) => options_menu.leave_page(page),
+            None => options_menu.close(),
+        }
         sounds.write(MenuSound::Move);
         return;
     }
 
     // Change of section: Tab (Shift + Tab goes back), Q and E, or the
-    // shoulder buttons and triggers.
+    // shoulder buttons and triggers. A page of Control's closes.
     if request.tab != 0 {
         options_menu.tab = options_menu.tab.next(request.tab);
         options_menu.selected = 0;
+        options_menu.steering = None;
         sounds.write(MenuSound::Move);
         return;
     }
 
     // Up and down through the row of sections and the options; across on
     // the row of sections, another section.
-    let count = tab_items_count(options_menu.tab);
+    let count = tab_items_count(options_menu.tab, page);
     let on_tabs = options_menu.on_tabs;
     if options_menu.navigate(request.step, request.side, request.confirm, count) {
         sounds.write(MenuSound::Move);
+        // Up to the row of sections from a page of Control's: Control.
+        if options_menu.on_tabs && page.is_some() {
+            options_menu.steering = None;
+        }
     }
     if on_tabs || request.step != 0 {
         return;
@@ -605,10 +720,13 @@ fn use_options_menu(
     let foot = count - FOOTER;
     if options_menu.selected >= foot {
         if request.confirm && options_menu.selected == foot {
-            reset_section(options_menu.tab, &mut settings, &mut debug_options);
+            reset_section(options_menu.tab, page, &mut settings, &mut debug_options);
             sounds.write(MenuSound::Confirm);
         } else if request.confirm {
-            options_menu.close();
+            match page {
+                Some(page) => options_menu.leave_page(page),
+                None => options_menu.close(),
+            }
             sounds.write(MenuSound::Move);
         }
         return;
@@ -661,12 +779,24 @@ fn use_options_menu(
             }
         }
         OptionsTab::Control => {
-            let items = control_items();
+            let items = control_items(page);
             let item = items[options_menu.selected.min(items.len() - 1)];
             match item {
                 ControlItem::Mapping if request.confirm => {
                     let device = current_active_device(*device, active_controller.as_deref());
                     options_menu.mapping = Some(Mapping::open(MapDevice::of(device)));
+                    sounds.write(MenuSound::Confirm);
+                }
+                // A page of its own, from its first option.
+                ControlItem::StickBehaviour | ControlItem::KeyboardBehaviour
+                    if request.confirm || request.side > 0 =>
+                {
+                    options_menu.steering = Some(if item == ControlItem::StickBehaviour {
+                        Steering::Stick
+                    } else {
+                        Steering::Keyboard
+                    });
+                    options_menu.selected = 0;
                     sounds.write(MenuSound::Confirm);
                 }
                 ControlItem::StickTurnLimit if change != 0 => {
@@ -741,7 +871,8 @@ fn use_options_menu(
                         sounds.write(MenuSound::Move);
                     }
                 }
-                GraphicsItem::RenderScale if change != 0 => {
+                // While the performance mode chooses them, they stay.
+                GraphicsItem::RenderScale if change != 0 && !settings.performance_mode => {
                     settings.render_scale = cycle(&RENDER_SCALES, settings.render_scale, change);
                     sounds.write(MenuSound::Move);
                 }
@@ -749,7 +880,11 @@ fn use_options_menu(
                     settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
                     sounds.write(MenuSound::Move);
                 }
-                GraphicsItem::Shadows if change != 0 => {
+                GraphicsItem::PerformanceMode if change != 0 => {
+                    settings.performance_mode = !settings.performance_mode;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::Shadows if change != 0 && !settings.performance_mode => {
                     settings.shadows = cycle(&SHADOW_QUALITIES, settings.shadows, change);
                     sounds.write(MenuSound::Move);
                 }
@@ -788,28 +923,49 @@ fn use_options_menu(
     }
 }
 
-/// The shadows' quality as Options > Graphics names it: automatic, with
-/// the level it has come to (`auto`), or the level chosen.
-fn shadows_name(quality: ShadowQuality, auto: Level, lang: Language) -> String {
-    let level = |level: Level| match (level, lang) {
+/// A shadows' level as Options > Graphics names it.
+fn level_name(level: Level, lang: Language) -> String {
+    match (level, lang) {
         (Level::High, Language::Spanish) => "Altas",
         (Level::High, Language::English) => "High",
         (Level::Medium, Language::Spanish) => "Medias",
         (Level::Medium, Language::English) => "Medium",
         (Level::Low, Language::Spanish) => "Bajas",
         (Level::Low, Language::English) => "Low",
-    };
+    }
+    .to_string()
+}
+
+/// The shadows' quality as Options > Graphics names it: automatic, with
+/// the level it has come to (`auto`), or the level chosen.
+fn shadows_name(quality: ShadowQuality, auto: Level, lang: Language) -> String {
     match Level::of(quality) {
-        Some(chosen) => level(chosen).to_string(),
-        None => match lang {
-            Language::Spanish => format!("Automáticas ({})", level(auto).to_lowercase()),
-            Language::English => format!("Automatic ({})", level(auto).to_lowercase()),
-        },
+        Some(chosen) => level_name(chosen, lang),
+        None => {
+            let auto = level_name(auto, lang).to_lowercase();
+            match lang {
+                Language::Spanish => format!("Automáticas ({auto})"),
+                Language::English => format!("Automatic ({auto})"),
+            }
+        }
+    }
+}
+
+/// What the performance mode has chosen, said so: "Rendimiento: medias".
+fn performance_said(chosen: &str, lang: Language) -> String {
+    let chosen = chosen.to_lowercase();
+    match lang {
+        Language::Spanish => format!("Rendimiento: {chosen}"),
+        Language::English => format!("Performance: {chosen}"),
     }
 }
 
 #[derive(Component)]
 struct OptionsModal;
+
+/// Where the options are drawn in the interface's global order: over the
+/// race's (5 to 10) and the benchmark's label (30), under the results (90).
+const OPTIONS_LAYER: i32 = 50;
 
 /// How far the text of each option is from the sides of its row (px): the
 /// keys that change the section stand in line with it.
@@ -988,11 +1144,7 @@ fn show_options_menu(
         Query<&Name, With<Gamepad>>,
     ),
     // The mapping's gamepads, drawn at the interface's scale.
-    (mut pad_arts, ui_scale, auto_quality): (
-        ResMut<PadArts>,
-        Option<Res<UiScale>>,
-        Option<Res<AutoQuality>>,
-    ),
+    (mut pad_arts, ui_scale, detail): (ResMut<PadArts>, Option<Res<UiScale>>, Option<Res<Detail>>),
     mut last: Local<Option<String>>,
 ) {
     let started = started.as_deref();
@@ -1084,9 +1236,23 @@ fn show_options_menu(
                 ),
             })
             .collect(),
-        OptionsTab::Control => control_items()
+        OptionsTab::Control => control_items(options_menu.steering)
             .into_iter()
             .map(|item| match item {
+                ControlItem::StickBehaviour => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Comportamiento Stick",
+                        Language::English => "Stick behaviour",
+                    },
+                    ">",
+                ),
+                ControlItem::KeyboardBehaviour => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Comportamiento Teclado",
+                        Language::English => "Keyboard behaviour",
+                    },
+                    ">",
+                ),
                 ControlItem::Mapping => Row::with_value(
                     match lang {
                         Language::Spanish => "Asignación",
@@ -1099,36 +1265,36 @@ fn show_options_menu(
                 ),
                 ControlItem::StickTurnLimit => Row::with_value(
                     match lang {
-                        Language::Spanish => "Stick: limitar giro con velocidad",
-                        Language::English => "Stick: turn limit with speed",
+                        Language::Spanish => "Limitar giro con velocidad",
+                        Language::English => "Turn limit with speed",
                     },
                     format!("<  {}  >", debug_options.stick_limit.name(lang)),
                 ),
                 ControlItem::KeyboardTurnLimit => Row::with_value(
                     match lang {
-                        Language::Spanish => "Teclado: limitar giro con velocidad",
-                        Language::English => "Keyboard: turn limit with speed",
+                        Language::Spanish => "Limitar giro con velocidad",
+                        Language::English => "Turn limit with speed",
                     },
                     format!("<  {}  >", debug_options.keyboard_limit.name(lang)),
                 ),
                 ControlItem::KeyboardTurnRate => Row::with_value(
                     match lang {
-                        Language::Spanish => "Teclado: rapidez de giro sostenido",
-                        Language::English => "Keyboard: sustained turn rate",
+                        Language::Spanish => "Rapidez de giro sostenido",
+                        Language::English => "Sustained turn rate",
                     },
                     format!("<  {}  >", debug_options.keyboard_rate.name(lang)),
                 ),
                 ControlItem::KeyboardReturnRate => Row::with_value(
                     match lang {
-                        Language::Spanish => "Teclado: rapidez al soltar giro",
-                        Language::English => "Keyboard: return rate released",
+                        Language::Spanish => "Rapidez al soltar giro",
+                        Language::English => "Return rate released",
                     },
                     format!("<  {}  >", debug_options.keyboard_return.name(lang)),
                 ),
                 ControlItem::KeyboardReverseRate => Row::with_value(
                     match lang {
-                        Language::Spanish => "Teclado: rapidez de cambio de sentido",
-                        Language::English => "Keyboard: turning the other way",
+                        Language::Spanish => "Rapidez de cambio de sentido",
+                        Language::English => "Turning the other way",
                     },
                     format!("<  {}  >", debug_options.keyboard_reverse.name(lang)),
                 ),
@@ -1187,34 +1353,53 @@ fn show_options_menu(
                         Row::with_value(lang.resolution(), format!("<  {name}  >"))
                     }
                 }
-                GraphicsItem::RenderScale => Row::with_value(
-                    match lang {
+                GraphicsItem::RenderScale => {
+                    let label = match lang {
                         Language::Spanish => "Escala de resolución",
                         Language::English => "Resolution scale",
-                    },
-                    format!(
-                        "<  {}  >",
-                        render_scale_name(settings.render_scale, window_inner)
-                    ),
-                ),
+                    };
+                    // Faint, with the scale it has come to, while the
+                    // performance mode chooses it.
+                    if settings.performance_mode {
+                        let now = crate::render_scale::render_percent(detail.as_deref());
+                        Row::disabled(
+                            label,
+                            performance_said(&render_scale_name(now, window_inner), lang),
+                        )
+                    } else {
+                        Row::with_value(
+                            label,
+                            format!(
+                                "<  {}  >",
+                                render_scale_name(settings.render_scale, window_inner)
+                            ),
+                        )
+                    }
+                }
                 GraphicsItem::Fps => {
                     Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang)))
                 }
-                GraphicsItem::Shadows => Row::with_value(
-                    match lang {
+                GraphicsItem::Shadows => {
+                    let label = match lang {
                         Language::Spanish => "Sombras",
                         Language::English => "Shadows",
-                    },
-                    format!(
-                        "<  {}  >",
-                        shadows_name(
-                            settings.shadows,
-                            auto_quality
-                                .as_deref()
-                                .map_or(Level::High, |auto| auto.level),
-                            lang
+                    };
+                    let now = detail.as_deref().map_or(Level::High, |detail| detail.level);
+                    if settings.performance_mode {
+                        Row::disabled(label, performance_said(&level_name(now, lang), lang))
+                    } else {
+                        Row::with_value(
+                            label,
+                            format!("<  {}  >", shadows_name(settings.shadows, now, lang)),
                         )
-                    ),
+                    }
+                }
+                GraphicsItem::PerformanceMode => Row::check(
+                    match lang {
+                        Language::Spanish => "Modo rendimiento (60 fps)",
+                        Language::English => "Performance mode (60 fps)",
+                    },
+                    settings.performance_mode,
                 ),
                 GraphicsItem::Antialiasing => Row::with_value(
                     "Antialiasing",
@@ -1305,7 +1490,12 @@ fn show_options_menu(
     // back, and Back.
     let footer = [
         Row {
-            disabled: section_is_default(options_menu.tab, &settings, &debug_options),
+            disabled: section_is_default(
+                options_menu.tab,
+                options_menu.steering,
+                &settings,
+                &debug_options,
+            ),
             ..Row::new(lang.reset())
         },
         Row::new(lang.back()),
@@ -1412,7 +1602,11 @@ fn show_options_menu(
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.02, 0.05, 0.78)),
-            ZIndex(100),
+            // Over everything of the race (the start lights, the minimaps,
+            // the speedometers, the pause menu it opens from), its legend
+            // with it: those are drawn in the global order, over any order
+            // that is only local.
+            GlobalZIndex(OPTIONS_LAYER),
         ))
         .with_children(|modal| {
             // Panel de Opciones grande
@@ -1465,8 +1659,15 @@ fn show_options_menu(
                         return;
                     }
                     // Título
+                    // On a page of Control's, which.
+                    let title = match options_menu.steering {
+                        Some(page) => {
+                            format!("{} > {}", lang.options().to_uppercase(), page.title(lang))
+                        }
+                        None => lang.options().to_uppercase(),
+                    };
                     panel.spawn((
-                        Text::new(lang.options().to_uppercase()),
+                        Text::new(title),
                         text_font(&font, 36.0),
                         TextShadow {
                             offset: Vec2::splat(2.5),
@@ -1571,7 +1772,11 @@ fn show_options_menu(
                                             align_items: AlignItems::Center,
                                             column_gap: px(30),
                                             padding: UiRect::axes(px(ROW_INSET), px(padding)),
-                                            margin: if starts_group(options_menu.tab, index) {
+                                            margin: if starts_group(
+                                                options_menu.tab,
+                                                options_menu.steering,
+                                                index,
+                                            ) {
                                                 UiRect::top(px(GROUP_GAP))
                                             } else {
                                                 UiRect::ZERO
@@ -1623,7 +1828,7 @@ fn show_options_menu(
                                 // Under the legend, in a lighter hand: the
                                 // shortcuts for the sound and fullscreen,
                                 // on the device in use.
-                                if shortcuts_after(options_menu.tab, index) {
+                                if shortcuts_after(options_menu.tab, options_menu.steering, index) {
                                     items_container
                                         .spawn(Node {
                                             padding: UiRect::axes(px(ROW_INSET), px(2)),
@@ -1664,15 +1869,15 @@ mod tests {
 
     #[test]
     fn on_control_the_steering_and_the_legend_stand_apart() {
-        let items = control_items();
+        let items = control_items(None);
         let starts: Vec<ControlItem> = (0..items.len())
-            .filter(|&index| starts_group(OptionsTab::Control, index))
+            .filter(|&index| starts_group(OptionsTab::Control, None, index))
             .map(|index| items[index])
             .collect();
         assert_eq!(
             starts,
             [
-                ControlItem::StickTurnLimit,
+                ControlItem::StickBehaviour,
                 ControlItem::ShowLegend,
                 ControlItem::RescanGamepads
             ]
@@ -1682,17 +1887,45 @@ mod tests {
             .iter()
             .position(|&item| item == ControlItem::ShowLegend)
             .unwrap();
-        assert!(shortcuts_after(OptionsTab::Control, legend));
-        assert!(!shortcuts_after(OptionsTab::Control, legend + 1));
-        assert!(!shortcuts_after(OptionsTab::Game, legend));
-        assert!((0..8).all(|index| !starts_group(OptionsTab::Game, index)));
+        assert!(shortcuts_after(OptionsTab::Control, None, legend));
+        assert!(!shortcuts_after(OptionsTab::Control, None, legend + 1));
+        assert!(!shortcuts_after(OptionsTab::Game, None, legend));
+        assert!((0..8).all(|index| !starts_group(OptionsTab::Game, None, index)));
+        // A page of Control's: its own options, in no groups.
+        let keyboard = Some(Steering::Keyboard);
+        assert_eq!(control_items(keyboard).len(), 4);
+        assert!((0..4).all(|index| !starts_group(OptionsTab::Control, keyboard, index)));
+        assert_eq!(
+            control_items(Some(Steering::Stick)),
+            [ControlItem::StickTurnLimit]
+        );
+    }
+
+    #[test]
+    fn a_page_of_controls_opens_from_its_row_and_goes_back_to_it() {
+        let mut menu = OptionsMenu::default();
+        menu.open(OptionsReturn::Welcome);
+        menu.tab = OptionsTab::Control;
+        menu.steering = Some(Steering::Keyboard);
+        menu.selected = 2;
+        menu.leave_page(Steering::Keyboard);
+        assert_eq!(menu.steering, None);
+        assert_eq!(
+            control_items(None)[menu.selected],
+            ControlItem::KeyboardBehaviour
+        );
+        // Closing the options leaves no page open for the next time.
+        menu.steering = Some(Steering::Stick);
+        menu.close();
+        menu.open(OptionsReturn::Welcome);
+        assert_eq!(menu.steering, None);
     }
 
     #[test]
     fn the_arrows_reach_the_row_of_sections_and_change_section_there() {
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
-        let count = tab_items_count(menu.tab);
+        let count = tab_items_count(menu.tab, None);
         // Up from the first option: the row of sections.
         assert!(menu.navigate(-1, 0, false, count));
         assert!(menu.on_tabs);
@@ -1704,7 +1937,7 @@ mod tests {
         assert_eq!(menu.tab, OptionsTab::Graphics);
         assert!(menu.on_tabs);
         // Down: its first option; up from the row: its last one.
-        let count = tab_items_count(menu.tab);
+        let count = tab_items_count(menu.tab, None);
         assert!(menu.navigate(1, 0, false, count));
         assert!(!menu.on_tabs);
         assert_eq!(menu.selected, 0);
@@ -1729,7 +1962,7 @@ mod tests {
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
         menu.tab = OptionsTab::Sound;
-        let count = tab_items_count(menu.tab);
+        let count = tab_items_count(menu.tab, None);
         assert_eq!(count, sound_items().len() + FOOTER);
         // Down from the last option: Back.
         menu.selected = count - FOOTER - 1;
@@ -1754,7 +1987,7 @@ mod tests {
         let mut settings = Settings::default();
         let mut debug = DebugOptions::default();
         for tab in TABS {
-            assert!(section_is_default(tab, &settings, &debug), "{tab:?}");
+            assert!(section_is_default(tab, None, &settings, &debug), "{tab:?}");
         }
         settings.difficulty = Difficulty::Hard;
         settings.music_volume = 10;
@@ -1763,21 +1996,38 @@ mod tests {
         debug.show_legend = true;
         settings.controls.remap(KeyCode::KeyW, &[KeyCode::KeyI]);
         for tab in TABS {
-            assert!(!section_is_default(tab, &settings, &debug), "{tab:?}");
+            assert!(!section_is_default(tab, None, &settings, &debug), "{tab:?}");
         }
-        reset_section(OptionsTab::Sound, &mut settings, &mut debug);
+        reset_section(OptionsTab::Sound, None, &mut settings, &mut debug);
         assert_eq!(settings.music_volume, Settings::default().music_volume);
-        assert!(section_is_default(OptionsTab::Sound, &settings, &debug));
+        assert!(section_is_default(
+            OptionsTab::Sound,
+            None,
+            &settings,
+            &debug
+        ));
         assert_eq!(settings.difficulty, Difficulty::Hard);
-        reset_section(OptionsTab::Control, &mut settings, &mut debug);
+        reset_section(OptionsTab::Control, None, &mut settings, &mut debug);
         assert!(!debug.show_legend);
         // The keys and buttons are reset in the mapping, not here.
         assert_ne!(settings.controls, Controls::default());
-        reset_section(OptionsTab::Game, &mut settings, &mut debug);
-        reset_section(OptionsTab::Graphics, &mut settings, &mut debug);
+        reset_section(OptionsTab::Game, None, &mut settings, &mut debug);
+        reset_section(OptionsTab::Graphics, None, &mut settings, &mut debug);
         for tab in TABS {
-            assert!(section_is_default(tab, &settings, &debug), "{tab:?}");
+            assert!(section_is_default(tab, None, &settings, &debug), "{tab:?}");
         }
+        // On a page of Control's, its own options only.
+        let (stick, keyboard) = (Some(Steering::Stick), Some(Steering::Keyboard));
+        debug.stick_limit = TurnLimit::Off;
+        debug.keyboard_reverse = ReverseRate::Slow;
+        let control = OptionsTab::Control;
+        assert!(!section_is_default(control, stick, &settings, &debug));
+        assert!(!section_is_default(control, keyboard, &settings, &debug));
+        reset_section(control, keyboard, &mut settings, &mut debug);
+        assert!(section_is_default(control, keyboard, &settings, &debug));
+        assert_eq!(debug.stick_limit, TurnLimit::Off);
+        reset_section(control, stick, &mut settings, &mut debug);
+        assert!(section_is_default(control, None, &settings, &debug));
     }
 
     #[test]

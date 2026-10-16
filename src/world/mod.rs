@@ -64,6 +64,7 @@ impl Plugin for WorldPlugin {
             .insert_resource(Track::new(&current.get().layout))
             .init_resource::<Roadsides>()
             .init_resource::<Preparing>()
+            .init_resource::<CircuitLoading>()
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
             .init_resource::<japan::ModelledProps>()
@@ -82,7 +83,7 @@ impl Plugin for WorldPlugin {
                     desert::tumble,
                     japan::turn_wheels,
                     japan::drift_petals,
-                    spawn_prepared_circuit.run_if(in_state(GameState::Tracks)),
+                    spawn_prepared_circuit,
                 ),
             )
             .add_systems(OnEnter(GameState::Tracks), cache_all_circuits)
@@ -257,9 +258,58 @@ fn circuit_pool() -> &'static TaskPool {
     })
 }
 
-/// The circuits being prepared in the background, by index in [`CIRCUITS`].
+/// The thread a circuit needed now is prepared on, in the tracks menu: its
+/// own, so that it does not wait behind the others being prepared in the
+/// background.
+fn urgent_pool() -> &'static TaskPool {
+    static POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        TaskPoolBuilder::new()
+            .num_threads(1)
+            .thread_name("Circuit chosen".into())
+            .build()
+    })
+}
+
+/// A circuit being prepared, and whether the work on it has begun (or it
+/// still waits its turn on its thread).
+struct Preparation {
+    task: Task<Prepared>,
+    begun: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Preparation {
+    /// Circuit `index` prepared on another thread: the background one, or,
+    /// if it is needed now, the one of its own.
+    fn start(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -> Self {
+        let textures = textures.clone();
+        let begun = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = begun.clone();
+        let pool = match urgency {
+            Urgency::Now => urgent_pool(),
+            Urgency::Background => circuit_pool(),
+        };
+        let task = pool.spawn(async move {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            prepare(index, &textures, urgency)
+        });
+        Self { task, begun }
+    }
+
+    fn begun(&self) -> bool {
+        self.begun.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// The circuits being prepared, by index in [`CIRCUITS`].
 #[derive(Resource, Default)]
-struct Preparing(std::collections::HashMap<usize, Task<Prepared>>);
+struct Preparing(std::collections::HashMap<usize, Preparation>);
+
+/// Whether the circuit chosen is still being prepared: in the tracks menu
+/// it is not waited for (the menu would stop for seconds), it comes when
+/// ready.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CircuitLoading(pub bool);
 
 /// Al entrar al menú de elección de pistas, prepara en segundo plano las
 /// pistas que falten por cargar para que alternar entre ellas sea
@@ -272,44 +322,48 @@ fn cache_all_circuits(
     mut preparing: ResMut<Preparing>,
 ) {
     let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
-    let pool = circuit_pool();
     for index in 0..CIRCUITS.len() {
         if !built.contains(&index) && !preparing.0.contains_key(&index) {
-            let textures = textures.clone();
-            preparing.0.insert(
-                index,
-                pool.spawn(async move { prepare(index, &textures, Urgency::Background) }),
-            );
+            let preparation = Preparation::start(index, &textures, Urgency::Background);
+            preparing.0.insert(index, preparation);
         }
     }
 }
 
-/// Puts in the world, hidden, a circuit prepared in the background (one
-/// per frame: making its entities and meshes takes a little while too).
+/// Puts in the world a circuit prepared on another thread (one per frame:
+/// making its entities and meshes takes a little while too): the one
+/// chosen first, shown, with what lies beside its roads given to the
+/// track; the others hidden.
 fn spawn_prepared_circuit(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
     mut preparing: ResMut<Preparing>,
     mut builder: Builder,
     mut roadsides: ResMut<Roadsides>,
+    mut track: ResMut<Track>,
+    mut loading: ResMut<CircuitLoading>,
 ) {
-    let mut ready = None;
-    for (index, task) in &mut preparing.0 {
-        if let Some(prepared) = block_on(poll_once(task)) {
-            ready = Some((*index, prepared));
-            break;
-        }
-    }
+    let mut order: Vec<usize> = preparing.0.keys().copied().collect();
+    order.sort_by_key(|&index| index != current.0);
+    let ready = order.into_iter().find_map(|index| {
+        let preparation = preparing.0.get_mut(&index)?;
+        block_on(poll_once(&mut preparation.task)).map(|prepared| (index, prepared))
+    });
     let Some((index, prepared)) = ready else {
         return;
     };
     preparing.0.remove(&index);
-    let visibility = if index == current.0 {
+    let chosen = index == current.0;
+    let visibility = if chosen {
         Visibility::Inherited
     } else {
         Visibility::Hidden
     };
     let built = build(&mut commands, prepared, &mut builder, visibility);
+    if chosen {
+        built.apply(&mut track);
+        loading.set_if_neq(CircuitLoading(false));
+    }
     roadsides.0.insert(index, built);
 }
 
@@ -327,19 +381,27 @@ fn unload_unused_circuits(
             commands.entity(entity).despawn();
         }
     }
-    preparing.0.clear();
+    // The one chosen, if it is still on its way, comes all the same.
+    preparing.0.retain(|&index, _| index == current.0);
 }
 
 /// Al cambiar de pista: actualiza el trazado y conmuta la visibilidad entre
-/// las pistas cargadas en caché (o la construye si no estuviera).
+/// las pistas cargadas en caché, o, si no estuviera, la construye. In the
+/// tracks menu it is not waited for: it is prepared on a thread of its own
+/// if it has not begun yet, and comes when ready ([`CircuitLoading`],
+/// [`spawn_prepared_circuit`]); elsewhere (a championship going on to the
+/// next track) it is waited for.
+#[allow(clippy::too_many_arguments)]
 fn rebuild_world(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
+    state: Option<Res<State<GameState>>>,
     mut roots: Query<(Entity, &WorldRoot, &mut Visibility)>,
     mut track: ResMut<Track>,
     mut builder: Builder,
     mut roadsides: ResMut<Roadsides>,
     mut preparing: ResMut<Preparing>,
+    mut loading: ResMut<CircuitLoading>,
 ) {
     if !current.is_changed() || current.is_added() {
         return;
@@ -353,18 +415,28 @@ fn rebuild_world(
             *visibility = Visibility::Hidden;
         }
     }
+    *track = Track::new(&current.get().layout);
+    let in_menu = state.is_some_and(|state| *state.get() == GameState::Tracks);
+    if !found && in_menu && !WEB {
+        if preparing.0.get(&current.0).is_none_or(|p| !p.begun()) {
+            let preparation = Preparation::start(current.0, &builder.textures, Urgency::Now);
+            preparing.0.insert(current.0, preparation);
+        }
+        loading.set_if_neq(CircuitLoading(true));
+        return;
+    }
     if !found {
         // Needed now: wait for it if it is being prepared. On the web the
         // background work runs on this same thread and cannot be waited
         // for, so it is done here.
         let prepared = match preparing.0.remove(&current.0) {
-            Some(task) if !WEB => block_on(task),
+            Some(preparation) if !WEB => block_on(preparation.task),
             _ => prepare(current.0, &builder.textures, Urgency::Now),
         };
         let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
         roadsides.0.insert(current.0, built);
     }
-    *track = Track::new(&current.get().layout);
+    loading.set_if_neq(CircuitLoading(false));
     if let Some(roadside) = roadsides.0.get(&current.0) {
         roadside.apply(&mut track);
     }
@@ -607,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn a_circuit_chosen_before_it_is_ready_is_built_at_once() {
+    fn a_circuit_chosen_before_it_is_ready_comes_without_stopping_the_menu() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -623,12 +695,24 @@ mod tests {
             .set(GameState::Tracks);
         app.update();
 
-        // Straight to the last circuit: it is there, with what lies beside
-        // its roads, in the next frame.
+        // Straight to the last circuit, behind all the others in the
+        // background: the menu goes on at once, the circuit on its way.
         let last = CIRCUITS.len() - 1;
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
+        let started = std::time::Instant::now();
         app.update();
+        assert!(started.elapsed().as_secs_f32() < 1.0, "the menu stopped");
+        assert_eq!(
+            *app.world().resource::<CircuitLoading>(),
+            CircuitLoading(true)
+        );
+        // It comes, shown alone, with what lies beside its roads.
         let mut roots = app.world_mut().query::<(&WorldRoot, &Visibility)>();
+        while app.world().resource::<CircuitLoading>().0 {
+            assert!(started.elapsed().as_secs() < 120, "it never comes");
+            app.update();
+        }
+        app.update();
         let shown: Vec<usize> = roots
             .iter(app.world())
             .filter(|(_, vis)| **vis == Visibility::Inherited)
