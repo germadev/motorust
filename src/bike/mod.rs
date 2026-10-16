@@ -1087,6 +1087,16 @@ impl BikeAssets<'_> {
     }
 }
 
+/// Where the bike of grid slot `slot` starts: on the grid, or, asked for
+/// it while developing, that slot moved along the lap (see
+/// [`crate::debug_start`]).
+fn start_pose(track: &Track, slot: usize) -> (Vec2, f32) {
+    match crate::debug_start::along() {
+        Some(along) => track.grid_slot_at(slot, along),
+        None => track.grid_slot(slot),
+    }
+}
+
 /// Al empezar la carrera: la parrilla con la moto elegida para el jugador.
 #[allow(clippy::too_many_arguments)]
 fn spawn_grid(
@@ -1110,7 +1120,7 @@ fn spawn_grid(
         lineup(choice.0)
     };
     for (slot, (rival, entry)) in GRID.iter().zip(roster_indices).enumerate() {
-        let state = BikeState::parked_on(&track, track.grid_slot(slot));
+        let state = BikeState::parked_on(&track, start_pose(&track, slot));
         let bike = assets.spawn(&mut commands, &ROSTER[entry], state);
         let mut bike = commands.entity(bike);
         bike.insert((
@@ -1636,7 +1646,7 @@ fn restart_race(
             .remove::<(Autopilot, Rival, ai::Line)>();
     }
     for (grid, mut state, mut previous, mut knock, mut crash, line) in &mut bikes {
-        *state = BikeState::parked_on(&track, track.grid_slot(grid.0));
+        *state = BikeState::parked_on(&track, start_pose(&track, grid.0));
         if let Some(mut line) = line {
             line.0 = Track::grid_lane(grid.0);
         }

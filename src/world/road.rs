@@ -27,7 +27,9 @@ const PAINT_LIFT: f32 = 0.012;
 /// Hay pianos donde la curva es más cerrada que este radio (m).
 const CURB_RADIUS: f32 = 130.0;
 
-const WALL_HEIGHT: f32 = 1.1;
+/// How high a wall stands over the road (m): a plinth by the road lifts a
+/// small prop over it (see [`super::japan`]).
+pub(super) const WALL_HEIGHT: f32 = 1.1;
 /// The leaves of a hedge where the grass is as painted.
 const HEDGE: Color = Color::srgb(0.55, 0.85, 0.4);
 /// Las barreras de hormigón son algo más bajas, y los setos, más altos.
@@ -375,6 +377,13 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
             BridgeStyle::Wooden => None,
         };
     }
+    // Where a small prop stands by the road, the wall is the shrine's low
+    // fence, so that it is seen whole (see `japan`).
+    if let Some(japan) = &scenery.japan
+        && super::japan::prop_fence(japan, lap, along, side)
+    {
+        return Some(WallStyle::ShrineFence);
+    }
     let run = scenery
         .walls
         .iter()
@@ -650,12 +659,10 @@ fn walls(
         };
         let visible: Vec<bool> = (0..segments)
             .map(|i| {
-                let middle =
-                    (line.offset_point(i, inner(i)) + line.offset_point(i + 1, inner(i + 1))) / 2.0;
                 wanted(i, wall_side)
                     && !cliff(i)
                     && !cliff(i + 1)
-                    && !road.between_other_walls(middle)
+                    && !at_a_junction(road, i, wall_side)
             })
             .collect();
         // Whether the wall goes on before or after a stretch.
@@ -871,6 +878,19 @@ impl WallMesh {
 /// A railing where `wanted` says, where the walls would stand: a post at
 /// every point of the road and two rails, all of `color` (the seafront's
 /// green, a shrine's vermilion).
+/// Whether another road runs over the line of the wall between `index` and
+/// the next point on `side` (a junction): no wall is drawn there, or it
+/// would stand across that road (a railing goes by its posts, see
+/// [`railing`]).
+fn at_a_junction(road: Road, index: usize, side: Side) -> bool {
+    let line = road.line();
+    let inner = |i: usize| side.sign() * line.wall_at(i);
+    let middle = (line.offset_point(index, inner(index))
+        + line.offset_point(index + 1, inner(index + 1)))
+        / 2.0;
+    road.between_other_walls(middle)
+}
+
 fn railing(road: Road, color: Color, wanted: impl Fn(usize, Side) -> bool) -> Option<Mesh> {
     let line = road.line();
     let segments = line.segment_count();
@@ -880,8 +900,23 @@ fn railing(road: Road, color: Color, wanted: impl Fn(usize, Side) -> bool) -> Op
             let lateral = side.sign() * (line.wall_at(i) + 0.2);
             road.surface_point(i, lateral) + Vec3::Y * (SURFACE_Y + height)
         };
+        // As a wall is: no post where another road runs over its line,
+        // nor beside one that does (so the fence stops short of the
+        // junction, not on its edge), and no rail to a post that is not
+        // there.
+        let over = |index: usize| {
+            let index = index % line.sample_count();
+            let post = line.offset_point(index, side.sign() * (line.wall_at(index) + 0.2));
+            road.between_other_walls(post)
+        };
+        let shows = |index: usize| {
+            wanted(index, side)
+                && !over(index)
+                && !over(index + 1)
+                && !over(index + line.sample_count() - 1)
+        };
         for index in 0..segments {
-            if !wanted(index, side) {
+            if !shows(index) {
                 continue;
             }
             let next = (index + 1) % line.sample_count();
@@ -892,7 +927,7 @@ fn railing(road: Road, color: Color, wanted: impl Fn(usize, Side) -> bool) -> Op
                 0.12,
                 color,
             );
-            if wanted(next, side) {
+            if shows(next) {
                 for height in [RAILING_HEIGHT, RAILING_HEIGHT * 0.55] {
                     mesh.beam(at(index, height), at(next, height), 0.08, 0.08, color);
                 }
@@ -1284,6 +1319,41 @@ mod tests {
                     "{style:?}: {distance}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn no_railing_stands_across_another_road() {
+        // Ghost Island, where the lap splits and crosses itself and the
+        // wall opens into the shrine's fence for the props by the road.
+        let circuit = crate::circuits::CIRCUITS
+            .iter()
+            .find(|circuit| circuit.scenery.japan.is_some())
+            .expect("a circuit of feudal Japan");
+        let track = Track::new(&circuit.layout);
+        let lap = track.lap_length();
+        let road = Road {
+            track: &track,
+            number: 0,
+        };
+        let line = road.line();
+        let style = |index: usize, side: Side| {
+            wall_style(&circuit.scenery, lap, line.lap_along_at(index), side)
+        };
+        let mesh = railing(road, SHRINE_VERMILION, |index, side| {
+            style(index, side) == Some(WallStyle::ShrineFence)
+        })
+        .expect("the shrine's fence is somewhere");
+        let positions = mesh
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .and_then(|p| p.as_float3())
+            .unwrap();
+        for &[x, _, z] in positions {
+            let point = Vec2::new(x, z);
+            assert!(
+                !road.between_other_walls(point),
+                "a railing at {point:?} stands on another road"
+            );
         }
     }
 

@@ -429,6 +429,8 @@ pub struct Scenery {
 pub struct Japan {
     pub corridors: &'static [ToriiCorridor],
     pub props: &'static [Prop],
+    /// The small ones over and over along the road (see [`PropRow`]).
+    pub rows: &'static [PropRow],
     pub maple_grounds: &'static [MapleGround],
     pub petals: &'static [Petals],
     pub flowers: &'static [FlowerField],
@@ -584,6 +586,30 @@ impl PropModel {
                 | PropModel::WaterWheel
         )
     }
+
+    /// What it stands on by the road, so that it shows over the wall:
+    /// stone under the stone ones, wood under the wooden (see
+    /// [`crate::world::japan`]). The big ones need none: they are seen
+    /// over any wall as they are.
+    pub fn plinth(self) -> Option<Plinth> {
+        match self {
+            PropModel::Jizo
+            | PropModel::Komainu
+            | PropModel::Stele
+            | PropModel::StoneLantern
+            | PropModel::BronzeLantern => Some(Plinth::Stone),
+            PropModel::Brazier | PropModel::Hokora => Some(Plinth::Wood),
+            _ => None,
+        }
+    }
+}
+
+/// What a small prop by the road stands on, so that it is seen over the
+/// road's wall: a block of stone, or a deck of planks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Plinth {
+    Stone,
+    Wood,
 }
 
 /// A prop and where it stands, facing: by the road, `along` metres from the
@@ -599,6 +625,9 @@ pub struct Prop {
     pub spot: Spot,
     pub scale: f32,
     pub lean: f32,
+    /// Whether it faces the riders coming up the road at it, instead of
+    /// the road beside it (see [`Prop::facing_riders`]).
+    pub facing_riders: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -614,6 +643,7 @@ pub const fn by_road(model: PropModel, along: f32, lateral: f32) -> Prop {
         spot: Spot::Road { along, lateral },
         scale: 1.0,
         lean: 0.0,
+        facing_riders: false,
     }
 }
 
@@ -629,6 +659,47 @@ impl Prop {
     pub const fn leaning(self, lean: f32) -> Self {
         Prop { lean, ..self }
     }
+
+    /// The same prop turned to face the riders coming up the road at it,
+    /// not the road beside it: a gate on a hilltop reads as a gate from
+    /// far down the road, not as two posts edge on.
+    pub const fn facing_riders(self) -> Self {
+        Prop {
+            facing_riders: true,
+            ..self
+        }
+    }
+}
+
+/// The same small prop over and over by the road: one every so many
+/// metres of a span, to one side, as the lanterns of a shrine's approach
+/// or the jizō down a hillside road. Each stands as one of [`by_road`],
+/// on its plinth, and the wall opens for it; where another road runs, or
+/// where one of the props put by hand already stands, there is none.
+pub struct PropRow {
+    /// The kinds it is made of, each in turn: one kind over and over, or
+    /// several, so that a stretch is not all of one thing.
+    pub models: &'static [PropModel],
+    pub row: Row,
+}
+
+/// A row of a small prop by the road (see [`PropRow`]).
+pub const fn prop_row(
+    models: &'static [PropModel],
+    span: Span,
+    side: Side,
+    lateral: f32,
+    every: f32,
+) -> PropRow {
+    PropRow {
+        models,
+        row: Row {
+            span,
+            side,
+            lateral,
+            every,
+        },
+    }
 }
 
 /// A prop anywhere (see [`Prop`]).
@@ -641,6 +712,7 @@ pub const fn standing(model: PropModel, x: f32, z: f32, heading: f32) -> Prop {
         },
         scale: 1.0,
         lean: 0.0,
+        facing_riders: false,
     }
 }
 
