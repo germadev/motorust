@@ -9,7 +9,7 @@ use bevy::{
 use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
-use super::scenery::{BridgeStyle, Gantry, Scenery, Side, WallStyle};
+use super::scenery::{BridgeStyle, Gantry, Scenery, Side, Span, WallStyle};
 use super::terrain::{Terrain, shaded};
 use super::textures::{STONE_WALL, WorldTextures};
 use crate::geometry::{fbm, smoothstep};
@@ -105,14 +105,20 @@ pub fn road_pieces(
     pieces
 }
 
-/// The arches over the road.
+/// The arches over the road (those `within` a stretch of it, if given).
 pub fn spawn_gantries(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     scenery: &Scenery,
+    within: Option<Span>,
     assets: &mut Assets3d,
 ) {
-    for gantry in scenery.gantries {
+    let lap = track.lap_length();
+    for gantry in scenery
+        .gantries
+        .iter()
+        .filter(|gantry| within.is_none_or(|stretch| stretch.contains(gantry.along, lap)))
+    {
         spawn_gantry(world, track, gantry, assets);
     }
 }

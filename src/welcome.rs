@@ -37,6 +37,10 @@ use crate::world::scenery::{Scenery, span};
 /// mira a un punto de la carretera más adelante (m), a esta altura, con este
 /// campo de visión (rad).
 const FLYBY_SPEED: f32 = 22.0;
+/// How far before the line the flight over a track sets off (m), whenever
+/// another track is chosen: its start is always seen first, which can be
+/// shown before the rest of it is ready (see `crate::world::preview`).
+const FLYBY_RUN_UP: f32 = 90.0;
 const FLYBY_SIDE: f32 = -4.0;
 const FLYBY_HEIGHT: f32 = 6.0;
 const FLYBY_AHEAD: f32 = 45.0;
@@ -746,6 +750,12 @@ fn fit_menu_to_title(
     }
 }
 
+/// Where on a lap `lap` metres long the flight over it sets off: just
+/// before the line.
+fn flyby_start(lap: f32) -> f32 {
+    (lap - FLYBY_RUN_UP).rem_euclid(lap)
+}
+
 /// How high the camera flies over the road `travelled` metres along a lap
 /// of `lap` metres: its own height, and under the rock through a tunnel,
 /// coming down to it before the mouth and up again past it.
@@ -766,7 +776,8 @@ fn flyby_height(scenery: &Scenery, travelled: f32, lap: f32) -> f32 {
     FLYBY_HEIGHT.lerp(FLYBY_TUNNEL_HEIGHT, under_rock)
 }
 
-/// La cámara recorre la pista despacio, un poco por encima de la carretera.
+/// La cámara recorre la pista despacio, un poco por encima de la carretera,
+/// from just before the line of each track chosen.
 fn fly_over_track(
     time: Res<Time>,
     track: Res<Track>,
@@ -774,9 +785,19 @@ fn fly_over_track(
     camera: Single<(&mut Transform, &mut Projection), With<Camera3d>>,
     mut glide: ResMut<CameraGlide>,
     mut travelled: Local<f32>,
+    mut chosen: Local<bool>,
 ) {
     let dt = time.delta_secs();
     let length = track.sample_count() as f32 * track.step_length();
+    // Another track chosen: its own track takes the place of the last at
+    // the start of the next frame (see `crate::world`), from then on from
+    // just before its line.
+    if circuit.is_changed() {
+        *chosen = true;
+    } else if *chosen {
+        *chosen = false;
+        *travelled = flyby_start(length);
+    }
     *travelled = (*travelled + FLYBY_SPEED * dt) % length;
     // Un punto de la carretera a `distance` m de la meta, entre dos muestras.
     let at = |distance: f32, lateral: f32| {
@@ -841,6 +862,24 @@ mod tests {
                     assert!((height(at) - FLYBY_HEIGHT).abs() < 1e-3, "{}", circuit.name);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn the_flight_over_a_track_sets_off_just_before_its_line() {
+        for circuit in &CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let lap = track.sample_count() as f32 * track.step_length();
+            let start = flyby_start(lap);
+            assert!(
+                (lap - start - FLYBY_RUN_UP).abs() < 1e-3,
+                "{}",
+                circuit.name
+            );
+            // Within the look at the start a track not yet ready is shown
+            // with, the line ahead.
+            let stretch = crate::world::preview_stretch(lap);
+            assert!(stretch.contains(start, lap), "{}", circuit.name);
         }
     }
 

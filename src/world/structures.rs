@@ -89,12 +89,14 @@ pub fn structure_pieces(
     terrain: &Terrain,
     scenery: &Scenery,
     textures: &WorldTextures,
+    within: Option<Span>,
 ) -> (Vec<(Mesh, StandardMaterial)>, Vec<Lamp>, Vec<GroundMesh>) {
     let mut pieces = Vec::new();
     let mut lamps = Vec::new();
     let mut ground = Vec::new();
     let lap = track.lap_length();
-    for tunnel in scenery.tunnels {
+    let wanted = |span: &Span| within.is_none_or(|stretch| span.overlaps(&stretch, lap));
+    for tunnel in scenery.tunnels.iter().filter(|tunnel| wanted(tunnel)) {
         // A mine's tunnels are its excavation.
         if scenery.soil == Soil::Mine {
             let halls = scenery.mine.as_ref().map_or(&[][..], |mine| mine.halls);
@@ -194,8 +196,10 @@ pub fn structure_pieces(
             pieces.push((mesh, material));
         }
     }
-    pieces.extend(super::dam::dam_pieces(track, terrain, scenery, textures));
-    for bridge in scenery.bridges {
+    if scenery.dams.iter().any(|dam| wanted(&dam.crest)) {
+        pieces.extend(super::dam::dam_pieces(track, terrain, scenery, textures));
+    }
+    for bridge in scenery.bridges.iter().filter(|bridge| wanted(&bridge.span)) {
         // A dam's crest is the dam (see `dam`).
         if bridge.style == BridgeStyle::Dam {
             continue;

@@ -27,7 +27,7 @@ const FLAT: f32 = WALL_DISTANCE + 1.5;
 const UNDER_ROAD: f32 = 0.03;
 const FINE_SPACING: f32 = 3.5;
 /// Margen alrededor del circuito con rejilla fina.
-const FINE_MARGIN: f32 = 260.0;
+pub(super) const FINE_MARGIN: f32 = 260.0;
 /// Hasta dónde llega el terreno desde el centro del circuito.
 const EXTENT: f32 = 3500.0;
 /// Cuánto crece cada celda respecto a la anterior fuera de la zona fina,
@@ -150,9 +150,28 @@ impl Terrain {
     /// The terrain of a circuit, worked out on at most `threads` threads.
     pub fn on_threads(track: &Track, scenery: &Scenery, threads: usize) -> Self {
         let (min, max) = track.bounds();
+        Self::shaped_within(track, scenery, threads, (min, max))
+    }
+
+    /// The terrain of a circuit, worked out on at most `threads` threads,
+    /// fine and shaped by its roads only round `near` (a box, its corners;
+    /// [`FINE_MARGIN`] round it): elsewhere it is the land as it would be
+    /// with no road, in cells growing coarser away from it. Round the whole
+    /// circuit, it is as [`Self::on_threads`] makes it; round a stretch of
+    /// it, it is a quick look at that stretch (see `super::preview`).
+    pub fn shaped_within(
+        track: &Track,
+        scenery: &Scenery,
+        threads: usize,
+        (near_min, near_max): (Vec2, Vec2),
+    ) -> Self {
+        let (min, max) = track.bounds();
         let center = (min + max) / 2.0;
-        let xs = axis(min.x - FINE_MARGIN, max.x + FINE_MARGIN, center.x);
-        let zs = axis(min.y - FINE_MARGIN, max.y + FINE_MARGIN, center.y);
+        let xs = axis(near_min.x - FINE_MARGIN, near_max.x + FINE_MARGIN, center.x);
+        let zs = axis(near_min.y - FINE_MARGIN, near_max.y + FINE_MARGIN, center.y);
+        // Shaped by the roads within it; its grass as the whole circuit's,
+        // wild past the box round the whole of it.
+        let shaped = (near_min - FINE_MARGIN, near_max + FINE_MARGIN);
         let fine = (min - FINE_MARGIN, max + FINE_MARGIN);
         let shaper = Shaper::new(track, scenery);
         let tunnels = Tunnels::new(track, scenery);
@@ -164,7 +183,7 @@ impl Terrain {
         let heights_of = |part: &[Vec2]| {
             part.iter()
                 .map(|&point| {
-                    let inside = point.cmpge(fine.0).all() && point.cmple(fine.1).all();
+                    let inside = point.cmpge(shaped.0).all() && point.cmple(shaped.1).all();
                     if !inside {
                         return shaper.height_at(point, None);
                     }
@@ -223,6 +242,12 @@ impl Terrain {
             grass_shade: scenery.grass_shade,
             lakes: shaper.dams,
         }
+    }
+
+    /// How many points its grid has.
+    #[cfg(test)]
+    pub fn grid_points(&self) -> usize {
+        self.xs.len() * self.zs.len()
     }
 
     /// The height of the water at `point` or by it: a dam's lake's level in

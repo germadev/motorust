@@ -41,6 +41,14 @@ impl Span {
         smoothstep(0.0, fade, into) * smoothstep(0.0, fade, length - into)
     }
 
+    /// Whether it and `other` share any of a lap `lap` metres long.
+    pub fn overlaps(&self, other: &Span, lap: f32) -> bool {
+        let middle = |span: &Span| span.from + span.length(lap) / 2.0;
+        self.contains(other.from, lap)
+            || other.contains(self.from, lap)
+            || self.contains(middle(other), lap)
+    }
+
     pub fn contains(&self, along: f32, lap: f32) -> bool {
         self.weight(along, lap, 0.0) > 0.0
     }

@@ -15,6 +15,7 @@ mod lettering;
 mod lod;
 mod mine;
 mod mirror;
+mod preview;
 mod props;
 mod quads;
 mod road;
@@ -43,8 +44,10 @@ use bevy::{
 
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::menu::GameState;
-use crate::settings::WEB;
+use crate::settings::{Settings, WEB};
 use crate::track::{Surface, Track};
+#[cfg(test)]
+pub use preview::stretch as preview_stretch;
 pub use textures::generate_mipmaps;
 pub use trees::Dressed;
 
@@ -76,6 +79,8 @@ impl Plugin for WorldPlugin {
             .init_resource::<Roadsides>()
             .init_resource::<Preparing>()
             .init_resource::<Finishing>()
+            .init_resource::<Previewing>()
+            .init_resource::<PreviewRoots>()
             .init_resource::<CircuitLoading>()
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
@@ -246,7 +251,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     };
     let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
     let (structures, lamps, tops) =
-        structures::structure_pieces(&track, &terrain, scenery, textures);
+        structures::structure_pieces(&track, &terrain, scenery, textures, None);
     pieces.extend(structures);
     ground.extend(tops);
     let lakes = dam::prepare_lakes(&track, &terrain, scenery, textures, urgency.threads());
@@ -257,18 +262,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
             mirror::deep(scenery.water),
         )
     });
-    // One meadow for each kind of flower drawn (the tunnels' tops drawn in
-    // the same as the ground round them).
-    let mut kinds = Vec::new();
-    for kind in ground.iter().filter_map(|ground| ground.flowers) {
-        if !kinds.contains(&kind) {
-            kinds.push(kind);
-        }
-    }
-    let meadows = kinds
-        .into_iter()
-        .map(|kind| (kind, foliage::meadow(&textures.lawn, kind)))
-        .collect();
+    let meadows = preview::meadows(&ground, textures);
     structures::draw_signs(scenery);
     Prepared {
         basis: Basis {
@@ -419,6 +413,41 @@ struct Preparing(HashMap<usize, Work<Prepared>>);
 #[derive(Resource, Default)]
 struct Finishing(HashMap<usize, (Shown, Option<Work<Rest>>)>);
 
+/// The quick looks at the start of the circuits being prepared (see
+/// [`preview`]), by index in [`CIRCUITS`].
+#[derive(Resource, Default)]
+struct Previewing(HashMap<usize, Work<Prepared>>);
+
+/// The quick looks at the start of the circuits in the world, by index in
+/// [`CIRCUITS`]: each goes when its circuit's first part comes.
+#[derive(Resource, Default)]
+struct PreviewRoots(HashMap<usize, Entity>);
+
+/// A quick look at the start of circuit `.0` in the world (see [`preview`]).
+#[derive(Component, Debug, PartialEq, Eq)]
+pub struct PreviewRoot(pub usize);
+
+/// Whether the circuits are looked at first at their start before they
+/// are ready (see [`preview`]): in the tracks menu seen from the road, and
+/// not on the web, where the work in the background runs on the main
+/// thread.
+fn previews_wanted(settings: Option<&Settings>) -> bool {
+    !WEB && settings.is_some_and(|settings| settings.track_view.at_the_road())
+}
+
+/// The quick look at the start of circuit `index` worked out on another
+/// thread.
+fn start_previewing(
+    index: usize,
+    textures: &textures::WorldTextures,
+    urgency: Urgency,
+) -> Work<Prepared> {
+    let textures = textures.clone();
+    Work::start(urgency, move |urgency| {
+        preview::prepare_preview(index, &textures, urgency)
+    })
+}
+
 /// Whether the circuit chosen is still being prepared, and cannot be shown
 /// yet: in the tracks menu it is not waited for (the menu would stop for
 /// seconds), it comes when ready. Its rest may come later still: going on to
@@ -438,16 +467,22 @@ fn menu_distance(a: usize, b: usize) -> usize {
 /// worked on now), so that going from one to the next is instant: the first part of each, those nearest the one chosen
 /// first, and then the rest of each. Each is put in the world when it is
 /// ready ([`spawn_prepared_circuit`]). The menu goes on meanwhile.
+#[allow(clippy::too_many_arguments)]
 fn queue_circuits(
     current: Res<CurrentCircuit>,
+    settings: Option<Res<Settings>>,
     roots: Query<&WorldRoot>,
     textures: Res<textures::WorldTextures>,
     mut preparing: ResMut<Preparing>,
     mut finishing: ResMut<Finishing>,
+    mut previewing: ResMut<Previewing>,
+    previews: Res<PreviewRoots>,
 ) {
     // One at a time, and none while the one chosen is worked on now, so as
     // not to take its cores.
-    let busy = !preparing.0.is_empty() || finishing.0.values().any(|(_, work)| work.is_some());
+    let busy = !preparing.0.is_empty()
+        || !previewing.0.is_empty()
+        || finishing.0.values().any(|(_, work)| work.is_some());
     if busy {
         return;
     }
@@ -455,6 +490,19 @@ fn queue_circuits(
         indices.min_by_key(|&index| (menu_distance(index, current.0), index))
     };
     let built: HashSet<usize> = roots.iter().map(|root| root.0).collect();
+    // A look at the start of each first, seen from the road.
+    if previews_wanted(settings.as_deref()) {
+        let unseen = nearest(&mut (0..CIRCUITS.len()).filter(|index| {
+            !built.contains(index)
+                && !finishing.0.contains_key(index)
+                && !previews.0.contains_key(index)
+        }));
+        if let Some(index) = unseen {
+            let work = start_previewing(index, &textures, Urgency::Background);
+            previewing.0.insert(index, work);
+            return;
+        }
+    }
     let unbuilt = nearest(&mut (0..CIRCUITS.len()).filter(|index| {
         !built.contains(index)
             && !preparing.0.contains_key(index)
@@ -494,6 +542,8 @@ fn spawn_prepared_circuit(
     current: Res<CurrentCircuit>,
     mut preparing: ResMut<Preparing>,
     mut finishing: ResMut<Finishing>,
+    mut previewing: ResMut<Previewing>,
+    roots: Query<&WorldRoot>,
     mut builder: Builder,
     mut roadsides: ResMut<Roadsides>,
     mut track: ResMut<Track>,
@@ -518,7 +568,8 @@ fn spawn_prepared_circuit(
         } else {
             Visibility::Hidden
         };
-        let shown = build(&mut commands, prepared, &mut builder, visibility);
+        previewing.0.remove(&index);
+        let shown = build(&mut commands, prepared, &mut builder, visibility, None);
         if chosen {
             shown.basis.roadside.apply(&mut track);
             loading.set_if_neq(CircuitLoading(false));
@@ -526,6 +577,34 @@ fn spawn_prepared_circuit(
         roadsides.0.insert(index, shown.basis.roadside.clone());
         let work = chosen.then(|| start_finishing(&shown.basis, &builder.textures, Urgency::Now));
         finishing.0.insert(index, (shown, work));
+        return;
+    }
+    // A look at the start of a circuit: shown if it is the one chosen,
+    // unless its first part has come.
+    let ready = chosen_first(previewing.0.keys().copied().collect())
+        .into_iter()
+        .find_map(|index| {
+            let work = previewing.0.get_mut(&index)?;
+            block_on(poll_once(&mut work.task)).map(|prepared| (index, prepared))
+        });
+    if let Some((index, prepared)) = ready {
+        previewing.0.remove(&index);
+        let built = roots.iter().any(|root| root.0 == index) || finishing.0.contains_key(&index);
+        if !built && !builder.previews.0.contains_key(&index) {
+            let visibility = if index == current.0 {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            let stretch = preview::stretch(prepared.basis.track.lap_length());
+            build(
+                &mut commands,
+                prepared,
+                &mut builder,
+                visibility,
+                Some(stretch),
+            );
+        }
         return;
     }
     let ready = chosen_first(finishing.0.keys().copied().collect())
@@ -559,7 +638,7 @@ fn complete_now(
             Some(work) => work.wait(|| prepare(index, &textures, Urgency::Now)),
             None => prepare(index, &textures, Urgency::Now),
         };
-        let shown = build(commands, prepared, builder, Visibility::Inherited);
+        let shown = build(commands, prepared, builder, Visibility::Inherited, None);
         roadsides.0.insert(index, shown.basis.roadside.clone());
         finishing.0.insert(index, (shown, None));
     }
@@ -616,15 +695,26 @@ fn unload_unused_circuits(
     roots: Query<(Entity, &WorldRoot)>,
     mut preparing: ResMut<Preparing>,
     mut finishing: ResMut<Finishing>,
+    mut previewing: ResMut<Previewing>,
+    mut previews: ResMut<PreviewRoots>,
 ) {
     for (entity, root) in &roots {
         if root.0 != current.0 {
             commands.entity(entity).despawn();
         }
     }
-    // The one chosen, if it is still on its way, comes all the same.
+    // The one chosen, if it is still on its way, comes all the same, its
+    // look at the start shown meanwhile.
     preparing.0.retain(|&index, _| index == current.0);
     finishing.0.retain(|&index, _| index == current.0);
+    previewing.0.retain(|&index, _| index == current.0);
+    previews.0.retain(|&index, &mut entity| {
+        let kept = index == current.0;
+        if !kept {
+            commands.entity(entity).despawn();
+        }
+        kept
+    });
 }
 
 /// Al cambiar de pista: actualiza el trazado y conmuta la visibilidad entre
@@ -639,12 +729,15 @@ fn rebuild_world(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
     state: Option<Res<State<GameState>>>,
+    settings: Option<Res<Settings>>,
     mut roots: Query<(Entity, &WorldRoot, &mut Visibility)>,
+    mut looks: Query<(&PreviewRoot, &mut Visibility), Without<WorldRoot>>,
     mut track: ResMut<Track>,
     mut builder: Builder,
     mut roadsides: ResMut<Roadsides>,
     mut preparing: ResMut<Preparing>,
     mut finishing: ResMut<Finishing>,
+    mut previewing: ResMut<Previewing>,
     mut loading: ResMut<CircuitLoading>,
 ) {
     if !current.is_changed() || current.is_added() {
@@ -659,10 +752,30 @@ fn rebuild_world(
             *visibility = Visibility::Hidden;
         }
     }
+    // Its look at the start, till it comes.
+    for (look, mut visibility) in &mut looks {
+        *visibility = if look.0 == current.0 && !found {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
     *track = Track::new(&current.get().layout);
     let in_menu = state.is_some_and(|state| *state.get() == GameState::Tracks);
     if in_menu && !WEB {
         if !found {
+            // A look at its start first, if there is none, then the whole
+            // of it, on the same thread, every core.
+            if previews_wanted(settings.as_deref())
+                && !builder.previews.0.contains_key(&current.0)
+                && previewing
+                    .0
+                    .get(&current.0)
+                    .is_none_or(|work| !work.begun())
+            {
+                let work = start_previewing(current.0, &builder.textures, Urgency::Now);
+                previewing.0.insert(current.0, work);
+            }
             if preparing.0.get(&current.0).is_none_or(|work| !work.begun()) {
                 let work = start_preparing(current.0, &builder.textures, Urgency::Now);
                 preparing.0.insert(current.0, work);
@@ -705,7 +818,13 @@ fn build_world(
     mut roadsides: ResMut<Roadsides>,
 ) {
     let prepared = prepare(current.0, &builder.textures, Urgency::Now);
-    let shown = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
+    let shown = build(
+        &mut commands,
+        prepared,
+        &mut builder,
+        Visibility::Inherited,
+        None,
+    );
     shown.basis.roadside.apply(&mut track);
     roadsides.0.insert(current.0, shown.basis.roadside.clone());
     let rest = prepare_rest(&shown.basis, &builder.textures, Urgency::Now);
@@ -723,6 +842,7 @@ struct Builder<'w> {
     meshes: ResMut<'w, Assets<Mesh>>,
     materials: ResMut<'w, Assets<StandardMaterial>>,
     images: ResMut<'w, Assets<Image>>,
+    previews: ResMut<'w, PreviewRoots>,
 }
 
 /// A circuit whose first part is in the world: where it is, the sea's
@@ -735,12 +855,14 @@ struct Shown {
 }
 
 /// Puts the first part of a prepared circuit in the world (see
-/// [`Prepared`]).
+/// [`Prepared`]), its look at the start going; or, if it is a look at a
+/// `stretch` of it (see [`preview`]), that, with the arches on the stretch.
 fn build(
     commands: &mut Commands,
     prepared: Prepared,
     builder: &mut Builder,
     visibility: Visibility,
+    stretch: Option<scenery::Span>,
 ) -> Shown {
     let Prepared {
         basis,
@@ -785,13 +907,16 @@ fn build(
         mirrored_leaves: Vec::new(),
     };
     let (track, terrain) = (&*basis.track, &*basis.terrain);
-    let root = commands
-        .spawn((
-            WorldRoot(basis.index),
-            lamps::Lamps(lamps),
-            Transform::default(),
-            visibility,
-        ))
+    let mut root = commands.spawn((lamps::Lamps(lamps), Transform::default(), visibility));
+    match stretch {
+        None => {
+            root.insert(WorldRoot(basis.index));
+        }
+        Some(_) => {
+            root.insert(PreviewRoot(basis.index));
+        }
+    }
+    let root = root
         .with_children(|world| {
             terrain::spawn_terrain(
                 world,
@@ -817,8 +942,10 @@ fn build(
                     piece.insert(NotShadowCaster);
                 }
             }
-            road::spawn_gantries(world, track, scenery, &mut assets);
-            structures::spawn_signs(world, track, terrain, scenery, &mut assets);
+            road::spawn_gantries(world, track, scenery, stretch, &mut assets);
+            if stretch.is_none() {
+                structures::spawn_signs(world, track, terrain, scenery, &mut assets);
+            }
             // The sea: the cartoon one at first, mirroring, if it should,
             // before it is first drawn (see `sea::dress_the_sea`).
             let sea_water = sea::SeaWater {
@@ -833,6 +960,16 @@ fn build(
             ));
         })
         .id();
+    match stretch {
+        None => {
+            if let Some(look) = builder.previews.0.remove(&basis.index) {
+                commands.entity(look).despawn();
+            }
+        }
+        Some(_) => {
+            builder.previews.0.insert(basis.index, root);
+        }
+    }
     Shown {
         root,
         sea_mirror,
@@ -1110,6 +1247,102 @@ mod tests {
             "{shown} {}",
             pieces(&mut app)
         );
+    }
+
+    /// A world with the tracks menu seen as `view`.
+    fn menu_app(view: crate::settings::TrackView) -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Mesh>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .insert_resource(Settings {
+                track_view: view,
+                ..default()
+            })
+            .add_plugins(WorldPlugin);
+        app.update();
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Tracks);
+        app.update();
+        app
+    }
+
+    #[test]
+    fn seen_from_the_road_a_circuit_shows_its_start_first() {
+        let mut app = menu_app(crate::settings::TrackView::Trackside);
+        // The first work in the background: a look at the start of the
+        // nearest circuit.
+        let keys = |app: &App| -> Vec<usize> {
+            app.world()
+                .resource::<Previewing>()
+                .0
+                .keys()
+                .copied()
+                .collect()
+        };
+        assert_eq!(keys(&app), [1]);
+        assert!(app.world().resource::<Preparing>().0.is_empty());
+        // The last one chosen at once: its start shown while it is on its
+        // way, and then the circuit in its place.
+        let last = CIRCUITS.len() - 1;
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
+        app.update();
+        let mut looks = app.world_mut().query::<(&PreviewRoot, &Visibility)>();
+        let started = std::time::Instant::now();
+        loop {
+            assert!(started.elapsed().as_secs() < 120, "no look at its start");
+            let shown: Vec<_> = looks
+                .iter(app.world())
+                .filter(|(look, _)| look.0 == last)
+                .map(|(_, visibility)| *visibility)
+                .collect();
+            if !shown.is_empty() {
+                assert_eq!(shown, [Visibility::Inherited]);
+                break;
+            }
+            app.update();
+        }
+        assert!(app.world().resource::<CircuitLoading>().0);
+        while app.world().resource::<CircuitLoading>().0 {
+            assert!(started.elapsed().as_secs() < 240, "it never comes");
+            app.update();
+        }
+        app.update();
+        assert_eq!(
+            looks
+                .iter(app.world())
+                .filter(|(look, _)| look.0 == last)
+                .count(),
+            0
+        );
+        let mut roots = app.world_mut().query::<(&WorldRoot, &Visibility)>();
+        assert!(
+            roots
+                .iter(app.world())
+                .any(|(root, visibility)| root.0 == last && *visibility == Visibility::Inherited)
+        );
+    }
+
+    #[test]
+    fn seen_from_above_no_circuit_is_looked_at_by_its_start() {
+        let mut app = menu_app(crate::settings::TrackView::Aerial);
+        assert!(app.world().resource::<Previewing>().0.is_empty());
+        let preparing: Vec<usize> = app
+            .world()
+            .resource::<Preparing>()
+            .0
+            .keys()
+            .copied()
+            .collect();
+        assert_eq!(preparing, [1]);
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = CIRCUITS.len() - 1;
+        app.update();
+        assert!(app.world().resource::<Previewing>().0.is_empty());
     }
 
     #[test]
