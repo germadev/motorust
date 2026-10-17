@@ -14,11 +14,12 @@
 //!    the south-east bay, to a pass between rocks.
 //! 4. The east coast road rises and falls behind a white barrier, with the
 //!    sea on the right.
-//! 5. A mountain road climbs on north in S-bends between rock walls, 40 m
-//!    up, with the lighthouse straight ahead below, and dives steeply at it
-//!    to the foot of its tower on the northern cape, round a long
-//!    left-hander.
-//! 6. Back up through a forest it rolls over a hump, dips and rises again, then
+//! 5. A mountain road climbs on north in S-bends between rock walls, 37 m
+//!    up, over a broad top with the lighthouse straight ahead below, and
+//!    dives steeply at it to the foot of its tower on the northern cape,
+//!    round a long left-hander.
+//! 6. Back up through a forest it climbs, eases off over a broad shoulder and
+//!    rises again, then
 //!    runs down the ridge and crosses over the tunnel, down the shore of the
 //!    bay to a bridge with red arches over the river mouth.
 //! 7. Up a gorge to an arch dam; away from it up the hillside to a hairpin
@@ -498,6 +499,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         waterfalls: &[],
         sky: SkyStyle::Mediterranean,
         water: Water::Sea,
+        cartoon_water: false,
         pit: None,
         mine: None,
         desert: None,
@@ -613,31 +615,35 @@ const ELEVATION: [(f32, f32); 70] = [
     (700.0, 9.5),
     (760.0, 13.5),
     (820.0, 16.0),
+    // Through the rock pass, in a bend, rising steadily with no crest.
     (880.0, 12.5),
-    (940.0, 15.0),
-    (1000.0, 13.5),
+    (940.0, 13.0),
+    (1000.0, 14.5),
     (1060.0, 17.5),
     // A crest on the coast road, with the sea straight ahead.
     (1120.0, 22.0),
     (1180.0, 18.5),
     (1240.0, 22.0),
-    // Up the mountain to its top, with the lighthouse straight ahead below.
+    // Up the mountain to its top, with the lighthouse straight ahead below:
+    // a broad top (a crest over 600 m round, which the bike only leaves the
+    // road over at more than 270 km/h), as it goes over it in a bend.
     (1310.0, 28.0),
-    (1380.0, 35.0),
-    (1430.0, 38.5),
+    (1380.0, 34.0),
+    (1430.0, 35.5),
     // The dive to the cape, steep and straight at the lighthouse.
-    (1480.0, 34.0),
-    (1530.0, 28.0),
-    (1580.0, 22.0),
+    (1480.0, 33.5),
+    (1530.0, 29.0),
+    (1580.0, 23.5),
     // Down at the foot of the lighthouse, round the cape.
-    (1630.0, 17.5),
-    (1680.0, 18.0),
-    // Back up the west side into the forest, over a hump, a dip and up
-    // again.
+    (1630.0, 18.5),
+    (1680.0, 19.0),
+    // Back up the west side into the forest, easing off over a broad
+    // shoulder (no crest to throw the bike off its lean in the bends), and
+    // up again.
     (1740.0, 23.5),
     (1800.0, 30.0),
-    (1870.0, 36.5),
-    (1930.0, 35.0),
+    (1870.0, 34.8),
+    (1930.0, 36.3),
     (1990.0, 37.5),
     (2060.0, 41.5),
     (2120.0, 43.5),

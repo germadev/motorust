@@ -27,7 +27,7 @@ const FLAT: f32 = WALL_DISTANCE + 1.5;
 const UNDER_ROAD: f32 = 0.03;
 const FINE_SPACING: f32 = 3.5;
 /// Margen alrededor del circuito con rejilla fina.
-const FINE_MARGIN: f32 = 260.0;
+pub(super) const FINE_MARGIN: f32 = 260.0;
 /// Hasta dónde llega el terreno desde el centro del circuito.
 const EXTENT: f32 = 3500.0;
 /// Cuánto crece cada celda respecto a la anterior fuera de la zona fina,
@@ -126,6 +126,9 @@ pub struct Terrain {
     /// `Scenery::grass_shade`).
     greens: Greens,
     grass_shade: f32,
+    /// The dams' lakes, whose water stands over the sea's (see
+    /// [`Terrain::water_level`]).
+    lakes: Vec<DamGround>,
 }
 
 /// A mesh of the ground and what it is drawn as: a kind of ground and, on
@@ -147,9 +150,28 @@ impl Terrain {
     /// The terrain of a circuit, worked out on at most `threads` threads.
     pub fn on_threads(track: &Track, scenery: &Scenery, threads: usize) -> Self {
         let (min, max) = track.bounds();
+        Self::shaped_within(track, scenery, threads, (min, max))
+    }
+
+    /// The terrain of a circuit, worked out on at most `threads` threads,
+    /// fine and shaped by its roads only round `near` (a box, its corners;
+    /// [`FINE_MARGIN`] round it): elsewhere it is the land as it would be
+    /// with no road, in cells growing coarser away from it. Round the whole
+    /// circuit, it is as [`Self::on_threads`] makes it; round a stretch of
+    /// it, it is a quick look at that stretch (see `super::preview`).
+    pub fn shaped_within(
+        track: &Track,
+        scenery: &Scenery,
+        threads: usize,
+        (near_min, near_max): (Vec2, Vec2),
+    ) -> Self {
+        let (min, max) = track.bounds();
         let center = (min + max) / 2.0;
-        let xs = axis(min.x - FINE_MARGIN, max.x + FINE_MARGIN, center.x);
-        let zs = axis(min.y - FINE_MARGIN, max.y + FINE_MARGIN, center.y);
+        let xs = axis(near_min.x - FINE_MARGIN, near_max.x + FINE_MARGIN, center.x);
+        let zs = axis(near_min.y - FINE_MARGIN, near_max.y + FINE_MARGIN, center.y);
+        // Shaped by the roads within it; its grass as the whole circuit's,
+        // wild past the box round the whole of it.
+        let shaped = (near_min - FINE_MARGIN, near_max + FINE_MARGIN);
         let fine = (min - FINE_MARGIN, max + FINE_MARGIN);
         let shaper = Shaper::new(track, scenery);
         let tunnels = Tunnels::new(track, scenery);
@@ -161,7 +183,7 @@ impl Terrain {
         let heights_of = |part: &[Vec2]| {
             part.iter()
                 .map(|&point| {
-                    let inside = point.cmpge(fine.0).all() && point.cmple(fine.1).all();
+                    let inside = point.cmpge(shaped.0).all() && point.cmple(shaped.1).all();
                     if !inside {
                         return shaper.height_at(point, None);
                     }
@@ -218,7 +240,24 @@ impl Terrain {
             up,
             greens: scenery.greens,
             grass_shade: scenery.grass_shade,
+            lakes: shaper.dams,
         }
+    }
+
+    /// How many points its grid has.
+    #[cfg(test)]
+    pub fn grid_points(&self) -> usize {
+        self.xs.len() * self.zs.len()
+    }
+
+    /// The height of the water at `point` or by it: a dam's lake's level in
+    /// it and on the rim round it, the sea's elsewhere. What is planted
+    /// stands clear over it, not in a lake's water.
+    pub fn water_level(&self, point: Vec2) -> f32 {
+        self.lakes
+            .iter()
+            .filter_map(|lake| lake.level_by(point))
+            .fold(SEA_LEVEL, f32::max)
     }
 
     /// Altura del terreno en un punto (interpolada en la rejilla).
@@ -442,6 +481,19 @@ impl Terrain {
         shaded(self.grass_tint(p, normal, 0.0), self.grass_shade)
     }
 
+    /// The colour of `ground` at `p`, facing `normal`, as a tint over its
+    /// texture (linear RGBA), as the circuit's soil draws it: a desert
+    /// canyon's earth and rock, the checkerboard earth's, or the grass's
+    /// greens (the flowers and the weathering of the mountains aside).
+    pub fn ground_color(&self, ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+        match (self.soil, ground) {
+            (Soil::Mine, _) => canyon_vertex_color(ground, p, normal),
+            (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
+            (_, Ground::Grass) => self.grass_color(p, normal),
+            _ => ground_vertex_color(ground, p, normal),
+        }
+    }
+
     /// The tint of the grass at `p`, `wild` as it is far from the roads
     /// (see [`grass_tint`]), by the circuit's greens.
     fn grass_tint(&self, p: Vec3, normal: Vec3, wild: f32) -> Color {
@@ -459,35 +511,22 @@ impl Terrain {
         self.look_drawn(point).1
     }
 
-    /// What the steep faces are made of.
-    pub fn soil(&self) -> Soil {
-        self.soil
-    }
-
-    /// The ground's meshes, by kind of ground, and the grass in flower by
-    /// the flowers it is in. Pure data: they can be worked out away from the
-    /// main thread.
-    pub fn meshes(&self) -> Vec<GroundMesh> {
-        let (width, depth) = (self.xs.len(), self.zs.len());
+    /// The ground's meshes over the cells in rows `cells` of the grid (see
+    /// [`Self::meshes`]), its points' normals given: their vertices shared
+    /// within it.
+    fn band(&self, cells: std::ops::Range<usize>, normals: &[Vec3]) -> Band {
+        let width = self.xs.len();
         let position =
             |i: usize, j: usize| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
-        let normals: Vec<Vec3> = (0..depth)
-            .flat_map(|j| (0..width).map(move |i| (i, j)))
-            .map(|(i, j)| {
-                let (left, right) = (i.saturating_sub(1), (i + 1).min(width - 1));
-                let (back, front) = (j.saturating_sub(1), (j + 1).min(depth - 1));
-                let along_x = position(right, j) - position(left, j);
-                let along_z = position(i, front) - position(i, back);
-                along_z.cross(along_x).normalize()
-            })
-            .collect();
-
-        let mut grass = Builder::shared(width * depth);
-        let mut sand = Builder::shared(width * depth);
+        // Its points, from its first row to the one after its last.
+        let first = cells.start * width;
+        let band_points = (cells.len() + 1) * width;
+        let mut grass = Builder::shared(band_points);
+        let mut sand = Builder::shared(band_points);
         let mut rock = Builder::default();
-        let mut snow = Builder::shared(width * depth);
+        let mut snow = Builder::shared(band_points);
         let mut meadows: Vec<(FlowerKind, Builder)> = Vec::new();
-        for j in 0..depth - 1 {
+        for j in cells {
             for i in 0..width - 1 {
                 let corners = [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)];
                 // Dos triángulos por celda, en sentido antihorario visto desde arriba.
@@ -504,7 +543,7 @@ impl Terrain {
                                 let meadow = match meadows.iter().position(|(k, _)| *k == kind) {
                                     Some(meadow) => meadow,
                                     None => {
-                                        meadows.push((kind, Builder::shared(width * depth)));
+                                        meadows.push((kind, Builder::shared(band_points)));
                                         meadows.len() - 1
                                     }
                                 };
@@ -518,7 +557,7 @@ impl Terrain {
                         let shared = builder.shared_vertices.is_some();
                         for w in weights {
                             // A point of the grid, or one on a border.
-                            let grid = (0..3).find(|&k| w[k] == 1.0).map(|k| indices[k]);
+                            let grid = (0..3).find(|&k| w[k] == 1.0).map(|k| indices[k] - first);
                             builder.push(grid, || {
                                 let blend = |values: [Vec3; 3]| {
                                     values[0] * w.x + values[1] * w.y + values[2] * w.z
@@ -609,6 +648,70 @@ impl Terrain {
                 }
             }
         }
+        Band {
+            grass,
+            sand,
+            rock,
+            snow,
+            meadows,
+        }
+    }
+
+    /// What the steep faces are made of.
+    pub fn soil(&self) -> Soil {
+        self.soil
+    }
+
+    /// The ground's meshes, by kind of ground, and the grass in flower by
+    /// the flowers it is in, worked out on `threads` threads, in bands of
+    /// the grid's rows (see [`Self::band`]) joined in order, the same
+    /// however many. Pure data: they can be worked out away from the main
+    /// thread.
+    pub fn meshes(&self, threads: usize) -> Vec<GroundMesh> {
+        let (width, depth) = (self.xs.len(), self.zs.len());
+        let position =
+            |i: usize, j: usize| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
+        let rows: Vec<usize> = (0..depth).collect();
+        let normals: Vec<Vec3> = on_cores(&rows, threads, |rows| {
+            rows.iter()
+                .flat_map(|&j| (0..width).map(move |i| (i, j)))
+                .map(|(i, j)| {
+                    let (left, right) = (i.saturating_sub(1), (i + 1).min(width - 1));
+                    let (back, front) = (j.saturating_sub(1), (j + 1).min(depth - 1));
+                    let along_x = position(right, j) - position(left, j);
+                    let along_z = position(i, front) - position(i, back);
+                    along_z.cross(along_x).normalize()
+                })
+                .collect()
+        });
+        // The bands dealt out to the threads in turn, so that each gets some
+        // of the dense middle of the grid and some of its sparse edges.
+        let cells = depth - 1;
+        let count = cells.div_ceil(BAND_ROWS);
+        let threads = threads.clamp(1, count.max(1));
+        let order: Vec<usize> = (0..threads)
+            .flat_map(|first| (first..count).step_by(threads))
+            .collect();
+        let mut bands = on_cores(&order, threads, |part| {
+            part.iter()
+                .map(|&band| {
+                    let rows = band * BAND_ROWS..((band + 1) * BAND_ROWS).min(cells);
+                    (band, self.band(rows, &normals))
+                })
+                .collect()
+        });
+        bands.sort_by_key(|(band, _)| *band);
+        let mut joined = Band::default();
+        for (_, band) in bands {
+            joined.append(band);
+        }
+        let Band {
+            grass,
+            sand,
+            rock,
+            snow,
+            meadows,
+        } = joined;
         let rock_tile = match self.soil {
             Soil::Rock | Soil::Mine => ROCK_TILE,
             Soil::Checkered => SOIL_TILE,
@@ -808,7 +911,7 @@ fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32, up: f3
 /// `work` done over `items` on at most `threads` threads, a share of them
 /// each, its results in order. On the web there are no threads: all on
 /// one.
-fn on_cores<T: Sync, R: Send>(
+pub(super) fn on_cores<T: Sync, R: Send>(
     items: &[T],
     threads: usize,
     work: impl Fn(&[T]) -> Vec<R> + Sync,
@@ -1606,6 +1709,38 @@ fn soil_vertex_color(p: Vec3, normal: Vec3) -> [f32; 4] {
         .to_f32_array()
 }
 
+/// How many rows of the grid's cells a band of the ground's meshes takes
+/// (see [`Terrain::meshes`]).
+const BAND_ROWS: usize = 24;
+
+/// The ground's meshes over a band of the grid, by kind of ground (see
+/// [`Terrain::band`]).
+#[derive(Default)]
+struct Band {
+    grass: Builder,
+    sand: Builder,
+    rock: Builder,
+    snow: Builder,
+    meadows: Vec<(FlowerKind, Builder)>,
+}
+
+impl Band {
+    /// `next`, the band after it, added to it: each kind of ground's mesh
+    /// to its own, a kind of meadow not met before after the others.
+    fn append(&mut self, next: Band) {
+        self.grass.append(next.grass);
+        self.sand.append(next.sand);
+        self.rock.append(next.rock);
+        self.snow.append(next.snow);
+        for (kind, meadow) in next.meadows {
+            match self.meadows.iter_mut().find(|(k, _)| *k == kind) {
+                Some((_, mine)) => mine.append(meadow),
+                None => self.meadows.push((kind, meadow)),
+            }
+        }
+    }
+}
+
 /// Acumula los triángulos de un tipo de suelo.
 #[derive(Default)]
 struct Builder {
@@ -1649,6 +1784,17 @@ impl Builder {
         if let (Some(grid), Some(shared)) = (grid, &mut self.shared_vertices) {
             shared[grid] = index;
         }
+    }
+
+    /// `other`'s triangles added after its own.
+    fn append(&mut self, other: Builder) {
+        let offset = self.positions.len() as u32;
+        self.positions.extend(other.positions);
+        self.normals.extend(other.normals);
+        self.uvs.extend(other.uvs);
+        self.colors.extend(other.colors);
+        self.indices
+            .extend(other.indices.into_iter().map(|index| index + offset));
     }
 
     fn build(self, tile: f32) -> Mesh {
@@ -1790,7 +1936,7 @@ mod tests {
         let lighthouse = &circuit.scenery.lighthouses[0];
         let elevation = |along: f32| track.elevations()[track.index_at(along)];
         let point = |along: f32| track.centerline()[track.index_at(along)];
-        // The road drops some 20 m from the top of the mountain road to the
+        // The road drops some 17 m from the top of the mountain road to the
         // foot of the lighthouse, in under 250 m, at over 11 % at its
         // steepest (and never over 13 %: see `slopes_and_banking_stay_rideable`).
         let top = (1380..1480).step_by(10).map(|a| elevation(a as f32));
@@ -1801,7 +1947,7 @@ mod tests {
             .filter(|&a| point(a).distance(lighthouse.position) < 70.0)
             .collect();
         let foot = near.iter().map(|&a| elevation(a)).fold(f32::MAX, f32::min);
-        assert!(top - foot > 18.0, "{top} m down to {foot} m");
+        assert!(top - foot > 16.0, "{top} m down to {foot} m");
         let steepest = (1440..1640)
             .step_by(10)
             .map(|a| (elevation(a as f32) - elevation(a as f32 + 10.0)) / 10.0)

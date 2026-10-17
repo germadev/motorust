@@ -18,6 +18,7 @@ use bevy::light::{NotShadowCaster, NotShadowReceiver};
 
 use super::Assets3d;
 use super::flowers::{FlowerPlan, spawn_flowers};
+use super::mirror::MirrorPoint;
 use super::props::Footprint;
 use super::quads::MeshBuilder;
 use super::road::WALL_HEIGHT;
@@ -171,11 +172,83 @@ const MODELS: [PropModel; 19] = [
 ];
 
 /// A piece of the pack: its mesh and the corners of the box round it, in
-/// its own frame.
+/// its own frame, and points over its faces for the water to mirror it
+/// (see [`surface`]).
 struct Piece {
     mesh: Handle<Mesh>,
     low: Vec3,
     high: Vec3,
+    surface: Vec<MirrorPoint>,
+}
+
+/// How far apart the points over a prop's faces are, at most (m of the
+/// prop as made): a few to each texel of the water's map, however big.
+const SURFACE_SPACING: f32 = 1.2;
+
+/// Points over the faces of `mesh` (in its own frame), at most
+/// [`SURFACE_SPACING`] apart, each with the way its face looks and the
+/// colour of `atlas` there (linear): what the water mirrors of it.
+fn surface(mesh: &Mesh, atlas: &Image) -> Vec<MirrorPoint> {
+    let Some(positions) = mesh
+        .attribute(Mesh::ATTRIBUTE_POSITION)
+        .and_then(|positions| positions.as_float3())
+    else {
+        return Vec::new();
+    };
+    let uvs: Vec<[f32; 2]> = match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
+        Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) => uvs.clone(),
+        _ => vec![[0.0, 0.0]; positions.len()],
+    };
+    let indices: Vec<usize> = match mesh.indices() {
+        Some(indices) => indices.iter().collect(),
+        None => (0..positions.len()).collect(),
+    };
+    let (width, height) = (atlas.width() as usize, atlas.height() as usize);
+    let texels = atlas.data.as_deref().unwrap_or(&[]);
+    let color = |uv: Vec2| -> [f32; 3] {
+        let x = ((uv.x.fract() + 1.0).fract() * width as f32) as usize;
+        let y = ((uv.y.fract() + 1.0).fract() * height as f32) as usize;
+        let at = (y.min(height.saturating_sub(1)) * width + x.min(width.saturating_sub(1))) * 4;
+        match texels.get(at..at + 3) {
+            Some(rgb) => {
+                let srgb = Color::srgb_u8(rgb[0], rgb[1], rgb[2]).to_linear();
+                [srgb.red, srgb.green, srgb.blue]
+            }
+            None => [0.5; 3],
+        }
+    };
+    let mut points = Vec::new();
+    for &corner in indices.as_chunks::<3>().0 {
+        let p = corner.map(|i| Vec3::from(positions[i]));
+        let uv = corner.map(|i| Vec2::from(uvs[i]));
+        let normal = (p[1] - p[0]).cross(p[2] - p[0]).normalize_or_zero();
+        let longest = (p[1] - p[0])
+            .length()
+            .max((p[2] - p[1]).length())
+            .max((p[0] - p[2]).length());
+        let steps = ((longest / SURFACE_SPACING).ceil() as usize).clamp(1, 64);
+        // A small one, its middle.
+        if steps == 1 {
+            points.push(MirrorPoint {
+                at: (p[0] + p[1] + p[2]) / 3.0,
+                normal,
+                color: color((uv[0] + uv[1] + uv[2]) / 3.0),
+            });
+            continue;
+        }
+        for i in 0..=steps {
+            for j in 0..=steps - i {
+                let (a, b) = (i as f32 / steps as f32, j as f32 / steps as f32);
+                let c = 1.0 - a - b;
+                points.push(MirrorPoint {
+                    at: p[0] * c + p[1] * a + p[2] * b,
+                    normal,
+                    color: color(uv[0] * c + uv[1] * a + uv[2] * b),
+                });
+            }
+        }
+    }
+    points
 }
 
 /// The props' meshes, by name, and their one material.
@@ -199,20 +272,27 @@ impl ModelledProps {
 impl FromWorld for ModelledProps {
     fn from_world(world: &mut World) -> Self {
         let pack = read(include_bytes!("../../assets/models/props/props.bin"));
+        let atlas = texture(include_bytes!("../../assets/models/props/color.jpg"), true);
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
         let pieces = pack
             .meshes
             .into_iter()
             .map(|piece| {
                 let (low, high) = bounds(&piece.mesh);
+                let surface = surface(&piece.mesh, &atlas);
                 let mesh = meshes.add(piece.mesh);
-                (piece.name, Piece { mesh, low, high })
+                (
+                    piece.name,
+                    Piece {
+                        mesh,
+                        low,
+                        high,
+                        surface,
+                    },
+                )
             })
             .collect();
-        let atlas = world.resource_mut::<Assets<Image>>().add(texture(
-            include_bytes!("../../assets/models/props/color.jpg"),
-            true,
-        ));
+        let atlas = world.resource_mut::<Assets<Image>>().add(atlas);
         let material = world
             .resource_mut::<Assets<StandardMaterial>>()
             .add(StandardMaterial {
@@ -304,7 +384,16 @@ pub fn spawn_japan(
     let mut taken: Vec<Footprint> = japan
         .props
         .iter()
-        .map(|prop| spawn_prop(world, track, terrain, prop, assets.props, &mut plinths))
+        .map(|prop| {
+            spawn_prop(
+                world,
+                track,
+                terrain,
+                prop,
+                (assets.props, &mut assets.mirrored),
+                &mut plinths,
+            )
+        })
         .collect();
     // The rows' props, each where nothing stands already.
     for prop in row_props(track, terrain, japan) {
@@ -318,7 +407,7 @@ pub fn spawn_japan(
                 track,
                 terrain,
                 &prop,
-                assets.props,
+                (assets.props, &mut assets.mirrored),
                 &mut plinths,
             ));
         }
@@ -712,13 +801,14 @@ fn stand(track: &Track, prop: &Prop, reach: f32) -> (Vec2, Quat) {
 /// A prop, standing on the ground (on the lowest of it under its box, so
 /// that it never floats), or on a plinth by the road ([`Plinths`]), or in
 /// the sea a little under the water, or floating on it. A water wheel
-/// turns. Returns the ground it takes.
+/// turns. Its surface is given to the water to mirror (`mirrored`).
+/// Returns the ground it takes.
 fn spawn_prop(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
     prop: &Prop,
-    props: &ModelledProps,
+    (props, mirrored): (&ModelledProps, &mut Vec<MirrorPoint>),
     plinths: &mut Plinths,
 ) -> Footprint {
     let piece = props.piece(name(prop.model));
@@ -753,14 +843,15 @@ fn spawn_prop(
             .with_scale(Vec3::splat(scale));
         world.spawn((Mesh3d(frame.mesh.clone()), material.clone(), axle));
         world.spawn((Mesh3d(piece.mesh.clone()), material, axle, Turning));
+        for part in [frame, piece] {
+            mirrored.extend(part.surface.iter().map(|point| point.placed(&axle)));
+        }
     } else {
-        world.spawn((
-            Mesh3d(piece.mesh.clone()),
-            material,
-            Transform::from_xyz(position.x, foot, position.y)
-                .with_rotation(rotation)
-                .with_scale(Vec3::splat(scale)),
-        ));
+        let placed = Transform::from_xyz(position.x, foot, position.y)
+            .with_rotation(rotation)
+            .with_scale(Vec3::splat(scale));
+        world.spawn((Mesh3d(piece.mesh.clone()), material, placed));
+        mirrored.extend(piece.surface.iter().map(|point| point.placed(&placed)));
     }
     (position, taken)
 }
@@ -1031,6 +1122,52 @@ mod tests {
         );
         assert!((wheel_low.y + wheel_high.y).abs() < 0.3, "round its axle");
         assert!((wheel_low.x + wheel_high.x).abs() < 0.3, "round its axle");
+    }
+
+    #[test]
+    fn every_prop_has_a_surface_for_the_water_to_mirror_in_its_colours() {
+        let atlas = texture(include_bytes!("../../assets/models/props/color.jpg"), true);
+        let mut total = 0;
+        for (name, mesh) in pack() {
+            let points = surface(&mesh, &atlas);
+            let (low, high) = bounds(&mesh);
+            assert!(!points.is_empty(), "{name}");
+            // Over its faces, inside its box, a few to each square metre at
+            // most.
+            for point in &points {
+                assert!(
+                    point.at.cmpge(low - 0.01).all() && point.at.cmple(high + 0.01).all(),
+                    "{name}"
+                );
+                assert!(
+                    point.color.iter().all(|c| (0.0..=1.0).contains(c)),
+                    "{name}"
+                );
+            }
+            let size = (high - low).max_element();
+            assert!(points.len() < 60_000, "{name}: {} points", points.len());
+            assert!(
+                points.len() as f32 > size,
+                "{name}: {} points",
+                points.len()
+            );
+            total += points.len();
+        }
+        assert!(total < 400_000, "{total}");
+        // Not all the atlas's colour is grey: a vermilion torii is red.
+        let torii = surface(
+            &pack()
+                .into_iter()
+                .find(|(name, _)| name == "o_torii")
+                .unwrap()
+                .1,
+            &atlas,
+        );
+        let red = torii
+            .iter()
+            .filter(|p| p.color[0] > 2.0 * p.color[1])
+            .count();
+        assert!(red * 3 > torii.len(), "{red} of {}", torii.len());
     }
 
     #[test]

@@ -11,25 +11,19 @@
 //! wall and the lake's bed and rim, see [`DamGround`]) is worked out with
 //! the rest of the terrain; the concrete of the dam and the square with its
 //! monument are meshes of their own ([`dam_pieces`]), and so is the lake's
-//! water, which mirrors what stands round it ([`LakeMaterial`],
-//! [`prepare_lakes`]).
+//! water, which mirrors what stands round it ([`prepare_lakes`], see
+//! [`super::mirror`]).
 
-use bevy::asset::RenderAssetUsages;
-use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat,
-};
-use bevy::shader::ShaderRef;
 
+use super::mirror::{PreparedMirror, Reach, deep, prepare_mirror};
 use super::quads::MeshBuilder;
 use super::scenery::{Dam, Scenery, Span, span};
-use super::sky::{Palette, direction};
 use super::structures::indices;
-use super::terrain::{Ground, SEA_LEVEL, Terrain, ground_vertex_color, signed_distance};
+use super::terrain::{SEA_LEVEL, Terrain, signed_distance};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, random01, smoothstep};
-use crate::track::{CURB_WIDTH, Track, closed_curve};
+use crate::track::{Track, closed_curve};
 
 /// The river: how wide its water is either side of its course, and how deep
 /// its bed lies (m over the sea, so the sea's water fills it).
@@ -108,26 +102,11 @@ const RUST: Color = Color::srgb(0.95, 0.82, 0.7);
 const SQUARE_RADIUS: f32 = 15.0;
 const MONUMENT_HEIGHT: f32 = 15.0;
 /// What the lake mirrors is mapped this far round its shore (m), a point
-/// every this many metres: the hills round it, the roads and the dam (see
-/// `lake.wgsl`).
+/// every this many metres: the hills round it, the roads and the dam; and a
+/// line of sight across it is followed this far (see `mirror.wgsl`).
 const MIRROR_REACH: f32 = 170.0;
 const MIRROR_TEXEL: f32 = 2.0;
-/// The sky it mirrors, mapped round the compass and from the horizon up.
-const SKY_MAP: (u32, u32) = (64, 16);
-/// The lake's own colour, deep down (sRGB): a reservoir's dark green-blue.
-const LAKE_DEEP: Color = Color::srgb(0.06, 0.17, 0.22);
-/// How bright the sun's glint on the water is.
-const LAKE_GLINT: f32 = 4.0;
-/// The ground as it is lit for the mirror: its colour times this much in
-/// the shade, and this much more facing the sun.
-const MIRROR_SHADE: f32 = 0.55;
-const MIRROR_SUN: f32 = 0.75;
-/// The colours, before they are lit, of what the textures make the rock,
-/// the sand, the asphalt and the concrete look on average (linear).
-const ROCK_AVERAGE: [f32; 3] = [0.3, 0.27, 0.23];
-const SAND_AVERAGE: [f32; 3] = [0.55, 0.48, 0.36];
-const ASPHALT_AVERAGE: [f32; 3] = [0.08, 0.08, 0.085];
-const CONCRETE_AVERAGE: [f32; 3] = [0.62, 0.6, 0.55];
+const MIRROR_FOLLOW: f32 = 520.0;
 
 /// Where a point is from the river below a dam: how far from its course,
 /// on which side of it (positive on the left going downstream), how high
@@ -177,6 +156,13 @@ impl DamGround {
             river_box,
             road_bank: dam.road_bank.sign(),
         }
+    }
+
+    /// The lake's level where `point` is in its water or by it, on the rim
+    /// round it (see [`LAKE_RIM`]); none elsewhere.
+    pub fn level_by(&self, point: Vec2) -> Option<f32> {
+        (within(self.lake_box, point) && signed_distance(&self.shore, point) > -LAKE_RIM)
+            .then_some(self.level)
     }
 
     /// The ground at `point` with the dam's river and lake, where it would
@@ -345,264 +331,53 @@ pub fn dam_pieces(
     pieces
 }
 
-/// The water of a dam's lake (see `lake.wgsl`): still and dark, mirroring
-/// the hills round it, the roads, the dam and the sky, more the lower one
-/// looks across it, stirred by a faint ripple. Unlit, as what it mirrors is
-/// lit already.
-#[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
-pub struct LakeMaterial {
-    /// xy: corner of the map of what stands round the lake (m, x and z);
-    /// zw: its size (m).
-    #[uniform(0)]
-    pub area: Vec4,
-    /// x: the water's level (m); y: how high over it the map's heights
-    /// reach (m).
-    #[uniform(1)]
-    pub water: Vec4,
-    /// What stands round the lake: its colour as lit, and how high it
-    /// stands over the water (see [`surroundings_map`]).
-    #[texture(2)]
-    #[sampler(3)]
-    pub surroundings: Handle<Image>,
-    /// The sky's colour each way (see [`sky_map`]).
-    #[texture(4)]
-    #[sampler(5)]
-    pub sky: Handle<Image>,
-    #[uniform(6)]
-    pub look: LakeLook,
-}
-
-/// The lake's own colour and the sun's glint on it (see `lake.wgsl`).
-#[derive(ShaderType, Clone, Copy, Debug, PartialEq)]
-pub struct LakeLook {
-    /// The water's colour, deep down (linear).
-    pub deep: Vec4,
-    /// xyz: towards the sun; w: how bright its glint is.
-    pub sun: Vec4,
-}
-
-impl Material for LakeMaterial {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://motorust/world/lake.wgsl".into()
-    }
-
-    // Nothing to draw before the colour or into the shadows: the water is
-    // flat and unlit.
-    fn enable_prepass() -> bool {
-        false
-    }
-
-    fn enable_shadows() -> bool {
-        false
-    }
-}
-
 /// A dam's lake, worked out with the rest of the world (off the main
-/// thread), to be drawn with a [`LakeMaterial`] once its maps are images.
+/// thread): its water, and what it mirrors (see [`super::mirror`]).
 pub struct PreparedLake {
     pub mesh: Mesh,
-    area: Vec4,
-    water: Vec4,
-    look: LakeLook,
-    surroundings: Image,
-    sky: Image,
+    pub mirror: PreparedMirror,
 }
 
-impl PreparedLake {
-    /// Its mesh and its material, its maps added to `images`.
-    pub fn into_parts(self, images: &mut Assets<Image>) -> (Mesh, LakeMaterial) {
-        let material = LakeMaterial {
-            area: self.area,
-            water: self.water,
-            surroundings: images.add(self.surroundings),
-            sky: images.add(self.sky),
-            look: self.look,
-        };
-        (self.mesh, material)
+/// What a dam's lake mirrors is mapped round its shore, as far as
+/// [`MIRROR_REACH`], a texel every [`MIRROR_TEXEL`].
+pub(super) fn lake_reach(dam: &Dam) -> Reach {
+    let shore = closed_curve(dam.lake, SHORE_SPACING);
+    let (min, max) = bounds(shore.iter().copied(), MIRROR_REACH);
+    Reach {
+        min,
+        max,
+        texel: MIRROR_TEXEL,
+        level: dam.level,
+        follow: MIRROR_FOLLOW,
     }
 }
 
-/// The lakes of `scenery`'s dams, with the maps their water mirrors.
+/// The lakes of `scenery`'s dams, with the maps their water mirrors (worked
+/// out on `threads` threads).
 pub fn prepare_lakes(
     track: &Track,
     terrain: &Terrain,
     scenery: &Scenery,
     textures: &WorldTextures,
+    threads: usize,
 ) -> Vec<PreparedLake> {
-    let palette = Palette::of(scenery.sky);
-    let sun = palette.sun_direction();
-    let grass_average = textures.grass_color.to_linear();
     scenery
         .dams
         .iter()
-        .map(|dam| {
-            let (corner, size, surroundings) =
-                surroundings_map(track, terrain, dam, sun, grass_average);
-            PreparedLake {
-                mesh: lake_mesh(dam),
-                area: corner.extend(size.x).extend(size.y),
-                water: Vec4::new(dam.level, 0.0, 0.0, 0.0),
-                look: LakeLook {
-                    deep: LAKE_DEEP.to_linear().to_vec4(),
-                    sun: sun.extend(LAKE_GLINT),
-                },
-                surroundings,
-                sky: sky_map(&palette),
-            }
+        .map(|dam| PreparedLake {
+            mesh: lake_mesh(dam),
+            mirror: prepare_mirror(
+                track,
+                terrain,
+                scenery,
+                textures,
+                &lake_reach(dam),
+                &|_| false,
+                deep(scenery.water),
+                threads,
+            ),
         })
         .collect()
-}
-
-/// What stands round a dam's lake, mapped from above for its water to
-/// mirror: its corner and size (m), and an image of, at each point, the
-/// colour it shows lit by the sun towards `sun` (rgb, linear) and how high
-/// it stands over the water (alpha, m; under it, less than 0), in half
-/// floats, fine enough for the low, grazing lines of sight across the
-/// water. The ground, by what it is (its grass's greens over the grass's
-/// `grass_average` colour, rock, sand); the roads' asphalt; and the dam's
-/// crest, standing up over the water to the road.
-fn surroundings_map(
-    track: &Track,
-    terrain: &Terrain,
-    dam: &Dam,
-    sun: Vec3,
-    grass_average: LinearRgba,
-) -> (Vec2, Vec2, Image) {
-    let shore = closed_curve(dam.lake, SHORE_SPACING);
-    let (min, max) = bounds(shore.iter().copied(), MIRROR_REACH);
-    let (width, height) = (
-        ((max.x - min.x) / MIRROR_TEXEL).ceil() as u32,
-        ((max.y - min.y) / MIRROR_TEXEL).ceil() as u32,
-    );
-    let crest = indices(track, dam.crest, track.lap_length());
-    let mut data = Vec::with_capacity((width * height * 8) as usize);
-    for j in 0..height {
-        for i in 0..width {
-            let at = min + (Vec2::new(i as f32, j as f32) + 0.5) * MIRROR_TEXEL;
-            let ground = terrain.height(at);
-            let normal = terrain.normal(at);
-            let p = Vec3::new(at.x, ground, at.y);
-            let nearest = track.nearest(at);
-            let road = track.height_beside(&nearest);
-            let on_crest = crest.contains(&nearest.index);
-            let (top, color) = if on_crest && nearest.distance < edge(track, nearest.index) {
-                (road, CONCRETE_AVERAGE)
-            } else if nearest.distance < track.half_width_beside(&nearest) + CURB_WIDTH
-                && (road - ground).abs() < 1.0
-            {
-                (ground, ASPHALT_AVERAGE)
-            } else {
-                let kind = terrain.ground_drawn(at);
-                let tint = match kind {
-                    Ground::Grass => terrain.grass_color(p, normal),
-                    other => ground_vertex_color(other, p, normal),
-                };
-                let texture = match kind {
-                    Ground::Grass => [grass_average.red, grass_average.green, grass_average.blue],
-                    Ground::Rock => ROCK_AVERAGE,
-                    Ground::Sand => SAND_AVERAGE,
-                    Ground::Snow => [0.9, 0.92, 0.95],
-                };
-                (ground, [0, 1, 2].map(|k| tint[k] * texture[k]))
-            };
-            let light = MIRROR_SHADE + MIRROR_SUN * normal.dot(sun).max(0.0);
-            for value in [
-                color[0] * light,
-                color[1] * light,
-                color[2] * light,
-                top - dam.level,
-            ] {
-                data.extend(half_float(value).to_le_bytes());
-            }
-        }
-    }
-    let size = Vec2::new(width as f32, height as f32) * MIRROR_TEXEL;
-    (
-        min,
-        size,
-        map_image(
-            (width, height),
-            data,
-            TextureFormat::Rgba16Float,
-            ImageAddressMode::ClampToEdge,
-        ),
-    )
-}
-
-/// The bits of `value` as a half float (IEEE 754 binary16), rounded to the
-/// nearest; those too small for one, 0, and those too big, infinite.
-fn half_float(value: f32) -> u16 {
-    let bits = value.to_bits();
-    let sign = ((bits >> 16) & 0x8000) as u16;
-    let exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
-    let mantissa = ((bits >> 13) & 0x3ff) as u16;
-    let round = ((bits >> 12) & 1) as u16;
-    match exponent {
-        ..=0 => sign,
-        31.. => sign | 0x7c00,
-        // Rounding up past the mantissa's top carries into the exponent.
-        _ => (sign | ((exponent as u16) << 10) | mantissa) + round,
-    }
-}
-
-/// The sky's colour each way, as it is drawn (see [`Palette`]): across,
-/// round the compass from the north (-Z) towards the east (+X); down, from
-/// overhead to the horizon.
-fn sky_map(palette: &Palette) -> Image {
-    let (width, height) = SKY_MAP;
-    let mut data = Vec::with_capacity((width * height * 4) as usize);
-    for j in 0..height {
-        for i in 0..width {
-            let azimuth = (i as f32 + 0.5) / width as f32 * std::f32::consts::TAU;
-            let elevation = (1.0 - (j as f32 + 0.5) / height as f32) * std::f32::consts::FRAC_PI_2;
-            let color = palette.sky_color(direction(azimuth, elevation)).to_srgba();
-            data.extend([
-                to_byte(color.red),
-                to_byte(color.green),
-                to_byte(color.blue),
-                255,
-            ]);
-        }
-    }
-    map_image(
-        (width, height),
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        ImageAddressMode::Repeat,
-    )
-}
-
-fn to_byte(value: f32) -> u8 {
-    (value.clamp(0.0, 1.0) * 255.0).round() as u8
-}
-
-/// An image of `data` in `format` for a shader to look things up in,
-/// smoothly, wrapping across (`across`) and clamped down.
-fn map_image(
-    (width, height): (u32, u32),
-    data: Vec<u8>,
-    format: TextureFormat,
-    across: ImageAddressMode,
-) -> Image {
-    let mut image = Image::new(
-        Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        format,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-        address_mode_u: across,
-        address_mode_v: ImageAddressMode::ClampToEdge,
-        mag_filter: ImageFilterMode::Linear,
-        min_filter: ImageFilterMode::Linear,
-        ..default()
-    });
-    image
 }
 
 /// How far out the downstream face stands past the deck's edge, `h` metres
@@ -614,7 +389,7 @@ fn face_out(h: f32) -> f32 {
 /// The deck's edge at point `index` of the lap (m from the centre line):
 /// just past the walls, which close in where the road over the crest is
 /// narrow.
-fn edge(track: &Track, index: usize) -> f32 {
+pub(super) fn edge(track: &Track, index: usize) -> f32 {
     track.wall_at(index) + EDGE_PAST_WALL
 }
 
@@ -854,6 +629,8 @@ mod tests {
     use super::*;
     use crate::circuits::CIRCUITS;
     use crate::track::WALL_DISTANCE;
+    use crate::world::mirror::surroundings_map;
+    use crate::world::mirror::tests::mapped;
     use crate::world::road::PARAPET_HEIGHT;
     use crate::world::scenery::BridgeStyle;
 
@@ -1007,54 +784,24 @@ mod tests {
         }
     }
 
-    /// The value of half-float bits (see [`half_float`]).
-    fn from_half(bits: u16) -> f32 {
-        let sign = if bits & 0x8000 == 0 { 1.0 } else { -1.0 };
-        let exponent = ((bits >> 10) & 0x1f) as i32;
-        let mantissa = (bits & 0x3ff) as f32 / 1024.0;
-        match exponent {
-            0 => 0.0,
-            31 => sign * f32::INFINITY,
-            _ => sign * (1.0 + mantissa) * 2f32.powi(exponent - 15),
-        }
-    }
-
-    #[test]
-    fn half_floats_keep_the_heights_round_a_lake_to_a_few_centimetres() {
-        assert_eq!(half_float(1.0), 0x3c00);
-        assert_eq!(half_float(0.5), 0x3800);
-        assert_eq!(half_float(-2.0), 0xc000);
-        assert_eq!(half_float(1e-6), 0);
-        assert_eq!(half_float(1e6), 0x7c00);
-        for value in [0.37f32, 3.2, 27.9, -14.6, 85.3] {
-            assert!(
-                (from_half(half_float(value)) - value).abs() < 0.04,
-                "{value}"
-            );
-        }
-    }
-
     #[test]
     fn turbo_bay_s_lake_mirrors_the_hills_round_it_and_the_dam() {
         let (track, terrain, dam) = turbo_bay();
         let grass = Color::srgb(0.4, 0.55, 0.2).to_linear();
-        let (corner, size, image) = surroundings_map(&track, &terrain, dam, Vec3::Y, grass);
+        let scenery = &CIRCUITS[1].scenery;
+        let (corner, size, highest, image) = surroundings_map(
+            &track,
+            &terrain,
+            scenery,
+            &lake_reach(dam),
+            &|_| false,
+            Vec3::Y,
+            grass,
+            4,
+        );
         let width = image.width() as usize;
         assert_eq!(size.x, width as f32 * MIRROR_TEXEL);
-        let data = image.data.as_ref().expect("the map's texels");
-        let at = |p: Vec2| -> [f32; 4] {
-            let (i, j) = (
-                ((p.x - corner.x) / MIRROR_TEXEL) as usize,
-                ((p.y - corner.y) / MIRROR_TEXEL) as usize,
-            );
-            let texel = (j * width + i) * 8;
-            [0, 1, 2, 3].map(|c| {
-                from_half(u16::from_le_bytes([
-                    data[texel + 2 * c],
-                    data[texel + 2 * c + 1],
-                ]))
-            })
-        };
+        let at = |p: Vec2| mapped(&image, corner, MIRROR_TEXEL, p);
         // Out on the lake: the water, or under it.
         let shore = closed_curve(dam.lake, SHORE_SPACING);
         let middle = shore.iter().copied().sum::<Vec2>() / shore.len() as f32;
@@ -1080,6 +827,8 @@ mod tests {
             })
             .count();
         assert!(hills > shore.len() / 3, "{hills} of {}", shore.len());
+        // The highest of it all, for a line of sight to give up over.
+        assert!(highest >= top[3] && highest < 400.0, "{highest}");
     }
 
     #[test]

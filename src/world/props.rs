@@ -4,12 +4,13 @@
 //! azar, pero siempre igual, con [`random01`].
 
 use bevy::camera::primitives::{Aabb, MeshAabb};
-use bevy::mesh::Indices;
+use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::prelude::*;
 
 use super::Assets3d;
 use super::flowers::FlowerPlan;
 use super::landmarks;
+use super::mirror::MirrorPoint;
 use super::quads::MeshBuilder;
 use super::scenery::{
     Boat, BoatKind, Grandstand, HouseStyle, Houses, Lighthouse, ParasolCluster, Row, Scenery,
@@ -306,7 +307,7 @@ fn place_houses(
         let all_grass = footprint
             .iter()
             .all(|&p| terrain.ground(p) == Ground::Grass);
-        if highest - lowest > 2.0 || lowest < SEA_LEVEL + 2.0 || !all_grass {
+        if highest - lowest > 2.0 || lowest < terrain.water_level(position) + 2.0 || !all_grass {
             continue;
         }
         let paints = config.paints;
@@ -502,6 +503,13 @@ fn foliage(species: Species) -> (Color, Color) {
         Species::Sugi => (Color::srgb(0.03, 0.10, 0.05), Color::srgb(0.13, 0.30, 0.12)),
         Species::Bamboo => (Color::srgb(0.12, 0.30, 0.06), Color::srgb(0.46, 0.70, 0.22)),
     }
+}
+
+/// Whether the leaves of `kind` are not green (in blossom, or turned in
+/// autumn): the sea mirrors those trees, faintly (see [`crown_points`]).
+fn in_colour(kind: Species) -> bool {
+    let sunlit = foliage(kind).1.to_srgba();
+    sunlit.green < sunlit.red.max(sunlit.blue)
 }
 
 /// The species whose shape a classic tree of `kind` takes (in its own
@@ -889,6 +897,43 @@ fn merged_variant(meshes: &Assets<Mesh>, variant: &TreeVariant) -> Mesh {
     merged.expect("a tree has wood and a crown")
 }
 
+/// How many points over its crown of a tree in colour the sea mirrors at
+/// most (see [`crown_points`]).
+const CROWN_POINTS: usize = 48;
+
+/// Points over the crown of a tree variant's `mesh` (see [`merged_variant`];
+/// in its own frame), for the sea to mirror: its vertices not painted the
+/// colour of bark, at most [`CROWN_POINTS`] of them, spread over it.
+fn crown_points(mesh: &Mesh) -> Vec<MirrorPoint> {
+    let bark = Vec4::from(BARK.to_linear().to_f32_array());
+    let (
+        Some(positions),
+        Some(VertexAttributeValues::Float32x3(normals)),
+        Some(VertexAttributeValues::Float32x4(colors)),
+    ) = (
+        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+            .and_then(|positions| positions.as_float3()),
+        mesh.attribute(Mesh::ATTRIBUTE_NORMAL),
+        mesh.attribute(Mesh::ATTRIBUTE_COLOR),
+    )
+    else {
+        return Vec::new();
+    };
+    let crown: Vec<MirrorPoint> = positions
+        .iter()
+        .zip(normals)
+        .zip(colors)
+        .filter(|(_, color)| Vec4::from(**color).distance(bark) > 1e-3)
+        .map(|((&at, &normal), &[r, g, b, _])| MirrorPoint {
+            at: Vec3::from(at),
+            normal: Vec3::from(normal).normalize_or_zero(),
+            color: [r, g, b],
+        })
+        .collect();
+    let every = crown.len().div_ceil(CROWN_POINTS).max(1);
+    crown.into_iter().step_by(every).collect()
+}
+
 /// Plans the trees of a circuit (see [`TreePlan`]).
 pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePlan {
     let lap = track.lap_length();
@@ -903,7 +948,7 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
             .any(|tunnel| span(tunnel.from - 30.0, tunnel.to + 30.0).contains(along, lap))
     };
     let fits = |position: Vec2, distance: f32| {
-        terrain.height(position) >= SEA_LEVEL + 1.8
+        terrain.height(position) >= terrain.water_level(position) + 1.8
             && terrain.ground(position) == Ground::Grass
             && terrain.normal(position).y >= 0.88
             && !(distance < 35.0 && !scenery.tunnels.is_empty() && near_tunnel(position))
@@ -1031,37 +1076,56 @@ fn spawn_trees(
             .expect("hay modelo para cada especie")
             .1
     };
+    // The crowns of the variants of the trees in colour, for the sea to
+    // mirror.
+    let crowns: Vec<(Species, Vec<Vec<MirrorPoint>>)> = plan
+        .models
+        .iter()
+        .filter(|(kind, _)| in_colour(*kind))
+        .map(|(kind, variants)| {
+            let crowns = variants
+                .iter()
+                .map(|meshes| crown_points(&meshes[0]))
+                .collect();
+            (*kind, crowns)
+        })
+        .collect();
     let free = |tree: &&PlannedTree| {
         !occupied
             .iter()
             .any(|&(at, radius)| at.distance(tree.position) < radius)
     };
     // Planted classic; dressed as the options say (see [`super::trees`]).
-    let plant = |world: &mut ChildSpawnerCommands, tree: &PlannedTree| {
-        let random = |k: u32| random01(tree.seed * 8 + k);
-        let variants = model(tree.kind);
-        let (meshes, bounds) =
-            &variants[(random(4) * VARIANTS as f32) as usize % VARIANTS as usize];
-        let scale = 0.75 + 0.60 * random(5);
-        world.spawn((
-            Tree {
-                classic: meshes.clone(),
-                classic_material: material.clone(),
-                classic_bounds: *bounds,
-                model: TreeModel::of(tree.kind, random(7)),
-            },
-            Mesh3d(meshes[0].clone()),
-            MeshMaterial3d(material.clone()),
-            Transform::from_xyz(tree.position.x, tree.height, tree.position.y)
+    let plant =
+        |world: &mut ChildSpawnerCommands, leaves: &mut Vec<MirrorPoint>, tree: &PlannedTree| {
+            let random = |k: u32| random01(tree.seed * 8 + k);
+            let variants = model(tree.kind);
+            let variant = (random(4) * VARIANTS as f32) as usize % VARIANTS as usize;
+            let (meshes, bounds) = &variants[variant];
+            let scale = 0.75 + 0.60 * random(5);
+            let transform = Transform::from_xyz(tree.position.x, tree.height, tree.position.y)
                 .with_rotation(Quat::from_rotation_y(random(6) * std::f32::consts::TAU))
-                .with_scale(Vec3::splat(scale)),
-        ));
-    };
+                .with_scale(Vec3::splat(scale));
+            if let Some((_, crowns)) = crowns.iter().find(|(kind, _)| *kind == tree.kind) {
+                leaves.extend(crowns[variant].iter().map(|point| point.placed(&transform)));
+            }
+            world.spawn((
+                Tree {
+                    classic: meshes.clone(),
+                    classic_material: material.clone(),
+                    classic_bounds: *bounds,
+                    model: TreeModel::of(tree.kind, random(7)),
+                },
+                Mesh3d(meshes[0].clone()),
+                MeshMaterial3d(material.clone()),
+                transform,
+            ));
+        };
     for tree in plan.scattered.iter().filter(free).take(MAX_TREES) {
-        plant(world, tree);
+        plant(world, &mut assets.mirrored_leaves, tree);
     }
     for tree in plan.forests.iter().filter(free) {
-        plant(world, tree);
+        plant(world, &mut assets.mirrored_leaves, tree);
     }
 }
 
@@ -1087,7 +1151,7 @@ fn spawn_palms(
     let mut taken = Vec::new();
     for (k, (_, point)) in row_points(track, row).into_iter().enumerate() {
         let random = |n: u32| random01(k as u32 * 8 + n + 70_000 + row.lateral as u32);
-        if terrain.height(point) < SEA_LEVEL + 1.0 {
+        if terrain.height(point) < terrain.water_level(point) + 1.0 {
             continue;
         }
         world.spawn((
@@ -2169,6 +2233,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn no_tree_stands_in_a_dam_s_lake() {
+        use crate::track::closed_curve;
+        use crate::world::terrain::signed_distance;
+        let mut near = 0;
+        for circuit in CIRCUITS
+            .iter()
+            .filter(|circuit| !circuit.scenery.dams.is_empty())
+        {
+            let scenery = &circuit.scenery;
+            let track = Track::new(&circuit.layout);
+            let terrain = Terrain::new(&track, scenery);
+            let plan = plan_trees(&track, &terrain, scenery);
+            for dam in scenery.dams {
+                let shore = closed_curve(dam.lake, 4.0);
+                // The water stands at the lake's level in it, the sea's far
+                // from it.
+                let middle = dam.lake.iter().copied().sum::<Vec2>() / dam.lake.len() as f32;
+                assert!(signed_distance(&shore, middle) > 0.0);
+                assert_eq!(terrain.water_level(middle), dam.level);
+                assert_eq!(terrain.water_level(track.centerline()[0]), SEA_LEVEL);
+                // Every tree stands out of its water, and on the rim round it
+                // over it (further off, down the gorge under the dam, the
+                // ground is lower than the lake); some of them by it.
+                for tree in plan.scattered.iter().chain(&plan.forests) {
+                    let out = -signed_distance(&shore, tree.position);
+                    if out < 40.0 {
+                        near += 1;
+                        assert!(
+                            out > 0.0 && tree.height > dam.level + 1.5,
+                            "{}: a tree in the lake at {} ({out:.1} m out, {:.1} m up)",
+                            circuit.name,
+                            tree.position,
+                            tree.height
+                        );
+                    }
+                }
+            }
+        }
+        assert!(near > 0, "no tree by a lake");
+    }
+
+    #[test]
     fn no_tree_grows_round_a_lighthouse() {
         let lighthouse = Lighthouse {
             position: Vec2::new(480.0, -1046.0),
@@ -2181,6 +2287,53 @@ mod tests {
     }
     use crate::circuits::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
+
+    #[test]
+    fn the_sea_mirrors_the_crowns_of_the_trees_in_colour() {
+        let mut meshes = Assets::<Mesh>::default();
+        let bark = Vec4::from(BARK.to_linear().to_f32_array());
+        for (species, colour) in [
+            (Species::Almond, true),
+            (Species::Momiji, true),
+            (Species::Ginkgo, true),
+            (Species::Sakura, true),
+            (Species::Broadleaf, false),
+            (Species::Olive, false),
+            (Species::Poplar, false),
+            (Species::Sugi, false),
+            (Species::Bamboo, false),
+        ] {
+            assert_eq!(in_colour(species), colour, "{species:?}");
+            if !colour {
+                continue;
+            }
+            for variant in build_tree_variants(species, &mut meshes) {
+                let crown = crown_points(&merged_variant(&meshes, &variant));
+                // A few dozen points over it, over the ground (a poplar's
+                // crown, the ginkgo's shape, comes down to half a metre),
+                // in the colours of its leaves.
+                assert!(
+                    crown.len() >= CROWN_POINTS / 2 && crown.len() <= CROWN_POINTS,
+                    "{species:?}: {}",
+                    crown.len()
+                );
+                for point in &crown {
+                    assert!(point.at.y > 0.2, "{species:?}: {point:?}");
+                    assert!(Vec3::from(point.color).extend(1.0).distance(bark) > 1e-3);
+                    assert!((point.normal.length() - 1.0).abs() < 0.01);
+                }
+                // Spread round it, not all to one side.
+                let (low, high) = crown.iter().fold(
+                    (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)),
+                    |(low, high), point| (low.min(point.at), high.max(point.at)),
+                );
+                assert!(
+                    (high - low).xz().min_element() > 1.5,
+                    "{species:?}: {low} {high}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn each_tree_is_one_solid_mesh_of_bark_and_foliage() {

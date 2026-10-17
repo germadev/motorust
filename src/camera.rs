@@ -20,6 +20,7 @@ use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::menu::GameState;
 use crate::race::Watching;
 use crate::render_scale::{NativeShare, drawn_size, render_percent};
+use crate::settings::Settings;
 use crate::welcome::GameMode;
 use crate::world::detail::Detail;
 // The fog is the colour of the sky at the horizon: far away, the land melts
@@ -61,10 +62,12 @@ pub struct ChaseCameraPlugin;
 
 impl Plugin for ChaseCameraPlugin {
     fn build(&self, app: &mut App) {
-        // Entre los menús la cámara se desliza de un sitio a otro. The
-        // welcome screen, the lobby and the modes share one flight over the
-        // track (`crate::welcome`): between them it just flies on, with no
-        // glide that would stop it and set it off again.
+        // Entre los menús la cámara se desliza de un sitio a otro, with the
+        // track seen from above while it is chosen; seen from the road, it
+        // cuts (see [`start_glide`]). The welcome screen, the lobby and the
+        // modes share one flight over the track (`crate::welcome`): between
+        // them it just flies on, with no glide that would stop it and set it
+        // off again.
         for (from, to) in [
             (GameState::Welcome, GameState::Tracks),
             (GameState::Tracks, GameState::Welcome),
@@ -370,11 +373,21 @@ impl CameraGlide {
     }
 }
 
+/// From one menu to another, the camera glides from where it was, if the
+/// track is seen from above while it is chosen. Seen from the road
+/// ([`crate::settings::TrackView::Trackside`]), it cuts: the flight over
+/// the road goes on into the track screen as it is, and the map and the
+/// bikes take each other's place at once.
 #[allow(clippy::type_complexity)]
 fn start_glide(
     cameras: Query<(&Transform, &Projection), (With<Camera3d>, With<ChaseCamera>)>,
+    settings: Option<Res<Settings>>,
     mut glide: ResMut<CameraGlide>,
 ) {
+    if settings.is_some_and(|settings| settings.track_view.at_the_road()) {
+        *glide = CameraGlide::default();
+        return;
+    }
     let Some((transform, projection)) = cameras.iter().next() else {
         return;
     };
@@ -577,6 +590,37 @@ mod tests {
     use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
     use super::*;
+
+    #[test]
+    fn from_the_road_the_menus_cut_and_from_above_they_glide() {
+        use crate::settings::TrackView;
+        use bevy::ecs::system::RunSystemOnce;
+        for (view, glides) in [(TrackView::Trackside, false), (TrackView::Aerial, true)] {
+            let mut world = World::new();
+            world.insert_resource(Settings {
+                track_view: view,
+                ..default()
+            });
+            // A glide under way is let go of too.
+            world.insert_resource(CameraGlide {
+                from: Some((Transform::default(), FOV.start)),
+                elapsed: 0.5,
+            });
+            world.spawn((
+                Camera3d::default(),
+                ChaseCamera::default(),
+                Transform::from_xyz(1.0, 2.0, 3.0),
+                Projection::default(),
+            ));
+            world.run_system_once(start_glide).unwrap();
+            let glide = world.resource::<CameraGlide>();
+            assert_eq!(glide.from.is_some(), glides, "{view:?}");
+            if glides {
+                assert_eq!(glide.elapsed, 0.0);
+                assert_eq!(glide.from.unwrap().0.translation, Vec3::new(1.0, 2.0, 3.0));
+            }
+        }
+    }
 
     #[test]
     fn the_right_stick_points_where_the_camera_looks() {

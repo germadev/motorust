@@ -314,6 +314,7 @@ pub const GOLD_MINE: Circuit = Circuit {
         sky: SkyStyle::Dusk,
         // The great lake is the bottom of an open pit, flooded with red water.
         water: Water::Iron,
+        cartoon_water: false,
         pit: Some(Pit {
             benches: 5,
             step: 3.4,

@@ -1260,7 +1260,9 @@ mod tests {
             let dt = 1.0 / 120.0;
             let (mut flights, mut air) = (0, 0usize);
             let name = circuit.name;
-            for _ in 0..(70.0 / dt) as usize {
+            // Long enough for a jump on two laps of the longest track,
+            // Turbo Bay, whose only jump flat out is on its coast road.
+            for _ in 0..(90.0 / dt) as usize {
                 let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
                 state = advance(&state, &input, &track, &tuning, dt);
                 if !state.grounded {
@@ -1317,13 +1319,12 @@ mod tests {
     #[test]
     fn crests_only_throw_the_bikes_into_the_air_on_the_straights() {
         // Flying, a bike neither turns nor leans: a crest in a bend, or one
-        // that lands in a bend, would straighten it up. Turbo Bay's mountain
-        // road goes over its top into the dive at the lighthouse on a bend,
-        // on purpose.
-        for circuit in crate::circuits::CIRCUITS
-            .iter()
-            .filter(|circuit| circuit.name != "Turbo Bay")
-        {
+        // that lands in a bend, would straighten it up (as Turbo Bay's
+        // mountain road did over its top into the dive at the lighthouse,
+        // its forest road over a hump and its rock pass over a bump, and
+        // Loop Island's start straight where the branch to the loop turns
+        // off it).
+        for circuit in &crate::circuits::CIRCUITS {
             let track = Track::new(&circuit.layout);
             let tuning = BikeTuning::default();
             for (skill, lane) in [(0.9, 4.0), (0.95, 2.0), (1.0, -3.0)] {
@@ -1341,11 +1342,11 @@ mod tests {
                     if before.grounded != state.grounded {
                         let index = track.nearest_index_at(state.position, state.elevation);
                         let radius = 1.0 / track.smoothed_curvature(index, 6).abs().max(1e-6);
+                        let along = index as f32 * track.step_length();
                         assert!(
                             radius > 600.0,
-                            "{} takes off or lands in a bend of {radius:.0} m at {:.0} m",
+                            "{} takes off or lands in a bend of {radius:.0} m at {along:.0} m",
                             circuit.name,
-                            index as f32 * track.step_length()
                         );
                     }
                 }

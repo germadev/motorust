@@ -431,6 +431,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         waterfalls: &[],
         sky: SkyStyle::GoldenHour,
         water: Water::Sea,
+        cartoon_water: false,
         pit: None,
         desert: None,
         mine: None,

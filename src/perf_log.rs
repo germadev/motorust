@@ -61,8 +61,10 @@ pub struct Context {
     pub split_detail: bool,
     pub shadows: String,
     pub antialiasing: String,
-    /// Whether the performance mode is on.
-    pub performance: bool,
+    /// The performance forced: off, or the frame rate it keeps.
+    pub performance: String,
+    /// The sea: mirroring or the cartoon one.
+    pub water: &'static str,
     /// The render scale (%) and the pixels the world is drawn at.
     pub render_scale: u32,
     pub render: String,
@@ -79,7 +81,7 @@ impl Context {
     fn pairs(&self) -> String {
         format!(
             "state={} mode={} players={} paused={} track={:?} trees={} lighter_far_trees={} \
-             lighter_split_screen={} performance_mode={} shadows={} antialiasing={} render_scale={} render={} fps_limit={} \
+             lighter_split_screen={} force_performance={} water={} shadows={} antialiasing={} render_scale={} render={} fps_limit={} \
              resolution={} fullscreen={} pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
             self.state,
             self.mode,
@@ -90,6 +92,7 @@ impl Context {
             self.far_trees,
             self.split_detail,
             self.performance,
+            self.water,
             self.shadows,
             self.antialiasing,
             self.render_scale,
@@ -572,7 +575,12 @@ fn log_performance(
         },
         far_trees: settings.lighter_far_trees,
         split_detail: settings.lighter_split_screen,
-        performance: settings.performance_mode,
+        performance: format!("{:?}", settings.force_performance),
+        water: if settings.cartoon_water {
+            "cartoon"
+        } else {
+            "mirror"
+        },
         // The quality chosen, and the level the shadows are drawn at now.
         shadows: format!(
             "{:?}/{:?}",
@@ -580,7 +588,7 @@ fn log_performance(
             detail.as_deref().map(|detail| detail.level)
         ),
         antialiasing: format!("{:?}", settings.antialiasing),
-        // As the options say, or as far as the performance mode has come.
+        // As the options say, or as far as the performance forced has come.
         render_scale: render_percent(detail.as_deref()),
         render: window.map_or_else(
             || "none".into(),
