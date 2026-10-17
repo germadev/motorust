@@ -218,8 +218,7 @@ fn surface(mesh: &Mesh, atlas: &Image) -> Vec<MirrorPoint> {
         }
     };
     let mut points = Vec::new();
-    for corner in indices.chunks_exact(3) {
-        let corner = [corner[0], corner[1], corner[2]];
+    for &corner in indices.as_chunks::<3>().0 {
         let p = corner.map(|i| Vec3::from(positions[i]));
         let uv = corner.map(|i| Vec2::from(uvs[i]));
         let normal = (p[1] - p[0]).cross(p[2] - p[0]).normalize_or_zero();

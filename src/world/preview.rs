@@ -156,7 +156,9 @@ fn cut_to(mut mesh: Mesh, (min, max): (Vec2, Vec2)) -> Option<Mesh> {
         None => (0..positions.len() as u32).collect(),
     };
     let kept: Vec<u32> = indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter(|corners| {
             let middle = corners
                 .iter()

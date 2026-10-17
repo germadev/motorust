@@ -802,8 +802,10 @@ pub(super) mod tests {
         let size = data.len() / (image.width() * image.height()) as usize;
         let at = (j * image.width() as usize + i) * size;
         data[at..at + size]
-            .chunks_exact(2)
-            .map(|half| from_half(u16::from_le_bytes([half[0], half[1]])))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&half| from_half(u16::from_le_bytes(half)))
             .collect()
     }
 
