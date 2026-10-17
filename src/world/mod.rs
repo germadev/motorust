@@ -205,7 +205,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
     let terrain = terrain::Terrain::on_threads(&track, scenery, urgency.threads());
-    let mut ground = terrain.meshes();
+    let mut ground = terrain.meshes(urgency.threads());
     let shore = sea::ShoreMap::new(&terrain, &track);
     let shore_image = shore.image();
     let roadside = Roadside {

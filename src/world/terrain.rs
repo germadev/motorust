@@ -486,35 +486,22 @@ impl Terrain {
         self.look_drawn(point).1
     }
 
-    /// What the steep faces are made of.
-    pub fn soil(&self) -> Soil {
-        self.soil
-    }
-
-    /// The ground's meshes, by kind of ground, and the grass in flower by
-    /// the flowers it is in. Pure data: they can be worked out away from the
-    /// main thread.
-    pub fn meshes(&self) -> Vec<GroundMesh> {
-        let (width, depth) = (self.xs.len(), self.zs.len());
+    /// The ground's meshes over the cells in rows `cells` of the grid (see
+    /// [`Self::meshes`]), its points' normals given: their vertices shared
+    /// within it.
+    fn band(&self, cells: std::ops::Range<usize>, normals: &[Vec3]) -> Band {
+        let width = self.xs.len();
         let position =
             |i: usize, j: usize| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
-        let normals: Vec<Vec3> = (0..depth)
-            .flat_map(|j| (0..width).map(move |i| (i, j)))
-            .map(|(i, j)| {
-                let (left, right) = (i.saturating_sub(1), (i + 1).min(width - 1));
-                let (back, front) = (j.saturating_sub(1), (j + 1).min(depth - 1));
-                let along_x = position(right, j) - position(left, j);
-                let along_z = position(i, front) - position(i, back);
-                along_z.cross(along_x).normalize()
-            })
-            .collect();
-
-        let mut grass = Builder::shared(width * depth);
-        let mut sand = Builder::shared(width * depth);
+        // Its points, from its first row to the one after its last.
+        let first = cells.start * width;
+        let band_points = (cells.len() + 1) * width;
+        let mut grass = Builder::shared(band_points);
+        let mut sand = Builder::shared(band_points);
         let mut rock = Builder::default();
-        let mut snow = Builder::shared(width * depth);
+        let mut snow = Builder::shared(band_points);
         let mut meadows: Vec<(FlowerKind, Builder)> = Vec::new();
-        for j in 0..depth - 1 {
+        for j in cells {
             for i in 0..width - 1 {
                 let corners = [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)];
                 // Dos triángulos por celda, en sentido antihorario visto desde arriba.
@@ -531,7 +518,7 @@ impl Terrain {
                                 let meadow = match meadows.iter().position(|(k, _)| *k == kind) {
                                     Some(meadow) => meadow,
                                     None => {
-                                        meadows.push((kind, Builder::shared(width * depth)));
+                                        meadows.push((kind, Builder::shared(band_points)));
                                         meadows.len() - 1
                                     }
                                 };
@@ -545,7 +532,7 @@ impl Terrain {
                         let shared = builder.shared_vertices.is_some();
                         for w in weights {
                             // A point of the grid, or one on a border.
-                            let grid = (0..3).find(|&k| w[k] == 1.0).map(|k| indices[k]);
+                            let grid = (0..3).find(|&k| w[k] == 1.0).map(|k| indices[k] - first);
                             builder.push(grid, || {
                                 let blend = |values: [Vec3; 3]| {
                                     values[0] * w.x + values[1] * w.y + values[2] * w.z
@@ -636,6 +623,70 @@ impl Terrain {
                 }
             }
         }
+        Band {
+            grass,
+            sand,
+            rock,
+            snow,
+            meadows,
+        }
+    }
+
+    /// What the steep faces are made of.
+    pub fn soil(&self) -> Soil {
+        self.soil
+    }
+
+    /// The ground's meshes, by kind of ground, and the grass in flower by
+    /// the flowers it is in, worked out on `threads` threads, in bands of
+    /// the grid's rows (see [`Self::band`]) joined in order, the same
+    /// however many. Pure data: they can be worked out away from the main
+    /// thread.
+    pub fn meshes(&self, threads: usize) -> Vec<GroundMesh> {
+        let (width, depth) = (self.xs.len(), self.zs.len());
+        let position =
+            |i: usize, j: usize| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
+        let rows: Vec<usize> = (0..depth).collect();
+        let normals: Vec<Vec3> = on_cores(&rows, threads, |rows| {
+            rows.iter()
+                .flat_map(|&j| (0..width).map(move |i| (i, j)))
+                .map(|(i, j)| {
+                    let (left, right) = (i.saturating_sub(1), (i + 1).min(width - 1));
+                    let (back, front) = (j.saturating_sub(1), (j + 1).min(depth - 1));
+                    let along_x = position(right, j) - position(left, j);
+                    let along_z = position(i, front) - position(i, back);
+                    along_z.cross(along_x).normalize()
+                })
+                .collect()
+        });
+        // The bands dealt out to the threads in turn, so that each gets some
+        // of the dense middle of the grid and some of its sparse edges.
+        let cells = depth - 1;
+        let count = cells.div_ceil(BAND_ROWS);
+        let threads = threads.clamp(1, count.max(1));
+        let order: Vec<usize> = (0..threads)
+            .flat_map(|first| (first..count).step_by(threads))
+            .collect();
+        let mut bands = on_cores(&order, threads, |part| {
+            part.iter()
+                .map(|&band| {
+                    let rows = band * BAND_ROWS..((band + 1) * BAND_ROWS).min(cells);
+                    (band, self.band(rows, &normals))
+                })
+                .collect()
+        });
+        bands.sort_by_key(|(band, _)| *band);
+        let mut joined = Band::default();
+        for (_, band) in bands {
+            joined.append(band);
+        }
+        let Band {
+            grass,
+            sand,
+            rock,
+            snow,
+            meadows,
+        } = joined;
         let rock_tile = match self.soil {
             Soil::Rock | Soil::Mine => ROCK_TILE,
             Soil::Checkered => SOIL_TILE,
@@ -1633,6 +1684,38 @@ fn soil_vertex_color(p: Vec3, normal: Vec3) -> [f32; 4] {
         .to_f32_array()
 }
 
+/// How many rows of the grid's cells a band of the ground's meshes takes
+/// (see [`Terrain::meshes`]).
+const BAND_ROWS: usize = 24;
+
+/// The ground's meshes over a band of the grid, by kind of ground (see
+/// [`Terrain::band`]).
+#[derive(Default)]
+struct Band {
+    grass: Builder,
+    sand: Builder,
+    rock: Builder,
+    snow: Builder,
+    meadows: Vec<(FlowerKind, Builder)>,
+}
+
+impl Band {
+    /// `next`, the band after it, added to it: each kind of ground's mesh
+    /// to its own, a kind of meadow not met before after the others.
+    fn append(&mut self, next: Band) {
+        self.grass.append(next.grass);
+        self.sand.append(next.sand);
+        self.rock.append(next.rock);
+        self.snow.append(next.snow);
+        for (kind, meadow) in next.meadows {
+            match self.meadows.iter_mut().find(|(k, _)| *k == kind) {
+                Some((_, mine)) => mine.append(meadow),
+                None => self.meadows.push((kind, meadow)),
+            }
+        }
+    }
+}
+
 /// Acumula los triángulos de un tipo de suelo.
 #[derive(Default)]
 struct Builder {
@@ -1676,6 +1759,17 @@ impl Builder {
         if let (Some(grid), Some(shared)) = (grid, &mut self.shared_vertices) {
             shared[grid] = index;
         }
+    }
+
+    /// `other`'s triangles added after its own.
+    fn append(&mut self, other: Builder) {
+        let offset = self.positions.len() as u32;
+        self.positions.extend(other.positions);
+        self.normals.extend(other.normals);
+        self.uvs.extend(other.uvs);
+        self.colors.extend(other.colors);
+        self.indices
+            .extend(other.indices.into_iter().map(|index| index + offset));
     }
 
     fn build(self, tile: f32) -> Mesh {
