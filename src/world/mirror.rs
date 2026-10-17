@@ -459,6 +459,32 @@ pub fn prepare_mirror(
     }
 }
 
+/// Water at `reach`'s level that mirrors only the sky as yet, deep down
+/// `deep` (sRGB): what stands round it is mapped later, away from the main
+/// thread ([`prepare_mirror`]), and put in its material when it is (as a
+/// circuit is shown before all of it is ready).
+pub fn sky_mirror(scenery: &Scenery, reach: &Reach, deep: Color) -> PreparedMirror {
+    let palette = Palette::of(scenery.sky);
+    let size = reach.max - reach.min;
+    PreparedMirror {
+        area: reach.min.extend(size.x).extend(size.y),
+        water: Vec4::new(reach.level, 0.0, reach.follow, 0.0),
+        look: MirrorLook {
+            deep: deep.to_linear().to_vec4(),
+            sun: palette.sun_direction().extend(GLINT),
+        },
+        // One texel of nothing, under the water, over the whole of it.
+        surroundings: map_image(
+            (1, 1),
+            nothing_standing(),
+            TextureFormat::Rgba16Float,
+            ImageAddressMode::ClampToEdge,
+        ),
+        sky: sky_map(&palette),
+        standing: None,
+    }
+}
+
 /// What stands round some water within `reach`, mapped from above for it to
 /// mirror: the map's corner and size (m), how high over the water its
 /// heights reach at most (m), and an image of, at each point, the colour it

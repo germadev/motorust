@@ -29,6 +29,10 @@ mod textures;
 mod trees;
 mod tufts;
 
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use bevy::asset::embedded_asset;
 use bevy::pbr::PbrPlugin;
 use bevy::tasks::{Task, TaskPool, TaskPoolBuilder, block_on, poll_once};
@@ -71,6 +75,7 @@ impl Plugin for WorldPlugin {
             .insert_resource(Track::new(&current.get().layout))
             .init_resource::<Roadsides>()
             .init_resource::<Preparing>()
+            .init_resource::<Finishing>()
             .init_resource::<CircuitLoading>()
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
@@ -93,11 +98,20 @@ impl Plugin for WorldPlugin {
                     spawn_prepared_circuit,
                 ),
             )
-            .add_systems(OnEnter(GameState::Tracks), cache_all_circuits)
+            .add_systems(
+                Update,
+                queue_circuits
+                    .after(spawn_prepared_circuit)
+                    .run_if(in_state(GameState::Tracks)),
+            )
             .add_systems(OnExit(GameState::Tracks), unload_unused_circuits)
             // A championship goes from track to track without choosing
-            // them: the one left behind goes when the next race starts.
-            .add_systems(OnEnter(GameState::Race), unload_unused_circuits)
+            // them: the one left behind goes when the next race starts. The
+            // one raced on is there whole.
+            .add_systems(
+                OnEnter(GameState::Race),
+                (unload_unused_circuits, complete_the_circuit),
+            )
             .add_systems(
                 PostUpdate,
                 (
@@ -118,7 +132,7 @@ impl Plugin for WorldPlugin {
 /// [`Roadside`]), by its index in [`CIRCUITS`]: it comes from the terrain,
 /// which is only built once.
 #[derive(Resource, Default)]
-struct Roadsides(std::collections::HashMap<usize, Roadside>);
+struct Roadsides(HashMap<usize, Roadside>);
 
 /// What lies beside the roads of a circuit: where their solid edge is (see
 /// [`Track::set_edges`]) and what their shoulders are made of (see
@@ -152,32 +166,49 @@ impl FromWorld for Sea {
 }
 
 /// What can be worked out for a circuit away from the main thread, which
-/// is most of the work: its track, its terrain, the terrain's meshes, where
-/// its shore is and what lies beside its roads. The entities and assets are
-/// made on the main thread.
+/// is most of the work, first: enough to show it (its track, its terrain
+/// and the terrain's meshes, where its shore is and what lies beside its
+/// roads, the roads, tunnels and bridges, the lakes, and the sea, mirroring
+/// only the sky as yet). The rest comes after it ([`Rest`]). The entities
+/// and assets are made on the main thread.
 struct Prepared {
-    index: usize,
-    track: Track,
-    terrain: terrain::Terrain,
+    basis: Basis,
     ground: Vec<terrain::GroundMesh>,
-    shore: sea::ShoreMap,
     shore_image: Image,
-    /// The sea mirroring what stands round it, unless the track's sea is
-    /// always the cartoon one.
+    /// The sea mirroring the sky, unless the track's sea is always the
+    /// cartoon one: what stands round it is mapped with the rest.
     sea_mirror: Option<mirror::PreparedMirror>,
-    roadside: Roadside,
     /// The meshes of the roads, tunnels and bridges, with their materials.
     pieces: Vec<(Mesh, StandardMaterial)>,
     /// The lakes behind its dams, which mirror what stands round them.
     lakes: Vec<dam::PreparedLake>,
     /// The lamps of its tunnels and mine (see [`lamps`]).
     lamps: Vec<lamps::Lamp>,
+    /// The lawn in flower, for each kind of flower the ground is drawn in.
+    meadows: Vec<(scenery::FlowerKind, Image)>,
+}
+
+/// What the rest of a circuit is worked out from, kept from its first part
+/// and shared with the work on the rest: which circuit, its track, its
+/// terrain and its shore, and what lies beside its roads.
+#[derive(Clone)]
+struct Basis {
+    index: usize,
+    track: Arc<Track>,
+    terrain: Arc<terrain::Terrain>,
+    shore: Arc<sea::ShoreMap>,
+    roadside: Roadside,
+}
+
+/// The rest of a circuit, worked out once it can be shown (see
+/// [`Prepared`]): the sea's map of what stands round it, the grass beside
+/// the roads, and where the trees and the flowers go (the houses and the
+/// props are put in the world with them).
+struct Rest {
+    sea_mirror: Option<mirror::PreparedMirror>,
     /// Its grass beside the roads, drawn only near the camera.
     grass: Vec<tufts::GrassPiece>,
     trees: props::TreePlan,
-    /// The lawn in flower, for each kind of flower the ground is drawn in,
-    /// and the flowers standing up near the roads.
-    meadows: Vec<(scenery::FlowerKind, Image)>,
     flowers: flowers::FlowerPlan,
 }
 
@@ -200,6 +231,7 @@ impl Urgency {
     }
 }
 
+/// The first part of circuit `index` (see [`Prepared`]).
 fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -> Prepared {
     let circuit = &CIRCUITS[index];
     let scenery = &circuit.scenery;
@@ -219,25 +251,12 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     ground.extend(tops);
     let lakes = dam::prepare_lakes(&track, &terrain, scenery, textures, urgency.threads());
     let sea_mirror = (!scenery.cartoon_water).then(|| {
-        mirror::prepare_mirror(
-            &track,
-            &terrain,
+        mirror::sky_mirror(
             scenery,
-            textures,
             &sea::mirror_reach(&track),
-            &|at| shore.distance_at(at) < -sea::MIRROR_INLAND,
             mirror::deep(scenery.water),
-            urgency.threads(),
         )
     });
-    let grass = tufts::tuft_pieces(
-        &track,
-        &terrain,
-        &roadside.shoulders,
-        &roadside.edges,
-        textures,
-    );
-    let trees = props::plan_trees(&track, &terrain, scenery);
     // One meadow for each kind of flower drawn (the tunnels' tops drawn in
     // the same as the ground round them).
     let mut kinds = Vec::new();
@@ -250,32 +269,60 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         .into_iter()
         .map(|kind| (kind, foliage::meadow(&textures.lawn, kind)))
         .collect();
-    let flowers = flowers::plan_flowers(&track, &terrain);
     structures::draw_signs(scenery);
     Prepared {
-        index,
-        track,
-        terrain,
+        basis: Basis {
+            index,
+            track: Arc::new(track),
+            terrain: Arc::new(terrain),
+            shore: Arc::new(shore),
+            roadside,
+        },
         ground,
-        shore,
         shore_image,
         sea_mirror,
-        roadside,
         pieces,
         lakes,
         lamps,
-        grass,
-        trees,
         meadows,
-        flowers,
     }
 }
 
-/// The thread the other circuits are prepared on in the background: their
-/// own, not Bevy's async compute pool. The render pipelines are compiled
-/// there, and behind a circuit being prepared (seconds of work) they would
-/// wait: nothing new would be drawn until it was ready, the screenshots
-/// included.
+/// The rest of a circuit whose first part is `basis` (see [`Rest`]).
+fn prepare_rest(basis: &Basis, textures: &textures::WorldTextures, urgency: Urgency) -> Rest {
+    let scenery = &CIRCUITS[basis.index].scenery;
+    let (track, terrain, shore) = (&*basis.track, &*basis.terrain, &*basis.shore);
+    let sea_mirror = (!scenery.cartoon_water).then(|| {
+        mirror::prepare_mirror(
+            track,
+            terrain,
+            scenery,
+            textures,
+            &sea::mirror_reach(track),
+            &|at| shore.distance_at(at) < -sea::MIRROR_INLAND,
+            mirror::deep(scenery.water),
+            urgency.threads(),
+        )
+    });
+    let grass = tufts::tuft_pieces(
+        track,
+        terrain,
+        &basis.roadside.shoulders,
+        &basis.roadside.edges,
+        textures,
+    );
+    Rest {
+        sea_mirror,
+        grass,
+        trees: props::plan_trees(track, terrain, scenery),
+        flowers: flowers::plan_flowers(track, terrain),
+    }
+}
+
+/// The thread the circuits are prepared on in the background: their own,
+/// not Bevy's async compute pool. The render pipelines are compiled there,
+/// and behind a circuit being prepared (seconds of work) they would wait:
+/// nothing new would be drawn until it was ready, the screenshots included.
 fn circuit_pool() -> &'static TaskPool {
     static POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
     POOL.get_or_init(|| {
@@ -286,8 +333,8 @@ fn circuit_pool() -> &'static TaskPool {
     })
 }
 
-/// The thread a circuit needed now is prepared on, in the tracks menu: its
-/// own, so that it does not wait behind the others being prepared in the
+/// The thread the circuit chosen in the tracks menu is prepared on when it
+/// is needed now: its own, so that it does not wait behind the work in the
 /// background.
 fn urgent_pool() -> &'static TaskPool {
     static POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
@@ -299,110 +346,276 @@ fn urgent_pool() -> &'static TaskPool {
     })
 }
 
-/// A circuit being prepared, and whether the work on it has begun (or it
-/// still waits its turn on its thread).
-struct Preparation {
-    task: Task<Prepared>,
-    begun: std::sync::Arc<std::sync::atomic::AtomicBool>,
+/// Work on a circuit on another thread, and whether it has begun (or still
+/// waits its turn on its thread).
+struct Work<T> {
+    task: Task<T>,
+    begun: Arc<AtomicBool>,
 }
 
-impl Preparation {
-    /// Circuit `index` prepared on another thread: the background one, or,
-    /// if it is needed now, the one of its own.
-    fn start(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -> Self {
-        let textures = textures.clone();
-        let begun = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+impl<T: Send + 'static> Work<T> {
+    /// `work` done on another thread: the background one, or, if it is
+    /// needed now, the one of its own.
+    fn start(urgency: Urgency, work: impl FnOnce(Urgency) -> T + Send + 'static) -> Self {
+        let begun = Arc::new(AtomicBool::new(false));
         let flag = begun.clone();
         let pool = match urgency {
             Urgency::Now => urgent_pool(),
             Urgency::Background => circuit_pool(),
         };
         let task = pool.spawn(async move {
-            flag.store(true, std::sync::atomic::Ordering::Relaxed);
-            prepare(index, &textures, urgency)
+            flag.store(true, Ordering::Relaxed);
+            work(urgency)
         });
         Self { task, begun }
     }
 
     fn begun(&self) -> bool {
-        self.begun.load(std::sync::atomic::Ordering::Relaxed)
+        self.begun.load(Ordering::Relaxed)
     }
-}
 
-/// The circuits being prepared, by index in [`CIRCUITS`].
-#[derive(Resource, Default)]
-struct Preparing(std::collections::HashMap<usize, Preparation>);
-
-/// Whether the circuit chosen is still being prepared: in the tracks menu
-/// it is not waited for (the menu would stop for seconds), it comes when
-/// ready.
-#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
-pub struct CircuitLoading(pub bool);
-
-/// Al entrar al menú de elección de pistas, prepara en segundo plano las
-/// pistas que falten por cargar para que alternar entre ellas sea
-/// instantáneo. The menu shows up at once: the work goes on in other
-/// threads, and each circuit is put in the world when it is ready
-/// ([`spawn_prepared_circuit`]).
-fn cache_all_circuits(
-    roots: Query<&WorldRoot>,
-    textures: Res<textures::WorldTextures>,
-    mut preparing: ResMut<Preparing>,
-) {
-    let built: std::collections::HashSet<usize> = roots.iter().map(|r| r.0).collect();
-    for index in 0..CIRCUITS.len() {
-        if !built.contains(&index) && !preparing.0.contains_key(&index) {
-            let preparation = Preparation::start(index, &textures, Urgency::Background);
-            preparing.0.insert(index, preparation);
+    /// Done now: waited for, or, if it is not to be waited for (on the web
+    /// the background work runs on this same thread), done here.
+    fn wait(self, otherwise: impl FnOnce() -> T) -> T {
+        if WEB {
+            otherwise()
+        } else {
+            block_on(self.task)
         }
     }
 }
 
-/// Puts in the world a circuit prepared on another thread (one per frame:
-/// making its entities and meshes takes a little while too): the one
-/// chosen first, shown, with what lies beside its roads given to the
-/// track; the others hidden.
+/// The first part of circuit `index` worked out on another thread.
+fn start_preparing(
+    index: usize,
+    textures: &textures::WorldTextures,
+    urgency: Urgency,
+) -> Work<Prepared> {
+    let textures = textures.clone();
+    Work::start(urgency, move |urgency| prepare(index, &textures, urgency))
+}
+
+/// The rest of the circuit whose first part is `basis`, worked out on
+/// another thread.
+fn start_finishing(
+    basis: &Basis,
+    textures: &textures::WorldTextures,
+    urgency: Urgency,
+) -> Work<Rest> {
+    let (basis, textures) = (basis.clone(), textures.clone());
+    Work::start(urgency, move |urgency| {
+        prepare_rest(&basis, &textures, urgency)
+    })
+}
+
+/// The first parts of the circuits being prepared, by index in
+/// [`CIRCUITS`].
+#[derive(Resource, Default)]
+struct Preparing(HashMap<usize, Work<Prepared>>);
+
+/// The circuits shown whose rest is still to come, by index in
+/// [`CIRCUITS`]: what it is put in the world with, and the work on it, if
+/// it has started.
+#[derive(Resource, Default)]
+struct Finishing(HashMap<usize, (Shown, Option<Work<Rest>>)>);
+
+/// Whether the circuit chosen is still being prepared, and cannot be shown
+/// yet: in the tracks menu it is not waited for (the menu would stop for
+/// seconds), it comes when ready. Its rest may come later still: going on to
+/// a race waits for it.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CircuitLoading(pub bool);
+
+/// How far apart two circuits are in the tracks menu, going round it either
+/// way.
+fn menu_distance(a: usize, b: usize) -> usize {
+    let apart = a.abs_diff(b);
+    apart.min(CIRCUITS.len() - apart)
+}
+
+/// In the tracks menu, the circuits not yet built are prepared in the
+/// background, one piece of work at a time (and none while the chosen one is
+/// worked on now), so that going from one to the next is instant: the first part of each, those nearest the one chosen
+/// first, and then the rest of each. Each is put in the world when it is
+/// ready ([`spawn_prepared_circuit`]). The menu goes on meanwhile.
+fn queue_circuits(
+    current: Res<CurrentCircuit>,
+    roots: Query<&WorldRoot>,
+    textures: Res<textures::WorldTextures>,
+    mut preparing: ResMut<Preparing>,
+    mut finishing: ResMut<Finishing>,
+) {
+    // One at a time, and none while the one chosen is worked on now, so as
+    // not to take its cores.
+    let busy = !preparing.0.is_empty() || finishing.0.values().any(|(_, work)| work.is_some());
+    if busy {
+        return;
+    }
+    let nearest = |indices: &mut dyn Iterator<Item = usize>| {
+        indices.min_by_key(|&index| (menu_distance(index, current.0), index))
+    };
+    let built: HashSet<usize> = roots.iter().map(|root| root.0).collect();
+    let unbuilt = nearest(&mut (0..CIRCUITS.len()).filter(|index| {
+        !built.contains(index)
+            && !preparing.0.contains_key(index)
+            && !finishing.0.contains_key(index)
+    }));
+    if let Some(index) = unbuilt {
+        let work = start_preparing(index, &textures, Urgency::Background);
+        preparing.0.insert(index, work);
+        return;
+    }
+    let unfinished = nearest(
+        &mut finishing
+            .0
+            .iter()
+            .filter(|(_, (_, work))| work.is_none())
+            .map(|(&index, _)| index),
+    );
+    if let Some(index) = unfinished
+        && let Some((shown, work)) = finishing.0.get_mut(&index)
+    {
+        *work = Some(start_finishing(
+            &shown.basis,
+            &textures,
+            Urgency::Background,
+        ));
+    }
+}
+
+/// Puts in the world the first part or the rest of a circuit prepared on
+/// another thread (one a frame: making its entities and meshes takes a
+/// little while too), the chosen one's first: its first part shown, with
+/// what lies beside its roads given to the track, and its rest started at
+/// once; the others hidden, their rest left to [`queue_circuits`].
+#[allow(clippy::too_many_arguments)]
 fn spawn_prepared_circuit(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
     mut preparing: ResMut<Preparing>,
+    mut finishing: ResMut<Finishing>,
     mut builder: Builder,
     mut roadsides: ResMut<Roadsides>,
     mut track: ResMut<Track>,
     mut loading: ResMut<CircuitLoading>,
 ) {
-    let mut order: Vec<usize> = preparing.0.keys().copied().collect();
-    order.sort_by_key(|&index| index != current.0);
-    let ready = order.into_iter().find_map(|index| {
-        let preparation = preparing.0.get_mut(&index)?;
-        block_on(poll_once(&mut preparation.task)).map(|prepared| (index, prepared))
-    });
-    let Some((index, prepared)) = ready else {
+    let chosen_first = |indices: Vec<usize>| {
+        let mut indices = indices;
+        indices.sort_by_key(|&index| index != current.0);
+        indices
+    };
+    let ready = chosen_first(preparing.0.keys().copied().collect())
+        .into_iter()
+        .find_map(|index| {
+            let work = preparing.0.get_mut(&index)?;
+            block_on(poll_once(&mut work.task)).map(|prepared| (index, prepared))
+        });
+    if let Some((index, prepared)) = ready {
+        preparing.0.remove(&index);
+        let chosen = index == current.0;
+        let visibility = if chosen {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        let shown = build(&mut commands, prepared, &mut builder, visibility);
+        if chosen {
+            shown.basis.roadside.apply(&mut track);
+            loading.set_if_neq(CircuitLoading(false));
+        }
+        roadsides.0.insert(index, shown.basis.roadside.clone());
+        let work = chosen.then(|| start_finishing(&shown.basis, &builder.textures, Urgency::Now));
+        finishing.0.insert(index, (shown, work));
         return;
-    };
-    preparing.0.remove(&index);
-    let chosen = index == current.0;
-    let visibility = if chosen {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    let built = build(&mut commands, prepared, &mut builder, visibility);
-    if chosen {
-        built.apply(&mut track);
-        loading.set_if_neq(CircuitLoading(false));
     }
-    roadsides.0.insert(index, built);
+    let ready = chosen_first(finishing.0.keys().copied().collect())
+        .into_iter()
+        .find_map(|index| {
+            let work = finishing.0.get_mut(&index)?.1.as_mut()?;
+            block_on(poll_once(&mut work.task)).map(|rest| (index, rest))
+        });
+    if let Some((index, rest)) = ready
+        && let Some((shown, _)) = finishing.0.remove(&index)
+    {
+        finish(&mut commands, shown, rest, &mut builder);
+    }
+}
+
+/// Puts the whole of circuit `index` in the world now, as far as it is not
+/// yet, waiting for the work on it under way, or doing it here.
+#[allow(clippy::too_many_arguments)]
+fn complete_now(
+    index: usize,
+    built: bool,
+    commands: &mut Commands,
+    builder: &mut Builder,
+    preparing: &mut Preparing,
+    finishing: &mut Finishing,
+    roadsides: &mut Roadsides,
+) {
+    if !built && !finishing.0.contains_key(&index) {
+        let textures = builder.textures.clone();
+        let prepared = match preparing.0.remove(&index) {
+            Some(work) => work.wait(|| prepare(index, &textures, Urgency::Now)),
+            None => prepare(index, &textures, Urgency::Now),
+        };
+        let shown = build(commands, prepared, builder, Visibility::Inherited);
+        roadsides.0.insert(index, shown.basis.roadside.clone());
+        finishing.0.insert(index, (shown, None));
+    }
+    if let Some((shown, work)) = finishing.0.remove(&index) {
+        let textures = builder.textures.clone();
+        let now = || prepare_rest(&shown.basis, &textures, Urgency::Now);
+        let rest = match work {
+            Some(work) => work.wait(now),
+            None => now(),
+        };
+        finish(commands, shown, rest, builder);
+    }
+}
+
+/// Going on to a race: the circuit chosen, whole, its rest waited for if it
+/// has not come yet.
+#[allow(clippy::too_many_arguments)]
+fn complete_the_circuit(
+    mut commands: Commands,
+    current: Res<CurrentCircuit>,
+    roots: Query<&WorldRoot>,
+    mut builder: Builder,
+    mut preparing: ResMut<Preparing>,
+    mut finishing: ResMut<Finishing>,
+    mut roadsides: ResMut<Roadsides>,
+    mut track: ResMut<Track>,
+    mut loading: ResMut<CircuitLoading>,
+) {
+    let built = roots.iter().any(|root| root.0 == current.0);
+    if built && !finishing.0.contains_key(&current.0) {
+        return;
+    }
+    complete_now(
+        current.0,
+        built,
+        &mut commands,
+        &mut builder,
+        &mut preparing,
+        &mut finishing,
+        &mut roadsides,
+    );
+    if let Some(roadside) = roadsides.0.get(&current.0) {
+        roadside.apply(&mut track);
+    }
+    loading.set_if_neq(CircuitLoading(false));
 }
 
 /// Al salir del menú de pistas (hacia elegir moto o volver a bienvenida),
 /// se descargan los circuitos en caché que no se estén usando para liberar
-/// memoria, and the ones still being prepared are let go.
+/// memoria, and the work on the others is let go.
 fn unload_unused_circuits(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
     roots: Query<(Entity, &WorldRoot)>,
     mut preparing: ResMut<Preparing>,
+    mut finishing: ResMut<Finishing>,
 ) {
     for (entity, root) in &roots {
         if root.0 != current.0 {
@@ -411,14 +624,16 @@ fn unload_unused_circuits(
     }
     // The one chosen, if it is still on its way, comes all the same.
     preparing.0.retain(|&index, _| index == current.0);
+    finishing.0.retain(|&index, _| index == current.0);
 }
 
 /// Al cambiar de pista: actualiza el trazado y conmuta la visibilidad entre
 /// las pistas cargadas en caché, o, si no estuviera, la construye. In the
 /// tracks menu it is not waited for: it is prepared on a thread of its own
 /// if it has not begun yet, and comes when ready ([`CircuitLoading`],
-/// [`spawn_prepared_circuit`]); elsewhere (a championship going on to the
-/// next track) it is waited for.
+/// [`spawn_prepared_circuit`]), its rest after it (started now, if it has
+/// not begun); elsewhere (a championship going on to the next track) the
+/// whole of it is waited for.
 #[allow(clippy::too_many_arguments)]
 fn rebuild_world(
     mut commands: Commands,
@@ -429,6 +644,7 @@ fn rebuild_world(
     mut builder: Builder,
     mut roadsides: ResMut<Roadsides>,
     mut preparing: ResMut<Preparing>,
+    mut finishing: ResMut<Finishing>,
     mut loading: ResMut<CircuitLoading>,
 ) {
     if !current.is_changed() || current.is_added() {
@@ -445,24 +661,35 @@ fn rebuild_world(
     }
     *track = Track::new(&current.get().layout);
     let in_menu = state.is_some_and(|state| *state.get() == GameState::Tracks);
-    if !found && in_menu && !WEB {
-        if preparing.0.get(&current.0).is_none_or(|p| !p.begun()) {
-            let preparation = Preparation::start(current.0, &builder.textures, Urgency::Now);
-            preparing.0.insert(current.0, preparation);
+    if in_menu && !WEB {
+        if !found {
+            if preparing.0.get(&current.0).is_none_or(|work| !work.begun()) {
+                let work = start_preparing(current.0, &builder.textures, Urgency::Now);
+                preparing.0.insert(current.0, work);
+            }
+            loading.set_if_neq(CircuitLoading(true));
+            return;
         }
-        loading.set_if_neq(CircuitLoading(true));
-        return;
-    }
-    if !found {
-        // Needed now: wait for it if it is being prepared. On the web the
-        // background work runs on this same thread and cannot be waited
-        // for, so it is done here.
-        let prepared = match preparing.0.remove(&current.0) {
-            Some(preparation) if !WEB => block_on(preparation.task),
-            _ => prepare(current.0, &builder.textures, Urgency::Now),
-        };
-        let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
-        roadsides.0.insert(current.0, built);
+        // Shown: its rest, if it has not begun, now.
+        if let Some((shown, work)) = finishing.0.get_mut(&current.0)
+            && work.as_ref().is_none_or(|work| !work.begun())
+        {
+            *work = Some(start_finishing(
+                &shown.basis,
+                &builder.textures,
+                Urgency::Now,
+            ));
+        }
+    } else {
+        complete_now(
+            current.0,
+            found,
+            &mut commands,
+            &mut builder,
+            &mut preparing,
+            &mut finishing,
+            &mut roadsides,
+        );
     }
     loading.set_if_neq(CircuitLoading(false));
     if let Some(roadside) = roadsides.0.get(&current.0) {
@@ -478,9 +705,11 @@ fn build_world(
     mut roadsides: ResMut<Roadsides>,
 ) {
     let prepared = prepare(current.0, &builder.textures, Urgency::Now);
-    let built = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
-    built.apply(&mut track);
-    roadsides.0.insert(current.0, built);
+    let shown = build(&mut commands, prepared, &mut builder, Visibility::Inherited);
+    shown.basis.roadside.apply(&mut track);
+    roadsides.0.insert(current.0, shown.basis.roadside.clone());
+    let rest = prepare_rest(&shown.basis, &builder.textures, Urgency::Now);
+    finish(&mut commands, shown, rest, &mut builder);
 }
 
 /// Lo que hace falta para construir el mundo.
@@ -496,40 +725,42 @@ struct Builder<'w> {
     images: ResMut<'w, Assets<Image>>,
 }
 
-/// Builds a prepared circuit's world, and returns what lies beside its
-/// roads (see [`Roadside`]).
+/// A circuit whose first part is in the world: where it is, the sea's
+/// mirroring material (to be given what stands round it with the rest),
+/// and what its rest is worked out and put in the world from.
+struct Shown {
+    root: Entity,
+    sea_mirror: Option<Handle<mirror::MirrorMaterial>>,
+    basis: Basis,
+}
+
+/// Puts the first part of a prepared circuit in the world (see
+/// [`Prepared`]).
 fn build(
     commands: &mut Commands,
     prepared: Prepared,
     builder: &mut Builder,
     visibility: Visibility,
-) -> Roadside {
+) -> Shown {
     let Prepared {
-        index,
-        track,
-        terrain,
+        basis,
         ground,
-        shore,
         shore_image,
         sea_mirror,
-        roadside,
         pieces,
         lakes,
         lamps,
-        grass,
-        trees,
         meadows,
-        flowers,
     } = prepared;
     let meadows: Vec<_> = meadows
         .into_iter()
         .map(|(kind, meadow)| (kind, builder.images.add(meadow)))
         .collect();
     let shore_image = builder.images.add(shore_image);
-    let scenery = &CIRCUITS[index].scenery;
+    let scenery = &CIRCUITS[basis.index].scenery;
     let cartoon_sea = builder
         .sea_materials
-        .add(shore.material(shore_image, scenery.water));
+        .add(basis.shore.material(shore_image, scenery.water));
     let lakes: Vec<_> = lakes
         .into_iter()
         .map(|lake| {
@@ -540,6 +771,10 @@ fn build(
             )
         })
         .collect();
+    let sea_mirror = sea_mirror.map(|mirror| {
+        let material = mirror.into_material(&mut builder.images);
+        builder.mirror_materials.add(material)
+    });
     let mut assets = Assets3d {
         textures: &builder.textures,
         props: &builder.props,
@@ -549,9 +784,10 @@ fn build(
         mirrored: Vec::new(),
         mirrored_leaves: Vec::new(),
     };
-    commands
+    let (track, terrain) = (&*basis.track, &*basis.terrain);
+    let root = commands
         .spawn((
-            WorldRoot(index),
+            WorldRoot(basis.index),
             lamps::Lamps(lamps),
             Transform::default(),
             visibility,
@@ -559,7 +795,7 @@ fn build(
         .with_children(|world| {
             terrain::spawn_terrain(
                 world,
-                &terrain,
+                terrain,
                 ground,
                 &meadows,
                 assets.textures,
@@ -581,36 +817,13 @@ fn build(
                     piece.insert(NotShadowCaster);
                 }
             }
-            for piece in grass {
-                let range = piece.range();
-                world.spawn((
-                    Mesh3d(assets.meshes.add(piece.mesh)),
-                    MeshMaterial3d(assets.materials.add(piece.material)),
-                    range,
-                    NotShadowCaster,
-                ));
-            }
-            road::spawn_gantries(world, &track, scenery, &mut assets);
-            structures::spawn_signs(world, &track, &terrain, scenery, &mut assets);
-            props::spawn_props(
-                world,
-                &track,
-                &terrain,
-                scenery,
-                &trees,
-                flowers,
-                &mut assets,
-            );
-            // The sea, mirroring what stands round it too, now that it
-            // stands; the cartoon one at first, mirroring, if it should,
+            road::spawn_gantries(world, track, scenery, &mut assets);
+            structures::spawn_signs(world, track, terrain, scenery, &mut assets);
+            // The sea: the cartoon one at first, mirroring, if it should,
             // before it is first drawn (see `sea::dress_the_sea`).
             let sea_water = sea::SeaWater {
                 cartoon: cartoon_sea,
-                mirror: sea_mirror.map(|mut mirror| {
-                    mirror.stand_up(&assets.mirrored, &assets.mirrored_leaves);
-                    let material = mirror.into_material(assets.images);
-                    builder.mirror_materials.add(material)
-                }),
+                mirror: sea_mirror.clone(),
             };
             world.spawn((
                 Mesh3d(builder.sea.0.clone()),
@@ -618,8 +831,65 @@ fn build(
                 sea_water,
                 Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
             ));
-        });
-    roadside
+        })
+        .id();
+    Shown {
+        root,
+        sea_mirror,
+        basis,
+    }
+}
+
+/// Puts the rest of a circuit in the world, its first part there already
+/// (see [`Rest`]): its grass, its houses, trees, props and flowers, and
+/// then the sea's map of what stands round it, with them standing.
+fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Builder) {
+    let Shown {
+        root,
+        sea_mirror,
+        basis,
+    } = shown;
+    let Ok(mut world_root) = commands.get_entity(root) else {
+        return;
+    };
+    let scenery = &CIRCUITS[basis.index].scenery;
+    let mut assets = Assets3d {
+        textures: &builder.textures,
+        props: &builder.props,
+        meshes: &mut builder.meshes,
+        materials: &mut builder.materials,
+        images: &mut builder.images,
+        mirrored: Vec::new(),
+        mirrored_leaves: Vec::new(),
+    };
+    world_root.with_children(|world| {
+        for piece in rest.grass {
+            let range = piece.range();
+            world.spawn((
+                Mesh3d(assets.meshes.add(piece.mesh)),
+                MeshMaterial3d(assets.materials.add(piece.material)),
+                range,
+                NotShadowCaster,
+            ));
+        }
+        props::spawn_props(
+            world,
+            &basis.track,
+            &basis.terrain,
+            scenery,
+            &rest.trees,
+            rest.flowers,
+            &mut assets,
+        );
+    });
+    // The sea mirroring what stands round it too, now that it stands.
+    if let (Some(handle), Some(mut mirror)) = (sea_mirror, rest.sea_mirror) {
+        mirror.stand_up(&assets.mirrored, &assets.mirrored_leaves);
+        let material = mirror.into_material(assets.images);
+        if let Some(mut sea) = builder.mirror_materials.get_mut(&handle) {
+            *sea = material;
+        }
+    }
 }
 
 /// Dónde guardar las mallas, los materiales y las imágenes del mundo.
@@ -684,16 +954,21 @@ mod tests {
         assert_eq!(*roots[0].1, Visibility::Inherited);
 
         // Entramos al menú de elección de pista: the menu does not wait for
-        // the other circuits, which are prepared in the background...
+        // the other circuits, which are prepared in the background, one at
+        // a time, the nearest in the menu first...
         app.world_mut()
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Tracks);
         app.update();
         assert_eq!(roots_query.iter(app.world()).count(), 1);
-        assert_eq!(
-            app.world().resource::<Preparing>().0.len(),
-            CIRCUITS.len() - 1
-        );
+        let preparing: Vec<usize> = app
+            .world()
+            .resource::<Preparing>()
+            .0
+            .keys()
+            .copied()
+            .collect();
+        assert_eq!(preparing, [1]);
 
         // ...and arrive, hidden, as they are ready.
         let started = std::time::Instant::now();
@@ -784,5 +1059,64 @@ mod tests {
         assert_eq!(shown, [last]);
         assert!(app.world().resource::<Roadsides>().0.contains_key(&last));
         assert!(!app.world().resource::<Preparing>().0.contains_key(&last));
+    }
+
+    #[test]
+    fn a_circuit_is_shown_before_its_rest_comes_and_raced_on_whole() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Mesh>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .add_plugins(WorldPlugin);
+        app.update();
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Tracks);
+        app.update();
+        // The last circuit, chosen at once: shown first, its rest (its
+        // houses, trees, props, grass and flowers) still to come.
+        let last = CIRCUITS.len() - 1;
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
+        app.update();
+        let started = std::time::Instant::now();
+        while app.world().resource::<CircuitLoading>().0 {
+            assert!(started.elapsed().as_secs() < 120, "it never comes");
+            app.update();
+        }
+        app.update();
+        let mut roots = app.world_mut().query::<(&WorldRoot, &Children)>();
+        let mut pieces = |app: &mut App| {
+            roots
+                .iter(app.world())
+                .find(|(root, _)| root.0 == last)
+                .map_or(0, |(_, children)| children.len())
+        };
+        let shown = pieces(&mut app);
+        assert!(shown > 0);
+        assert!(app.world().resource::<Finishing>().0.contains_key(&last));
+        // Going on to the race, it is there whole, its rest waited for.
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        app.update();
+        assert!(app.world().resource::<Finishing>().0.is_empty());
+        assert!(
+            pieces(&mut app) > shown + 100,
+            "{shown} {}",
+            pieces(&mut app)
+        );
+    }
+
+    #[test]
+    fn the_circuits_nearest_in_the_menu_come_first() {
+        assert_eq!(menu_distance(0, 1), 1);
+        assert_eq!(menu_distance(0, CIRCUITS.len() - 1), 1);
+        assert_eq!(menu_distance(1, 3), 2);
+        assert_eq!(menu_distance(3, 1), 2);
     }
 }
