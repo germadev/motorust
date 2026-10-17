@@ -1,7 +1,8 @@
 // Still, dark water that mirrors what stands round it, the hills, the
 // roads, the dams and the sky, more the lower one looks across it, stirred by
 // a faint ripple: a dam's lake, and the sea unless it is the cartoon one
-// (see MirrorMaterial in src/world/mirror.rs).
+// (see MirrorMaterial in src/world/mirror.rs). What is built by it and the
+// trees in colour show in it faintly, broken up by drifting patches.
 
 #import bevy_pbr::{
     forward_io::VertexOutput,
@@ -13,8 +14,9 @@
 // xy: corner of the map of the water's surroundings (m, x and z); zw: its
 // size (m).
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> area: vec4<f32>;
-// x: the water's level (m); y: how high over it the map reaches at most
-// (m); z: how far a reflected line of sight is followed (m).
+// x: the water's level (m); y: how high over it the maps reach at most
+// (m); z: how far a reflected line of sight is followed (m); w: 1 if
+// anything stands round it (see `standing`).
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var<uniform> water: vec4<f32>;
 // What stands round the water: rgb, its colour as lit (linear); a, how high
 // it stands over the water (m, less than 0 under it).
@@ -31,6 +33,15 @@ struct LakeLook {
     sun: vec4<f32>,
 }
 @group(#{MATERIAL_BIND_GROUP}) @binding(6) var<uniform> look: LakeLook;
+// What stands on the ground round the water, apart from it (buildings,
+// torii, the crowns of the trees in colour), over the same area: rgb, its
+// colour as lit (linear); a, how high its top is over the water (m, less
+// than 0 where nothing stands).
+@group(#{MATERIAL_BIND_GROUP}) @binding(7) var standing: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(8) var standing_sampler: sampler;
+// r: how high over the water its solid part begins (m); g: how much of it
+// the water shows (1 for what is built, less for leaves).
+@group(#{MATERIAL_BIND_GROUP}) @binding(9) var standing_base: texture_2d<f32>;
 
 const PI: f32 = 3.14159265;
 // The reflected ray is followed in at most this many steps, closer together
@@ -46,6 +57,12 @@ const REFINE: i32 = 6;
 const RIPPLE_TILT: f32 = 0.035;
 const RIPPLE_SIZE: f32 = 3.5;
 const RIPPLE_FADE: vec2<f32> = vec2(40.0, 260.0);
+// What stands round the water shows in it this much at most, and this
+// much of that where the patches drifting across the water break it up;
+// the patches are about this big (m).
+const STANDING_SEEN: f32 = 0.6;
+const STANDING_BROKEN: f32 = 0.2;
+const PATCH_SIZE: f32 = 2.5;
 
 fn hash1(p: vec2<f32>) -> f32 {
     return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.743);
@@ -96,6 +113,27 @@ fn under(q: vec3<f32>) -> bool {
     return q.y - water.x < surroundings_at(q.xz).a;
 }
 
+// What stands at a point over the map, if anything: rgb, its colour; a,
+// how much of it the water shows (0 where nothing stands there).
+fn standing_at(q: vec3<f32>) -> vec4<f32> {
+    let uv = clamp((q.xz - area.xy) / area.zw, vec2(0.0), vec2(1.0));
+    let over = q.y - water.x;
+    let top = textureSampleLevel(standing, standing_sampler, uv, 0.0);
+    if over >= top.a {
+        return vec4(0.0);
+    }
+    let base = textureSampleLevel(standing_base, standing_sampler, uv, 0.0);
+    return select(vec4(0.0), vec4(top.rgb, base.g), over > base.r);
+}
+
+// How much of what stands round the water shows at `at` on it: patches
+// drifting slowly across it, where it shows less.
+fn unbroken(at: vec2<f32>, t: f32) -> f32 {
+    let p = at / PATCH_SIZE;
+    let patches = 0.65 * noise(p + vec2(t * 0.11, -t * 0.07)) + 0.35 * noise(p * 2.7 + vec2(-t * 0.19, 3.1));
+    return mix(STANDING_BROKEN, 1.0, smoothstep(0.35, 0.65, patches));
+}
+
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let p = in.world_position.xyz;
@@ -111,19 +149,25 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Follow the reflected ray up from the water until it runs into the
     // ground round it, or leaves the map, or rises over the highest of it,
-    // for the sky.
+    // for the sky; and note the first thing standing it passes through on
+    // the way.
     let span = over_the_map(p.xz, r.xz);
     let start = max(span.x, 0.0);
     let end = min(min(span.y, water.z), (water.y + 0.5 - (p.y - water.x)) / r.y);
     var hit = false;
     var near = start;
     var far = start;
+    var stands = vec4(0.0);
     if end > start {
         let steps = clamp(i32(ceil((end - start) / STEP_LENGTH)), LEAST_STEPS, STEPS);
         for (var i = 1; i <= steps; i++) {
             let f = f32(i) / f32(steps);
             let t = start + (end - start) * f * f;
-            if under(p + r * t) {
+            let q = p + r * t;
+            if water.w > 0.5 && stands.a == 0.0 {
+                stands = standing_at(q);
+            }
+            if under(q) {
                 hit = true;
                 far = t;
                 break;
@@ -144,7 +188,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let sky_uv = vec2(fract(azimuth / (2.0 * PI)), 1.0 - elevation / (0.5 * PI));
     let sky_color = textureSampleLevel(sky, sky_sampler, sky_uv, 0.0).rgb;
     let glint = pow(max(dot(r, look.sun.xyz), 0.0), 600.0) * look.sun.w;
-    let reflected = select(sky_color + vec3(glint), ground, hit);
+    var reflected = select(sky_color + vec3(glint), ground, hit);
+    // What stands shows faintly over what is behind it, broken up.
+    reflected = mix(reflected, stands.rgb, STANDING_SEEN * stands.a * unbroken(p.xz, globals.time));
 
     // Water reflects little looking down into it and more and more the
     // lower one looks across it (Schlick's Fresnel).

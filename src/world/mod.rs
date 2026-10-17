@@ -547,6 +547,7 @@ fn build(
         materials: &mut builder.materials,
         images: &mut builder.images,
         mirrored: Vec::new(),
+        mirrored_leaves: Vec::new(),
     };
     commands
         .spawn((
@@ -606,7 +607,7 @@ fn build(
             let sea_water = sea::SeaWater {
                 cartoon: cartoon_sea,
                 mirror: sea_mirror.map(|mut mirror| {
-                    mirror.stand_up(&assets.mirrored);
+                    mirror.stand_up(&assets.mirrored, &assets.mirrored_leaves);
                     let material = mirror.into_material(assets.images);
                     builder.mirror_materials.add(material)
                 }),
@@ -629,10 +630,11 @@ pub struct Assets3d<'a> {
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub images: &'a mut Assets<Image>,
-    /// Points over the surfaces of what stands round the water, as it is
-    /// put in the world, for the sea to mirror (see
-    /// [`mirror::PreparedMirror::stand_up`]).
+    /// Points over the surfaces of what is built round the water, and over
+    /// the crowns of the trees in colour, as they are put in the world, for
+    /// the sea to mirror (see [`mirror::PreparedMirror::stand_up`]).
     pub mirrored: Vec<mirror::MirrorPoint>,
+    pub mirrored_leaves: Vec<mirror::MirrorPoint>,
 }
 
 /// El sol, en el mismo sitio que en la foto del cielo, y la luz ambiente.
