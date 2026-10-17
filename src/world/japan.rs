@@ -13,10 +13,10 @@ use bevy::prelude::*;
 
 use std::f32::consts::TAU;
 
-use bevy::camera::visibility::VisibilityRange;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
 
 use super::Assets3d;
+use super::detail::fading_out;
 use super::flowers::{FlowerPlan, spawn_flowers};
 use super::mirror::MirrorPoint;
 use super::props::Footprint;
@@ -992,11 +992,7 @@ fn spawn_petals(
                 MeshMaterial3d(material.clone()),
                 Transform::from_translation(petal.position(0.0)).with_rotation(petal.rotation(0.0)),
                 NotShadowCaster,
-                VisibilityRange {
-                    start_margin: 0.0..0.0,
-                    end_margin: PETALS_SEEN..PETALS_SEEN + 20.0,
-                    use_aabb: false,
-                },
+                fading_out(PETALS_SEEN, 20.0, false),
             ));
         }
     }

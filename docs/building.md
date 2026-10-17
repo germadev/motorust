@@ -113,6 +113,7 @@ This is not WasmFS: WasmFS is Emscripten's file system for programs built with E
 - Gamepads show up only after you press a button with the page open, for the same reason.
 - Settings are saved in the browser's `localStorage` (key `motorust.ajustes`) instead of `ajustes.ron`.
 - The terrain is computed on a single thread (there are no threads on the web), so preparing a track takes a bit longer than on the desktop.
+- The grass, flowers and petals end at once where they stop being drawn instead of fading out (`fading_out` in `src/world/detail.rs`). On WebGL2, Bevy 0.19 binds the table of distances its fading reads (a uniform buffer of 64 entries, 1024 bytes) with a minimum size of one entry (16 bytes); wgpu then refuses the pipeline of every mesh that fades (`pbr_opaque_mesh_pipeline`, group 0, binding 14) and the game quits before it shows.
 
 ### Size
 
