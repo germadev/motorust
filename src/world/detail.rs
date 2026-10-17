@@ -29,7 +29,7 @@ use bevy::prelude::*;
 use super::sky::Sunlight;
 use crate::menu::GameState;
 use crate::pause::Pause;
-use crate::settings::{Antialiasing, ScreenRate, Settings, ShadowQuality};
+use crate::settings::{Antialiasing, ScreenRate, Settings, ShadowQuality, WEB};
 use crate::welcome::GameMode;
 
 /// How much detail the shadows have, from the most to the least.
@@ -457,6 +457,32 @@ fn shadows_for_detail(
     }
 }
 
+/// Drawn up to `reach` m from the cameras and fading out over `fade` m
+/// more, as the grass, the flowers and the petals are: dithered away, as
+/// Bevy fades the end of a [`VisibilityRange`]. On the web they end at
+/// once instead, halfway through the fade (see [`fading_out_on`]).
+pub fn fading_out(reach: f32, fade: f32, use_aabb: bool) -> VisibilityRange {
+    fading_out_on(WEB, reach, fade, use_aabb)
+}
+
+/// [`fading_out`], with no fade on the `web`: on WebGL2, Bevy (0.19) binds
+/// the table of ranges the dithering reads (64 of them, 1024 bytes in its
+/// shader) as if it held only one (16 bytes), so the pipeline of every mesh
+/// that fades out fails to be made and the game quits before it shows.
+/// Ending at once, they read none of it.
+fn fading_out_on(web: bool, reach: f32, fade: f32, use_aabb: bool) -> VisibilityRange {
+    let end_margin = if web {
+        reach + fade / 2.0..reach + fade / 2.0
+    } else {
+        reach..reach + fade
+    };
+    VisibilityRange {
+        start_margin: 0.0..0.0,
+        end_margin,
+        use_aabb,
+    }
+}
+
 /// `range` shortened to `share` of it.
 pub fn shortened(range: &VisibilityRange, share: f32) -> VisibilityRange {
     VisibilityRange {
@@ -540,6 +566,21 @@ fn antialias(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_fades_out_ends_at_once_on_the_web() {
+        let desktop = fading_out_on(false, 100.0, 20.0, true);
+        assert_eq!(desktop.end_margin, 100.0..120.0);
+        assert!(!desktop.is_abrupt());
+        // On the web, as far on average, but with no dithering.
+        let web = fading_out_on(true, 100.0, 20.0, true);
+        assert_eq!(web.end_margin, 110.0..110.0);
+        assert!(web.is_abrupt());
+        assert!(web.use_aabb);
+        // And so it stays with two views.
+        assert!(shortened(&web, 0.55).is_abrupt());
+        assert_eq!(fading_out(100.0, 20.0, false).is_abrupt(), WEB);
+    }
 
     #[test]
     fn each_level_draws_less_and_two_views_lighter() {
