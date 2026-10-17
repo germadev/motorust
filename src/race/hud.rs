@@ -14,6 +14,7 @@ use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::settings::Settings;
+use crate::ui::DESIGN_WINDOW;
 use crate::welcome::GameMode;
 
 /// Seconds a checkpoint's bonus and who is out are shown for.
@@ -44,6 +45,7 @@ const WORDS: f32 = 0.55;
 /// tall): a total at the top of its number is lowered by the difference.
 const BASELINE: f32 = 0.28;
 const FIGURES_TOP: f32 = 0.21;
+const FIGURES_HEIGHT: f32 = 0.71;
 /// How much of the room under the place's figures (their font's descent)
 /// the lap under it takes up.
 const UNDER_PLACE: f32 = 0.2;
@@ -52,6 +54,15 @@ const UNDER_PLACE: f32 = 0.2;
 const FAINT: Color = Color::srgba(1.0, 1.0, 1.0, WORDS);
 const YELLOW: Color = Color::srgb(1.0, 0.86, 0.2);
 const ORANGE: Color = Color::srgb(1.0, 0.5, 0.12);
+/// Where the line of the notices in the middle starts, down the player's
+/// half of the screen (or all of it), in percent.
+const NOTICE_TOP: f32 = 30.0;
+/// Where the middle of the false start notice's letters goes instead, down
+/// the player's half (or all of it), in percent: between the start lights
+/// (their bottom about 22.6 % down the screen) and the top of the start's
+/// arch on the grid (about 30 % down), which it would hide at the notices'
+/// own place.
+const FALSE_START_MIDDLE: f32 = 26.1;
 /// Seconds the total pops for when it changes, and how much bigger it gets.
 const POP: f32 = 0.8;
 const POP_GROWTH: f32 = 0.6;
@@ -78,6 +89,22 @@ impl Plugin for RaceHudPlugin {
 struct Info {
     player: usize,
     kind: InfoKind,
+}
+
+/// How far up the false start notice goes from the notices' place (see
+/// [`FALSE_START_MIDDLE`]): its node's offset then.
+#[derive(Component)]
+struct FalseStartLift(Val);
+
+/// How far up (in percent of the window's height) the false start notice,
+/// in letters `size` big, goes in a half of the screen `height` percent of
+/// the window tall: its letters' middle from where it is at the notices'
+/// place to [`FALSE_START_MIDDLE`], at the window's design size (the
+/// interface grows and shrinks with the window).
+fn false_start_lift(size: f32, height: f32) -> f32 {
+    let half = DESIGN_WINDOW.y * height / 100.0;
+    let middle = (FIGURES_TOP + FIGURES_HEIGHT / 2.0) * size / half * 100.0;
+    (NOTICE_TOP + middle - FALSE_START_MIDDLE) * height / 100.0
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -387,9 +414,10 @@ fn spawn_race_info(
                     TextShadow::default(),
                 ));
                 // In the middle: notices.
+                let size = if players == 1 { 52.0 } else { 36.0 };
                 half.spawn(Node {
                     position_type: PositionType::Absolute,
-                    top: percent(30),
+                    top: percent(NOTICE_TOP),
                     width: percent(100),
                     justify_content: JustifyContent::Center,
                     ..default()
@@ -399,8 +427,9 @@ fn spawn_race_info(
                         player,
                         kind: InfoKind::Notice,
                     },
+                    FalseStartLift(Val::Vh(-false_start_lift(size, height))),
                     Text::new(""),
-                    text(if players == 1 { 52.0 } else { 36.0 }),
+                    text(size),
                     TextLayout::justify(Justify::Center),
                     TextShadow {
                         offset: Vec2::splat(3.0),
@@ -540,11 +569,12 @@ fn show_race_info(
         &mut TextColor,
         &mut TextFont,
         Option<&mut Figured>,
+        Option<(&mut Node, &FalseStartLift)>,
     )>,
 ) {
     let lang = settings.language;
     let target = rules.mode.laps(rules.laps);
-    for (info, mut text, mut color, mut font, figured) in &mut texts {
+    for (info, mut text, mut color, mut font, figured, lift) in &mut texts {
         let Some((rider, progress, _, _, retired)) =
             bikes.iter().find(|(_, _, player, local, _)| {
                 let index = local.map_or(usize::from(!*player), |local| local.0);
@@ -620,6 +650,17 @@ fn show_race_info(
                     .count() as u32;
                 let false_starts =
                     (!race.started && made > 0).then_some((made, settings.false_starts));
+                // Back on the grid, up between the lights and the arch.
+                if let Some((mut node, lift)) = lift {
+                    let top = if false_starts.is_some() && out == Out::In {
+                        lift.0
+                    } else {
+                        Val::ZERO
+                    };
+                    if node.top != top {
+                        node.top = top;
+                    }
+                }
                 notice(&rules, &standing, progress, out, false_starts, place, lang)
             }
             _ => (String::new(), color.0),
@@ -954,6 +995,34 @@ mod tests {
         }
         said.sort();
         said.join(" ")
+    }
+
+    #[test]
+    fn a_false_start_notice_goes_up_between_the_lights_and_the_arch() {
+        // The top of the start's arch on the grid, down the screen (or the
+        // half): about 29.6 % on Bahía GP's grid and 30.8 % on Gold Mine's.
+        const ARCH_TOP: f32 = 29.6;
+        for (size, height) in [(52.0, 100.0), (36.0, 50.0)] {
+            // Its letters, down the half (or the screen), in percent.
+            let half = DESIGN_WINDOW.y * height / 100.0;
+            let top = NOTICE_TOP - false_start_lift(size, height) * 100.0 / height;
+            let letters = |share: f32| top + share * size / half * 100.0;
+            let (first, last) = (letters(FIGURES_TOP), letters(FIGURES_TOP + FIGURES_HEIGHT));
+            assert!(
+                (letters(FIGURES_TOP + FIGURES_HEIGHT / 2.0) - FALSE_START_MIDDLE).abs() < 1e-3
+            );
+            assert!(last < ARCH_TOP, "{size}: {first}-{last} %");
+            // On a screen of its own, under the lights (split, they are
+            // across the middle).
+            if height == 100.0 {
+                assert!(
+                    first > super::super::lights::panel_bottom() + 0.5,
+                    "{first} %"
+                );
+            }
+            // Up from the notices' own place, where the arch hid it.
+            assert!(false_start_lift(size, height) > 0.0);
+        }
     }
 
     #[test]
