@@ -334,6 +334,8 @@ enum CoordinateText {
 /// ("X -1033", "Z -1033" and "Y 120", 10 of the font's sizes, with room
 /// between them) nearly as wide as the map.
 const COORDINATES_SIZE: f32 = 0.085;
+/// How big how far round the lap is, over them: half as big again.
+const ALONG_SIZE: f32 = 1.5 * COORDINATES_SIZE;
 
 /// Where a bike is on a track, in whole metres: how far round the lap (from
 /// the line, as the circuits measure their stretches), on which road off it
@@ -465,14 +467,14 @@ fn spawn_hud_map(
                 },
             ),],
         ));
-        // Just above the map, as wide as it: how far round the lap (and
-        // the branch, at the other end), and under it x, z and y from one
-        // edge to the other.
-        let text = |kind| {
+        // Just above the map, as wide as it: how far round the lap, bigger
+        // (and the branch, at the other end, down on the same line), and
+        // under it x, z and y from one edge to the other.
+        let text = |kind, share: f32| {
             (
                 kind,
                 Text::new(""),
-                text_font(&font, size * COORDINATES_SIZE),
+                text_font(&font, size * share),
                 TextColor(Color::WHITE),
                 TextShadow {
                     offset: Vec2::splat(1.0),
@@ -502,13 +504,18 @@ fn spawn_hud_map(
                 GlobalZIndex(10),
             ))
             .with_children(|coordinates| {
-                coordinates.spawn(row()).with_children(|row| {
-                    row.spawn(text(CoordinateText::Along));
-                    row.spawn(text(CoordinateText::Road));
-                });
+                coordinates
+                    .spawn(Node {
+                        align_items: AlignItems::FlexEnd,
+                        ..row()
+                    })
+                    .with_children(|row| {
+                        row.spawn(text(CoordinateText::Along, ALONG_SIZE));
+                        row.spawn(text(CoordinateText::Road, COORDINATES_SIZE));
+                    });
                 coordinates.spawn(row()).with_children(|row| {
                     for kind in [CoordinateText::X, CoordinateText::Z, CoordinateText::Y] {
-                        row.spawn(text(kind));
+                        row.spawn(text(kind, COORDINATES_SIZE));
                     }
                 });
             });
@@ -704,6 +711,11 @@ mod tests {
         // are 10.035 of its size wide.
         let widest = 10.035 * COORDINATES_SIZE;
         assert!((0.8..0.95).contains(&widest), "{widest}");
+        // How far round the lap, half as big again, and a branch beside it
+        // fit too: "8888 m" is 3.905 of its size wide, "branch 1" 4.19.
+        assert_eq!(ALONG_SIZE, 1.5 * COORDINATES_SIZE);
+        let along = 3.905 * ALONG_SIZE + 4.19 * COORDINATES_SIZE;
+        assert!(along < 0.9, "{along}");
     }
 
     #[test]
