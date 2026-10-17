@@ -107,12 +107,11 @@ impl Plugin for WorldPlugin {
                 Update,
                 queue_circuits
                     .after(spawn_prepared_circuit)
-                    .run_if(in_state(GameState::Tracks)),
+                    .run_if(preparing_in_the_menus),
             )
-            .add_systems(OnExit(GameState::Tracks), unload_unused_circuits)
-            // A championship goes from track to track without choosing
-            // them: the one left behind goes when the next race starts. The
-            // one raced on is there whole.
+            // The others go when a race starts (and in a championship,
+            // which goes from track to track without choosing them, the one
+            // left behind): the one raced on is there whole.
             .add_systems(
                 OnEnter(GameState::Race),
                 (unload_unused_circuits, complete_the_circuit),
@@ -462,11 +461,26 @@ fn menu_distance(a: usize, b: usize) -> usize {
     apart.min(CIRCUITS.len() - apart)
 }
 
-/// In the tracks menu, the circuits not yet built are prepared in the
-/// background, one piece of work at a time (and none while the chosen one is
-/// worked on now), so that going from one to the next is instant: the first part of each, those nearest the one chosen
-/// first, and then the rest of each. Each is put in the world when it is
-/// ready ([`spawn_prepared_circuit`]). The menu goes on meanwhile.
+/// Whether the circuits are prepared in the background now: in every menu,
+/// from the welcome screen on, so that by the time the tracks are chosen
+/// most are there; not in a race. On the web, only in the tracks menu, as
+/// the work in the background runs on the main thread there and would stop
+/// the welcome screen.
+fn preparing_in_the_menus(state: Option<Res<State<GameState>>>) -> bool {
+    match state.as_deref().map(State::get) {
+        Some(GameState::Race) | None => false,
+        Some(GameState::Tracks) => true,
+        Some(_) => !WEB,
+    }
+}
+
+/// In the menus (see [`preparing_in_the_menus`]), the circuits not yet built
+/// are prepared in the background, one piece of work at a time (and none
+/// while the chosen one is worked on now), so that going from one to the
+/// next in the tracks menu is instant: seen from the road, a look at the
+/// start of each first; the first part of each, those nearest the one
+/// chosen first; and then the rest of each. Each is put in the world when it
+/// is ready ([`spawn_prepared_circuit`]). The menus go on meanwhile.
 #[allow(clippy::too_many_arguments)]
 fn queue_circuits(
     current: Res<CurrentCircuit>,
@@ -686,9 +700,8 @@ fn complete_the_circuit(
     loading.set_if_neq(CircuitLoading(false));
 }
 
-/// Al salir del menú de pistas (hacia elegir moto o volver a bienvenida),
-/// se descargan los circuitos en caché que no se estén usando para liberar
-/// memoria, and the work on the others is let go.
+/// Going on to a race, the circuits prepared in the menus but the one
+/// chosen go, to free their memory, and the work on them is let go.
 fn unload_unused_circuits(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
@@ -1070,7 +1083,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn circuits_cache_on_tracks_menu_and_unload_on_exit() {
+    fn circuits_are_prepared_in_the_menus_and_let_go_for_a_race() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1083,12 +1096,14 @@ mod tests {
 
         app.update();
 
-        // Al inicio, solo la pista inicial (0) está cargada y visible.
+        // Al inicio, solo la pista inicial (0) está cargada y visible; on
+        // the welcome screen, the next one is prepared already.
         let mut roots_query = app.world_mut().query::<(&WorldRoot, &Visibility)>();
         let roots: Vec<_> = roots_query.iter(app.world()).collect();
         assert_eq!(roots.len(), 1);
         assert_eq!(roots[0].0.0, 0);
         assert_eq!(*roots[0].1, Visibility::Inherited);
+        assert!(app.world().resource::<Preparing>().0.contains_key(&1));
 
         // Entramos al menú de elección de pista: the menu does not wait for
         // the other circuits, which are prepared in the background, one at
@@ -1140,13 +1155,18 @@ mod tests {
             }
         }
 
-        // Salimos del menú de pistas hacia Select (elegir moto):
-        // la pista no usada (0) debe descargarse y quedar solo la pista elegida (1).
+        // On to choosing a bike, they all stay, for a way back to the
+        // tracks; on to the race, only the one chosen (1) is left.
         app.world_mut()
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Select);
         app.update();
-
+        assert_eq!(roots_query.iter(app.world()).count(), CIRCUITS.len());
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        app.update();
         let roots: Vec<_> = roots_query.iter(app.world()).collect();
         assert_eq!(roots.len(), 1);
         assert_eq!(roots[0].0.0, 1);
