@@ -527,15 +527,9 @@ fn build(
         .collect();
     let shore_image = builder.images.add(shore_image);
     let scenery = &CIRCUITS[index].scenery;
-    let sea_water = sea::SeaWater {
-        cartoon: builder
-            .sea_materials
-            .add(shore.material(shore_image, scenery.water)),
-        mirror: sea_mirror.map(|mirror| {
-            let material = mirror.into_material(&mut builder.images);
-            builder.mirror_materials.add(material)
-        }),
-    };
+    let cartoon_sea = builder
+        .sea_materials
+        .add(shore.material(shore_image, scenery.water));
     let lakes: Vec<_> = lakes
         .into_iter()
         .map(|lake| {
@@ -552,6 +546,7 @@ fn build(
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
+        mirrored: Vec::new(),
     };
     commands
         .spawn((
@@ -570,14 +565,6 @@ fn build(
                 assets.meshes,
                 assets.materials,
             );
-            // The cartoon sea at first; mirroring, if it should, before it
-            // is first drawn (see `sea::dress_the_sea`).
-            world.spawn((
-                Mesh3d(builder.sea.0.clone()),
-                MeshMaterial3d(sea_water.cartoon.clone()),
-                sea_water,
-                Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
-            ));
             for (mesh, material) in lakes {
                 world.spawn((Mesh3d(mesh), MeshMaterial3d(material), NotShadowCaster));
             }
@@ -613,6 +600,23 @@ fn build(
                 flowers,
                 &mut assets,
             );
+            // The sea, mirroring what stands round it too, now that it
+            // stands; the cartoon one at first, mirroring, if it should,
+            // before it is first drawn (see `sea::dress_the_sea`).
+            let sea_water = sea::SeaWater {
+                cartoon: cartoon_sea,
+                mirror: sea_mirror.map(|mut mirror| {
+                    mirror.stand_up(&assets.mirrored);
+                    let material = mirror.into_material(assets.images);
+                    builder.mirror_materials.add(material)
+                }),
+            };
+            world.spawn((
+                Mesh3d(builder.sea.0.clone()),
+                MeshMaterial3d(sea_water.cartoon.clone()),
+                sea_water,
+                Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
+            ));
         });
     roadside
 }
@@ -625,6 +629,10 @@ pub struct Assets3d<'a> {
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub images: &'a mut Assets<Image>,
+    /// Points over the surfaces of what stands round the water, as it is
+    /// put in the world, for the sea to mirror (see
+    /// [`mirror::PreparedMirror::stand_up`]).
+    pub mirrored: Vec<mirror::MirrorPoint>,
 }
 
 /// El sol, en el mismo sitio que en la foto del cielo, y la luz ambiente.

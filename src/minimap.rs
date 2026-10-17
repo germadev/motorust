@@ -313,35 +313,70 @@ pub fn dot_style(viewer: Option<usize>, player: bool, local: Option<usize>) -> D
     }
 }
 
-/// Over a minimap, where its player is (see [`coordinates_said`]), if the
-/// options say so.
+/// Over a minimap, if the options say so, where its player is (see
+/// [`Coordinates`]), as wide as the map: the container, of the map of
+/// `viewer` (see [`HudMap`]), and each of its texts.
 #[derive(Component)]
 struct MapCoordinates {
     viewer: Option<usize>,
 }
 
-/// Where a bike at `position` on the ground, `elevation` m up, is on
-/// `track`: how far round the lap (m from the line, as the circuits measure
-/// their stretches), on which road off it if it is on one, and the
-/// coordinates of the ground (m: x, z, and how high, y). "1234 m" over
-/// "X 412  Z -1033  Y 12".
-pub fn coordinates_said(track: &Track, position: Vec2, elevation: f32, lang: Language) -> String {
-    let nearest = track.nearest_at(position, elevation);
-    let along = track.along(&nearest);
-    let road = match (nearest.road, lang) {
-        (0, _) => String::new(),
-        (road, Language::Spanish) => format!(" · ramal {road}"),
-        (road, Language::English) => format!(" · branch {road}"),
-    };
-    // Whole metres, with no "-0".
-    let whole = |metres: f32| metres.round() as i32;
-    format!(
-        "{} m{road}\nX {}  Z {}  Y {}",
-        whole(along),
-        whole(position.x),
-        whole(position.y),
-        whole(elevation)
-    )
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+enum CoordinateText {
+    Along,
+    Road,
+    X,
+    Z,
+    Y,
+}
+
+/// How big the coordinates are against the map's width: the widest line
+/// ("X -1033", "Z -1033" and "Y 120", 10 of the font's sizes, with room
+/// between them) nearly as wide as the map.
+const COORDINATES_SIZE: f32 = 0.085;
+
+/// Where a bike is on a track, in whole metres: how far round the lap (from
+/// the line, as the circuits measure their stretches), on which road off it
+/// if it is on one (see [`crate::track::Nearest::road`]), and the
+/// coordinates of the ground (x, z, and how high, y).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Coordinates {
+    pub along: i32,
+    pub road: usize,
+    pub x: i32,
+    pub z: i32,
+    pub y: i32,
+}
+
+impl Coordinates {
+    /// Those of a bike at `position` on the ground, `elevation` m up, on
+    /// `track`.
+    pub fn of(track: &Track, position: Vec2, elevation: f32) -> Self {
+        let nearest = track.nearest_at(position, elevation);
+        // Whole metres, with no "-0".
+        let whole = |metres: f32| metres.round() as i32;
+        Self {
+            along: whole(track.along(&nearest)),
+            road: nearest.road,
+            x: whole(position.x),
+            z: whole(position.y),
+            y: whole(elevation),
+        }
+    }
+
+    /// One of them as it is shown: "1234 m", "ramal 1" (nothing on the
+    /// lap), "X 412", "Z -1033", "Y 12".
+    fn said(&self, text: CoordinateText, lang: Language) -> String {
+        match (text, self.road, lang) {
+            (CoordinateText::Along, ..) => format!("{} m", self.along),
+            (CoordinateText::Road, 0, _) => String::new(),
+            (CoordinateText::Road, road, Language::Spanish) => format!("ramal {road}"),
+            (CoordinateText::Road, road, Language::English) => format!("branch {road}"),
+            (CoordinateText::X, ..) => format!("X {}", self.x),
+            (CoordinateText::Z, ..) => format!("Z {}", self.z),
+            (CoordinateText::Y, ..) => format!("Y {}", self.y),
+        }
+    }
 }
 
 /// Over each minimap, if the options say so, where its player is.
@@ -350,9 +385,11 @@ fn show_coordinates(
     settings: Res<Settings>,
     track: Res<Track>,
     bikes: Query<(&BikeState, Has<Player>, Option<&LocalPlayer>)>,
-    mut labels: Query<(&MapCoordinates, &mut Text, &mut Node)>,
+    mut boxes: Query<(&MapCoordinates, &mut Node, &Children)>,
+    rows: Query<&Children, Without<MapCoordinates>>,
+    mut texts: Query<(&CoordinateText, &mut Text)>,
 ) {
-    for (label, mut text, mut node) in &mut labels {
+    for (label, mut node, children) in &mut boxes {
         let display = if settings.show_coordinates {
             Display::Flex
         } else {
@@ -370,9 +407,17 @@ fn show_coordinates(
         }) else {
             continue;
         };
-        let wanted = coordinates_said(&track, state.position, state.elevation, settings.language);
-        if text.0 != wanted {
-            text.0 = wanted;
+        let coordinates = Coordinates::of(&track, state.position, state.elevation);
+        for row in children.iter().filter_map(|row| rows.get(row).ok()) {
+            for entity in row.iter() {
+                let Ok((kind, mut text)) = texts.get_mut(entity) else {
+                    continue;
+                };
+                let wanted = coordinates.said(*kind, settings.language);
+                if text.0 != wanted {
+                    text.0 = wanted;
+                }
+            }
         }
     }
 }
@@ -411,36 +456,62 @@ fn spawn_hud_map(
             BorderColor::all(Color::srgba(0.2, 0.25, 0.35, 0.4)),
             GlobalZIndex(10),
             BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.65)),
-            children![
-                (
-                    ImageNode::new(map.image.clone()),
-                    Node {
-                        width: percent(100),
-                        height: percent(100),
-                        ..default()
-                    },
-                ),
-                // Just above the map.
-                (
-                    MapCoordinates { viewer },
-                    Text::new(""),
-                    text_font(&font, 13.0),
-                    TextColor(Color::WHITE),
-                    TextShadow {
-                        offset: Vec2::splat(1.0),
-                        color: Color::srgba(0.0, 0.0, 0.0, 0.9),
-                    },
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: px(2),
-                        bottom: percent(100),
-                        margin: UiRect::bottom(px(4)),
-                        display: Display::None,
-                        ..default()
-                    },
-                ),
-            ],
+            children![(
+                ImageNode::new(map.image.clone()),
+                Node {
+                    width: percent(100),
+                    height: percent(100),
+                    ..default()
+                },
+            ),],
         ));
+        // Just above the map, as wide as it: how far round the lap (and
+        // the branch, at the other end), and under it x, z and y from one
+        // edge to the other.
+        let text = |kind| {
+            (
+                kind,
+                Text::new(""),
+                text_font(&font, size * COORDINATES_SIZE),
+                TextColor(Color::WHITE),
+                TextShadow {
+                    offset: Vec2::splat(1.0),
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.9),
+                },
+            )
+        };
+        let row = || Node {
+            width: percent(100),
+            justify_content: JustifyContent::SpaceBetween,
+            ..default()
+        };
+        commands
+            .spawn((
+                MapCoordinates { viewer },
+                DespawnOnExit(GameState::Race),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(16),
+                    bottom,
+                    margin: UiRect::bottom(px(16.0 + size + 4.0)),
+                    width: px(size),
+                    flex_direction: FlexDirection::Column,
+                    display: Display::None,
+                    ..default()
+                },
+                GlobalZIndex(10),
+            ))
+            .with_children(|coordinates| {
+                coordinates.spawn(row()).with_children(|row| {
+                    row.spawn(text(CoordinateText::Along));
+                    row.spawn(text(CoordinateText::Road));
+                });
+                coordinates.spawn(row()).with_children(|row| {
+                    for kind in [CoordinateText::X, CoordinateText::Z, CoordinateText::Y] {
+                        row.spawn(text(kind));
+                    }
+                });
+            });
     }
 }
 
@@ -607,19 +678,32 @@ mod tests {
         let index = track.centerline().len() / 3;
         let point = track.centerline()[index];
         let along = index as f32 * track.step_length();
-        let said = coordinates_said(&track, point, 12.4, Language::Spanish);
-        let (first, second) = said.split_once('\n').unwrap();
-        let metres: f32 = first.trim_end_matches(" m").parse().unwrap();
-        assert!((metres - along).abs() <= 1.0, "{said}");
+        let at = Coordinates::of(&track, point, 12.4);
+        assert!((at.along as f32 - along).abs() <= 1.0, "{at:?}");
+        assert_eq!(at.road, 0);
         let whole = |metres: f32| metres.round() as i32;
+        assert_eq!((at.x, at.z, at.y), (whole(point.x), whole(point.y), 12));
+        let said = |kind| at.said(kind, Language::Spanish);
+        assert_eq!(said(CoordinateText::Along), format!("{} m", at.along));
+        assert_eq!(said(CoordinateText::Road), "");
+        assert_eq!(said(CoordinateText::Z), format!("Z {}", at.z));
+        // A branch named; never "-0".
+        let branch = Coordinates { road: 1, ..at };
         assert_eq!(
-            second,
-            format!("X {}  Z {}  Y 12", whole(point.x), whole(point.y)),
-            "{said}"
+            branch.said(CoordinateText::Road, Language::Spanish),
+            "ramal 1"
         );
-        // Never "-0".
-        let near_zero = coordinates_said(&track, Vec2::new(-0.3, point.y), 0.0, Language::English);
-        assert!(!near_zero.contains("-0 "), "{near_zero}");
+        assert_eq!(
+            branch.said(CoordinateText::Road, Language::English),
+            "branch 1"
+        );
+        let near_zero = Coordinates::of(&track, Vec2::new(-0.3, point.y), 0.0);
+        assert_eq!(near_zero.said(CoordinateText::X, Language::English), "X 0");
+        // The widest line nearly as wide as the map at its size, with room
+        // between its three: in Russo One, "X -1033", "Z -1033" and "Y 120"
+        // are 10.035 of its size wide.
+        let widest = 10.035 * COORDINATES_SIZE;
+        assert!((0.8..0.95).contains(&widest), "{widest}");
     }
 
     #[test]

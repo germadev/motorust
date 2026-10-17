@@ -156,10 +156,8 @@ fn show_results(
     let lang = settings.language;
     let page = page.map_or(ResultsPage::Race, |page| *page);
     let active_dev = current_active_device(*device, active_controller.as_deref());
-    // At the top right, under the performance HUD.
-    let top = crate::hud::under_performance_hud(&settings);
     let wanted = format!(
-        "{page:?} {lang:?} {active_dev:?} {:?} {} {} {top}",
+        "{page:?} {lang:?} {active_dev:?} {:?} {} {}",
         outcome.places, outcome.settled, settings.centre_results
     );
     if last.as_ref() == Some(&wanted) && !shown.is_empty() {
@@ -261,7 +259,7 @@ fn show_results(
                     // (A share of the height: one in per cent is of the width.)
                     Stand::Above => UiRect::bottom(Val::Vh(26.0)),
                     Stand::Corner => UiRect {
-                        top: px(top),
+                        top: px(40),
                         right: px(28),
                         ..default()
                     },

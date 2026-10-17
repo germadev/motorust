@@ -21,11 +21,13 @@ const NOTICE: f32 = 2.5;
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.2);
 const RED: Color = Color::srgb(1.0, 0.3, 0.25);
 /// How big the place and the lap are (px), the place the biggest, and the
-/// smaller words and totals round them ("1º / 8", "VUELTA 2 / 5"); and the
+/// smaller words and totals round them ("1 / 8", "VUELTA 2 / 5"); and the
 /// times under them.
-const PLACE_SIZE: f32 = 64.0;
+const PLACE_SIZE: f32 = 88.0;
 const LAP_SIZE: f32 = 40.0;
 const TOTAL_SIZE: f32 = 24.0;
+/// How big the total after the place is (" / 8"), up at its top.
+const PLACE_TOTAL_SIZE: f32 = 30.0;
 const TIMES_SIZE: f32 = 17.0;
 /// The times' colour; and how big the last lap's is when it beat the
 /// track's record (in gold).
@@ -37,8 +39,19 @@ const WORDS: f32 = 0.55;
 /// How far above the bottom of its line the HUD's font (Russo One) sits on
 /// its baseline, as a share of its size: a number and its total, side by
 /// side at the bottom, sit on the same baseline lifting the total by the
-/// difference.
+/// difference. And how far below the top of its line its figures reach up
+/// to (0.926 of its size over the baseline in a line 1.2 tall, figures 0.71
+/// tall): a total at the top of its number is lowered by the difference.
 const BASELINE: f32 = 0.28;
+const FIGURES_TOP: f32 = 0.21;
+/// How much of the room under the place's figures (their font's descent)
+/// the lap under it takes up.
+const UNDER_PLACE: f32 = 0.2;
+/// The total after the place: faint; in an elimination, once someone is out,
+/// yellow, going orange as fewer are left.
+const FAINT: Color = Color::srgba(1.0, 1.0, 1.0, WORDS);
+const YELLOW: Color = Color::srgb(1.0, 0.86, 0.2);
+const ORANGE: Color = Color::srgb(1.0, 0.5, 0.12);
 /// Seconds the total pops for when it changes, and how much bigger it gets.
 const POP: f32 = 0.8;
 const POP_GROWTH: f32 = 0.6;
@@ -104,6 +117,9 @@ struct Arrivals;
 struct Figured {
     text: String,
     color: Color,
+    /// The colour of what is not a figure, where it is not the figures'
+    /// own, translucent.
+    words: Option<Color>,
 }
 
 /// The runs of `text` that are figures (digits, and a colon or a point
@@ -143,10 +159,10 @@ fn show_figures(
         let count = runs.len();
         let children: Vec<Entity> = children.map_or(Vec::new(), |c| c.iter().collect());
         for (index, (run, figure)) in runs.into_iter().enumerate() {
-            let color = if figure {
-                figured.color
-            } else {
-                figured.color.with_alpha(figured.color.alpha() * WORDS)
+            let color = match (figure, figured.words) {
+                (true, _) => figured.color,
+                (false, Some(words)) => words,
+                (false, None) => figured.color.with_alpha(figured.color.alpha() * WORDS),
             };
             match children
                 .get(index)
@@ -317,17 +333,19 @@ fn spawn_race_info(
                     // to pop without moving the rest. None against the
                     // clock, nor the room for it.
                     if rules.mode != Mode::Checkpoint {
-                        column.spawn(beside()).with_children(|row| {
+                        let mut row = on_top();
+                        row.margin.bottom = px(-UNDER_PLACE * PLACE_SIZE);
+                        column.spawn(row).with_children(|row| {
                             row.spawn(info(InfoKind::Place, PLACE_SIZE, Color::WHITE));
                             row.spawn((
                                 PlaceTotal {
                                     player,
                                     ..default()
                                 },
-                                after(PLACE_SIZE, TOTAL_SIZE),
+                                up_at(PLACE_SIZE, PLACE_TOTAL_SIZE),
                                 Text::new(""),
                                 Figured::default(),
-                                text(TOTAL_SIZE),
+                                text(PLACE_TOTAL_SIZE),
                                 TextColor(Color::WHITE),
                                 TextShadow::default(),
                                 UiTransform::IDENTITY,
@@ -409,6 +427,42 @@ fn after(number: f32, size: f32) -> Node {
         margin: UiRect::bottom(px(BASELINE * (number - size))),
         ..default()
     }
+}
+
+/// A row of a number and, after it, a smaller total (" / 8"), their tops
+/// in line.
+fn on_top() -> Node {
+    Node {
+        align_items: AlignItems::FlexStart,
+        ..default()
+    }
+}
+
+/// The node of a total `size` px big after a number `number` px big:
+/// lowered for the tops of their figures to be in line.
+fn up_at(number: f32, size: f32) -> Node {
+    Node {
+        margin: UiRect::top(px(FIGURES_TOP * (number - size))),
+        ..default()
+    }
+}
+
+/// The colour of the total after a player's place, among `racers`, `out`
+/// of them out (the player among them or not, `player_out`): faint; but in
+/// an elimination, once someone is out and while the player is still in,
+/// yellow, going orange as fewer are left, all orange with the last two.
+fn total_color(mode: Mode, racers: usize, out: usize, player_out: bool) -> Color {
+    if mode != Mode::Elimination || out == 0 || player_out {
+        return FAINT;
+    }
+    // Out with the last two left.
+    let last = racers.saturating_sub(2).max(1);
+    let t = if last <= 1 {
+        1.0
+    } else {
+        (out - 1) as f32 / (last - 1) as f32
+    };
+    YELLOW.mix(&ORANGE, t.clamp(0.0, 1.0))
 }
 
 /// A time as minutes, seconds and tenths: 1:23.4.
@@ -503,7 +557,7 @@ fn show_race_info(
         let (wanted, tint) = match info.kind {
             // Over for the players: the results say it all.
             _ if outcome.is_some() => (String::new(), color.0),
-            InfoKind::Place if rules.mode != Mode::Checkpoint => (ordinal(place), color.0),
+            InfoKind::Place if rules.mode != Mode::Checkpoint => (place.to_string(), color.0),
             InfoKind::LapWord => (
                 match lang {
                     Language::Spanish => "VUELTA".into(),
@@ -575,6 +629,7 @@ fn show_race_info(
             figured.set_if_neq(Figured {
                 text: wanted,
                 color: tint,
+                words: None,
             });
             continue;
         }
@@ -598,8 +653,9 @@ pub fn pop(elapsed: f32) -> f32 {
 }
 
 /// After each player's place, how many there are (" / 8"; in elimination,
-/// how many are still in), popping bigger and red as it changes: scaled from
-/// its left end, so nothing round it moves.
+/// how many are still in), faint, or in elimination in the colour of how
+/// few are left (see [`total_color`]), popping bigger and red as it
+/// changes: scaled from its top left corner, so nothing round it moves.
 #[allow(clippy::type_complexity)]
 fn show_place_total(
     time: Res<Time<Real>>,
@@ -633,18 +689,25 @@ fn show_place_total(
         let text = among.map_or(String::new(), |among| format!(" / {among}"));
         let popped = total.changed.map_or(0.0, |at| pop(now - at));
         let scale = 1.0 + POP_GROWTH * popped;
-        let width = node.size().x * node.inverse_scale_factor;
+        let size = node.size() * node.inverse_scale_factor;
         let popping = UiTransform {
-            translation: Val2::px(width * (scale - 1.0) / 2.0, 0.0),
+            translation: Val2::px(size.x * (scale - 1.0) / 2.0, size.y * (scale - 1.0) / 2.0),
             scale: Vec2::splat(scale),
             ..UiTransform::IDENTITY
         };
         if *transform != popping {
             *transform = popping;
         }
+        let color = total_color(
+            rules.mode,
+            standing.order.len(),
+            standing.out.len(),
+            rider.is_some_and(|rider| standing.out.contains(&rider)),
+        );
         figured.set_if_neq(Figured {
             text,
-            color: Color::WHITE.mix(&RED, popped),
+            color: color.mix(&RED, popped),
+            words: Some(FAINT.mix(&RED.with_alpha(WORDS), popped)),
         });
     }
 }
@@ -726,10 +789,9 @@ fn show_watched(
 fn show_arrivals(
     rules: Res<Rules>,
     standing: Res<Standing>,
-    settings: Res<Settings>,
     outcome: Option<Res<Outcome>>,
     bikes: Query<(&Rider, &Progress)>,
-    mut text: Query<(&mut Text, &mut Node), With<Arrivals>>,
+    mut text: Query<&mut Text, With<Arrivals>>,
 ) {
     let wanted = if matches!(rules.mode, Mode::Race | Mode::Arcade) && outcome.is_none() {
         arrival_lines(&standing.order, |rider| {
@@ -741,13 +803,9 @@ fn show_arrivals(
     } else {
         String::new()
     };
-    let top = px(crate::hud::under_performance_hud(&settings));
-    for (mut text, mut node) in &mut text {
+    for mut text in &mut text {
         if text.0 != wanted {
             text.0.clone_from(&wanted);
-        }
-        if node.top != top {
-            node.top = top;
         }
     }
 }
@@ -930,7 +988,7 @@ mod tests {
         app.update();
         app.update();
         let racing = top_left(&mut app);
-        assert!(racing.contains("Place=8º"), "{racing}");
+        assert!(racing.split(' ').any(|said| said == "Place=8"), "{racing}");
         assert!(racing.contains("LapTime="), "{racing}");
         // Over the line: the lap's time goes.
         app.world_mut().get_mut::<Progress>(bike).unwrap().finished = Some(28.8);
@@ -1141,6 +1199,32 @@ mod tests {
         assert_eq!(place_among(&start, Mode::Elimination, 0), (2, 8));
         // In a race, a bike out (disqualified) still counts.
         assert_eq!(place_among(&standing, Mode::Race, 0), (2, 8));
+    }
+
+    #[test]
+    fn the_total_is_faint_but_goes_yellow_then_orange_as_an_elimination_goes_on() {
+        // Faint in a race, and in an elimination with nobody out yet.
+        assert_eq!(total_color(Mode::Race, 8, 0, false), FAINT);
+        assert_eq!(total_color(Mode::Race, 8, 3, false), FAINT);
+        assert_eq!(total_color(Mode::Elimination, 8, 0, false), FAINT);
+        assert!(FAINT.alpha() < 1.0);
+        // The first out: yellow, not faint; the last two left: orange; in
+        // between, more orange the fewer are left.
+        assert_eq!(total_color(Mode::Elimination, 8, 1, false), YELLOW);
+        assert_eq!(total_color(Mode::Elimination, 8, 6, false), ORANGE);
+        let green = |out| {
+            total_color(Mode::Elimination, 8, out, false)
+                .to_srgba()
+                .green
+        };
+        for out in 1..6 {
+            assert!(green(out + 1) < green(out), "{out}");
+            assert_eq!(total_color(Mode::Elimination, 8, out, false).alpha(), 1.0);
+        }
+        // A player out counts among them all, faint.
+        assert_eq!(total_color(Mode::Elimination, 8, 4, true), FAINT);
+        // Three racing: the first out leaves the last two.
+        assert_eq!(total_color(Mode::Elimination, 3, 1, false), ORANGE);
     }
 
     #[test]

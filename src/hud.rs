@@ -34,7 +34,7 @@ impl Plugin for HudPlugin {
                 Update,
                 (
                     show_race_legend.run_if(in_state(GameState::Race)),
-                    (update_fps, show_resolution),
+                    (update_fps, show_resolution, keep_the_tag_clear),
                 ),
             );
     }
@@ -57,40 +57,43 @@ impl FromWorld for UiFont {
 #[derive(Component)]
 struct Legend;
 
-/// The performance HUD's lines, one under the other at the top right: the
-/// frame rate, and the pixels the world is drawn at.
+/// The performance HUD, on a line at the top right: the pixels the world is
+/// drawn at, and the frame rate after them.
+#[derive(Component)]
+struct PerformanceHud;
 #[derive(Component)]
 struct FpsCounter;
 #[derive(Component)]
 struct ResolutionShown;
 
-fn spawn_performance_hud(mut commands: Commands, font: Res<UiFont>) {
+/// How big the frame rate is (px), and how wide its room, always the same
+/// ("999 FPS" in Bevy's font, whose figures are all as wide), so what
+/// stands left of it does not move as it changes; how big the resolution
+/// is, and how far from the frame rate.
+const FPS_SIZE: f32 = 18.0;
+const FPS_WIDTH: f32 = 7.0 * 0.6 * FPS_SIZE;
+const RESOLUTION_SIZE: f32 = 15.0;
+const RESOLUTION_GAP: f32 = 12.0;
+
+fn spawn_performance_hud(mut commands: Commands) {
     commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            top: px(12),
-            right: px(16),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::FlexEnd,
-            row_gap: px(2),
-            ..default()
-        })
+        .spawn((
+            PerformanceHud,
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(12),
+                right: px(16),
+                align_items: AlignItems::FlexEnd,
+                column_gap: px(RESOLUTION_GAP),
+                ..default()
+            },
+        ))
         .with_children(|hud| {
-            hud.spawn((
-                FpsCounter,
-                Text::new("-- FPS"),
-                TextFont {
-                    font_size: FontSize::Px(18.0),
-                    ..default()
-                },
-            ));
-            // The game's font: Bevy's has no "×".
             hud.spawn((
                 ResolutionShown,
                 Text::new(""),
                 TextFont {
-                    font: font.0.clone().into(),
-                    font_size: FontSize::Px(14.0),
+                    font_size: FontSize::Px(RESOLUTION_SIZE),
                     ..default()
                 },
                 TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
@@ -99,18 +102,20 @@ fn spawn_performance_hud(mut commands: Commands, font: Res<UiFont>) {
                     ..default()
                 },
             ));
+            hud.spawn((
+                FpsCounter,
+                Text::new("-- FPS"),
+                TextFont {
+                    font_size: FontSize::Px(FPS_SIZE),
+                    ..default()
+                },
+                TextLayout::justify(Justify::Right),
+                Node {
+                    min_width: px(FPS_WIDTH),
+                    ..default()
+                },
+            ));
         });
-}
-
-/// How far down from the top (px) what stands at the top right goes (who
-/// is in, the results), under the performance HUD: its first line, or its
-/// two.
-pub fn under_performance_hud(settings: &Settings) -> f32 {
-    if settings.show_fps && settings.show_resolution {
-        60.0
-    } else {
-        40.0
-    }
 }
 
 /// Shown or not, taking its room or not.
@@ -120,20 +125,20 @@ fn display(shown: bool) -> Display {
 
 /// The pixels the world is drawn at in a window `window` pixels big, at
 /// `percent` of its resolution (never more than the screen's own, see
-/// [`NativeShare`]): "3D 1920 × 1080", and the share when it is not all of
-/// it ("3D 1344 × 756 · 70 %").
+/// [`NativeShare`]): "1920x1080", and the share when it is not all of it
+/// ("1344x756 70%"); in Bevy's font, as the frame rate.
 pub fn resolution_line(window: UVec2, percent: u32, native: NativeShare) -> String {
     let size = drawn_size(window, percent, native);
     if percent >= 100 {
-        format!("3D {} × {}", size.x, size.y)
+        format!("{}x{}", size.x, size.y)
     } else {
-        format!("3D {} × {} · {percent} %", size.x, size.y)
+        format!("{}x{} {percent}%", size.x, size.y)
     }
 }
 
-/// The second line of the performance HUD, if the options say so: the
-/// pixels the world is drawn at now (as chosen, or as far as the
-/// performance forced has come).
+/// The performance HUD's resolution, if the options say so: the pixels the
+/// world is drawn at now (as chosen, or as far as the performance forced
+/// has come).
 fn show_resolution(
     settings: Res<Settings>,
     window: Query<&Window, With<bevy::window::PrimaryWindow>>,
@@ -159,6 +164,38 @@ fn show_resolution(
     }
 }
 
+/// With the screen split, the first player's tag at the top right.
+#[derive(Component)]
+struct PlayerOneTag;
+
+/// How far from the right the first player's tag stands (px): left of the
+/// performance HUD `hud` px wide (logical), or at the edge with nothing
+/// shown.
+fn tag_right(hud: f32) -> f32 {
+    if hud > 0.5 {
+        16.0 + hud + RESOLUTION_GAP
+    } else {
+        16.0
+    }
+}
+
+/// The first player's tag kept left of the performance HUD, as wide as it
+/// is.
+fn keep_the_tag_clear(
+    hud: Query<&ComputedNode, With<PerformanceHud>>,
+    mut tags: Query<&mut Node, With<PlayerOneTag>>,
+) {
+    let Some(hud) = hud.iter().next() else {
+        return;
+    };
+    let right = px(tag_right(hud.size().x * hud.inverse_scale_factor));
+    for mut tag in &mut tags {
+        if tag.right != right {
+            tag.right = right;
+        }
+    }
+}
+
 /// How wide the speedometer is (px): alone, and with two players, in each
 /// half of the screen.
 const DIAL: f32 = 220.0;
@@ -181,9 +218,10 @@ fn spawn_race_hud(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Game
             BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
         ));
 
-        // Indicador Jugador 1 (Arriba)
+        // Indicador Jugador 1 (Arriba), left of the performance HUD.
         commands.spawn((
             DespawnOnExit(GameState::Race),
+            PlayerOneTag,
             Text::new("1P"),
             TextColor(Color::srgb(0.3, 0.8, 1.0)),
             TextFont {
@@ -388,23 +426,21 @@ mod tests {
     fn the_resolution_line_says_the_pixels_the_world_is_drawn_at() {
         let window = UVec2::new(1920, 1080);
         let whole = NativeShare(1.0);
-        assert_eq!(resolution_line(window, 100, whole), "3D 1920 × 1080");
-        assert_eq!(resolution_line(window, 70, whole), "3D 1344 × 756 · 70 %");
+        assert_eq!(resolution_line(window, 100, whole), "1920x1080");
+        assert_eq!(resolution_line(window, 70, whole), "1344x756 70%");
         // On a HiDPI screen of fewer pixels of its own, never more than
         // those.
         let retina = UVec2::new(4096, 2304);
         assert_eq!(
             resolution_line(retina, 100, NativeShare(0.625)),
-            "3D 2560 × 1440"
+            "2560x1440"
         );
-        // What stands under the HUD at the top right goes down a line when
-        // it has two.
-        let mut settings = Settings::default();
-        assert_eq!(under_performance_hud(&settings), 40.0);
-        settings.show_resolution = true;
-        assert_eq!(under_performance_hud(&settings), 60.0);
-        settings.show_fps = false;
-        assert_eq!(under_performance_hud(&settings), 40.0);
+        // The first player's tag left of the HUD, as wide as it is, or at
+        // the edge with nothing shown.
+        assert_eq!(tag_right(0.0), 16.0);
+        assert_eq!(tag_right(FPS_WIDTH), 16.0 + FPS_WIDTH + RESOLUTION_GAP);
+        // Room for "999 FPS" in Bevy's font, whose figures are 0.6 wide.
+        assert!((FPS_WIDTH - 75.6).abs() < 0.01);
     }
 
     #[test]

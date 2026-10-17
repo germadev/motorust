@@ -126,7 +126,75 @@ pub struct PreparedMirror {
     sky: Image,
 }
 
+/// A point over the surface of something standing round the water (a
+/// building, a torii), for the water to mirror it (see
+/// [`PreparedMirror::stand_up`]): where it is, which way its face looks and
+/// its colour there, before it is lit (linear).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MirrorPoint {
+    pub at: Vec3,
+    pub normal: Vec3,
+    pub color: [f32; 3],
+}
+
+impl MirrorPoint {
+    /// This point of something drawn with `transform`.
+    pub fn placed(self, transform: &Transform) -> Self {
+        Self {
+            at: transform.transform_point(self.at),
+            normal: (transform.rotation * self.normal).normalize_or_zero(),
+            ..self
+        }
+    }
+}
+
 impl PreparedMirror {
+    /// What stands at `points` mirrored too: each texel they reach over
+    /// what the map has there stands as high as the highest of them, in
+    /// their colour on average, lit by the sun as the ground is. The map
+    /// is of the ground alone, worked out with the circuit; what stands on
+    /// it is put in the world later, and given here.
+    pub fn stand_up(&mut self, points: &[MirrorPoint]) {
+        let (width, height) = (
+            self.surroundings.width() as usize,
+            self.surroundings.height() as usize,
+        );
+        let (corner, size) = (self.area.xy(), self.area.zw());
+        let texel = size / Vec2::new(width as f32, height as f32);
+        let sun = self.look.sun.truncate();
+        let level = self.water.x;
+        // Each texel reached: the highest point over it, and the colours.
+        let mut reached: std::collections::HashMap<usize, (f32, Vec3, f32)> =
+            std::collections::HashMap::new();
+        for point in points {
+            let at = (point.at.xz() - corner) / texel;
+            if at.x < 0.0 || at.y < 0.0 || at.x >= width as f32 || at.y >= height as f32 {
+                continue;
+            }
+            let index = at.y as usize * width + at.x as usize;
+            let light = MIRROR_SHADE + MIRROR_SUN * point.normal.dot(sun).max(0.0);
+            let entry = reached.entry(index).or_insert((f32::MIN, Vec3::ZERO, 0.0));
+            entry.0 = entry.0.max(point.at.y - level);
+            entry.1 += Vec3::from(point.color) * light;
+            entry.2 += 1.0;
+        }
+        let Some(data) = self.surroundings.data.as_mut() else {
+            return;
+        };
+        for (index, (over, color, count)) in reached {
+            let at = index * 8;
+            let mapped = from_half(u16::from_le_bytes([data[at + 6], data[at + 7]]));
+            if over <= mapped {
+                continue;
+            }
+            let color = color / count;
+            for (k, value) in [color.x, color.y, color.z, over].into_iter().enumerate() {
+                data[at + 2 * k..at + 2 * k + 2].copy_from_slice(&half_float(value).to_le_bytes());
+            }
+            self.water.y = self.water.y.max(over);
+        }
+    }
+
     /// Its material, its maps added to `images`.
     pub fn into_material(self, images: &mut Assets<Image>) -> MirrorMaterial {
         MirrorMaterial {
@@ -343,6 +411,18 @@ pub(super) fn half_float(value: f32) -> u16 {
     }
 }
 
+/// The value of half-float bits (see [`half_float`]).
+pub(super) fn from_half(bits: u16) -> f32 {
+    let sign = if bits & 0x8000 == 0 { 1.0 } else { -1.0 };
+    let exponent = ((bits >> 10) & 0x1f) as i32;
+    let mantissa = (bits & 0x3ff) as f32 / 1024.0;
+    match exponent {
+        0 => 0.0,
+        31 => sign * f32::INFINITY,
+        _ => sign * (1.0 + mantissa) * 2f32.powi(exponent - 15),
+    }
+}
+
 /// The sky's colour each way, as it is drawn (see [`Palette`]): across,
 /// round the compass from the north (-Z) towards the east (+X); down, from
 /// overhead to the horizon.
@@ -406,18 +486,6 @@ fn map_image(
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-
-    /// The value of half-float bits (see [`half_float`]).
-    pub(in crate::world) fn from_half(bits: u16) -> f32 {
-        let sign = if bits & 0x8000 == 0 { 1.0 } else { -1.0 };
-        let exponent = ((bits >> 10) & 0x1f) as i32;
-        let mantissa = (bits & 0x3ff) as f32 / 1024.0;
-        match exponent {
-            0 => 0.0,
-            31 => sign * f32::INFINITY,
-            _ => sign * (1.0 + mantissa) * 2f32.powi(exponent - 15),
-        }
-    }
 
     /// What a map holds at `p` (m): its colour and how high it stands over
     /// the water.
@@ -495,6 +563,57 @@ pub(super) mod tests {
             average.x > 1.2 * average.y && average.y > average.z,
             "{average:?}"
         );
+    }
+
+    #[test]
+    fn what_stands_by_the_water_is_mirrored_as_high_as_it_stands() {
+        // A map 10 texels a side, 2 m each, of ground 1 m over the water
+        // but for a hill 20 m over it in one texel.
+        let mut data = Vec::new();
+        for k in 0..100 {
+            let over = if k == 55 { 20.0 } else { 1.0 };
+            for value in [0.1, 0.2, 0.1, over] {
+                data.extend(half_float(value).to_le_bytes());
+            }
+        }
+        let mut mirror = PreparedMirror {
+            area: Vec4::new(0.0, 0.0, 20.0, 20.0),
+            water: Vec4::new(-1.0, 20.0, 500.0, 0.0),
+            look: MirrorLook {
+                deep: Vec4::ONE,
+                sun: Vec4::new(0.0, 1.0, 0.0, 1.0),
+            },
+            surroundings: map_image(
+                (10, 10),
+                data,
+                TextureFormat::Rgba16Float,
+                ImageAddressMode::ClampToEdge,
+            ),
+            sky: Image::default(),
+        };
+        let red = [0.8, 0.1, 0.05];
+        let point = |x: f32, y: f32, z: f32| MirrorPoint {
+            at: Vec3::new(x, y, z),
+            normal: Vec3::Y,
+            color: red,
+        };
+        // A red shrine 9 m tall over two texels, and one low over the hill.
+        mirror.stand_up(&[
+            point(3.0, 8.0, 3.0),
+            point(5.0, 2.0, 3.0),
+            point(3.5, 2.0, 3.5),
+            point(11.0, 5.0, 11.0),
+        ]);
+        let corner = Vec2::ZERO;
+        let at = |x: f32, z: f32| mapped(&mirror.surroundings, corner, 2.0, Vec2::new(x, z));
+        let shrine = at(3.0, 3.0);
+        assert!((shrine[3] - 9.0).abs() < 0.05, "{shrine:?}");
+        assert!(shrine[0] > 4.0 * shrine[1], "{shrine:?}");
+        assert!((at(5.0, 3.0)[3] - 3.0).abs() < 0.05);
+        // The hill stays as high as it is; the ground elsewhere, as it was.
+        assert!((at(11.0, 11.0)[3] - 20.0).abs() < 0.05);
+        assert!((at(15.0, 15.0)[3] - 1.0).abs() < 0.05);
+        assert!(mirror.water.y >= 20.0);
     }
 
     #[test]

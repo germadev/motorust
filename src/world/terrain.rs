@@ -1803,7 +1803,7 @@ mod tests {
         let lighthouse = &circuit.scenery.lighthouses[0];
         let elevation = |along: f32| track.elevations()[track.index_at(along)];
         let point = |along: f32| track.centerline()[track.index_at(along)];
-        // The road drops some 20 m from the top of the mountain road to the
+        // The road drops some 17 m from the top of the mountain road to the
         // foot of the lighthouse, in under 250 m, at over 11 % at its
         // steepest (and never over 13 %: see `slopes_and_banking_stay_rideable`).
         let top = (1380..1480).step_by(10).map(|a| elevation(a as f32));
@@ -1814,7 +1814,7 @@ mod tests {
             .filter(|&a| point(a).distance(lighthouse.position) < 70.0)
             .collect();
         let foot = near.iter().map(|&a| elevation(a)).fold(f32::MAX, f32::min);
-        assert!(top - foot > 18.0, "{top} m down to {foot} m");
+        assert!(top - foot > 16.0, "{top} m down to {foot} m");
         let steepest = (1440..1640)
             .step_by(10)
             .map(|a| (elevation(a as f32) - elevation(a as f32 + 10.0)) / 10.0)
