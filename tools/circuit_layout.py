@@ -43,10 +43,14 @@ BASE_ELEVATION = 2.0
 WALL_DISTANCE = 11.5
 MIN_RADIUS = 2.5 * WALL_DISTANCE
 MAX_GRADE = 0.13
-# The bike's top speed (src/bike/mod.rs, `max_speed`, m/s) and gravity: over
-# a crest tighter than TOP_SPEED² / G the bike leaves the road flat out.
+# The bike's top speed (src/bike/mod.rs, `max_speed`, m/s), and the gravity
+# it takes off against there (`RISE_GRAVITY`, twice the real one, `settle`):
+# on a crest it leaves the road on its way up to the top once the road would
+# have to pull it down harder than that, so over a crest tighter than
+# TOP_SPEED² / RISE_GRAVITY it leaves the road flat out.
 TOP_SPEED = 80.0
 G = 9.81
+RISE_GRAVITY = 2.0 * G
 # How far either side of a point the vertical radius is measured over (m).
 VERTICAL_WINDOW = 10.0
 
@@ -218,7 +222,7 @@ def report(lap):
         f"(the tests want under {MAX_GRADE * 100:.0f} %)"
         + ("  <-- TOO STEEP" if abs(grade[steepest]) >= MAX_GRADE else "")
     )
-    takeoff = TOP_SPEED**2 / G
+    takeoff = TOP_SPEED**2 / RISE_GRAVITY
     vertical = lap.vertical_curvature()
     crests = runs(vertical < -1.0 / takeoff)
     print(f"crests the bike leaves the road over at {TOP_SPEED * 3.6:.0f} km/h (radius under {takeoff:.0f} m):")
@@ -229,7 +233,7 @@ def report(lap):
         print(
             f"  {lap.along[first]:.0f}-{lap.along[last]:.0f} m: {-1.0 / vertical[top]:.0f} m "
             f"at {lap.along[top]:.0f} m, {lap.height[top]:.1f} m up, flying from "
-            f"{np.sqrt(G * -1.0 / vertical[top]) * 3.6:.0f} km/h"
+            f"{np.sqrt(RISE_GRAVITY * -1.0 / vertical[top]) * 3.6:.0f} km/h"
         )
 
 
@@ -313,7 +317,7 @@ def plot_profile(lap, out, along_range):
     middle.set_ylabel("grade (%)")
     vertical = lap.vertical_curvature()[pick]
     bottom.plot(s, vertical * 1000, "g-")
-    bottom.axhline(-1000 * G / TOP_SPEED**2, color="r", lw=0.6, ls="--")
+    bottom.axhline(-1000 * RISE_GRAVITY / TOP_SPEED**2, color="r", lw=0.6, ls="--")
     bottom.set_ylabel("1 / vertical radius (1/km)\ncrests < 0 < dips")
     bottom.set_xlabel("along the lap (m)")
     for axis in (top, middle, bottom):

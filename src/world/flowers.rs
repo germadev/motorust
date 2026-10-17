@@ -26,7 +26,7 @@ use super::foliage::{self, ALPHA_CUTOFF};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
 use super::scenery::{FlowerArea, FlowerField, FlowerKind};
-use super::terrain::{SEA_LEVEL, Terrain};
+use super::terrain::Terrain;
 use super::tufts::normals_up;
 use crate::geometry::{fbm, random01, smoothstep};
 use crate::track::Track;
@@ -461,7 +461,10 @@ fn clumps(track: &Track, terrain: &Terrain) -> Vec<Clump> {
                 terrain.height(point + Vec2::X) - terrain.height(point - Vec2::X),
                 terrain.height(point + Vec2::Y) - terrain.height(point - Vec2::Y),
             ) / 2.0;
-            if size(kind).is_none() || height < SEA_LEVEL + 0.5 || grade.length() > STEEPEST {
+            if size(kind).is_none()
+                || height < terrain.water_level(point) + 0.5
+                || grade.length() > STEEPEST
+            {
                 continue;
             }
             clumps.push(Clump {
@@ -550,7 +553,7 @@ fn add_clump(mesh: &mut MeshBuilder, clump: &Clump, terrain: &Terrain) {
 mod tests {
     use super::*;
     use crate::circuits::{CIRCUITS, Circuit};
-    use crate::world::terrain::Ground;
+    use crate::world::terrain::{Ground, SEA_LEVEL};
 
     /// The circuits with fields of flowers, with their track and terrain.
     fn in_flower() -> Vec<(&'static Circuit, Track, Terrain)> {

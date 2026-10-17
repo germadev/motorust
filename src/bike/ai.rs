@@ -1260,7 +1260,9 @@ mod tests {
             let dt = 1.0 / 120.0;
             let (mut flights, mut air) = (0, 0usize);
             let name = circuit.name;
-            for _ in 0..(70.0 / dt) as usize {
+            // Long enough for a jump on two laps of the longest track,
+            // Turbo Bay, whose only jump flat out is on its coast road.
+            for _ in 0..(90.0 / dt) as usize {
                 let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
                 state = advance(&state, &input, &track, &tuning, dt);
                 if !state.grounded {
@@ -1319,11 +1321,9 @@ mod tests {
         // Flying, a bike neither turns nor leans: a crest in a bend, or one
         // that lands in a bend, would straighten it up (as Turbo Bay's
         // mountain road did over its top into the dive at the lighthouse,
-        // and its forest road over a hump). Its rock pass jumps in a bend so
-        // gentle the bike hardly leans in it (over 200 m).
-        let gentle = |name: &str, along: f32, radius: f32| {
-            name == "Turbo Bay" && (900.0..990.0).contains(&along) && radius > 200.0
-        };
+        // its forest road over a hump and its rock pass over a bump, and
+        // Loop Island's start straight where the branch to the loop turns
+        // off it).
         for circuit in &crate::circuits::CIRCUITS {
             let track = Track::new(&circuit.layout);
             let tuning = BikeTuning::default();
@@ -1344,7 +1344,7 @@ mod tests {
                         let radius = 1.0 / track.smoothed_curvature(index, 6).abs().max(1e-6);
                         let along = index as f32 * track.step_length();
                         assert!(
-                            radius > 600.0 || gentle(circuit.name, along, radius),
+                            radius > 600.0,
                             "{} takes off or lands in a bend of {radius:.0} m at {along:.0} m",
                             circuit.name,
                         );

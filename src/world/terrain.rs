@@ -126,6 +126,9 @@ pub struct Terrain {
     /// `Scenery::grass_shade`).
     greens: Greens,
     grass_shade: f32,
+    /// The dams' lakes, whose water stands over the sea's (see
+    /// [`Terrain::water_level`]).
+    lakes: Vec<DamGround>,
 }
 
 /// A mesh of the ground and what it is drawn as: a kind of ground and, on
@@ -218,7 +221,18 @@ impl Terrain {
             up,
             greens: scenery.greens,
             grass_shade: scenery.grass_shade,
+            lakes: shaper.dams,
         }
+    }
+
+    /// The height of the water at `point` or by it: a dam's lake's level in
+    /// it and on the rim round it, the sea's elsewhere. What is planted
+    /// stands clear over it, not in a lake's water.
+    pub fn water_level(&self, point: Vec2) -> f32 {
+        self.lakes
+            .iter()
+            .filter_map(|lake| lake.level_by(point))
+            .fold(SEA_LEVEL, f32::max)
     }
 
     /// Altura del terreno en un punto (interpolada en la rejilla).

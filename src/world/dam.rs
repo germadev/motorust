@@ -158,6 +158,13 @@ impl DamGround {
         }
     }
 
+    /// The lake's level where `point` is in its water or by it, on the rim
+    /// round it (see [`LAKE_RIM`]); none elsewhere.
+    pub fn level_by(&self, point: Vec2) -> Option<f32> {
+        (within(self.lake_box, point) && signed_distance(&self.shore, point) > -LAKE_RIM)
+            .then_some(self.level)
+    }
+
     /// The ground at `point` with the dam's river and lake, where it would
     /// otherwise stand at `height`; `free` is how much of the change is
     /// made (0 on a road, which keeps its own ground).

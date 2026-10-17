@@ -615,9 +615,10 @@ const ELEVATION: [(f32, f32); 70] = [
     (700.0, 9.5),
     (760.0, 13.5),
     (820.0, 16.0),
+    // Through the rock pass, in a bend, rising steadily with no crest.
     (880.0, 12.5),
-    (940.0, 15.0),
-    (1000.0, 13.5),
+    (940.0, 13.0),
+    (1000.0, 14.5),
     (1060.0, 17.5),
     // A crest on the coast road, with the sea straight ahead.
     (1120.0, 22.0),

@@ -307,7 +307,7 @@ fn place_houses(
         let all_grass = footprint
             .iter()
             .all(|&p| terrain.ground(p) == Ground::Grass);
-        if highest - lowest > 2.0 || lowest < SEA_LEVEL + 2.0 || !all_grass {
+        if highest - lowest > 2.0 || lowest < terrain.water_level(position) + 2.0 || !all_grass {
             continue;
         }
         let paints = config.paints;
@@ -948,7 +948,7 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
             .any(|tunnel| span(tunnel.from - 30.0, tunnel.to + 30.0).contains(along, lap))
     };
     let fits = |position: Vec2, distance: f32| {
-        terrain.height(position) >= SEA_LEVEL + 1.8
+        terrain.height(position) >= terrain.water_level(position) + 1.8
             && terrain.ground(position) == Ground::Grass
             && terrain.normal(position).y >= 0.88
             && !(distance < 35.0 && !scenery.tunnels.is_empty() && near_tunnel(position))
@@ -1151,7 +1151,7 @@ fn spawn_palms(
     let mut taken = Vec::new();
     for (k, (_, point)) in row_points(track, row).into_iter().enumerate() {
         let random = |n: u32| random01(k as u32 * 8 + n + 70_000 + row.lateral as u32);
-        if terrain.height(point) < SEA_LEVEL + 1.0 {
+        if terrain.height(point) < terrain.water_level(point) + 1.0 {
             continue;
         }
         world.spawn((
@@ -2231,6 +2231,48 @@ fn parasol_mesh() -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_tree_stands_in_a_dam_s_lake() {
+        use crate::track::closed_curve;
+        use crate::world::terrain::signed_distance;
+        let mut near = 0;
+        for circuit in CIRCUITS
+            .iter()
+            .filter(|circuit| !circuit.scenery.dams.is_empty())
+        {
+            let scenery = &circuit.scenery;
+            let track = Track::new(&circuit.layout);
+            let terrain = Terrain::new(&track, scenery);
+            let plan = plan_trees(&track, &terrain, scenery);
+            for dam in scenery.dams {
+                let shore = closed_curve(dam.lake, 4.0);
+                // The water stands at the lake's level in it, the sea's far
+                // from it.
+                let middle = dam.lake.iter().copied().sum::<Vec2>() / dam.lake.len() as f32;
+                assert!(signed_distance(&shore, middle) > 0.0);
+                assert_eq!(terrain.water_level(middle), dam.level);
+                assert_eq!(terrain.water_level(track.centerline()[0]), SEA_LEVEL);
+                // Every tree stands out of its water, and on the rim round it
+                // over it (further off, down the gorge under the dam, the
+                // ground is lower than the lake); some of them by it.
+                for tree in plan.scattered.iter().chain(&plan.forests) {
+                    let out = -signed_distance(&shore, tree.position);
+                    if out < 40.0 {
+                        near += 1;
+                        assert!(
+                            out > 0.0 && tree.height > dam.level + 1.5,
+                            "{}: a tree in the lake at {} ({out:.1} m out, {:.1} m up)",
+                            circuit.name,
+                            tree.position,
+                            tree.height
+                        );
+                    }
+                }
+            }
+        }
+        assert!(near > 0, "no tree by a lake");
+    }
 
     #[test]
     fn no_tree_grows_round_a_lighthouse() {
