@@ -14,6 +14,7 @@ mod landmarks;
 mod lettering;
 mod lod;
 mod mine;
+mod mirror;
 mod props;
 mod quads;
 mod road;
@@ -48,17 +49,17 @@ pub struct WorldPlugin;
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "sea.wgsl");
-        embedded_asset!(app, "lake.wgsl");
-        // Without the renderer (in the tests), the sea's and the lakes'
-        // materials are only assets.
+        embedded_asset!(app, "mirror.wgsl");
+        // Without the renderer (in the tests), the sea's and the mirroring
+        // water's materials are only assets.
         if app.is_plugin_added::<PbrPlugin>() {
             app.add_plugins((
                 MaterialPlugin::<sea::SeaMaterial>::default(),
-                MaterialPlugin::<dam::LakeMaterial>::default(),
+                MaterialPlugin::<mirror::MirrorMaterial>::default(),
             ));
         } else {
             app.init_asset::<sea::SeaMaterial>()
-                .init_asset::<dam::LakeMaterial>();
+                .init_asset::<mirror::MirrorMaterial>();
         }
         let current = CurrentCircuit::default();
         app.add_plugins((
@@ -100,6 +101,7 @@ impl Plugin for WorldPlugin {
             .add_systems(
                 PostUpdate,
                 (
+                    sea::dress_the_sea,
                     sky::follow_camera.before(TransformSystems::Propagate),
                     // With the trees where they are and whether they are
                     // seen, before what each camera sees is worked out.
@@ -160,6 +162,9 @@ struct Prepared {
     ground: Vec<terrain::GroundMesh>,
     shore: sea::ShoreMap,
     shore_image: Image,
+    /// The sea mirroring what stands round it, unless the track's sea is
+    /// always the cartoon one.
+    sea_mirror: Option<mirror::PreparedMirror>,
     roadside: Roadside,
     /// The meshes of the roads, tunnels and bridges, with their materials.
     pieces: Vec<(Mesh, StandardMaterial)>,
@@ -212,7 +217,19 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         structures::structure_pieces(&track, &terrain, scenery, textures);
     pieces.extend(structures);
     ground.extend(tops);
-    let lakes = dam::prepare_lakes(&track, &terrain, scenery, textures);
+    let lakes = dam::prepare_lakes(&track, &terrain, scenery, textures, urgency.threads());
+    let sea_mirror = (!scenery.cartoon_water).then(|| {
+        mirror::prepare_mirror(
+            &track,
+            &terrain,
+            scenery,
+            textures,
+            &sea::mirror_reach(&track),
+            &|at| shore.distance_at(at) < -sea::MIRROR_INLAND,
+            mirror::deep(scenery.water),
+            urgency.threads(),
+        )
+    });
     let grass = tufts::tuft_pieces(
         &track,
         &terrain,
@@ -242,6 +259,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         ground,
         shore,
         shore_image,
+        sea_mirror,
         roadside,
         pieces,
         lakes,
@@ -472,7 +490,7 @@ struct Builder<'w> {
     props: Res<'w, japan::ModelledProps>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
-    lake_materials: ResMut<'w, Assets<dam::LakeMaterial>>,
+    mirror_materials: ResMut<'w, Assets<mirror::MirrorMaterial>>,
     meshes: ResMut<'w, Assets<Mesh>>,
     materials: ResMut<'w, Assets<StandardMaterial>>,
     images: ResMut<'w, Assets<Image>>,
@@ -493,6 +511,7 @@ fn build(
         ground,
         shore,
         shore_image,
+        sea_mirror,
         roadside,
         pieces,
         lakes,
@@ -508,16 +527,22 @@ fn build(
         .collect();
     let shore_image = builder.images.add(shore_image);
     let scenery = &CIRCUITS[index].scenery;
-    let sea_material = builder
-        .sea_materials
-        .add(shore.material(shore_image, scenery.water));
+    let sea_water = sea::SeaWater {
+        cartoon: builder
+            .sea_materials
+            .add(shore.material(shore_image, scenery.water)),
+        mirror: sea_mirror.map(|mirror| {
+            let material = mirror.into_material(&mut builder.images);
+            builder.mirror_materials.add(material)
+        }),
+    };
     let lakes: Vec<_> = lakes
         .into_iter()
         .map(|lake| {
-            let (mesh, material) = lake.into_parts(&mut builder.images);
+            let material = lake.mirror.into_material(&mut builder.images);
             (
-                builder.meshes.add(mesh),
-                builder.lake_materials.add(material),
+                builder.meshes.add(lake.mesh),
+                builder.mirror_materials.add(material),
             )
         })
         .collect();
@@ -545,9 +570,12 @@ fn build(
                 assets.meshes,
                 assets.materials,
             );
+            // The cartoon sea at first; mirroring, if it should, before it
+            // is first drawn (see `sea::dress_the_sea`).
             world.spawn((
                 Mesh3d(builder.sea.0.clone()),
-                MeshMaterial3d(sea_material),
+                MeshMaterial3d(sea_water.cartoon.clone()),
+                sea_water,
                 Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
             ));
             for (mesh, material) in lakes {

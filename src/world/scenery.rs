@@ -461,6 +461,11 @@ pub struct Scenery {
     pub sky: SkyStyle,
     /// The colour of the sea, the lakes and the rivers.
     pub water: Water,
+    /// Whether the sea is always drawn as in *The Wind Waker*, flat cartoon
+    /// blues with waves rolling in (Loop Island, an arcade island); on the
+    /// other tracks it mirrors what stands round it unless Options >
+    /// Graphics > Water says otherwise (see [`crate::world::sea`]).
+    pub cartoon_water: bool,
     /// An open pit round the water, if there is one.
     pub pit: Option<Pit>,
     /// The works of a mine around the road, if there is one.

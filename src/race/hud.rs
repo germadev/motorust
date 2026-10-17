@@ -20,9 +20,11 @@ use crate::welcome::GameMode;
 const NOTICE: f32 = 2.5;
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.2);
 const RED: Color = Color::srgb(1.0, 0.3, 0.25);
-/// How big the place and the lap are (px), and the smaller words and
-/// totals round them ("1º / 8", "VUELTA 2 / 5"); and the times under them.
-const PLACE_SIZE: f32 = 40.0;
+/// How big the place and the lap are (px), the place the biggest, and the
+/// smaller words and totals round them ("1º / 8", "VUELTA 2 / 5"); and the
+/// times under them.
+const PLACE_SIZE: f32 = 64.0;
+const LAP_SIZE: f32 = 40.0;
 const TOTAL_SIZE: f32 = 24.0;
 const TIMES_SIZE: f32 = 17.0;
 /// The times' colour; and how big the last lap's is when it beat the
@@ -90,8 +92,8 @@ enum WatchInfo {
     Notice,
 }
 
-/// Top right, under the frame rate: who has crossed the line at the end, in
-/// order, and when.
+/// Top right, under the performance HUD: who has crossed the line at the
+/// end, in order, and when.
 #[derive(Component)]
 struct Arrivals;
 
@@ -130,13 +132,13 @@ fn figure_runs(text: &str) -> Vec<(String, bool)> {
 #[allow(clippy::type_complexity)]
 fn show_figures(
     mut commands: Commands,
-    texts: Query<
-        (Entity, &Figured, &TextFont, Option<&Children>),
+    mut texts: Query<
+        (Entity, &Figured, &TextFont, Option<&Children>, &mut Text),
         Or<(Changed<Figured>, Changed<TextFont>)>,
     >,
     mut spans: Query<(&mut TextSpan, &mut TextColor, &mut TextFont), Without<Figured>>,
 ) {
-    for (text, figured, font, children) in &texts {
+    for (text, figured, font, children, mut root) in &mut texts {
         let runs = figure_runs(&figured.text);
         let count = runs.len();
         let children: Vec<Entity> = children.map_or(Vec::new(), |c| c.iter().collect());
@@ -171,6 +173,13 @@ fn show_figures(
         for &extra in children.iter().skip(count) {
             commands.entity(extra).despawn();
         }
+        // With its last span gone the text has no children to say it
+        // changed, and the interface would go on drawing what it said
+        // (the place and the lap stayed up after the race, under the name
+        // of the bike the camera watches): the text itself says so.
+        if count == 0 && !children.is_empty() {
+            root.set_changed();
+        }
     }
 }
 
@@ -183,7 +192,12 @@ struct PlaceTotal {
     changed: Option<f32>,
 }
 
-fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
+fn spawn_race_info(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    game_mode: Res<GameMode>,
+    rules: Res<Rules>,
+) {
     let players = if *game_mode == GameMode::SplitScreen {
         2
     } else {
@@ -300,33 +314,36 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                         )
                     };
                     // The place, and how many there are after it, apart,
-                    // to pop without moving the rest.
-                    column.spawn(beside()).with_children(|row| {
-                        row.spawn(info(InfoKind::Place, PLACE_SIZE, Color::WHITE));
-                        row.spawn((
-                            PlaceTotal {
-                                player,
-                                ..default()
-                            },
-                            after(PLACE_SIZE, TOTAL_SIZE),
-                            Text::new(""),
-                            Figured::default(),
-                            text(TOTAL_SIZE),
-                            TextColor(Color::WHITE),
-                            TextShadow::default(),
-                            UiTransform::IDENTITY,
-                        ));
-                    });
-                    // The lap, as big as the place, between its word and
+                    // to pop without moving the rest. None against the
+                    // clock, nor the room for it.
+                    if rules.mode != Mode::Checkpoint {
+                        column.spawn(beside()).with_children(|row| {
+                            row.spawn(info(InfoKind::Place, PLACE_SIZE, Color::WHITE));
+                            row.spawn((
+                                PlaceTotal {
+                                    player,
+                                    ..default()
+                                },
+                                after(PLACE_SIZE, TOTAL_SIZE),
+                                Text::new(""),
+                                Figured::default(),
+                                text(TOTAL_SIZE),
+                                TextColor(Color::WHITE),
+                                TextShadow::default(),
+                                UiTransform::IDENTITY,
+                            ));
+                        });
+                    }
+                    // The lap, smaller than the place, between its word and
                     // how many laps there are.
                     column.spawn(beside()).with_children(|row| {
-                        let mut word = after(PLACE_SIZE, TOTAL_SIZE);
+                        let mut word = after(LAP_SIZE, TOTAL_SIZE);
                         word.margin.right = px(TOTAL_SIZE / 4.0);
                         row.spawn((info(InfoKind::LapWord, TOTAL_SIZE, Color::WHITE), word));
-                        row.spawn(info(InfoKind::Lap, PLACE_SIZE, Color::WHITE));
+                        row.spawn(info(InfoKind::Lap, LAP_SIZE, Color::WHITE));
                         row.spawn((
                             info(InfoKind::Laps, TOTAL_SIZE, Color::WHITE),
-                            after(PLACE_SIZE, TOTAL_SIZE),
+                            after(LAP_SIZE, TOTAL_SIZE),
                         ));
                     });
                     for kind in [InfoKind::LapTime, InfoKind::Clock] {
@@ -709,9 +726,10 @@ fn show_watched(
 fn show_arrivals(
     rules: Res<Rules>,
     standing: Res<Standing>,
+    settings: Res<Settings>,
     outcome: Option<Res<Outcome>>,
     bikes: Query<(&Rider, &Progress)>,
-    mut text: Query<&mut Text, With<Arrivals>>,
+    mut text: Query<(&mut Text, &mut Node), With<Arrivals>>,
 ) {
     let wanted = if matches!(rules.mode, Mode::Race | Mode::Arcade) && outcome.is_none() {
         arrival_lines(&standing.order, |rider| {
@@ -723,9 +741,13 @@ fn show_arrivals(
     } else {
         String::new()
     };
-    for mut text in &mut text {
+    let top = px(crate::hud::under_performance_hud(&settings));
+    for (mut text, mut node) in &mut text {
         if text.0 != wanted {
             text.0.clone_from(&wanted);
+        }
+        if node.top != top {
+            node.top = top;
         }
     }
 }
@@ -852,6 +874,99 @@ fn notice(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a player's texts at the top left say, put together from their
+    /// spans.
+    fn top_left(app: &mut App) -> String {
+        let world = app.world_mut();
+        let mut said = Vec::new();
+        let mut texts = world.query::<(&Info, &Figured, Option<&Children>)>();
+        let texts: Vec<(Info, Vec<Entity>)> = texts
+            .iter(world)
+            .map(|(info, _, children)| (*info, children.map_or(Vec::new(), |c| c.iter().collect())))
+            .collect();
+        for (info, spans) in texts {
+            let text: String = spans
+                .iter()
+                .filter_map(|&span| world.get::<TextSpan>(span).map(|span| span.0.clone()))
+                .collect();
+            if !text.is_empty() {
+                said.push(format!("{:?}={text}", info.kind));
+            }
+        }
+        said.sort();
+        said.join(" ")
+    }
+
+    #[test]
+    fn the_top_left_clears_once_the_race_is_over_for_the_players() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Font>()
+            .init_state::<GameState>()
+            .init_resource::<Settings>()
+            .init_resource::<UiFont>()
+            .init_resource::<GameMode>()
+            .insert_resource(Rules {
+                mode: Mode::Race,
+                laps: 1,
+            })
+            .init_resource::<Race>()
+            .insert_resource(Standing {
+                order: (0..8).collect(),
+                ..default()
+            })
+            .add_plugins(RaceHudPlugin);
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        let bike = app
+            .world_mut()
+            .spawn((Rider(7), Progress::default(), Player))
+            .id();
+        app.update();
+        app.update();
+        let racing = top_left(&mut app);
+        assert!(racing.contains("Place=8º"), "{racing}");
+        assert!(racing.contains("LapTime="), "{racing}");
+        // Over the line: the lap's time goes.
+        app.world_mut().get_mut::<Progress>(bike).unwrap().finished = Some(28.8);
+        app.update();
+        app.update();
+        let finished = top_left(&mut app);
+        assert!(!finished.contains("LapTime="), "{finished}");
+        // The results up: nothing left at the top left, for the bike the
+        // camera watches to be named there.
+        app.insert_resource(super::super::Outcome {
+            mode: Mode::Race,
+            track: 0,
+            places: Vec::new(),
+            players: vec![7],
+            laps: 1,
+            record: false,
+            settled: false,
+        });
+        let before = app.world_mut().change_tick();
+        app.update();
+        app.update();
+        assert_eq!(top_left(&mut app), "");
+        // And each text emptied is to be drawn again, with nothing left in
+        // it to say so.
+        let world = app.world_mut();
+        let now = world.change_tick();
+        let mut texts = world.query_filtered::<(&Info, Ref<Text>), With<Figured>>();
+        for (info, text) in texts.iter(world) {
+            if matches!(
+                info.kind,
+                InfoKind::Place | InfoKind::Lap | InfoKind::LapWord
+            ) {
+                assert!(text.last_changed().is_newer_than(before, now), "{info:?}");
+            }
+        }
+    }
 
     #[test]
     fn the_lap_under_way_reads_with_its_time_and_then_the_last_one() {

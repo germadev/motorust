@@ -402,6 +402,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         ],
         sky: SkyStyle::Day,
         water: Water::Sea,
+        cartoon_water: true,
         pit: None,
         mine: None,
         desert: None,

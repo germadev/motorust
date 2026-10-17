@@ -181,7 +181,7 @@ pub fn native_share(mode: UVec2, native: Option<UVec2>) -> NativeShare {
 }
 
 /// The share of the window's resolution the world is drawn at now (%): as
-/// the options say, or as far as the performance mode has come (see
+/// the options say, or as far as the performance forced has come (see
 /// [`Detail::scale`]); all of it with no detail yet.
 pub fn render_percent(detail: Option<&Detail>) -> u32 {
     detail.map_or(100, |detail| detail.scale)

@@ -1,7 +1,7 @@
-// The lake behind a dam: still, dark water that mirrors what stands round
-// it, the hills, the road, the dam and the sky, more the lower one looks
-// across it, stirred by a faint ripple (see LakeMaterial in
-// src/world/dam.rs).
+// Still, dark water that mirrors what stands round it, the hills, the
+// roads, the dams and the sky, more the lower one looks across it, stirred by
+// a faint ripple: a dam's lake, and the sea unless it is the cartoon one
+// (see MirrorMaterial in src/world/mirror.rs).
 
 #import bevy_pbr::{
     forward_io::VertexOutput,
@@ -10,12 +10,13 @@
     pbr_types,
 }
 
-// xy: corner of the map of the lake's surroundings (m, x and z); zw: its
+// xy: corner of the map of the water's surroundings (m, x and z); zw: its
 // size (m).
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> area: vec4<f32>;
-// x: the water's level (m).
+// x: the water's level (m); y: how high over it the map reaches at most
+// (m); z: how far a reflected line of sight is followed (m).
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var<uniform> water: vec4<f32>;
-// What stands round the lake: rgb, its colour as lit (linear); a, how high
+// What stands round the water: rgb, its colour as lit (linear); a, how high
 // it stands over the water (m, less than 0 under it).
 @group(#{MATERIAL_BIND_GROUP}) @binding(2) var surroundings: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var surroundings_sampler: sampler;
@@ -32,10 +33,13 @@ struct LakeLook {
 @group(#{MATERIAL_BIND_GROUP}) @binding(6) var<uniform> look: LakeLook;
 
 const PI: f32 = 3.14159265;
-// The reflected ray is followed this far (m) in this many steps, closer
-// together near the water, and its hit narrowed down in a few more.
-const REACH: f32 = 520.0;
+// The reflected ray is followed in at most this many steps, closer together
+// near the water, about one every STEP_LENGTH m where it could meet
+// something (but never fewer than LEAST_STEPS), and its hit narrowed down in
+// a few more.
 const STEPS: i32 = 64;
+const LEAST_STEPS: i32 = 8;
+const STEP_LENGTH: f32 = 3.0;
 const REFINE: i32 = 6;
 // The ripple: how much it tilts the water, how big its swells are (m), and
 // from how far (m) it fades out, where it would shimmer.
@@ -68,6 +72,17 @@ fn ripple(at: vec2<f32>, t: f32) -> vec2<f32> {
     return (a + 0.5 * b - 0.75) * RIPPLE_TILT;
 }
 
+// Where a ray from `p` along `r` (on the ground, x and z) is over the map:
+// from and to how far along it (m); from after to, never.
+fn over_the_map(p: vec2<f32>, r: vec2<f32>) -> vec2<f32> {
+    let inverse = 1.0 / select(r, vec2(1e-6), abs(r) < vec2(1e-6));
+    let a = (area.xy - p) * inverse;
+    let b = (area.xy + area.zw - p) * inverse;
+    let low = min(a, b);
+    let high = max(a, b);
+    return vec2(max(low.x, low.y), min(high.x, high.y));
+}
+
 // What the map holds at `at`: off it, nothing, down at the water.
 fn surroundings_at(at: vec2<f32>) -> vec4<f32> {
     let uv = (at - area.xy) / area.zw;
@@ -95,19 +110,26 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     r.y = max(r.y, 0.001);
 
     // Follow the reflected ray up from the water until it runs into the
-    // ground round the lake, or leaves the map for the sky.
+    // ground round it, or leaves the map, or rises over the highest of it,
+    // for the sky.
+    let span = over_the_map(p.xz, r.xz);
+    let start = max(span.x, 0.0);
+    let end = min(min(span.y, water.z), (water.y + 0.5 - (p.y - water.x)) / r.y);
     var hit = false;
-    var near = 0.0;
-    var far = 0.0;
-    for (var i = 1; i <= STEPS; i++) {
-        let f = f32(i) / f32(STEPS);
-        let t = REACH * f * f;
-        if under(p + r * t) {
-            hit = true;
-            far = t;
-            break;
+    var near = start;
+    var far = start;
+    if end > start {
+        let steps = clamp(i32(ceil((end - start) / STEP_LENGTH)), LEAST_STEPS, STEPS);
+        for (var i = 1; i <= steps; i++) {
+            let f = f32(i) / f32(steps);
+            let t = start + (end - start) * f * f;
+            if under(p + r * t) {
+                hit = true;
+                far = t;
+                break;
+            }
+            near = t;
         }
-        near = t;
     }
     for (var k = 0; k < REFINE; k++) {
         let t = 0.5 * (near + far);

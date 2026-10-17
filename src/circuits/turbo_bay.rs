@@ -498,6 +498,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         waterfalls: &[],
         sky: SkyStyle::Mediterranean,
         water: Water::Sea,
+        cartoon_water: false,
         pit: None,
         mine: None,
         desert: None,

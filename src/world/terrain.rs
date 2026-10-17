@@ -442,6 +442,19 @@ impl Terrain {
         shaded(self.grass_tint(p, normal, 0.0), self.grass_shade)
     }
 
+    /// The colour of `ground` at `p`, facing `normal`, as a tint over its
+    /// texture (linear RGBA), as the circuit's soil draws it: a desert
+    /// canyon's earth and rock, the checkerboard earth's, or the grass's
+    /// greens (the flowers and the weathering of the mountains aside).
+    pub fn ground_color(&self, ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+        match (self.soil, ground) {
+            (Soil::Mine, _) => canyon_vertex_color(ground, p, normal),
+            (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
+            (_, Ground::Grass) => self.grass_color(p, normal),
+            _ => ground_vertex_color(ground, p, normal),
+        }
+    }
+
     /// The tint of the grass at `p`, `wild` as it is far from the roads
     /// (see [`grass_tint`]), by the circuit's greens.
     fn grass_tint(&self, p: Vec3, normal: Vec3, wild: f32) -> Color {
@@ -808,7 +821,7 @@ fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32, up: f3
 /// `work` done over `items` on at most `threads` threads, a share of them
 /// each, its results in order. On the web there are no threads: all on
 /// one.
-fn on_cores<T: Sync, R: Send>(
+pub(super) fn on_cores<T: Sync, R: Send>(
     items: &[T],
     threads: usize,
     work: impl Fn(&[T]) -> Vec<R> + Sync,

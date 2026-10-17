@@ -1,7 +1,10 @@
 //! Marcador en pantalla: velocímetro y leyenda de los controles (oculta de
-//! entrada; se enseña desde Depuración) en la carrera, y fotogramas por
-//! segundo siempre. El minimapa va aparte, en [`crate::minimap`], and the
-//! speedometer's dial is drawn in [`crate::speedometer`].
+//! entrada; se enseña desde Depuración) en la carrera, and the performance
+//! HUD at the top right everywhere, as Options > Graphics > Performance HUD
+//! says: the frames per second and the pixels the world is drawn at. El
+//! minimapa va aparte, en [`crate::minimap`] (where the player is on it is
+//! the performance HUD's too), and the speedometer's dial is drawn in
+//! [`crate::speedometer`].
 
 use bevy::prelude::*;
 
@@ -11,11 +14,13 @@ use crate::legend::{KeyPrompt, music_prompt, race_prompts, spawn_legend};
 use crate::menu::GameState;
 use crate::pause::{DebugOptions, Pause};
 use crate::race::{Mode, Rules};
+use crate::render_scale::{NativeShare, drawn_size, render_percent};
 use crate::settings::Settings;
 use crate::sound::music::FreeMusic;
 use crate::speedometer::{SpeedometerPlugin, spawn_speedometer};
 use crate::ui::{InputDevice, UiIcons, current_active_device};
 use crate::welcome::GameMode;
+use crate::world::detail::Detail;
 
 pub struct HudPlugin;
 
@@ -23,13 +28,13 @@ impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SpeedometerPlugin)
             .init_resource::<UiFont>()
-            .add_systems(Startup, spawn_fps_counter)
+            .add_systems(Startup, spawn_performance_hud)
             .add_systems(OnEnter(GameState::Race), spawn_race_hud)
             .add_systems(
                 Update,
                 (
                     show_race_legend.run_if(in_state(GameState::Race)),
-                    update_fps,
+                    (update_fps, show_resolution),
                 ),
             );
     }
@@ -52,24 +57,106 @@ impl FromWorld for UiFont {
 #[derive(Component)]
 struct Legend;
 
+/// The performance HUD's lines, one under the other at the top right: the
+/// frame rate, and the pixels the world is drawn at.
 #[derive(Component)]
 struct FpsCounter;
+#[derive(Component)]
+struct ResolutionShown;
 
-fn spawn_fps_counter(mut commands: Commands) {
-    commands.spawn((
-        FpsCounter,
-        Text::new("-- FPS"),
-        TextFont {
-            font_size: FontSize::Px(18.0),
-            ..default()
-        },
-        Node {
+fn spawn_performance_hud(mut commands: Commands, font: Res<UiFont>) {
+    commands
+        .spawn(Node {
             position_type: PositionType::Absolute,
             top: px(12),
             right: px(16),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::FlexEnd,
+            row_gap: px(2),
             ..default()
-        },
-    ));
+        })
+        .with_children(|hud| {
+            hud.spawn((
+                FpsCounter,
+                Text::new("-- FPS"),
+                TextFont {
+                    font_size: FontSize::Px(18.0),
+                    ..default()
+                },
+            ));
+            // The game's font: Bevy's has no "×".
+            hud.spawn((
+                ResolutionShown,
+                Text::new(""),
+                TextFont {
+                    font: font.0.clone().into(),
+                    font_size: FontSize::Px(14.0),
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                Node {
+                    display: Display::None,
+                    ..default()
+                },
+            ));
+        });
+}
+
+/// How far down from the top (px) what stands at the top right goes (who
+/// is in, the results), under the performance HUD: its first line, or its
+/// two.
+pub fn under_performance_hud(settings: &Settings) -> f32 {
+    if settings.show_fps && settings.show_resolution {
+        60.0
+    } else {
+        40.0
+    }
+}
+
+/// Shown or not, taking its room or not.
+fn display(shown: bool) -> Display {
+    if shown { Display::Flex } else { Display::None }
+}
+
+/// The pixels the world is drawn at in a window `window` pixels big, at
+/// `percent` of its resolution (never more than the screen's own, see
+/// [`NativeShare`]): "3D 1920 × 1080", and the share when it is not all of
+/// it ("3D 1344 × 756 · 70 %").
+pub fn resolution_line(window: UVec2, percent: u32, native: NativeShare) -> String {
+    let size = drawn_size(window, percent, native);
+    if percent >= 100 {
+        format!("3D {} × {}", size.x, size.y)
+    } else {
+        format!("3D {} × {} · {percent} %", size.x, size.y)
+    }
+}
+
+/// The second line of the performance HUD, if the options say so: the
+/// pixels the world is drawn at now (as chosen, or as far as the
+/// performance forced has come).
+fn show_resolution(
+    settings: Res<Settings>,
+    window: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    detail: Option<Res<Detail>>,
+    native: Option<Res<NativeShare>>,
+    mut line: Single<(&mut Text, &mut Node), With<ResolutionShown>>,
+) {
+    let (text, node) = &mut *line;
+    let shown = display(settings.show_resolution);
+    if node.display != shown {
+        node.display = shown;
+    }
+    let Some(window) = window.iter().next().filter(|_| settings.show_resolution) else {
+        return;
+    };
+    let wanted = resolution_line(
+        window.physical_size(),
+        render_percent(detail.as_deref()),
+        native.as_deref().copied().unwrap_or_default(),
+    );
+    if text.0 != wanted {
+        text.0 = wanted;
+    }
 }
 
 /// How wide the speedometer is (px): alone, and with two players, in each
@@ -275,9 +362,15 @@ impl FpsMeter {
 
 fn update_fps(
     time: Res<Time<Real>>,
+    settings: Res<Settings>,
     mut meter: Local<FpsMeter>,
-    mut text: Single<&mut Text, With<FpsCounter>>,
+    mut counter: Single<(&mut Text, &mut Node), With<FpsCounter>>,
 ) {
+    let (text, node) = &mut *counter;
+    let shown = display(settings.show_fps);
+    if node.display != shown {
+        node.display = shown;
+    }
     let Some(fps) = meter.tick(time.delta_secs()) else {
         return;
     };
@@ -290,6 +383,29 @@ fn update_fps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_resolution_line_says_the_pixels_the_world_is_drawn_at() {
+        let window = UVec2::new(1920, 1080);
+        let whole = NativeShare(1.0);
+        assert_eq!(resolution_line(window, 100, whole), "3D 1920 × 1080");
+        assert_eq!(resolution_line(window, 70, whole), "3D 1344 × 756 · 70 %");
+        // On a HiDPI screen of fewer pixels of its own, never more than
+        // those.
+        let retina = UVec2::new(4096, 2304);
+        assert_eq!(
+            resolution_line(retina, 100, NativeShare(0.625)),
+            "3D 2560 × 1440"
+        );
+        // What stands under the HUD at the top right goes down a line when
+        // it has two.
+        let mut settings = Settings::default();
+        assert_eq!(under_performance_hud(&settings), 40.0);
+        settings.show_resolution = true;
+        assert_eq!(under_performance_hud(&settings), 60.0);
+        settings.show_fps = false;
+        assert_eq!(under_performance_hud(&settings), 40.0);
+    }
 
     #[test]
     fn the_frame_rate_is_shown_as_an_average_twice_a_second() {

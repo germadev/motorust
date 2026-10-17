@@ -2,7 +2,10 @@
 //! dibujado a partir de la línea central cada vez que cambia la pista. Lo
 //! usan la pantalla de elegir pista y el minimapa de la carrera, abajo a la
 //! izquierda, con un punto por moto del color de cada una (with two players,
-//! one map for each, bottom left of their half of the screen).
+//! one map for each, bottom left of their half of the screen). Over the
+//! race's map, if Options > Graphics > Performance HUD says so, where its
+//! player is: how far round the lap and the coordinates of the ground, to
+//! point a place of the track out.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -14,7 +17,9 @@ use bevy::{
 use crate::bike::{BikeColor, BikeState, LocalPlayer, Player};
 use crate::circuits::CurrentCircuit;
 use crate::hud::UiFont;
+use crate::locale::Language;
 use crate::menu::GameState;
+use crate::settings::Settings;
 use crate::track::Track;
 use crate::ui::text_font;
 use crate::welcome::GameMode;
@@ -68,9 +73,7 @@ impl Plugin for MinimapPlugin {
             .add_systems(OnEnter(GameState::Race), spawn_hud_map)
             .add_systems(
                 Update,
-                place_dots
-                    .run_if(in_state(GameState::Race))
-                    .after(redraw_map),
+                (place_dots.after(redraw_map), show_coordinates).run_if(in_state(GameState::Race)),
             );
     }
 }
@@ -310,7 +313,76 @@ pub fn dot_style(viewer: Option<usize>, player: bool, local: Option<usize>) -> D
     }
 }
 
-fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>, game_mode: Res<GameMode>) {
+/// Over a minimap, where its player is (see [`coordinates_said`]), if the
+/// options say so.
+#[derive(Component)]
+struct MapCoordinates {
+    viewer: Option<usize>,
+}
+
+/// Where a bike at `position` on the ground, `elevation` m up, is on
+/// `track`: how far round the lap (m from the line, as the circuits measure
+/// their stretches), on which road off it if it is on one, and the
+/// coordinates of the ground (m: x, z, and how high, y). "1234 m" over
+/// "X 412  Z -1033  Y 12".
+pub fn coordinates_said(track: &Track, position: Vec2, elevation: f32, lang: Language) -> String {
+    let nearest = track.nearest_at(position, elevation);
+    let along = track.along(&nearest);
+    let road = match (nearest.road, lang) {
+        (0, _) => String::new(),
+        (road, Language::Spanish) => format!(" · ramal {road}"),
+        (road, Language::English) => format!(" · branch {road}"),
+    };
+    // Whole metres, with no "-0".
+    let whole = |metres: f32| metres.round() as i32;
+    format!(
+        "{} m{road}\nX {}  Z {}  Y {}",
+        whole(along),
+        whole(position.x),
+        whole(position.y),
+        whole(elevation)
+    )
+}
+
+/// Over each minimap, if the options say so, where its player is.
+#[allow(clippy::type_complexity)]
+fn show_coordinates(
+    settings: Res<Settings>,
+    track: Res<Track>,
+    bikes: Query<(&BikeState, Has<Player>, Option<&LocalPlayer>)>,
+    mut labels: Query<(&MapCoordinates, &mut Text, &mut Node)>,
+) {
+    for (label, mut text, mut node) in &mut labels {
+        let display = if settings.show_coordinates {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+        if !settings.show_coordinates {
+            continue;
+        }
+        let viewer = label.viewer.unwrap_or(0);
+        let Some((state, ..)) = bikes.iter().find(|(_, player, local)| {
+            local.map_or(usize::from(!*player), |local| local.0) == viewer
+        }) else {
+            continue;
+        };
+        let wanted = coordinates_said(&track, state.position, state.elevation, settings.language);
+        if text.0 != wanted {
+            text.0 = wanted;
+        }
+    }
+}
+
+fn spawn_hud_map(
+    mut commands: Commands,
+    map: Res<TrackMap>,
+    game_mode: Res<GameMode>,
+    font: Res<UiFont>,
+) {
     // Bottom left: of the screen, or of each player's half, over the
     // bottom of player 1's half and the bottom of the screen.
     let maps: Vec<(Option<usize>, f32, Val)> = if *game_mode == GameMode::SplitScreen {
@@ -339,14 +411,35 @@ fn spawn_hud_map(mut commands: Commands, map: Res<TrackMap>, game_mode: Res<Game
             BorderColor::all(Color::srgba(0.2, 0.25, 0.35, 0.4)),
             GlobalZIndex(10),
             BackgroundColor(Color::srgba(0.02, 0.04, 0.1, 0.65)),
-            children![(
-                ImageNode::new(map.image.clone()),
-                Node {
-                    width: percent(100),
-                    height: percent(100),
-                    ..default()
-                },
-            )],
+            children![
+                (
+                    ImageNode::new(map.image.clone()),
+                    Node {
+                        width: percent(100),
+                        height: percent(100),
+                        ..default()
+                    },
+                ),
+                // Just above the map.
+                (
+                    MapCoordinates { viewer },
+                    Text::new(""),
+                    text_font(&font, 13.0),
+                    TextColor(Color::WHITE),
+                    TextShadow {
+                        offset: Vec2::splat(1.0),
+                        color: Color::srgba(0.0, 0.0, 0.0, 0.9),
+                    },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: px(2),
+                        bottom: percent(100),
+                        margin: UiRect::bottom(px(4)),
+                        display: Display::None,
+                        ..default()
+                    },
+                ),
+            ],
         ));
     }
 }
@@ -506,6 +599,27 @@ mod tests {
         let player = dot_style(None, true, None);
         assert!(player.human && player.number.is_none());
         assert!(player.size > dot_style(None, false, None).size);
+    }
+
+    #[test]
+    fn the_map_says_how_far_round_the_lap_and_where_on_the_ground() {
+        let track = Track::default();
+        let index = track.centerline().len() / 3;
+        let point = track.centerline()[index];
+        let along = index as f32 * track.step_length();
+        let said = coordinates_said(&track, point, 12.4, Language::Spanish);
+        let (first, second) = said.split_once('\n').unwrap();
+        let metres: f32 = first.trim_end_matches(" m").parse().unwrap();
+        assert!((metres - along).abs() <= 1.0, "{said}");
+        let whole = |metres: f32| metres.round() as i32;
+        assert_eq!(
+            second,
+            format!("X {}  Z {}  Y 12", whole(point.x), whole(point.y)),
+            "{said}"
+        );
+        // Never "-0".
+        let near_zero = coordinates_said(&track, Vec2::new(-0.3, point.y), 0.0, Language::English);
+        assert!(!near_zero.contains("-0 "), "{near_zero}");
     }
 
     #[test]
