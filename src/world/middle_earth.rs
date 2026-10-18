@@ -33,8 +33,9 @@ use crate::track::Track;
 /// `props.bin`; the props are by [`name`].
 const WHEEL: &str = "mill_wheel";
 const CHIMNEY: &str = "chimney";
-/// The drawing of ithildin on the Doors of Durin, and the glow round its
-/// lines: pieces of `props.bin` going with the doors.
+/// The drawing of ithildin on the Doors of Durin (a design of our own, see
+/// `tools/import_fellowship.py`), and the glow round its lines: pieces of
+/// `props.bin` going with the doors.
 const ITHILDIN: &str = "durin_ithildin";
 const GLOW: &str = "durin_glow";
 /// How far in front of the rock at the mouth of the tunnel into Moria the
@@ -57,12 +58,14 @@ const GATE_TOWERS: f32 = 14.5;
 /// The bank a hobbit hole is set into: how high it rises over the top of
 /// its front (m), how far it reaches either side of it (m), behind it (m)
 /// and, either side of it, in front of it (m); how far its edge sinks into
-/// the ground (m); and how finely its mesh is cut (m).
+/// the ground at least (m), and how far under the ground round it, where
+/// that falls away (m); and how finely its mesh is cut (m).
 const BANK_OVER: f32 = 0.7;
 const BANK_SIDES: f32 = 7.0;
 const BANK_BEHIND: f32 = 13.0;
 const BANK_AHEAD: f32 = 6.0;
 const BANK_SINK: f32 = 2.5;
+const BANK_UNDER: f32 = 0.3;
 const BANK_STEP: f32 = 0.5;
 /// On the banks, as in Hobbiton: washing hung out on a line between two
 /// posts, and bunting strung between two poles, every other hole one or
@@ -416,13 +419,10 @@ fn spawn_prop(
             Turning,
         ));
     }
-    let bank = Bank {
-        half_width: high.x.max(-low.x),
-        back: low.z,
-        top: high.y + BANK_OVER,
-    };
+    let bank = Bank::of(low, high);
     if footing(prop.model) == Footing::Bank {
         let base = Vec3::new(position.x, foot, position.y);
+        let bank = bank.sunk(base, rotation, terrain);
         banks.add(&bank, base, rotation, terrain);
         // A chimney rising out of the bank, behind and to one side.
         let chimney = props.piece(CHIMNEY);
@@ -452,6 +452,7 @@ fn spawn_prop(
 /// its front, sloping down behind it and to its sides, and either side of
 /// it coming forward past its front, so that it stands in a hollow of the
 /// bank; over its front, a lip of grass.
+#[derive(Clone, Copy)]
 struct Bank {
     /// How far the front reaches either side of its middle (m).
     half_width: f32,
@@ -459,11 +460,53 @@ struct Bank {
     back: f32,
     /// How high the top of the bank is (m).
     top: f32,
+    /// How far under its foot its edge is (m).
+    sink: f32,
 }
 
 impl Bank {
+    /// The bank of a hobbit hole from `low` to `high` (the corners of its
+    /// box, scaled), its edge `BANK_SINK` under its foot.
+    fn of(low: Vec3, high: Vec3) -> Self {
+        Self {
+            half_width: high.x.max(-low.x),
+            back: low.z,
+            top: high.y + BANK_OVER,
+            sink: BANK_SINK,
+        }
+    }
+
+    /// The same bank with its foot at `base`, turned by `rotation`, its edge
+    /// sunk deeper where the ground round it falls away, so that all round
+    /// it is `BANK_UNDER` under the ground at least.
+    fn sunk(self, base: Vec3, rotation: Quat, terrain: &Terrain) -> Self {
+        let (x0, z0, z1) = (
+            self.half_width + BANK_SIDES,
+            self.back - BANK_BEHIND,
+            self.back + BANK_AHEAD,
+        );
+        let across = (2.0 * x0 / BANK_STEP).ceil() as usize;
+        let deep = (z1 - z0) / BANK_STEP;
+        let edge = (0..=across)
+            .flat_map(|k| {
+                let x = -x0 + 2.0 * x0 * k as f32 / across as f32;
+                [Vec2::new(x, z0), Vec2::new(x, z1)]
+            })
+            .chain((0..=deep.ceil() as usize).flat_map(|k| {
+                let z = z0 + (z1 - z0) * k as f32 / deep.ceil();
+                [Vec2::new(-x0, z), Vec2::new(x0, z)]
+            }));
+        let sink = edge
+            .map(|at| {
+                let p = base + rotation * Vec3::new(at.x, 0.0, at.y);
+                base.y - terrain.height(Vec2::new(p.x, p.z)) + BANK_UNDER
+            })
+            .fold(self.sink, f32::max);
+        Self { sink, ..self }
+    }
+
     /// The height of the bank at `at` (x, z) in its frame (m): down to
-    /// `-BANK_SINK` at its edge, into the ground.
+    /// `-sink` at its edge, into the ground.
     fn height(&self, at: Vec2) -> f32 {
         let across = at.x.abs() / (self.half_width + BANK_SIDES);
         let behind = self.back - at.y;
@@ -477,7 +520,7 @@ impl Bank {
             -behind / ahead
         };
         let d = (across * across + along * along).sqrt();
-        (self.top + BANK_SINK) * (1.0 - smoothstep(0.55, 1.0, d)) - BANK_SINK
+        (self.top + self.sink) * (1.0 - smoothstep(0.55, 1.0, d)) - self.sink
     }
 }
 
@@ -774,8 +817,8 @@ mod tests {
             .map(|p| p[0].abs())
             .fold(f32::MAX, f32::min);
         assert!(opening > 5.6, "{opening} m");
-        // The ithildin on the arch and the pillars, the stars over it on the
-        // rock behind, and on the leaves, swung forward: from just above the
+        // The drawing on the arch and the pillars, over it on the rock
+        // behind, and on the leaves, swung forward: from just above the
         // ground to over the doors, wider than the doorway, and out on the
         // leaves.
         let (drawn_low, drawn_high) = bounds(piece(&pack, ITHILDIN));
@@ -795,6 +838,7 @@ mod tests {
             half_width: 3.5,
             back: -0.5,
             top: 4.7,
+            sink: BANK_SINK,
         };
         // Over its back, the top of the bank; nothing of it in front of its
         // front, before its door.
@@ -888,18 +932,16 @@ mod tests {
                 let reach = (high.x - low.x).max(high.z - low.z) / 2.0;
                 let foot = foot(track, terrain, prop, reach);
                 let (position, rotation) = spot(track, prop);
-                let bank = Bank {
-                    half_width: high.x.max(-low.x),
-                    back: low.z,
-                    top: high.y + BANK_OVER,
-                };
+                let base = Vec3::new(position.x, foot, position.y);
+                let bank = Bank::of(low, high).sunk(base, rotation, terrain);
+                assert!(bank.sink < 8.0, "{}: {:?}", circuit.name, prop.model);
                 // Round its edge, its foot is in the ground: no bank floats.
                 let x0 = bank.half_width + BANK_SIDES;
                 for k in 0..=40 {
                     let x = -x0 + 2.0 * x0 * k as f32 / 40.0;
                     for z in [bank.back - BANK_BEHIND, bank.back + BANK_AHEAD] {
                         let local = Vec3::new(x, bank.height(Vec2::new(x, z)), z);
-                        let world = Vec3::new(position.x, foot, position.y) + rotation * local;
+                        let world = base + rotation * local;
                         let ground = terrain.height(Vec2::new(world.x, world.z));
                         assert!(
                             world.y < ground + 0.1,

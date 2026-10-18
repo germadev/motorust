@@ -41,9 +41,10 @@ Some models need mending as they are read:
   over the road with its leaves just outside the walls of a narrow way
   through it, into Moria's halls). With them, two pieces of their own,
   drawn in materials of their own by the game: `durin_ithildin`, the
-  drawing of ithildin on the arch and the rock over it (the arch, two trees
-  up the pillars, the crown and the seven stars) and on the side of each
-  leaf turned to the road (a tree under the star of Feanor), and
+  drawing of ithildin, a design of our own, on the arch and the rock over
+  it (the arch, a vine up each pillar, a mountain on the keystone, a
+  crescent moon between six lozenges) and on the side of each leaf turned
+  to the road (a lozenge round a rayed sun, over a stem of chevrons), and
   `durin_glow`, the same drawn wider, the glow round its lines.
 - Textures toned (`TONED`): the oak over Bag End came a vivid green, the
   Doors of Durin a pale grey (darker, the drawing glowing on them in the
@@ -354,9 +355,10 @@ def frontmost(positions, indices, points):
 
 
 def drawing(lines, stars, lay, width, grow=1.0):
-    """Ribbons `width` wide along `lines` (each points x, y) and eight-pointed
-    stars (centre, radius), every point at the depth `lay` gives it (z):
-    vertices and triangles. Stars `grow` times as big."""
+    """Ribbons `width` wide along `lines` (each points x, y) and stars of so
+    many points (centre, radius, points: four is a lozenge), every point at
+    the depth `lay` gives it (z): vertices and triangles. Stars `grow` times
+    as big."""
     vertices, triangles = [], []
     for line in lines:
         dense = [line[0]]
@@ -376,17 +378,18 @@ def drawing(lines, stars, lay, width, grow=1.0):
         for k in range(len(dense) - 1):
             a = start + 2 * k
             triangles += [[a, a + 1, a + 3], [a, a + 3, a + 2]]
-    for centre, radius in stars:
+    for centre, radius, points in stars:
         star = []
-        for j in range(8):
-            r = grow * (radius if j % 2 == 0 else radius / 3.0)
-            a = np.pi / 2 + j * np.pi / 4
+        corners = 2 * points
+        for j in range(corners):
+            r = grow * (radius if j % 2 == 0 else radius / 2.6)
+            a = np.pi / 2 + j * np.pi / points
             star.append(centre + r * np.array([np.cos(a), np.sin(a)]))
         z = lay(np.array(star + [centre]), np.array(star + [centre])).max()
         start = len(vertices)
         vertices.append([centre[0], centre[1], z])
         vertices += [[x, y, z] for x, y in star]
-        triangles += [[start, start + 1 + j, start + 1 + (j + 1) % 8] for j in range(8)]
+        triangles += [[start, start + 1 + j, start + 1 + (j + 1) % corners] for j in range(corners)]
     return np.array(vertices).reshape(-1, 3), np.array(triangles, dtype=np.uint32).reshape(-1, 3)
 
 
@@ -401,12 +404,14 @@ def facing_out(vertices, triangles, normal):
 
 def ithildin(positions, indices, leaves, width, off, grow=1.0):
     """The drawing of ithildin on the Doors of Durin (in metres, the doors
-    open), as ribbons `width` wide laid `off` in front of the stone: on the
-    front, an arch on the pillars, a tree climbing each, its branches
-    spreading over the arch, the crown on its keystone and the seven stars
-    round it on the rock behind (the back of the gate); and on each leaf,
-    swung open, on the side it turns to the road, a tree under the star of
-    Feanor. Its vertices, normals, texture coordinates and triangles."""
+    open), a design of our own: as ribbons `width` wide laid `off` in front
+    of the stone. On the front, an arch on the pillars, a vine winding up
+    each, with lozenges for leaves, a mountain of two chevrons on the
+    keystone, and over the arch, on the rock behind (the back of the gate),
+    a crescent moon between six lozenges; on each leaf, swung open, on the
+    side it turns to the road, a tall lozenge round a rayed sun, over a
+    stem of chevrons. Its vertices, normals, texture coordinates and
+    triangles."""
     triangles = indices.reshape(-1, 3)
     frame = triangles[~leaves].reshape(-1)
     low, high = positions.min(axis=0), positions.max(axis=0)
@@ -420,38 +425,41 @@ def ithildin(positions, indices, leaves, width, off, grow=1.0):
         t = np.linspace(start, end, count)
         return np.stack([cx + rx * np.cos(t), cy + ry * np.sin(t)], axis=1)
 
-    def curve(start, bend, end):
-        t = np.linspace(0.0, 1.0, 16)[:, None]
-        return (1 - t) ** 2 * start + 2 * t * (1 - t) * bend + t**2 * end
-
     lines = [np.concatenate([
         [[-pillar, 0.04 * height]],
         arc(0.0, spring, pillar, ring, np.pi, 0.0),
         [[pillar, 0.04 * height]],
     ])]
-    # A tree up each pillar, outside the arch's line (inside it, the leaves
-    # open hide the pillar).
-    for side in (-1.0, 1.0):
-        trunk = side * (pillar + 0.03 * height)
-        lines.append(np.array([[trunk, 0.06 * height], [trunk, spring - 0.06 * height]]))
-        for up, angle in [(0.0, 20.0), (0.04, 38.0), (0.08, 56.0)]:
-            start = np.array([trunk, spring - 0.1 * height + up * height])
-            a = np.radians(angle if side > 0 else 180.0 - angle)
-            end = np.array([0.88 * pillar * np.cos(a), spring + 0.88 * ring * np.sin(a)])
-            lines.append(curve(start, np.array([trunk, end[1]]), end))
-    crown_y, crown = high[1] - 0.075 * height, 0.045 * height
-    lines.append(np.array([
-        [-crown, crown_y], [-crown, crown_y + crown], [-crown / 2, crown_y + crown * 0.55],
-        [0.0, crown_y + crown * 1.15], [crown / 2, crown_y + crown * 0.55], [crown, crown_y + crown],
-        [crown, crown_y], [-crown, crown_y],
-    ]))
     stars = []
-    for k in range(7):
-        angle = np.radians(58.0 + k * 64.0 / 6.0)
-        centre = np.array([0.0, spring]) + np.array(
-            [np.cos(angle) * (pillar + 0.12 * height), np.sin(angle) * (ring + 0.13 * height)]
-        )
-        stars.append((centre, 0.022 * height))
+    # A vine winding up each pillar, outside the arch's line (inside it, the
+    # leaves open hide the pillar), a lozenge at each turn.
+    for side in (-1.0, 1.0):
+        stem = side * (pillar + 0.03 * height)
+        y = np.linspace(0.06 * height, spring - 0.04 * height, 60)
+        wave = 0.012 * height * np.sin((y - y[0]) / (0.11 * height) * 2.0 * np.pi)
+        lines.append(np.stack([stem + wave, y], axis=1))
+        for k, at in enumerate(np.arange(0.06 * height + 0.0275 * height, spring - 0.06 * height, 0.055 * height)):
+            out = 1.0 if k % 2 == 0 else -1.0
+            stars.append((np.array([stem + out * 0.026 * height, at]), 0.011 * height, 4))
+    # A mountain of two chevrons on the keystone.
+    peak_y, peak = high[1] - 0.085 * height, 0.05 * height
+    for k in range(2):
+        rise = peak * (1.0 - 0.45 * k)
+        lines.append(np.array([[-rise, peak_y + 0.02 * height * k], [0.0, peak_y + rise * 0.8 + 0.02 * height * k], [rise, peak_y + 0.02 * height * k]]))
+    # Over the arch, on the rock: a crescent moon between six lozenges.
+    moon = np.array([0.0, spring + ring + 0.12 * height])
+    r = 0.04 * height
+    lines.append(np.concatenate([
+        arc(moon[0], moon[1], r, r, 0.35 * np.pi, 1.65 * np.pi, 24),
+        arc(moon[0] + 0.35 * r, moon[1], 0.75 * r, 0.75 * r, 1.55 * np.pi, 0.45 * np.pi, 20),
+    ]))
+    for k in range(3):
+        for side in (-1.0, 1.0):
+            angle = np.radians(90.0 - side * (16.0 + 14.0 * k))
+            centre = np.array([0.0, spring]) + np.array(
+                [np.cos(angle) * (pillar + 0.11 * height), np.sin(angle) * (ring + 0.11 * height)]
+            )
+            stars.append((centre, 0.017 * height, 4))
 
     def lay_front(left, right):
         on = lambda points: frontmost(positions, frame, points)
@@ -470,14 +478,25 @@ def ithildin(positions, indices, leaves, width, off, grow=1.0):
         top = leaf[:, 1].max()
         middle = hinge[0] / 2.0
         span = abs(hinge[0])
-        lines = [np.array([[middle, 0.08 * top], [middle, 0.62 * top]])]
-        for up, reach in [(0.44, 0.3), (0.5, 0.36), (0.56, 0.4)]:
-            for lean in (-1.0, 1.0):
-                start = np.array([middle, up * top])
-                end = np.array([middle + lean * reach * span, (up + 0.14) * top])
-                lines.append(curve(start, np.array([middle + lean * 0.5 * reach * span, up * top]), end))
-        stars = [(np.array([middle, 0.8 * top]), 0.16 * span)]
-        stars += [(np.array([middle + d * 0.3 * span, (0.8 + abs(d) * 0.05 - 0.09) * top]), 0.06 * span) for d in (-1.0, 1.0)]
+        # A stem of chevrons, pointing up, and over it a tall lozenge round
+        # a sun of six rays.
+        lines = [np.array([[middle, 0.08 * top], [middle, 0.5 * top]])]
+        for k in range(5):
+            y = (0.14 + 0.07 * k) * top
+            lines.append(np.array([
+                [middle - 0.28 * span, y], [middle, y + 0.05 * top], [middle + 0.28 * span, y],
+            ]))
+        sun = np.array([middle, 0.72 * top])
+        lines.append(np.array([
+            [middle, 0.52 * top], [middle + 0.4 * span, 0.72 * top],
+            [middle, 0.92 * top], [middle - 0.4 * span, 0.72 * top], [middle, 0.52 * top],
+        ]))
+        lines.append(arc(sun[0], sun[1], 0.12 * span, 0.12 * span, 0.0, 2.0 * np.pi, 28))
+        for k in range(6):
+            a = np.pi / 2 + k * np.pi / 3
+            d = np.array([np.cos(a), np.sin(a)])
+            lines.append(np.array([sun + d * 0.17 * span, sun + d * 0.27 * span]))
+        stars = []
 
         def lay_leaf(left, right):
             on = lambda points: -frontmost(mirrored, flat, points)

@@ -228,9 +228,9 @@ pub enum SkyStyle {
     Mediterranean,
     GoldenHour,
     Dusk,
-    /// A summer evening in high country, the sun low and golden, graded as
-    /// a film is: the light of New Zealand, where *The Lord of the Rings*
-    /// was shot.
+    /// A bright late summer afternoon in high country, graded as a film
+    /// is: the light of New Zealand, where *The Lord of the Rings* was
+    /// shot.
     HighCountry,
 }
 

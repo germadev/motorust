@@ -1003,7 +1003,9 @@ mod tests {
                     let road = track.road_height(Vec2::new(p.x, p.z));
                     assert!(
                         p.y - road < 4.0 && top - p.y > 6.0,
-                        "foam {} m up",
+                        "{}: the waterfall at {}'s foam {} m up",
+                        circuit.name,
+                        waterfall.along,
                         p.y - road
                     );
                 }
