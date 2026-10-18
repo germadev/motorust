@@ -16,6 +16,7 @@
 use bevy::camera::visibility::VisibilityRange;
 use bevy::prelude::*;
 
+use super::detail::fading_out;
 use super::foliage::ALPHA_CUTOFF;
 use super::quads::MeshBuilder;
 use super::road::paved_edge;
@@ -38,7 +39,7 @@ const REACH_FADE: f32 = 12.0;
 
 /// A mesh of grass with its material, drawn up to `reach` m from the
 /// camera (from the middle of the mesh), fading out over [`REACH_FADE`]
-/// more, and casting no shadow.
+/// more (see [`fading_out`]), and casting no shadow.
 pub struct GrassPiece {
     pub mesh: Mesh,
     pub material: StandardMaterial,
@@ -48,11 +49,7 @@ pub struct GrassPiece {
 impl GrassPiece {
     /// Up to where it is drawn.
     pub fn range(&self) -> VisibilityRange {
-        VisibilityRange {
-            start_margin: 0.0..0.0,
-            end_margin: self.reach..self.reach + REACH_FADE,
-            use_aabb: true,
-        }
+        fading_out(self.reach, REACH_FADE, true)
     }
 }
 /// How far from the edge of the asphalt (or of its curbs) and from the

@@ -17,11 +17,11 @@
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, PI};
 
-use bevy::camera::visibility::VisibilityRange;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use super::Assets3d;
+use super::detail::fading_out;
 use super::foliage::{self, ALPHA_CUTOFF};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
@@ -391,11 +391,7 @@ pub fn spawn_flowers(
         world.spawn((
             Mesh3d(assets.meshes.add(mesh)),
             MeshMaterial3d(material.clone()),
-            VisibilityRange {
-                start_margin: 0.0..0.0,
-                end_margin: SEEN..SEEN + SEEN_FADE,
-                use_aabb: true,
-            },
+            fading_out(SEEN, SEEN_FADE, true),
             NotShadowCaster,
         ));
     }
