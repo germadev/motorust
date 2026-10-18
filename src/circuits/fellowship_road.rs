@@ -439,9 +439,10 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     by_road(MiddleEarthModel::LogPile, 84.0, -13.5),
     // Hobbiton, down the sweep to the Water and up the far side: across it
     // on the left, hobbit holes in their banks at the foot of the hill and
-    // the mill on the water by the bridge; over the bridge, on the right, the
-    // Green Dragon's sign, the inn by the water, more holes at the foot of
-    // the other hill and the party tree; and up on Bag End's hill, on the
+    // the mill on the water by the bridge; over the bridge, the Green
+    // Dragon's sign, more holes across the water on the right at the foot of
+    // the other hill and the inn by the water, ahead up the sweep, and on
+    // the left, inside it, the party tree; and up on Bag End's hill, on the
     // outside of the bend round the pool, Bag End under its oak, ahead all
     // the way up to it.
     by_road(MiddleEarthModel::HobbitDoorBlue, 264.0, 65.0).turned(-0.72),
@@ -450,11 +451,11 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     by_road(MiddleEarthModel::HobbitDoorGreen, 318.0, 60.0).turned(-0.70),
     by_road(MiddleEarthModel::Mill, 336.0, 58.0).turned(-0.71),
     by_road(MiddleEarthModel::GreenDragonSign, 393.0, -13.5).turned(0.79),
-    by_road(MiddleEarthModel::GreenDragon, 400.0, -75.0).turned(0.60),
-    by_road(MiddleEarthModel::HobbitDoorGreen, 422.0, -58.0).turned(0.64),
-    by_road(MiddleEarthModel::HobbitDoorRed, 438.0, -58.0).turned(0.62),
-    by_road(MiddleEarthModel::HobbitDoorYellow, 454.0, -59.0).turned(0.61),
-    by_road(MiddleEarthModel::PartyTree, 474.0, -76.0),
+    by_road(MiddleEarthModel::HobbitDoorGreen, 410.0, -58.0).turned(0.67),
+    by_road(MiddleEarthModel::HobbitDoorRed, 426.0, -58.0).turned(0.63),
+    by_road(MiddleEarthModel::HobbitDoorYellow, 442.0, -59.0).turned(0.61),
+    by_road(MiddleEarthModel::GreenDragon, 466.0, -66.0).turned(0.58),
+    by_road(MiddleEarthModel::PartyTree, 430.0, 45.0),
     by_road(MiddleEarthModel::BagEnd, 556.0, 46.0).turned(-0.58),
     by_road(MiddleEarthModel::BagEndOak, 562.0, 60.0),
     // The Shire: a scarecrow in the fields, the old tree the hobbits hid
@@ -549,14 +550,14 @@ const KNOLLS: [Terrace; 17] = [
     shelf(-42.5, -335.3, 4.5, 1.0),
     // The mill, by the water.
     shelf(-32.5, -359.2, 5.5, 1.1),
+    // A hobbit hole's garden.
+    shelf(105.5, -387.6, 4.5, 2.3),
+    // A hobbit hole's garden.
+    shelf(108.4, -413.3, 4.5, 6.1),
+    // A hobbit hole's garden.
+    shelf(107.6, -439.4, 4.5, 3.3),
     // The Green Dragon.
-    knoll(120.3, -367.8, 14.0, 4.0),
-    // A hobbit hole's garden.
-    shelf(108.0, -406.7, 4.5, 5.7),
-    // A hobbit hole's garden.
-    shelf(107.5, -432.9, 4.5, 4.0),
-    // A hobbit hole's garden.
-    shelf(103.2, -458.7, 4.5, 1.3),
+    knoll(104.6, -481.7, 14.0, 0.9),
     // Bag End.
     knoll(-20.0, -555.5, 7.0, 20.1),
     // The Prancing Pony.
@@ -1425,7 +1426,7 @@ mod tests {
                 .any(|bridge| bridge.span.contains(along, lap))
         };
         // Wet only on the bridges; each of them over water.
-        let mut wet = [0.0; 3];
+        let mut wet = vec![0.0; FELLOWSHIP_ROAD.scenery.bridges.len()];
         for index in 0..track.sample_count() {
             let along = index as f32 * track.step_length();
             if water(track.centerline()[index]) < 0.0 {
