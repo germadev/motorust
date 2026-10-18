@@ -259,29 +259,24 @@ def without_oars(positions, indices):
 
 def door_leaves(positions, indices):
     """Which triangles are the two leaves of the Doors of Durin, as they
-    came: between the pillars (an eighth of its height either side of its
-    middle), in the middle of its depth, over the threshold and under the
-    arch. And which are its threshold, a step across the road under them."""
+    came: the doors are five parts (the arch, two pillars and two leaves),
+    and the leaves are the two between the pillars (within about an eighth
+    of its height either side of its middle) and in the middle of its
+    depth."""
     low, high = positions.min(axis=0), positions.max(axis=0)
     height = high[1] - low[1]
     middle = (low + high) / 2.0
     q = (positions - np.array([middle[0], low[1], middle[2]])) / height
-    corners = q[indices.reshape(-1, 3)]
-    leaves = (
-        (np.abs(corners[:, :, 0]) <= 0.1285).all(axis=1)
-        & (np.abs(corners[:, :, 2]) <= 0.0215).all(axis=1)
-        & (corners[:, :, 1] >= 0.07).all(axis=1)
-        & (corners[:, :, 1] <= 0.92).all(axis=1)
-    )
-    assert 300 < leaves.sum() < 600, f"{leaves.sum()} triangles of the leaves"
-    threshold = (np.abs(corners[:, :, 0].mean(axis=1)) <= 0.128) & (corners[:, :, 1] <= 0.085).all(axis=1)
-    assert 4 <= threshold.sum() < 300, f"{threshold.sum()} triangles of the threshold"
-    # Nothing else low down in the way of the road (but flat on the ground).
-    rest = corners[~threshold & ~leaves]
-    top = rest[:, :, 1].max(axis=1)
-    low = (top < 0.085) & (top > 0.01)
-    assert (np.abs(rest[low][:, :, 0]).min(axis=1) > 0.115).all()
-    return leaves, threshold
+    triangles = indices.reshape(-1, 3)
+    label = parts(positions, indices)
+    leaves = np.zeros(len(triangles), dtype=bool)
+    for name in np.unique(label):
+        mine = label == name
+        corners = q[triangles[mine]].reshape(-1, 3)
+        if np.abs(corners[:, 0]).max() < 0.135 and np.abs(corners[:, 2]).max() < 0.025:
+            leaves |= mine
+    assert 400 < leaves.sum() < 800, f"{leaves.sum()} triangles of the leaves"
+    return leaves
 
 
 def widened(positions, normals, factor):
@@ -314,8 +309,6 @@ def swung_open(positions, normals, uvs, indices, leaves):
         else:
             leaf_p[:, 0], leaf_p[:, 2] = hinge[0] + dz, hinge[1] - dx
             leaf_n[:, 0], leaf_n[:, 2] = normals[corners][:, 2], -normals[corners][:, 0]
-        # Down to the ground, on which the threshold they stood on was.
-        leaf_p[:, 1] -= leaf_p[:, 1].min()
         p.append(leaf_p)
         n.append(leaf_n)
         u.append(uvs[corners])
@@ -559,9 +552,7 @@ def main():
         moved = (corner + uvs.clip(0.0, 1.0) * inner) / size
 
         if name == "durin_doors":
-            leaves, threshold = door_leaves(positions, indices)
-            indices = keep_triangles(indices, ~threshold)
-            leaves = leaves[~threshold]
+            leaves = door_leaves(positions, indices)
             positions, normals = widened(positions, normals, DURIN_WIDER)
             _, _, centre, scale = place(positions[np.unique(indices)], normals[np.unique(indices)], SIZES[name])
             placed = (positions - centre) * scale

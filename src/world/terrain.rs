@@ -10,6 +10,7 @@ use bevy::{
     asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
 };
 
+use super::cavern::excavation_width;
 use super::flowers::{FlowerMap, phlox_color};
 use super::scenery::{Coast, FlowerKind, Greens, Pit, Scenery, Side, Soil, span};
 use super::structures::{TUNNEL_SHELL, Tunnels};
@@ -1014,26 +1015,28 @@ impl<'a> Shaper<'a> {
         // entre la pared y la roca, y sus triángulos asomarían dentro.
         // A mine's excavation has no walls of its own past the bikes' (see
         // `cavern`): the rock keeps clear of them all the way to its mouths.
-        let past = if self.scenery.soil == Soil::Mine {
-            20.0
-        } else {
-            0.0
-        };
+        let excavation = self.scenery.excavation();
+        let past = if excavation.is_some() { 20.0 } else { 0.0 };
         let tunnel = self
             .scenery
             .tunnels
             .iter()
             .map(|tunnel| span(tunnel.from - past, tunnel.to + past).weight(along, self.lap, 20.0))
             .fold(0.0, f32::max);
-        let rise = smoothstep(FLAT, FLAT + 4.0, distance)
-            .lerp(smoothstep(FLAT + 4.0, FLAT + 8.0, distance), tunnel);
+        // A hall wider than the road keeps the rock that much further off.
+        let wide =
+            excavation.map_or(0.0, |halls| excavation_width(halls, self.lap, along)) * tunnel;
+        let rise = smoothstep(FLAT, FLAT + 4.0, distance).lerp(
+            smoothstep(FLAT + 4.0 + wide, FLAT + 8.0 + wide, distance),
+            tunnel,
+        );
         // On a mountain the road climbs, the ground beside it is cut into
         // the mountainside or built up to the road a little way past the
         // walls; round a tunnel through it, as steeply as the rock.
         let slopes = self.slopes(point);
         if slopes > 0.0 {
-            let from = FLAT + 4.0 * tunnel;
-            let to = (FLAT + SLOPE_REACH).lerp(FLAT + 8.0, tunnel);
+            let from = FLAT + (4.0 + wide) * tunnel;
+            let to = (FLAT + SLOPE_REACH).lerp(FLAT + 8.0 + wide, tunnel);
             let side = road.lerp(self.natural(point) + slopes, smoothstep(from, to, distance));
             land = land.lerp(side, smoothstep(0.0, 10.0, slopes));
         }

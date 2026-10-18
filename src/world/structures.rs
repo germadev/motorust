@@ -98,10 +98,10 @@ pub fn structure_pieces(
     let mut ground = Vec::new();
     let lap = track.lap_length();
     for tunnel in scenery.tunnels {
-        // A mine's tunnels are its excavation.
-        if scenery.soil == Soil::Mine {
-            let halls = scenery.mine.as_ref().map_or(&[][..], |mine| mine.halls);
-            let (cavern, lanterns) = cavern_pieces(track, terrain, *tunnel, halls, textures);
+        // A mine's tunnels are its excavation, and Moria's its halls.
+        if let Some(halls) = scenery.excavation() {
+            let (cavern, lanterns) =
+                cavern_pieces(track, terrain, *tunnel, halls, scenery.soil, textures);
             pieces.extend(cavern);
             lamps.extend(lanterns.into_iter().map(|at| Lamp {
                 at,

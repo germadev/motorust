@@ -455,6 +455,18 @@ pub struct Scenery {
 }
 
 impl Scenery {
+    /// The halls of the tunnels where they are excavations, a mine's or
+    /// Moria's (see [`super::cavern`]), rather than tunnels lined with
+    /// concrete panels.
+    pub fn excavation(&self) -> Option<&'static [Hall]> {
+        match (&self.mine, &self.middle_earth) {
+            (Some(mine), _) if self.soil == Soil::Mine => Some(mine.halls),
+            _ if self.soil == Soil::Mine => Some(&[]),
+            (_, Some(middle_earth)) if !middle_earth.halls.is_empty() => Some(middle_earth.halls),
+            _ => None,
+        }
+    }
+
     /// The fields of flowers, of feudal Japan or of Middle-earth.
     pub fn flower_fields(&self) -> &'static [FlowerField] {
         match (&self.japan, &self.middle_earth) {
@@ -730,6 +742,9 @@ pub struct MiddleEarth {
     pub props: &'static [Prop<MiddleEarthModel>],
     pub flowers: &'static [FlowerField],
     pub petals: &'static [Petals],
+    /// The halls of Moria: where there are, the tunnels are excavations, as
+    /// a mine's, through them (see [`Scenery::excavation`]).
+    pub halls: &'static [Hall],
 }
 
 /// One of the props of Middle-earth, made with Meshy (see
@@ -898,6 +913,10 @@ pub struct Hall {
     pub span: Span,
     pub stone: Stone,
     pub crown: f32,
+    /// How much wider than the road between its walls the hall is, either
+    /// side (m): where it is, the road runs through it between low walls of
+    /// its stone (none in a mine).
+    pub width: f32,
 }
 
 /// What the rock of a stretch of a mine's excavation is like, and the
@@ -912,6 +931,11 @@ pub enum Stone {
     Slate,
     /// Ochre clay, its walls lined with planks, over beaten earth.
     Clay,
+    /// The dwarves' masonry, as in Moria: walls and vaults of dressed grey
+    /// blocks over flagstones, great pillars in the widest halls.
+    Masonry,
+    /// A natural cave in grey granite, over grit.
+    Cave,
 }
 
 /// A rail line beside the road over a span, `lateral` metres from its

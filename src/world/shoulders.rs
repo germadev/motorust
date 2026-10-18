@@ -39,7 +39,7 @@ fn road_shoulders(
 ) -> Vec<[Surface; 2]> {
     let line = track.road(road);
     let lap = track.lap_length();
-    let halls = scenery.mine.as_ref().map_or(&[][..], |mine| mine.halls);
+    let halls = scenery.excavation().unwrap_or(&[]);
     (0..line.sample_count())
         .map(|index| {
             let along = line.lap_along_at(index);
@@ -48,7 +48,7 @@ fn road_shoulders(
             // bridges a deck of concrete or planks out to the walls. A mine's
             // tunnels are its excavation, which the branches through it share.
             let tunnel = scenery.tunnels.iter().any(in_span);
-            let excavation = tunnel && scenery.soil == Soil::Mine;
+            let excavation = tunnel && scenery.excavation().is_some();
             let paved = road == 0
                 && ((tunnel && !excavation)
                     || scenery.bridges.iter().any(|bridge| in_span(&bridge.span)));
@@ -88,15 +88,17 @@ fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
     }
 }
 
-/// The floor beside the roads of a mine's excavation of each stone (see
-/// [`super::cavern`]): planks in the galleries, gravel and earth in the
-/// halls.
+/// The floor beside the roads of a mine's excavation, or Moria's, of each
+/// stone (see [`super::cavern`]): planks in the galleries, gravel and earth
+/// in the halls, flagstones in the dwarves' and grey grit in natural caves.
 fn stone_surface(stone: Stone) -> Surface {
     match stone {
         Stone::Timbered => Surface::Paved,
         Stone::Sandstone => Surface::Dirt(Dust::Desert),
         Stone::Slate => Surface::Dirt(Dust::Slate),
         Stone::Clay => Surface::Dirt(Dust::Earth),
+        Stone::Masonry => Surface::Paved,
+        Stone::Cave => Surface::Dirt(Dust::Slate),
     }
 }
 
@@ -155,7 +157,7 @@ mod tests {
                     .tunnels
                     .iter()
                     .copied()
-                    .filter(|_| scenery.soil != Soil::Mine),
+                    .filter(|_| scenery.excavation().is_none()),
             );
             for span in spans {
                 let surfaces = along_span(&track, &shoulders, span);

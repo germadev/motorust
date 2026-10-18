@@ -465,21 +465,25 @@ pub const GOLD_MINE: Circuit = Circuit {
                     span: span(1712.0, 1880.0),
                     stone: Stone::Sandstone,
                     crown: 28.0,
+                    width: 0.0,
                 },
                 Hall {
                     span: span(1880.0, 2050.0),
                     stone: Stone::Slate,
                     crown: 34.0,
+                    width: 0.0,
                 },
                 Hall {
                     span: span(2162.0, 2330.0),
                     stone: Stone::Clay,
                     crown: 24.0,
+                    width: 0.0,
                 },
                 Hall {
                     span: span(2330.0, 2500.0),
                     stone: Stone::Sandstone,
                     crown: 31.0,
+                    width: 0.0,
                 },
             ],
             piles: &[

@@ -15,13 +15,18 @@
 //! come down to the rock left between them. Over all of it lies the outside
 //! of the rock: the top of the mesa it is cut into, and its faces round the
 //! two mouths, framed with timber.
+//!
+//! The halls of Moria are dug alike (see [`super::scenery::MiddleEarth`]),
+//! but some of dwarves' masonry and some natural caves, and wider than the
+//! road: it runs through them between low walls of their stone, under
+//! roofs far above (see [`Hall::width`]), past rows of great pillars.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 
 use super::quads::MeshBuilder;
-use super::scenery::{Hall, Span, Stone};
+use super::scenery::{Hall, Soil, Span, Stone};
 use super::structures::TUNNEL_SHELL;
 use super::terrain::Terrain;
 use super::textures::WorldTextures;
@@ -99,6 +104,20 @@ const PLANK_TILE: f32 = 4.0;
 /// The planks laid on the branches, above their asphalt (m), where it is
 /// clear of the lap's.
 const PLANK_LIFT: f32 = 0.035;
+/// Masonry's blocks repeat every this many metres.
+const MASONRY_TILE: f32 = 5.0;
+/// Where a hall is wider than the road, the low walls either side of it:
+/// how high over the road (m) and how thick (m), just past the walls the
+/// bikes run into (m).
+const PARAPET_HEIGHT: f32 = 1.2;
+const PARAPET_THICK: f32 = 0.7;
+const PARAPET_OUT: f32 = 0.1;
+/// In the halls of masonry at least this much wider than the road (m), a
+/// row of square pillars either side, half way out to the walls, every this
+/// many metres along, this thick (m).
+const PILLARS_FROM: f32 = 8.0;
+const PILLAR_EVERY: f32 = 28.0;
+const PILLAR_THICK: f32 = 4.0;
 
 /// The meshes of the excavation along `span` of the lap, with their
 /// materials, through rock of the kinds `halls` says, and where its
@@ -108,6 +127,7 @@ pub fn cavern_pieces(
     terrain: &Terrain,
     span: Span,
     halls: &[Hall],
+    soil: Soil,
     textures: &WorldTextures,
 ) -> (Vec<(Mesh, StandardMaterial)>, Vec<Vec3>) {
     let cave = Cave::new(track, span, halls);
@@ -117,20 +137,21 @@ pub fn cavern_pieces(
         lanterns: &lanterns,
     };
     cave.carve(&painter, &mut parts);
+    cave.parapets_and_pillars(&painter, &mut parts);
     cave.stalactites(&painter, &mut parts);
     cave.veins(&mut parts);
     cave.planked_branches(&painter, &mut parts);
     cave.outside(terrain, &mut parts);
-    (parts.pieces(textures), lanterns)
+    (parts.pieces(soil, textures), lanterns)
 }
 
 /// The meshes of the excavation, each for its own material.
 #[derive(Default)]
 struct Parts {
     /// The walls and the roof, by stone (see [`Stone::index`]).
-    rock: [MeshBuilder; 4],
+    rock: [MeshBuilder; 6],
     /// The floor beside the roads, by stone.
-    floor: [MeshBuilder; 4],
+    floor: [MeshBuilder; 6],
     /// The outside of the rock.
     outside: MeshBuilder,
     /// Timber: sets, posts, frames, and the planks that line walls and
@@ -144,7 +165,7 @@ struct Parts {
 }
 
 impl Parts {
-    fn pieces(self, textures: &WorldTextures) -> Vec<(Mesh, StandardMaterial)> {
+    fn pieces(self, soil: Soil, textures: &WorldTextures) -> Vec<(Mesh, StandardMaterial)> {
         let mut pieces = Vec::new();
         for (stone, (rock, floor)) in Stone::ALL
             .into_iter()
@@ -162,11 +183,20 @@ impl Parts {
         pieces.extend([
             (
                 self.outside,
-                StandardMaterial {
-                    base_color: Color::srgb(0.95, 0.62, 0.46),
-                    base_color_texture: Some(textures.rock.clone()),
-                    perceptual_roughness: 0.9,
-                    ..default()
+                // The rock of the land round it: a desert's red, or granite.
+                match soil {
+                    Soil::Granite => StandardMaterial {
+                        base_color: Color::srgb(0.8, 0.8, 0.82),
+                        base_color_texture: Some(textures.granite.clone()),
+                        perceptual_roughness: 0.9,
+                        ..default()
+                    },
+                    _ => StandardMaterial {
+                        base_color: Color::srgb(0.95, 0.62, 0.46),
+                        base_color_texture: Some(textures.rock.clone()),
+                        perceptual_roughness: 0.9,
+                        ..default()
+                    },
                 },
             ),
             (self.timber, timber.clone()),
@@ -215,7 +245,14 @@ impl Parts {
 }
 
 impl Stone {
-    const ALL: [Stone; 4] = [Stone::Timbered, Stone::Sandstone, Stone::Slate, Stone::Clay];
+    const ALL: [Stone; 6] = [
+        Stone::Timbered,
+        Stone::Sandstone,
+        Stone::Slate,
+        Stone::Clay,
+        Stone::Masonry,
+        Stone::Cave,
+    ];
 
     fn index(self) -> usize {
         match self {
@@ -223,7 +260,14 @@ impl Stone {
             Stone::Sandstone => 1,
             Stone::Slate => 2,
             Stone::Clay => 3,
+            Stone::Masonry => 4,
+            Stone::Cave => 5,
         }
+    }
+
+    /// Whether it is natural rock: stalactites hang from it.
+    fn natural(self) -> bool {
+        !matches!(self, Stone::Timbered | Stone::Masonry)
     }
 
     /// Texture coordinates of point `p` of a face of its rock whose normal
@@ -241,6 +285,9 @@ impl Stone {
                 };
                 Vec2::new(round / (2.0 * ROCK_TILE), -p.y / STRATA_TILE)
             }
+            // Blocks laid in courses, up the walls and over the vaults.
+            Stone::Masonry if normal.y.abs() > 0.7 => Vec2::new(p.x, p.z) / MASONRY_TILE,
+            Stone::Masonry => Vec2::new(round, -p.y) / MASONRY_TILE,
             _ if normal.y.abs() > 0.7 => Vec2::new(p.x, p.z) / ROCK_TILE,
             _ => Vec2::new(round, -p.y) / ROCK_TILE,
         }
@@ -256,6 +303,9 @@ fn rock_material(stone: Stone, textures: &WorldTextures) -> StandardMaterial {
         Stone::Sandstone => (Color::srgb(1.0, 0.9, 0.82), &textures.strata, 0.95),
         Stone::Slate => (Color::srgb(0.5, 0.52, 0.6), &textures.rock, 0.85),
         Stone::Clay => (Color::srgb(0.95, 0.7, 0.4), &textures.rock, 1.0),
+        // Dressed grey blocks; and grey granite, as the mountain's.
+        Stone::Masonry => (Color::srgb(0.82, 0.82, 0.86), &textures.wall, 0.9),
+        Stone::Cave => (Color::srgb(0.9, 0.9, 0.94), &textures.granite, 0.9),
     };
     StandardMaterial {
         base_color: base,
@@ -277,6 +327,21 @@ pub fn stone_at(halls: &[Hall], lap: f32, point: Vec2, along: f32) -> Stone {
         .map_or(Stone::Timbered, |hall| hall.stone)
 }
 
+/// How much wider than the road a mine's excavation, or Moria's, is `along`
+/// a lap of `lap` metres, either side (m): as wide as each of its halls,
+/// blending from one to the next as their roofs do (see [`Hall::width`]).
+pub fn excavation_width(halls: &[Hall], lap: f32, along: f32) -> f32 {
+    let signed = |from: f32, to: f32| (to - from + lap / 2.0).rem_euclid(lap) - lap / 2.0;
+    halls
+        .iter()
+        .map(|hall| {
+            let weight = smoothstep(-HALL_FADE, HALL_FADE, signed(hall.span.from, along))
+                * smoothstep(-HALL_FADE, HALL_FADE, signed(along, hall.span.to));
+            weight * hall.width
+        })
+        .sum()
+}
+
 /// The floor beside the roads of each stone: planks in the galleries,
 /// gravel and earth in the halls.
 fn floor_material(stone: Stone, textures: &WorldTextures) -> StandardMaterial {
@@ -285,6 +350,9 @@ fn floor_material(stone: Stone, textures: &WorldTextures) -> StandardMaterial {
         Stone::Sandstone => (Color::srgb(0.75, 0.42, 0.3), &textures.rock),
         Stone::Slate => (Color::srgb(0.22, 0.22, 0.25), &textures.rock),
         Stone::Clay => (Color::srgb(0.7, 0.5, 0.3), &textures.sand),
+        // Flagstones; and grey grit.
+        Stone::Masonry => (Color::srgb(0.5, 0.5, 0.54), &textures.wall),
+        Stone::Cave => (Color::srgb(0.42, 0.42, 0.45), &textures.granite),
     };
     StandardMaterial {
         base_color: base,
@@ -310,6 +378,9 @@ struct Spot {
     along: f32,
     /// Unit vector on the ground away from the centre line of that road.
     out: Vec2,
+    /// How far the walls of the excavation are from that centre line (m):
+    /// those of the road, and the hall's width past them.
+    half: f32,
 }
 
 impl Spot {
@@ -447,13 +518,15 @@ impl<'a> Cave<'a> {
         let into = self
             .signed(self.span.from, along)
             .min(self.signed(along, self.span.to));
+        let half = wall + self.width(along);
         Spot {
             road: nearest.road,
-            walls: nearest.distance - wall,
+            walls: nearest.distance - half,
             mouths: -into,
             floor: self.track.height_beside(&nearest),
             along,
             out: (point - nearest.point).try_normalize().unwrap_or(Vec2::X),
+            half,
         }
     }
 
@@ -477,6 +550,12 @@ impl<'a> Cave<'a> {
             (crown + (1.0 - hall) * GALLERY_CROWN) / weight.max(1.0),
             hall,
         )
+    }
+
+    /// How much wider than the road the excavation is `along` the lap, either
+    /// side (m; see [`Hall::width`]).
+    fn width(&self, along: f32) -> f32 {
+        excavation_width(self.halls, self.lap, along)
     }
 
     /// The stone at `point`, `along` the lap (see [`stone_at`]).
@@ -506,7 +585,7 @@ impl<'a> Cave<'a> {
         let crown = crown + rough * (2.0 * fbm(point / 21.0 + 5.0, 2) - 1.0);
         let lumps = 0.5 * rough * (2.0 * fbm(point / 6.0 + 11.0, 3) - 1.0)
             + 0.15 * rough * (2.0 * fbm(point / 1.7 + 2.0, 2) - 1.0);
-        let rise = arch(spot.depth() / WALL_DISTANCE);
+        let rise = arch(spot.depth() / spot.half.max(1.0));
         wall + (crown - wall) * rise + lumps * rise
     }
 
@@ -598,8 +677,16 @@ impl<'a> Cave<'a> {
             }
         }
         // A heavy timber set in each mouth, standing a little out of the
-        // rock.
+        // rock; but a mouth through masonry or natural rock is a gate of its
+        // own.
         for (index, outward) in ends {
+            let along = index as f32 * step;
+            if matches!(
+                self.stone(track.centerline()[index], along),
+                Stone::Masonry | Stone::Cave
+            ) {
+                continue;
+            }
             let (_, heading) = track.pose_at(index);
             let ahead = crate::geometry::forward(heading);
             let push = Vec3::new(ahead.x, 0.0, ahead.y) * outward * 0.6;
@@ -623,11 +710,18 @@ impl<'a> Cave<'a> {
                 } else {
                     -1.0
                 };
-                let foot = line.offset_point(index, side * (line.wall_at(index) - 0.45));
+                // By the walls of the road: in a hall wider than it, on its
+                // low wall.
+                let wide = self.width(along);
+                let out = if wide > 0.5 { 0.0 } else { -0.45 };
+                let foot = line.offset_point(index, side * (line.wall_at(index) + out));
                 let spot = self.spot(foot);
-                if spot.road != road || !(-1.0..0.0).contains(&spot.walls) || spot.mouths > -6.0 {
+                let from_wall = spot.walls + wide;
+                if spot.road != road || !(-1.0..0.05).contains(&from_wall) || spot.mouths > -6.0 {
                     continue;
                 }
+                // Dwarves' lamps stand on posts of iron.
+                let iron = matches!(self.stone(ground, along), Stone::Masonry | Stone::Cave);
                 let inward = -spot.out;
                 let at = |reach: f32, height: f32| {
                     let ground = foot + inward * reach;
@@ -643,10 +737,13 @@ impl<'a> Cave<'a> {
                     LANTERN_HEIGHT + 0.8
                 };
                 let lantern = top - 1.0;
-                parts
-                    .timber
-                    .beam(at(0.0, -0.2), at(0.0, top), 0.28, 0.28, Color::WHITE);
-                parts.timber.beam(
+                let post = if iron {
+                    &mut parts.iron
+                } else {
+                    &mut parts.timber
+                };
+                post.beam(at(0.0, -0.2), at(0.0, top), 0.28, 0.28, Color::WHITE);
+                post.beam(
                     at(0.0, top - 0.2),
                     at(0.85, top - 0.2),
                     0.18,
@@ -871,7 +968,8 @@ impl<'a> Cave<'a> {
     /// Where on the ground the excavation is: the box round its roads and
     /// their walls.
     fn bounds(&self) -> (Vec2, Vec2) {
-        let reach = WALL_DISTANCE + LEAN + 2.0 * SPACING;
+        let wide = self.halls.iter().map(|hall| hall.width).fold(0.0, f32::max);
+        let reach = WALL_DISTANCE + wide + LEAN + 2.0 * SPACING;
         let mut points: Vec<Vec2> = (0..=self.count)
             .map(|k| self.track.centerline()[(self.first + k) % self.track.sample_count()])
             .collect();
@@ -882,6 +980,129 @@ impl<'a> Cave<'a> {
             (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY)),
             |(min, max), &p| (min.min(p - reach), max.max(p + reach)),
         )
+    }
+
+    /// Where a hall is wider than the road, a low wall of its stone along
+    /// either side of the road, just past the walls the bikes run into; and
+    /// in the widest halls of masonry, a row of great square pillars either
+    /// side, from the floor up into the roof.
+    fn parapets_and_pillars(&self, painter: &Painter, parts: &mut Parts) {
+        let track = self.track;
+        let n = track.sample_count();
+        let step = track.step_length();
+        let (first, last) = (track.index_at(self.span.from), track.index_at(self.span.to));
+        let count = (last + n - first) % n;
+        let mut since_pillars = PILLAR_EVERY / 2.0;
+        for k in 0..count {
+            let (i, j) = ((first + k) % n, (first + k + 1) % n);
+            let along = i as f32 * step;
+            let wide = self.width(along).min(self.width(j as f32 * step));
+            if wide < 0.5 {
+                continue;
+            }
+            let stone = self.stone(track.centerline()[i], along);
+            for side in [-1.0, 1.0] {
+                let inner = |index: usize| side * (track.wall_at(index) + PARAPET_OUT);
+                let outer = |index: usize| inner(index) + side * PARAPET_THICK;
+                let at = |index: usize, lateral: f32, height: f32| {
+                    let ground = track.offset_point(index, lateral);
+                    Vec3::new(
+                        ground.x,
+                        track.surface_point(index, 0.0).y + height,
+                        ground.y,
+                    )
+                };
+                let base = [
+                    at(i, inner(i), 0.0),
+                    at(j, inner(j), 0.0),
+                    at(j, outer(j), 0.0),
+                    at(i, outer(i), 0.0),
+                ];
+                self.block(
+                    painter,
+                    &mut parts.rock[stone.index()],
+                    stone,
+                    base,
+                    -0.5,
+                    PARAPET_HEIGHT,
+                );
+            }
+            // The pillars.
+            since_pillars += step;
+            if stone != Stone::Masonry || wide < PILLARS_FROM || since_pillars < PILLAR_EVERY {
+                continue;
+            }
+            since_pillars = 0.0;
+            for side in [-1.0, 1.0] {
+                let middle = track.offset_point(i, side * (track.wall_at(i) + wide / 2.0));
+                let spot = self.spot(middle);
+                let roof = spot.floor + self.roof(middle, &spot);
+                let (ahead, out) = {
+                    let (_, heading) = track.pose_at(i);
+                    let ahead = crate::geometry::forward(heading);
+                    (ahead, Vec2::new(-ahead.y, ahead.x))
+                };
+                let half = PILLAR_THICK / 2.0;
+                let corner = |a: f32, o: f32| {
+                    let p = middle + ahead * a * half + out * o * half;
+                    Vec3::new(p.x, spot.floor, p.y)
+                };
+                let base = [
+                    corner(-1.0, -1.0),
+                    corner(1.0, -1.0),
+                    corner(1.0, 1.0),
+                    corner(-1.0, 1.0),
+                ];
+                self.block(
+                    painter,
+                    &mut parts.rock[Stone::Masonry.index()],
+                    Stone::Masonry,
+                    base,
+                    -FOOT,
+                    roof - spot.floor + 3.0,
+                );
+            }
+        }
+    }
+
+    /// A block of `stone` on the four corners of `base` (round it either
+    /// way), from `bottom` to `top` over them (m): its four sides and its
+    /// top, lit as the rock.
+    fn block(
+        &self,
+        painter: &Painter,
+        builder: &mut MeshBuilder,
+        stone: Stone,
+        base: [Vec3; 4],
+        bottom: f32,
+        top: f32,
+    ) {
+        let middle = base.iter().copied().sum::<Vec3>() / 4.0;
+        let floor = middle.y;
+        let up = |p: Vec3, h: f32| p + Vec3::Y * h;
+        for e in 0..4 {
+            let (a, b) = (base[e], base[(e + 1) % 4]);
+            let outward = ((a + b) / 2.0 - middle) * Vec3::new(1.0, 0.0, 1.0);
+            for corners in [
+                [up(a, bottom), up(b, bottom), up(b, top)],
+                [up(a, bottom), up(b, top), up(a, top)],
+            ] {
+                painter.triangle(
+                    builder,
+                    corners.map(|p| (p, floor)),
+                    outward,
+                    |p, normal| stone.uv(p, normal),
+                );
+            }
+        }
+        for corners in [[base[0], base[1], base[2]], [base[0], base[2], base[3]]] {
+            painter.triangle(
+                builder,
+                corners.map(|p| (up(p, top), floor)),
+                Vec3::Y,
+                |p, normal| stone.uv(p, normal),
+            );
+        }
     }
 
     /// Stalactites hanging from the roofs of the halls, here and there.
@@ -899,10 +1120,7 @@ impl<'a> Cave<'a> {
                 + (Vec2::new(cx as f32, cz as f32) + Vec2::new(chance(1), chance(2)))
                     * STALACTITE_CELL;
             let spot = self.spot(at);
-            if spot.edge() > -2.0
-                || spot.depth() < 3.5
-                || self.stone(at, spot.along) == Stone::Timbered
-            {
+            if spot.edge() > -2.0 || spot.depth() < 3.5 || !self.stone(at, spot.along).natural() {
                 continue;
             }
             let roof = spot.floor + self.roof(at, &spot);
@@ -1045,8 +1263,15 @@ impl<'a> Cave<'a> {
         let count = (last + n - first) % n;
         let indices: Vec<usize> = (0..=count).map(|k| (first + k) % n).collect();
         // How far to either side of the lap the rock reaches at each point
-        // of it, for the roads off it too.
-        let mut reach = vec![(-SHELL, SHELL); indices.len()];
+        // of it (past a hall wider than the road, as much further), for the
+        // roads off it too.
+        let mut reach: Vec<(f32, f32)> = indices
+            .iter()
+            .map(|&index| {
+                let shell = SHELL + self.width(index as f32 * track.step_length());
+                (-shell, shell)
+            })
+            .collect();
         for &road in &self.branches {
             for &point in track.road(road).centerline() {
                 let on = track.nearest_among(point, first, count + 1);
@@ -1143,7 +1368,7 @@ impl<'a> Cave<'a> {
             let ahead = crate::geometry::forward(heading);
             let facing = Vec3::new(ahead.x, 0.0, ahead.y) * outward;
             let (low, high) = reach[k];
-            let wall = WALL_DISTANCE - 0.05;
+            let wall = track.wall_at(index) + self.width(index as f32 * track.step_length()) - 0.05;
             let mut laterals = vec![low, -wall - 0.01, wall + 0.01, high];
             laterals.extend((0..=(2.0 * wall) as usize).map(|m| -wall + m as f32));
             laterals.extend([wall]);
@@ -1404,8 +1629,10 @@ mod tests {
         cave.veins(&mut parts);
         cave.planked_branches(&painter, &mut parts);
         cave.outside(&terrain, &mut parts);
+        let halls = scenery.mine.as_ref().unwrap().halls;
         for (stone, rock) in Stone::ALL.iter().zip(&parts.rock) {
-            assert!(!rock.is_empty(), "no {stone:?}");
+            let used = *stone == Stone::Timbered || halls.iter().any(|hall| hall.stone == *stone);
+            assert_eq!(rock.is_empty(), !used, "{stone:?}");
         }
         assert!(!parts.gold.is_empty() && !parts.planks.is_empty() && !parts.outside.is_empty());
         // Brighter by the lanterns than between them, and high up.
