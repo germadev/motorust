@@ -26,7 +26,7 @@ use super::props::Footprint;
 use super::quads::MeshBuilder;
 use super::scenery::{MiddleEarthModel, Prop, Scenery, Spot};
 use super::terrain::{GRASS_TILE, SEA_LEVEL, Terrain};
-use crate::geometry::smoothstep;
+use crate::geometry::{fbm, smoothstep};
 use crate::track::Track;
 
 /// The mill's wheel and the chimney over a hobbit hole, by their names in
@@ -55,18 +55,40 @@ const WADE: f32 = 1.2;
 /// stand (m), past the walls: the ground under them sets its foot.
 const GATE_TOWERS: f32 = 14.5;
 
-/// The bank a hobbit hole is set into: how high it rises over the top of
-/// its front (m), how far it reaches either side of it (m), behind it (m)
-/// and, either side of it, in front of it (m); how far its edge sinks into
-/// the ground at least (m), and how far under the ground round it, where
-/// that falls away (m); and how finely its mesh is cut (m).
-const BANK_OVER: f32 = 0.7;
-const BANK_SIDES: f32 = 7.0;
-const BANK_BEHIND: f32 = 13.0;
-const BANK_AHEAD: f32 = 6.0;
+/// The bank a hobbit hole is set into, as the hillside it is dug into: how
+/// high it rises over the top of its front (m), how far it reaches either
+/// side of it (m) and behind it (m), wide and low so that the banks of the
+/// holes in a row run into one another; how far past its front it comes
+/// either side of it, framing it flush as a cut in the hill does (m); how
+/// far its edge sinks into the ground at least (m), and how far under the
+/// ground round it, where that falls away (m); and how finely its mesh is
+/// cut (m).
+const BANK_OVER: f32 = 0.5;
+const BANK_SIDES: f32 = 10.0;
+const BANK_BEHIND: f32 = 14.0;
+const BANK_WING: f32 = 1.5;
 const BANK_SINK: f32 = 2.5;
 const BANK_UNDER: f32 = 0.3;
 const BANK_STEP: f32 = 0.5;
+/// Before each hole, its garden: a low fence of weathered pickets round it,
+/// this far out either side of its front and this far before it (m), posts
+/// this far apart (m), so high (m), and a gap for its gate in the middle
+/// (rad either side).
+const GARDEN_SIDE: f32 = 1.2;
+const GARDEN_DEPTH: f32 = 5.5;
+const PICKET_EVERY: f32 = 0.55;
+const PICKET_HEIGHT: f32 = 0.9;
+const GARDEN_GATE: f32 = 0.22;
+const PICKET_WOOD: Color = Color::srgb(0.66, 0.6, 0.5);
+/// The footpaths of bare earth between the holes and to the road: how wide
+/// (m), cut in slices so long (m), over the ground by so much (m), the
+/// sand's grain tinted earth brown, and how far trees and flowers keep off
+/// their middle (m).
+const PATH_WIDTH: f32 = 2.2;
+const PATH_STEP: f32 = 1.0;
+const PATH_OVER: f32 = 0.07;
+const PATH_EARTH: Color = Color::srgb(0.5, 0.43, 0.36);
+const PATH_CLEAR: f32 = 2.5;
 /// On the banks, as in Hobbiton: washing hung out on a line between two
 /// posts, and bunting strung between two poles, every other hole one or
 /// the other; the colours of the clothes and of the flags.
@@ -202,11 +224,16 @@ fn footing(model: MiddleEarthModel) -> Footing {
 }
 
 /// Whether a prop is one of the landmarks, to be seen from afar: no tree
-/// stands between it and the road coming at it.
+/// stands between it and the road coming at it. The hobbit holes too, high
+/// across the water from the road.
 fn landmark(model: MiddleEarthModel) -> bool {
     matches!(
         model,
-        MiddleEarthModel::BagEnd
+        MiddleEarthModel::HobbitDoorGreen
+            | MiddleEarthModel::HobbitDoorYellow
+            | MiddleEarthModel::HobbitDoorRed
+            | MiddleEarthModel::HobbitDoorBlue
+            | MiddleEarthModel::BagEnd
             | MiddleEarthModel::BagEndOak
             | MiddleEarthModel::PartyTree
             | MiddleEarthModel::Mill
@@ -304,6 +331,17 @@ pub fn spawn_middle_earth(
             MeshMaterial3d(material),
         ));
     }
+    if let Some(paths) = path_mesh(middle_earth.paths, terrain) {
+        // Bare earth: the sand's grain, tinted brown by the vertices.
+        let material = assets.materials.add(StandardMaterial {
+            base_color_texture: Some(assets.textures.sand.clone()),
+            perceptual_roughness: 0.95,
+            reflectance: 0.12,
+            ..default()
+        });
+        world.spawn((Mesh3d(assets.meshes.add(paths)), MeshMaterial3d(material)));
+    }
+    taken.extend(path_footprints(middle_earth.paths));
     spawn_petals(world, track, terrain, middle_earth.petals, assets);
     let meadows = spawn_flowers(
         world,
@@ -436,8 +474,8 @@ fn spawn_prop(
     }
     // A hobbit hole takes the ground of its bank.
     let (middle, reach) = if footing(prop.model) == Footing::Bank {
-        let middle = bank.back + (BANK_AHEAD - BANK_BEHIND) / 2.0;
-        let reach = (bank.half_width + BANK_SIDES).max((BANK_AHEAD + BANK_BEHIND) / 2.0);
+        let middle = bank.back + (bank.ahead() - BANK_BEHIND) / 2.0;
+        let reach = (bank.half_width + BANK_SIDES).max((bank.ahead() + BANK_BEHIND) / 2.0);
         (Vec3::new(0.0, 0.0, middle), reach)
     } else {
         ((low + high) / 2.0, reach)
@@ -445,6 +483,72 @@ fn spawn_prop(
     let turned = transform.translation - Vec3::new(position.x, transform.translation.y, position.y)
         + rotation * Vec3::new(middle.x, 0.0, middle.z);
     (position + Vec2::new(turned.x, turned.z), reach)
+}
+
+/// The points of a footpath every `PATH_STEP` along it, from point to point.
+fn path_samples(path: &[Vec2]) -> Vec<Vec2> {
+    let mut samples = Vec::new();
+    for pair in path.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let steps = (a.distance(b) / PATH_STEP).ceil().max(1.0) as usize;
+        samples.extend((0..steps).map(|k| a.lerp(b, k as f32 / steps as f32)));
+    }
+    samples.extend(path.last().copied());
+    samples
+}
+
+/// The footpaths as one mesh: a strip of earth along each, in slices across
+/// it of three points (its edges and its middle) each on the ground there,
+/// a little over it; its colour varying along it as bare earth does.
+fn path_mesh(paths: &[&[Vec2]], terrain: &Terrain) -> Option<Mesh> {
+    let mut mesh = MeshBuilder::default();
+    for path in paths {
+        let samples = path_samples(path);
+        let mut along = 0.0;
+        let slices: Vec<[Vec3; 3]> = (0..samples.len())
+            .map(|k| {
+                let (before, after) = (
+                    samples[k.saturating_sub(1)],
+                    samples[(k + 1).min(samples.len() - 1)],
+                );
+                let across = (after - before).normalize_or_zero().perp() * PATH_WIDTH / 2.0;
+                [-1.0, 0.0, 1.0].map(|side| {
+                    let p = samples[k] + across * side;
+                    Vec3::new(p.x, terrain.height(p) + PATH_OVER, p.y)
+                })
+            })
+            .collect();
+        for (k, pair) in slices.windows(2).enumerate() {
+            let step = samples[k].distance(samples[k + 1]);
+            let (v0, v1) = (along / 4.0, (along + step) / 4.0);
+            along += step;
+            let shade = 0.86 + 0.2 * fbm(samples[k] / 6.0, 2);
+            let earth = Color::LinearRgba(PATH_EARTH.to_linear() * shade);
+            for (i, u) in [(0, 0.0), (1, 0.275)] {
+                mesh.quad(
+                    [
+                        (pair[0][i], Vec2::new(u, v0)),
+                        (pair[0][i + 1], Vec2::new(u + 0.275, v0)),
+                        (pair[1][i + 1], Vec2::new(u + 0.275, v1)),
+                        (pair[1][i], Vec2::new(u, v1)),
+                    ],
+                    Vec3::Y,
+                    earth,
+                );
+            }
+        }
+    }
+    (!mesh.is_empty()).then(|| mesh.build())
+}
+
+/// The ground the footpaths take, for the trees and the flowers to keep
+/// off: circles along them.
+fn path_footprints(paths: &[&[Vec2]]) -> Vec<Footprint> {
+    paths
+        .iter()
+        .flat_map(|path| path_samples(path).into_iter().step_by(2))
+        .map(|at| (at, PATH_CLEAR))
+        .collect()
 }
 
 /// The grassy bank a hobbit hole is set into, in its own frame (its front
@@ -456,8 +560,10 @@ fn spawn_prop(
 struct Bank {
     /// How far the front reaches either side of its middle (m).
     half_width: f32,
-    /// How far back its back stands (m, negative: towards -Z).
+    /// How far back its back stands (m, negative: towards -Z), and how far
+    /// forward its front (m).
     back: f32,
+    front: f32,
     /// How high the top of the bank is (m).
     top: f32,
     /// How far under its foot its edge is (m).
@@ -471,9 +577,16 @@ impl Bank {
         Self {
             half_width: high.x.max(-low.x),
             back: low.z,
+            front: high.z,
             top: high.y + BANK_OVER,
             sink: BANK_SINK,
         }
+    }
+
+    /// How far forward of its back it reaches either side of its front: to
+    /// just past the front.
+    fn ahead(&self) -> f32 {
+        self.front - self.back + BANK_WING
     }
 
     /// The same bank with its foot at `base`, turned by `rotation`, its edge
@@ -483,7 +596,7 @@ impl Bank {
         let (x0, z0, z1) = (
             self.half_width + BANK_SIDES,
             self.back - BANK_BEHIND,
-            self.back + BANK_AHEAD,
+            self.back + self.ahead(),
         );
         let across = (2.0 * x0 / BANK_STEP).ceil() as usize;
         let deep = (z1 - z0) / BANK_STEP;
@@ -510,10 +623,11 @@ impl Bank {
     fn height(&self, at: Vec2) -> f32 {
         let across = at.x.abs() / (self.half_width + BANK_SIDES);
         let behind = self.back - at.y;
-        // Either side of the front the bank comes forward; over it, it
-        // stops at its back.
+        // Either side of the front the bank comes forward, flush with it;
+        // over it, it stops at its back.
         let ahead = 0.15
-            + BANK_AHEAD * smoothstep(self.half_width - 0.3, self.half_width + 1.5, at.x.abs());
+            + (self.ahead() - 0.15)
+                * smoothstep(self.half_width - 0.3, self.half_width + 0.6, at.x.abs());
         let along = if behind >= 0.0 {
             behind / BANK_BEHIND
         } else {
@@ -548,7 +662,7 @@ impl BankMesh {
         self.count += 1;
         let x0 = -(bank.half_width + BANK_SIDES);
         let z0 = bank.back - BANK_BEHIND;
-        let z1 = bank.back + BANK_AHEAD;
+        let z1 = bank.back + bank.ahead();
         let columns = ((-2.0 * x0) / BANK_STEP).ceil() as usize + 1;
         let rows = ((z1 - z0) / BANK_STEP).ceil() as usize + 1;
         let start = self.positions.len() as u32;
@@ -645,6 +759,44 @@ impl BankMesh {
                     facing,
                     FLAGS[(k + self.count) % FLAGS.len()],
                 );
+            }
+        }
+        self.garden(bank, base, rotation, terrain);
+    }
+
+    /// Before the hole, its garden's fence: pickets on a half oval from
+    /// either side of its front round before it, rails between them, and a
+    /// gap for the gate in the middle, on the ground.
+    fn garden(&mut self, bank: &Bank, base: Vec3, rotation: Quat, terrain: &Terrain) {
+        let (wide, deep) = (bank.half_width + GARDEN_SIDE, GARDEN_DEPTH);
+        let around = std::f32::consts::PI * (wide + deep) / 2.0;
+        let count = (around / PICKET_EVERY).round() as usize;
+        let at = |angle: f32, up: f32| {
+            let local = Vec3::new(wide * angle.sin(), 0.0, bank.front + deep * angle.cos());
+            let p = base + rotation * local;
+            Vec3::new(p.x, terrain.height(Vec2::new(p.x, p.z)) + up, p.z)
+        };
+        let angles: Vec<f32> = (0..=count)
+            .map(|k| -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * k as f32 / count as f32)
+            .filter(|angle| angle.abs() > GARDEN_GATE)
+            .collect();
+        for &angle in &angles {
+            self.dressing.beam(
+                at(angle, -0.2),
+                at(angle, PICKET_HEIGHT),
+                0.07,
+                0.07,
+                PICKET_WOOD,
+            );
+        }
+        for pair in angles.windows(2) {
+            // No rail across the gate.
+            if pair[0] < 0.0 && pair[1] > 0.0 {
+                continue;
+            }
+            for up in [0.3, 0.7] {
+                self.dressing
+                    .beam(at(pair[0], up), at(pair[1], up), 0.04, 0.05, PICKET_WOOD);
             }
         }
     }
@@ -837,6 +989,7 @@ mod tests {
         let bank = Bank {
             half_width: 3.5,
             back: -0.5,
+            front: 0.5,
             top: 4.7,
             sink: BANK_SINK,
         };
@@ -845,14 +998,49 @@ mod tests {
         assert!((bank.height(Vec2::new(0.0, -0.5)) - 4.7).abs() < 1e-3);
         assert!(bank.height(Vec2::new(0.0, 0.5)) < 0.0);
         assert!(bank.height(Vec2::new(2.0, 1.5)) < 0.0);
-        // Either side of it the bank comes forward past its front, as high
-        // as over it.
-        assert!(bank.height(Vec2::new(5.5, 1.0)) > 4.0);
-        assert!(bank.height(Vec2::new(3.8, 0.5)) > 3.0);
+        // Either side of it, the bank as high as over it, flush with its
+        // front, as a cut in a hillside; and no further forward than just
+        // past it, in no bulge either side of the door.
+        assert!(bank.height(Vec2::new(4.2, 0.5)) > 4.5);
+        assert!(bank.height(Vec2::new(4.5, 0.5 + BANK_WING + 0.2)) < 0.0);
+        assert!(bank.height(Vec2::new(8.0, 3.0)) < 0.0);
         // Behind it, and to its sides, it slopes down into the ground.
         assert!(bank.height(Vec2::new(0.0, -6.0)) > 4.0);
         assert!((bank.height(Vec2::new(0.0, -0.5 - BANK_BEHIND)) + BANK_SINK).abs() < 1e-3);
         assert!((bank.height(Vec2::new(3.5 + BANK_SIDES, -0.5)) + BANK_SINK).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_footpaths_lie_on_the_ground_off_the_roads_and_out_of_the_water() {
+        for (circuit, track, terrain) in &in_middle_earth() {
+            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            assert!(!middle_earth.paths.is_empty(), "{}", circuit.name);
+            for path in middle_earth.paths {
+                for at in path_samples(path) {
+                    let road = track.nearest(at).distance;
+                    assert!(
+                        road > WALL_DISTANCE + 1.5,
+                        "{}: a path at {at}, {road} m from a road",
+                        circuit.name
+                    );
+                    assert!(
+                        terrain.height(at) > SEA_LEVEL + 0.3,
+                        "{}: a path at {at} in the water",
+                        circuit.name
+                    );
+                }
+            }
+            let mesh = path_mesh(middle_earth.paths, terrain).unwrap();
+            for p in positions(&mesh) {
+                let ground = terrain.height(Vec2::new(p[0], p[2]));
+                assert!(
+                    (p[1] - ground - PATH_OVER).abs() < 1e-3,
+                    "{}: a path {} m over the ground",
+                    circuit.name,
+                    p[1] - ground
+                );
+            }
+        }
     }
 
     #[test]
@@ -934,12 +1122,18 @@ mod tests {
                 let (position, rotation) = spot(track, prop);
                 let base = Vec3::new(position.x, foot, position.y);
                 let bank = Bank::of(low, high).sunk(base, rotation, terrain);
-                assert!(bank.sink < 8.0, "{}: {:?}", circuit.name, prop.model);
+                assert!(
+                    bank.sink < 12.0,
+                    "{}: {:?}'s bank sinks {} m",
+                    circuit.name,
+                    prop.model,
+                    bank.sink
+                );
                 // Round its edge, its foot is in the ground: no bank floats.
                 let x0 = bank.half_width + BANK_SIDES;
                 for k in 0..=40 {
                     let x = -x0 + 2.0 * x0 * k as f32 / 40.0;
-                    for z in [bank.back - BANK_BEHIND, bank.back + BANK_AHEAD] {
+                    for z in [bank.back - BANK_BEHIND, bank.back + bank.ahead()] {
                         let local = Vec3::new(x, bank.height(Vec2::new(x, z)), z);
                         let world = base + rotation * local;
                         let ground = terrain.height(Vec2::new(world.x, world.z));

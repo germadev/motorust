@@ -881,6 +881,9 @@ pub struct MiddleEarth {
     /// The halls of Moria: where there are, the tunnels are excavations, as
     /// a mine's, through them (see [`Scenery::excavation`]).
     pub halls: &'static [Hall],
+    /// Footpaths of bare earth, as between the hobbit holes: each a line of
+    /// points (x, z) over the ground.
+    pub paths: &'static [&'static [Vec2]],
 }
 
 /// One of the props of Middle-earth, made with Meshy (see
