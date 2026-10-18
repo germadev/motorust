@@ -226,6 +226,33 @@ impl Palette {
                 fog: FOG,
                 grade: Grade::NONE,
             },
+            // The airless sky of the Moon: nearly black overhead, deep indigo
+            // above the horizon and dark slate-blue at the horizon; fierce
+            // white sunlight with cool blue-grey earthshine in the shadows;
+            // no clouds, a far horizon haze, and crisp high-contrast grading.
+            SkyStyle::Space => Self {
+                zenith: Color::srgb(0.01, 0.02, 0.11),
+                above_horizon: Color::srgb(0.04, 0.06, 0.12),
+                horizon: Color::srgb(0.09, 0.10, 0.14),
+                glow: 0.25,
+                glow_color: Color::srgb(0.55, 0.72, 1.0),
+                sun_azimuth: 0.32 * std::f32::consts::PI,
+                sun_elevation: 0.42,
+                sun_disc: Color::WHITE,
+                sunlight: Color::srgb(0.96, 0.98, 1.0),
+                sunlight_strength: 1.25,
+                ambient: Color::srgb(0.45, 0.58, 0.85),
+                ambient_brightness: 380.0,
+                clouds: Color::srgba(0.65, 0.75, 0.95, 0.0),
+                fog: (1400.0, 5600.0),
+                grade: Grade {
+                    saturation: 0.9,
+                    contrast: 1.18,
+                    exposure: 0.1,
+                    warmth: -0.004,
+                    highlight_saturation: 0.85,
+                },
+            },
         }
     }
 
@@ -261,6 +288,9 @@ pub struct SkyParts {
     dome: Handle<Mesh>,
     sun: Entity,
     sun_material: Handle<StandardMaterial>,
+    space_sky: Entity,
+    earth_body: Entity,
+    moon_body: Entity,
     /// Each cloud's material and how opaque it is.
     clouds: Vec<(Handle<StandardMaterial>, f32)>,
 }
@@ -354,6 +384,9 @@ pub fn spawn_sky(
     };
     let dome_material = flat(None, AlphaMode::Opaque, Color::WHITE);
     let sun_material = flat(Some(sun_image()), AlphaMode::Blend, Color::WHITE);
+    let earth_material = flat(Some(earth_image()), AlphaMode::Blend, Color::WHITE);
+    let moon_material = flat(Some(moon_image()), AlphaMode::Blend, Color::WHITE);
+    let star_material = flat(None, AlphaMode::Opaque, Color::WHITE);
     let cloud_images: Vec<Handle<Image>> = (0..CLOUD_SHAPES)
         .map(|shape| images.add(cloud_image(shape)))
         .collect();
@@ -399,10 +432,14 @@ pub fn spawn_sky(
         .map(|(image, opacity, at, size)| (cloud(image, opacity), opacity, at, size))
         .collect();
     let quad = meshes.add(Rectangle::new(1.0, 1.0));
+    let stars = meshes.add(stars_mesh());
     let palette = Palette::of(SkyStyle::Day);
     let dome = meshes.add(dome(&palette));
 
     let mut sun = Entity::PLACEHOLDER;
+    let mut space_sky = Entity::PLACEHOLDER;
+    let mut earth_body = Entity::PLACEHOLDER;
+    let mut moon_body = Entity::PLACEHOLDER;
     commands
         .spawn((
             Sky,
@@ -421,6 +458,41 @@ pub fn spawn_sky(
                     facing_the_camera(at, Vec2::splat(SUN_SIZE)),
                     NotShadowCaster,
                 ))
+                .id();
+            space_sky = sky
+                .spawn((Transform::default(), Visibility::Hidden))
+                .with_children(|space| {
+                    space.spawn((
+                        Mesh3d(stars),
+                        MeshMaterial3d(star_material),
+                        Transform::default(),
+                        NotShadowCaster,
+                    ));
+                    // Seen from Earth (the start straight and mountain ridges): the Moon.
+                    let moon_at =
+                        direction(1.88 * std::f32::consts::PI, 0.44) * (CLOUD_DISTANCE * 0.94);
+                    moon_body = space
+                        .spawn((
+                            Mesh3d(quad.clone()),
+                            MeshMaterial3d(moon_material),
+                            facing_the_camera(moon_at, Vec2::splat(880.0)),
+                            Visibility::Inherited,
+                            NotShadowCaster,
+                        ))
+                        .id();
+                    // Seen from the Moon (after crossing the portal): the Earth.
+                    let earth_at =
+                        direction(0.82 * std::f32::consts::PI, 0.44) * (CLOUD_DISTANCE * 0.94);
+                    earth_body = space
+                        .spawn((
+                            Mesh3d(quad.clone()),
+                            MeshMaterial3d(earth_material),
+                            facing_the_camera(earth_at, Vec2::splat(940.0)),
+                            Visibility::Hidden,
+                            NotShadowCaster,
+                        ))
+                        .id();
+                })
                 .id();
             sky.spawn((Clouds, Transform::default(), Visibility::default()))
                 .with_children(|sky| {
@@ -442,6 +514,9 @@ pub fn spawn_sky(
         dome,
         sun,
         sun_material,
+        space_sky,
+        earth_body,
+        moon_body,
         clouds: clouds
             .into_iter()
             .map(|(material, opacity, ..)| (material, opacity))
@@ -470,6 +545,7 @@ pub fn light_the_sky(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut transforms: Query<&mut Transform>,
+    mut visibilities: Query<&mut Visibility>,
     clouds: Query<(Entity, &CloudQuad)>,
     mut sunlight: Query<(Entity, &mut DirectionalLight), With<Sunlight>>,
     ambient: Option<ResMut<GlobalAmbientLight>>,
@@ -478,7 +554,8 @@ pub fn light_the_sky(
     let Some(parts) = parts else {
         return;
     };
-    let palette = Palette::of(current.get().scenery.sky);
+    let style = current.get().scenery.sky;
+    let palette = Palette::of(style);
     let changed = current.is_changed() || parts.is_added();
     for mut fog in &mut fogs {
         if changed || fog.is_added() {
@@ -504,6 +581,13 @@ pub fn light_the_sky(
     if let Some(mut mesh) = meshes.get_mut(&parts.dome) {
         *mesh = dome(&palette);
     }
+    if let Ok(mut visibility) = visibilities.get_mut(parts.space_sky) {
+        *visibility = if style == SkyStyle::Space {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
     let sun = palette.sun_direction();
     if let Ok(mut transform) = transforms.get_mut(parts.sun) {
         *transform = facing_the_camera(sun * CLOUD_DISTANCE, Vec2::splat(SUN_SIZE));
@@ -511,9 +595,10 @@ pub fn light_the_sky(
     if let Some(mut material) = materials.get_mut(&parts.sun_material) {
         material.base_color = palette.sun_disc;
     }
+    let cloud_alpha = palette.clouds.alpha();
     for (material, opacity) in &parts.clouds {
         if let Some(mut material) = materials.get_mut(material) {
-            material.base_color = palette.clouds.with_alpha(*opacity);
+            material.base_color = palette.clouds.with_alpha(*opacity * cloud_alpha);
         }
     }
     for (entity, cloud) in &clouds {
@@ -996,6 +1081,190 @@ fn sun_image() -> Image {
     smooth_image(size, size, data)
 }
 
+/// The Earth seen from the Moon: a blue-ocean sphere with continents,
+/// swirling white cloud bands, a soft blue atmospheric limb, and a crescent
+/// terminator lit from the sun's side.
+fn earth_image() -> Image {
+    let size = 256u32;
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+    let sun = Vec3::new(0.68, 0.36, 0.64).normalize();
+    for y in 0..size {
+        for x in 0..size {
+            let p = (Vec2::new(x as f32, y as f32) + 0.5) / size as f32 * 2.0 - 1.0;
+            let r = p.length();
+            let radius = 0.82;
+            if r > 0.98 {
+                data.extend([0, 0, 0, 0]);
+                continue;
+            }
+            if r > radius {
+                let halo = (1.0 - (r - radius) / (0.98 - radius))
+                    .clamp(0.0, 1.0)
+                    .powi(3)
+                    * 0.55;
+                data.extend([85, 165, 255, (halo * 255.0).round() as u8]);
+                continue;
+            }
+            let u = p / radius;
+            let z = (1.0 - u.length_squared()).max(0.0).sqrt();
+            let normal = Vec3::new(u.x, -u.y, z).normalize();
+            let lat_lon = Vec2::new(normal.x.atan2(normal.z) * 1.4, normal.y * 2.2);
+            let continent = fbm(lat_lon * 1.6 + Vec2::new(3.1, 1.7), 4);
+            let desert = fbm(lat_lon * 2.8 + Vec2::new(9.2, 4.3), 2);
+            let ocean = [0.07f32, 0.28, 0.68];
+            let green = [0.16f32, 0.48, 0.24];
+            let ochre = [0.68f32, 0.58, 0.36];
+            let land_mask = smoothstep(0.49, 0.55, continent);
+            let land: [f32; 3] =
+                std::array::from_fn(|i| green[i].lerp(ochre[i], smoothstep(0.45, 0.7, desert)));
+            let polar = smoothstep(0.72, 0.88, normal.y.abs());
+            let mut surface: [f32; 3] =
+                std::array::from_fn(|i| ocean[i].lerp(land[i], land_mask).lerp(0.95, polar));
+            // Swirling cloud bands.
+            let swirl = fbm(lat_lon * 2.4 + Vec2::new(5.4, 8.1), 3);
+            let clouds = smoothstep(0.46, 0.74, fbm(lat_lon * 3.2 + Vec2::splat(swirl * 1.4), 4));
+            for c in &mut surface {
+                *c = c.lerp(0.98, clouds * 0.85);
+            }
+            // Atmospheric limb bluing and day/night terminator.
+            let limb = (1.0 - z).powi(3);
+            let atm = [0.38f32, 0.68, 1.0];
+            let lit = smoothstep(-0.12, 0.35, normal.dot(sun));
+            let shade = 0.08 + 0.92 * lit;
+            let edge = ((radius - r) * size as f32 * 0.5 + 0.5).clamp(0.0, 1.0);
+            let rgb: [u8; 3] = std::array::from_fn(|i| {
+                let c = surface[i].lerp(atm[i], limb * 0.55) * shade + atm[i] * limb * 0.25 * lit;
+                (c.clamp(0.0, 1.0) * 255.0).round() as u8
+            });
+            data.extend([rgb[0], rgb[1], rgb[2], (edge * 255.0).round() as u8]);
+        }
+    }
+    smooth_image(size, size, data)
+}
+
+/// The Moon seen from Earth: a silvery-grey lunar sphere with dark basalt
+/// maria, bright cratered highlands, impact craters with sunlit rims, a soft
+/// lunar corona, and a day/night terminator.
+fn moon_image() -> Image {
+    let size = 256u32;
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+    let sun = Vec3::new(0.68, 0.36, 0.64).normalize();
+    let craters: [(Vec2, f32); 7] = [
+        (Vec2::new(-0.22, 0.34), 0.16),
+        (Vec2::new(0.28, -0.18), 0.14),
+        (Vec2::new(-0.36, -0.24), 0.12),
+        (Vec2::new(0.12, 0.22), 0.10),
+        (Vec2::new(0.38, 0.26), 0.09),
+        (Vec2::new(-0.08, -0.38), 0.11),
+        (Vec2::new(-0.44, 0.06), 0.08),
+    ];
+    for y in 0..size {
+        for x in 0..size {
+            let p = (Vec2::new(x as f32, y as f32) + 0.5) / size as f32 * 2.0 - 1.0;
+            let r = p.length();
+            let radius = 0.80;
+            if r > 0.98 {
+                data.extend([0, 0, 0, 0]);
+                continue;
+            }
+            if r > radius {
+                let halo = (1.0 - (r - radius) / (0.98 - radius))
+                    .clamp(0.0, 1.0)
+                    .powi(3)
+                    * 0.42;
+                data.extend([215, 226, 245, (halo * 255.0).round() as u8]);
+                continue;
+            }
+            let u = p / radius;
+            let z = (1.0 - u.length_squared()).max(0.0).sqrt();
+            let normal = Vec3::new(u.x, -u.y, z).normalize();
+            let lat_lon = Vec2::new(normal.x.atan2(normal.z) * 1.5, normal.y * 2.1);
+            // Dark basalt maria basins vs bright highland anorthosite.
+            let mare_field = fbm(lat_lon * 1.4 + Vec2::new(2.3, 4.7), 4);
+            let detail = fbm(lat_lon * 5.2 + Vec2::new(8.1, 1.9), 3);
+            let mare_mask = smoothstep(0.46, 0.58, mare_field);
+            let highland = [0.78f32, 0.81, 0.86];
+            let mare = [0.38f32, 0.42, 0.49];
+            let mut albedo: [f32; 3] = std::array::from_fn(|i| {
+                highland[i].lerp(mare[i], mare_mask) * (0.88 + 0.24 * detail)
+            });
+            // Circular craters with bright ejecta rims and bowl shading.
+            let mut crater_normal = normal;
+            for &(center, cr) in &craters {
+                let d = u.distance(center) / cr;
+                if d < 1.35 {
+                    let rim = (-((d - 1.0) * 5.5).powi(2)).exp();
+                    for c in &mut albedo {
+                        *c = (*c + 0.16 * rim).min(0.98);
+                    }
+                    if d < 1.0 {
+                        let offset = (u - center) / cr;
+                        crater_normal = (crater_normal
+                            + Vec3::new(-offset.x, offset.y, 0.0) * 0.45)
+                            .normalize();
+                    }
+                }
+            }
+            let lit = smoothstep(-0.10, 0.32, crater_normal.dot(sun));
+            let shade = 0.06 + 0.94 * lit;
+            let edge = ((radius - r) * size as f32 * 0.5 + 0.5).clamp(0.0, 1.0);
+            let rgb: [u8; 3] = std::array::from_fn(|i| {
+                ((albedo[i] * shade).clamp(0.0, 1.0) * 255.0).round() as u8
+            });
+            data.extend([rgb[0], rgb[1], rgb[2], (edge * 255.0).round() as u8]);
+        }
+    }
+    smooth_image(size, size, data)
+}
+
+/// A single batched mesh of stars scattered across the upper hemisphere of
+/// the sky dome (`SkyStyle::Space`).
+fn stars_mesh() -> Mesh {
+    const STARS: u32 = 420;
+    const STAR_DISTANCE: f32 = 4350.0;
+    let mut positions = Vec::with_capacity(STARS as usize * 4);
+    let mut normals = Vec::with_capacity(STARS as usize * 4);
+    let mut colors = Vec::with_capacity(STARS as usize * 4);
+    let mut indices = Vec::with_capacity(STARS as usize * 6);
+    for i in 0..STARS {
+        let azimuth = random(i, 10) * TAU;
+        let elevation = 0.05 + random(i, 11).powf(0.85) * (FRAC_PI_2 - 0.08);
+        let dir = direction(azimuth, elevation);
+        let center = dir * STAR_DISTANCE;
+        let right = dir.cross(Vec3::Y).normalize_or_zero();
+        let up = right.cross(dir).normalize_or_zero();
+        let half = (5.5 + 9.5 * random(i, 12).powi(3)) * 0.5;
+        let brightness = 0.55 + 0.45 * random(i, 13);
+        let tint = match i % 5 {
+            0 => Color::srgb(0.78 * brightness, 0.88 * brightness, 1.0 * brightness),
+            1 => Color::srgb(1.0 * brightness, 0.92 * brightness, 0.76 * brightness),
+            _ => Color::srgb(brightness, brightness, brightness),
+        }
+        .to_linear()
+        .to_f32_array();
+        let base = positions.len() as u32;
+        for corner in [
+            center - right * half - up * half,
+            center + right * half - up * half,
+            center + right * half + up * half,
+            center - right * half + up * half,
+        ] {
+            positions.push(corner.to_array());
+            normals.push((-dir).to_array());
+            colors.push(tint);
+        }
+        indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
 /// An sRGB image with mipmaps and smooth sampling.
 fn smooth_image(width: u32, height: u32, data: Vec<u8>) -> Image {
     let mut image = Image::new(
@@ -1019,13 +1288,36 @@ fn smooth_image(width: u32, height: u32, data: Vec<u8>) -> Image {
     image
 }
 
-/// La cúpula sigue a la cámara (solo en posición, no en giro).
+/// La cúpula sigue a la cámara (solo en posición, no en giro), y en el cielo
+/// espacial muestra la Luna desde la Tierra y la Tierra desde la Luna.
 pub fn follow_camera(
     cameras: Query<&Transform, (With<Camera3d>, Without<Sky>)>,
     mut sky: Single<&mut Transform, With<Sky>>,
+    parts: Option<Res<SkyParts>>,
+    mut visibilities: Query<&mut Visibility>,
 ) {
     if let Some(camera) = cameras.iter().next() {
         sky.translation = camera.translation;
+        if let Some(parts) = parts {
+            let on_earth = super::terrain::is_earth_realm(Vec2::new(
+                camera.translation.x,
+                camera.translation.z,
+            ));
+            if let Ok(mut vis) = visibilities.get_mut(parts.moon_body) {
+                *vis = if on_earth {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                };
+            }
+            if let Ok(mut vis) = visibilities.get_mut(parts.earth_body) {
+                *vis = if on_earth {
+                    Visibility::Hidden
+                } else {
+                    Visibility::Inherited
+                };
+            }
+        }
     }
 }
 
@@ -1094,6 +1386,7 @@ mod tests {
             SkyStyle::Mediterranean,
             SkyStyle::GoldenHour,
             SkyStyle::Dusk,
+            SkyStyle::Space,
         ] {
             let palette = Palette::of(style);
             // Away from the sun, the horizon is the colour of the fog.

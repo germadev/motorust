@@ -24,6 +24,7 @@ mod sea;
 mod shadow_fade;
 mod shoulders;
 pub mod sky;
+mod space;
 pub(crate) mod structures;
 mod terrain;
 mod textures;
@@ -48,6 +49,8 @@ use crate::settings::{Settings, WEB};
 use crate::track::{Surface, Track};
 #[cfg(test)]
 pub use preview::stretch as preview_stretch;
+#[cfg(test)]
+pub use terrain::is_earth_realm;
 pub use textures::generate_mipmaps;
 pub use trees::Dressed;
 
@@ -98,6 +101,8 @@ impl Plugin for WorldPlugin {
                     mine::roll_carts,
                     desert::pump,
                     desert::tumble,
+                    space::turn_dishes,
+                    space::spin_portals,
                     japan::turn_wheels,
                     japan::drift_petals,
                     spawn_prepared_circuit,

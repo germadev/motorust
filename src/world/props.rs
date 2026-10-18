@@ -65,6 +65,9 @@ pub fn spawn_props(
     occupied.extend(super::desert::spawn_desert(
         world, track, terrain, scenery, assets,
     ));
+    occupied.extend(super::space::spawn_space(
+        world, track, terrain, scenery, assets,
+    ));
     occupied.extend(super::japan::spawn_japan(
         world, track, terrain, scenery, flowers, assets,
     ));

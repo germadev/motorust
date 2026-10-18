@@ -222,9 +222,12 @@ impl Terrain {
             .zip(hollow.iter().zip(&mountain).zip(&up))
             .map(|(p, ((&hollow, &mountain), &up))| (p, hollow, mountain, up))
             .collect();
+        let soil = scenery.soil;
         let sites = on_cores(&grid, threads, |part: &[(Vec3, f32, f32, f32)]| {
             part.iter()
-                .map(|&(p, hollow, mountain, up)| site(p, flowers.as_ref(), hollow, mountain, up))
+                .map(|&(p, hollow, mountain, up)| {
+                    site(p, soil, flowers.as_ref(), hollow, mountain, up)
+                })
                 .collect::<Vec<_>>()
         });
         Self {
@@ -232,7 +235,7 @@ impl Terrain {
             zs,
             heights,
             sites,
-            soil: scenery.soil,
+            soil,
             flowers,
             fine,
             mountain,
@@ -332,10 +335,15 @@ impl Terrain {
     }
 
     pub fn ground(&self, point: Vec2) -> Ground {
-        classify(
+        let ground = classify(
             Vec3::new(point.x, self.height(point), point.y),
             self.normal(point),
-        )
+        );
+        if self.soil == Soil::Lunar && !is_earth_realm(point) && ground != Ground::Rock {
+            Ground::Sand
+        } else {
+            ground
+        }
     }
 
     /// The triangle of the terrain's meshes (see [`Self::meshes`]) a point
@@ -386,6 +394,7 @@ impl Terrain {
         let point = Vec2::new(p.x, p.z);
         site(
             p,
+            self.soil,
             self.flowers.as_ref(),
             self.on_grid(&self.hollow, point),
             self.on_grid(&self.mountain, point),
@@ -483,11 +492,14 @@ impl Terrain {
 
     /// The colour of `ground` at `p`, facing `normal`, as a tint over its
     /// texture (linear RGBA), as the circuit's soil draws it: a desert
-    /// canyon's earth and rock, the checkerboard earth's, or the grass's
-    /// greens (the flowers and the weathering of the mountains aside).
+    /// canyon's earth and rock, the Moon's regolith (outside the Earth portal
+    /// realm), the checkerboard earth's, or the grass's greens (the flowers
+    /// and the weathering of the mountains aside).
     pub fn ground_color(&self, ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+        let earth = self.soil == Soil::Lunar && is_earth_realm(Vec2::new(p.x, p.z));
         match (self.soil, ground) {
             (Soil::Mine, _) => canyon_vertex_color(ground, p, normal),
+            (Soil::Lunar, _) if !earth => lunar_vertex_color(ground, p, normal),
             (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
             (_, Ground::Grass) => self.grass_color(p, normal),
             _ => ground_vertex_color(ground, p, normal),
@@ -620,12 +632,17 @@ impl Terrain {
                                         Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
                                     }
                                 };
+                                let earth =
+                                    self.soil == Soil::Lunar && is_earth_realm(Vec2::new(p.x, p.z));
                                 let color = match (self.soil, ground_type, flowers) {
                                     (_, _, Some(kind)) => self.meadow_color(p, normal, kind),
                                     (Soil::Checkered, Ground::Rock, _) => {
                                         soil_vertex_color(p, normal)
                                     }
                                     (Soil::Mine, ..) => canyon_vertex_color(ground_type, p, normal),
+                                    (Soil::Lunar, ..) if !earth => {
+                                        lunar_vertex_color(ground_type, p, normal)
+                                    }
                                     (_, Ground::Grass, _) => {
                                         let outside = (self.fine.0 - Vec2::new(p.x, p.z))
                                             .max(Vec2::new(p.x, p.z) - self.fine.1)
@@ -713,7 +730,7 @@ impl Terrain {
             meadows,
         } = joined;
         let rock_tile = match self.soil {
-            Soil::Rock | Soil::Mine => ROCK_TILE,
+            Soil::Rock | Soil::Mine | Soil::Lunar => ROCK_TILE,
             Soil::Checkered => SOIL_TILE,
         };
         let ground = |ground: Ground, flowers: Option<FlowerKind>, mesh: Mesh| GroundMesh {
@@ -766,11 +783,13 @@ pub fn spawn_terrain(
                     .expect("a meadow for each kind of flower drawn");
                 (Some(meadow), 0.9, 0.18)
             }
-            // In a desert canyon the flat ground is dry, dusty earth.
+            // In a desert canyon the flat ground is dry dust.
             (Ground::Grass, Soil::Mine) => (Some(&textures.sand), 0.95, 0.15),
             (Ground::Grass, _) => (Some(&textures.grass), 0.90, 0.18),
             (Ground::Sand, _) => (Some(&textures.sand), 0.88, 0.28),
-            (Ground::Rock, Soil::Rock | Soil::Mine) => (Some(&textures.rock), 0.78, 0.42),
+            (Ground::Rock, Soil::Rock | Soil::Mine | Soil::Lunar) => {
+                (Some(&textures.rock), 0.78, 0.42)
+            }
             (Ground::Rock, Soil::Checkered) => (Some(&textures.soil), 0.92, 0.2),
             // Snow, white but for its shading (see `ground_vertex_color`).
             (Ground::Snow, _) => (None, 0.55, 0.35),
@@ -875,6 +894,16 @@ fn ups(xs: &[f32], zs: &[f32], heights: &[f32]) -> Vec<f32> {
         .collect()
 }
 
+/// Whether a world-space point `(x, z)` on a `Soil::Lunar` circuit lies inside
+/// the Earth realm (the main western and central sector containing the start
+/// line and space center, west of the two interdimensional portals at
+/// `(764, -430)` and `(658, -300)`).
+pub fn is_earth_realm(point: Vec2) -> bool {
+    let t = ((point.y + 430.0) / 130.0).clamp(0.0, 1.45);
+    let boundary_x = 764.0 - 106.0 * t;
+    point.x < boundary_x
+}
+
 /// What the look of the ground at a point turns on but the way it faces:
 /// how high it is, the snow line and the tree line over it, and the flowers
 /// it is in, if grass.
@@ -890,12 +919,21 @@ struct Site {
     /// smoothed over the grid), a little more or less here and there, so
     /// the rock of the steep faces does not end along a contour.
     up: f32,
+    /// Whether this point lies on the Moon's airless regolith (no grass or snow).
+    lunar: bool,
 }
 
 /// What the look of the ground at `p` (x, height, z) turns on but the way
 /// it faces, where the grass is in `flowers`, `hollow` down a gully of a
 /// mountain across the sea and `mountain` its share of it.
-fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32, up: f32) -> Site {
+fn site(
+    p: Vec3,
+    soil: Soil,
+    flowers: Option<&FlowerMap>,
+    hollow: f32,
+    mountain: f32,
+    up: f32,
+) -> Site {
     let (snow_line, tree_line) = lines(p, hollow);
     let ground = Vec2::new(p.x, p.z);
     Site {
@@ -905,6 +943,7 @@ fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32, up: f3
         flowers: flowers.and_then(|map| map.at(ground)),
         mountain,
         up: up + CLIFF_RAGGED * 2.0 * (fbm(ground / 13.0 + Vec2::splat(5.0), 2) - 0.5),
+        lunar: soil == Soil::Lunar && !is_earth_realm(ground),
     }
 }
 
@@ -935,13 +974,16 @@ pub(super) fn on_cores<T: Sync, R: Send>(
 /// What the ground at `site` is drawn as: by its smoothed slope, so the
 /// borders of the cliffs run smoothly too, as the others do.
 fn look(site: &Site) -> Look {
-    let ground = ground_of(
+    let mut ground = ground_of(
         site.height,
         site.snow_line,
         site.tree_line,
         Vec3::Y * site.up,
         site.mountain,
     );
+    if site.lunar && ground != Ground::Rock {
+        ground = Ground::Sand;
+    }
     let flowers = if ground == Ground::Grass {
         site.flowers
     } else {
@@ -1690,6 +1732,37 @@ fn canyon_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
         Ground::Sand => {
             let dune = value_noise(Vec2::new(p.x * 0.05, p.z * 0.05));
             Color::srgb(0.95, 0.78, 0.62).mix(&Color::srgb(0.8, 0.66, 0.55), dune * 0.5)
+        }
+        Ground::Snow => snow_color(p, normal),
+    };
+    color.to_linear().to_f32_array()
+}
+
+/// The colours of the Moon's surface (`Soil::Lunar`), over the sand and rock
+/// textures: pale ash-grey regolith, dark slate-blue basalt maria, bright
+/// impact ejecta rays, and dark anorthosite crater walls.
+fn lunar_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+    let color = match ground {
+        Ground::Grass | Ground::Sand => {
+            let mare = fbm(Vec2::new(p.x * 0.012, p.z * 0.012), 3);
+            let ejecta = value_noise(Vec2::new(p.x * 0.055 + 19.0, p.z * 0.055 - 13.0));
+            let regolith = Color::srgb(0.68, 0.72, 0.78);
+            let basalt = Color::srgb(0.46, 0.50, 0.58);
+            let highland = Color::srgb(0.84, 0.88, 0.94);
+            let base = basalt.mix(&regolith, mare);
+            base.mix(
+                &highland,
+                ((ejecta - 0.5) * 0.55 + (1.0 - normal.y) * 1.4).clamp(0.0, 0.55),
+            )
+        }
+        Ground::Rock => {
+            let wave = fbm(Vec2::new(p.x * 0.012, p.z * 0.012), 2) * 5.0;
+            let band = ((p.y + wave) * 0.42).sin() * 0.5 + 0.5;
+            let anorthosite = Color::srgb(0.76, 0.80, 0.88);
+            let dark_basalt = Color::srgb(0.42, 0.46, 0.54);
+            let layered = dark_basalt.mix(&anorthosite, band);
+            let ao = (0.5 + 0.5 * normal.y.max(0.0)).clamp(0.5, 1.0);
+            layered.mix(&Color::srgb(0.24, 0.27, 0.34), (1.0 - ao) * 0.65)
         }
         Ground::Snow => snow_color(p, normal),
     };

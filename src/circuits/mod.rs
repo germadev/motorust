@@ -5,6 +5,7 @@ mod bay;
 mod ghost_island;
 mod gold_mine;
 mod loop_island;
+mod moon_base;
 mod turbo_bay;
 
 use bevy::prelude::*;
@@ -83,12 +84,13 @@ impl Circuit {
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista.
-pub static CIRCUITS: [Circuit; 5] = [
+pub static CIRCUITS: [Circuit; 6] = [
     bay::BAY,
     turbo_bay::TURBO_BAY,
     loop_island::LOOP_ISLAND,
     gold_mine::GOLD_MINE,
     ghost_island::GHOST_ISLAND,
+    moon_base::MOON_BASE,
 ];
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
@@ -119,5 +121,6 @@ mod tests {
             CIRCUITS[4].checkpoints(),
             vec![1000.0, 2200.0, 3150.0, 4230.0, 5100.0]
         );
+        assert_eq!(CIRCUITS[5].checkpoints(), vec![1090.0, 2290.0, 3450.0]);
     }
 }
