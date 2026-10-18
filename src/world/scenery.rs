@@ -9,7 +9,7 @@ use crate::geometry::smoothstep;
 
 /// Un tramo de la vuelta, en metros desde la meta. Puede pasar por la meta:
 /// de 2400 a 300, por ejemplo.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Span {
     pub from: f32,
     pub to: f32,
@@ -39,6 +39,14 @@ impl Span {
             return 1.0;
         }
         smoothstep(0.0, fade, into) * smoothstep(0.0, fade, length - into)
+    }
+
+    /// Whether it and `other` share any of a lap `lap` metres long.
+    pub fn overlaps(&self, other: &Span, lap: f32) -> bool {
+        let middle = |span: &Span| span.from + span.length(lap) / 2.0;
+        self.contains(other.from, lap)
+            || other.contains(self.from, lap)
+            || self.contains(middle(other), lap)
     }
 
     pub fn contains(&self, along: f32, lap: f32) -> bool {
@@ -117,6 +125,11 @@ pub enum Greens {
     /// up high and towards the sun, and dark conifer forest up the hills,
     /// far from the roads and on the mountains across the sea.
     Countryside,
+    /// A Mediterranean island's in summer: straw-coloured dry grass, olive
+    /// and grey-green sage, fresher green down the hollows and by the
+    /// water, and dark scrub up the slopes before the rock, in patches of
+    /// every size with ragged edges.
+    Mediterranean,
 }
 
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un
@@ -184,6 +197,9 @@ pub enum WallStyle {
     /// A low fence of weathered wooden posts and rails, as along the lanes
     /// of the Shire: the ground beyond it shows through.
     Fence,
+    /// A low concrete parapet, as along a dam's crest on its lake's side:
+    /// the water shows over it, a little way down.
+    Parapet,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -202,12 +218,14 @@ pub enum Soil {
     Granite,
 }
 
-/// The light of a track: a summer day; the last hours of a clear autumn
+/// The light of a track: a summer day; a clear Mediterranean summer
+/// afternoon, graded as a photograph is; the last hours of a clear autumn
 /// afternoon, the sun low and golden; or a low sun setting in a warm, hazy
 /// sky.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SkyStyle {
     Day,
+    Mediterranean,
     GoldenHour,
     Dusk,
     /// A summer evening in high country, the sun low and golden, graded as
@@ -275,6 +293,44 @@ pub enum BridgeStyle {
     /// A concrete deck between two steel through trusses, braced across
     /// overhead, on concrete piers, as in West Way (Moto Racer).
     Truss,
+    /// The crest of a dam: the concrete of the dam itself, down to the
+    /// gorge below it, with the lake it holds on the other side (see
+    /// [`Dam`], which says how).
+    Dam,
+}
+
+/// A dam across a gorge, as El Atazar's, with the road along its crest (a
+/// bridge of [`BridgeStyle::Dam`] over the same span): an arch of concrete
+/// bowed towards the lake it holds, its water up near the crest; on the
+/// other side its face drops nearly sheer to the river, which runs on down
+/// the gorge to the sea.
+pub struct Dam {
+    /// Where the road runs along the crest.
+    pub crest: Span,
+    /// Which side of the road the lake is on.
+    pub lake_side: Side,
+    /// The lake's shore: a smooth closed curve through these points (x,
+    /// z), drawn as a coast's is, round a middle from which every point of
+    /// it can be seen (the water is a fan from there). Where it meets the
+    /// dam it runs along the crest, so the water reaches the dam's face.
+    pub lake: &'static [Vec2],
+    /// The height of the lake's water (m over the sea): a little under the
+    /// crest.
+    pub level: f32,
+    /// The river below the dam: points (x, z) along its course, from
+    /// under the dam (its first point past the crest, so the gorge runs on
+    /// under it) down to the sea, each with how high the gorge's far
+    /// wall stands there over the sea (m). Its water is the sea's, coming up
+    /// the gorge to the foot of the dam.
+    pub river: &'static [(Vec2, f32)],
+    /// Which bank of the river (going downstream) the road up the gorge
+    /// runs along: on that side the bank only drops from the road to the
+    /// water; across the river, the gorge's far wall rises.
+    pub road_bank: Side,
+    /// Where a paved square stands by the end of the crest with a
+    /// monument in the middle, if one does (x, z): on level ground, as a
+    /// [`Terrace`] makes it.
+    pub monument: Option<Vec2>,
 }
 
 /// Un tramo con otro muro distinto del de piedra a un lado.
@@ -394,6 +450,8 @@ pub struct Scenery {
     pub walls: &'static [WallRun],
     pub tunnels: &'static [Span],
     pub bridges: &'static [Bridge],
+    /// Dams, each with the road along its crest (see [`Dam`]).
+    pub dams: &'static [Dam],
     pub gantries: &'static [Gantry],
     pub billboards: &'static [Billboard],
     /// Farolas, cada `every` metros.
@@ -439,6 +497,11 @@ pub struct Scenery {
     pub sky: SkyStyle,
     /// The colour of the sea, the lakes and the rivers.
     pub water: Water,
+    /// Whether the sea is always drawn as in *The Wind Waker*, flat cartoon
+    /// blues with waves rolling in (Loop Island, an arcade island); on the
+    /// other tracks it mirrors what stands round it unless Options >
+    /// Graphics > Water says otherwise (see [`crate::world::sea`]).
+    pub cartoon_water: bool,
     /// An open pit round the water, if there is one.
     pub pit: Option<Pit>,
     /// The works of a mine around the road, if there is one.
@@ -483,6 +546,8 @@ impl Scenery {
 pub struct Japan {
     pub corridors: &'static [ToriiCorridor],
     pub props: &'static [Prop],
+    /// The small ones over and over along the road (see [`PropRow`]).
+    pub rows: &'static [PropRow],
     pub maple_grounds: &'static [MapleGround],
     pub petals: &'static [Petals],
     pub flowers: &'static [FlowerField],
@@ -640,6 +705,30 @@ impl PropModel {
                 | PropModel::WaterWheel
         )
     }
+
+    /// What it stands on by the road, so that it shows over the wall:
+    /// stone under the stone ones, wood under the wooden (see
+    /// [`crate::world::japan`]). The big ones need none: they are seen
+    /// over any wall as they are.
+    pub fn plinth(self) -> Option<Plinth> {
+        match self {
+            PropModel::Jizo
+            | PropModel::Komainu
+            | PropModel::Stele
+            | PropModel::StoneLantern
+            | PropModel::BronzeLantern => Some(Plinth::Stone),
+            PropModel::Brazier | PropModel::Hokora => Some(Plinth::Wood),
+            _ => None,
+        }
+    }
+}
+
+/// What a small prop by the road stands on, so that it is seen over the
+/// road's wall: a block of stone, or a deck of planks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Plinth {
+    Stone,
+    Wood,
 }
 
 /// A prop and where it stands, facing: by the road, `along` metres from the
@@ -659,6 +748,9 @@ pub struct Prop<M = PropModel> {
     pub scale: f32,
     pub turn: f32,
     pub lean: f32,
+    /// Whether it faces the riders coming up the road at it, instead of
+    /// the road beside it (see [`Prop::facing_riders`]).
+    pub facing_riders: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -685,6 +777,7 @@ pub const fn by_road<M: Copy>(model: M, along: f32, lateral: f32) -> Prop<M> {
         scale: 1.0,
         turn: 0.0,
         lean: 0.0,
+        facing_riders: false,
     }
 }
 
@@ -696,6 +789,7 @@ pub const fn over_road<M: Copy>(model: M, along: f32) -> Prop<M> {
         scale: 1.0,
         turn: 0.0,
         lean: 0.0,
+        facing_riders: false,
     }
 }
 
@@ -718,6 +812,47 @@ impl<M: Copy> Prop<M> {
     pub const fn leaning(self, lean: f32) -> Self {
         Prop { lean, ..self }
     }
+
+    /// The same prop turned to face the riders coming up the road at it,
+    /// not the road beside it: a gate on a hilltop reads as a gate from
+    /// far down the road, not as two posts edge on.
+    pub const fn facing_riders(self) -> Self {
+        Prop {
+            facing_riders: true,
+            ..self
+        }
+    }
+}
+
+/// The same small prop over and over by the road: one every so many
+/// metres of a span, to one side, as the lanterns of a shrine's approach
+/// or the jizō down a hillside road. Each stands as one of [`by_road`],
+/// on its plinth, and the wall opens for it; where another road runs, or
+/// where one of the props put by hand already stands, there is none.
+pub struct PropRow {
+    /// The kinds it is made of, each in turn: one kind over and over, or
+    /// several, so that a stretch is not all of one thing.
+    pub models: &'static [PropModel],
+    pub row: Row,
+}
+
+/// A row of a small prop by the road (see [`PropRow`]).
+pub const fn prop_row(
+    models: &'static [PropModel],
+    span: Span,
+    side: Side,
+    lateral: f32,
+    every: f32,
+) -> PropRow {
+    PropRow {
+        models,
+        row: Row {
+            span,
+            side,
+            lateral,
+            every,
+        },
+    }
 }
 
 /// A prop anywhere (see [`Prop`]).
@@ -731,6 +866,7 @@ pub const fn standing<M: Copy>(model: M, x: f32, z: f32, heading: f32) -> Prop<M
         scale: 1.0,
         turn: 0.0,
         lean: 0.0,
+        facing_riders: false,
     }
 }
 

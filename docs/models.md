@@ -143,6 +143,20 @@ Some came out of Meshy wrong, and are mended as they are read: the great torii s
 
 The flowers of Ghost Island are not models: they are cards cut out of an atlas painted at startup (`src/world/foliage.rs`), see [tracks.md](tracks.md#scenery).
 
+## Props of Middle-earth
+
+Fellowship Road's props were made with Meshy by the author too: four hobbit holes (green, yellow, red and blue doors), Bag End, a chimney, the party tree, the oak over Bag End, the mill and its wheel, the Green Dragon and its sign, Gandalf's cart, a log pile, a scarecrow, the old tree the hobbits hid under, the Brandywine's ferry, Bree's gate, the Prancing Pony, two houses of Bree, the ruins of Amon Sûl, a broken arch, the stone trolls, the Last Homely House, an elven tower, Rivendell's pavilion and its lamps, the Doors of Durin, a mallorn with its flet, Galadriel's swan ship, an elven ship and boat, the two kings of the Argonath and the seat of seeing on Amon Hen. Where each stands is in the track's data (see [tracks.md](tracks.md#scenery), `middle_earth`), and `src/world/middle_earth.rs` places them.
+
+`tools/import_fellowship.py` turns the GLB files into `assets/models/fellowship/` as `tools/import_props.py` does Ghost Island's (`props.bin`, and `color.jpg`, 512 × 512 each in a 6 × 6 grid), each by its name in `SIZES` (`mill_wheel` too), sized by its height, its length (boats and the ring of ruins), its opening (Bree's gate, round the road's walls) or, for the great trees, standing on the foot of its trunk. It mends what came wrong:
+
+- the stone trolls: the left one had a third leg out of its back; it is cut away and the hole closed with a fan of triangles in its stone's colour;
+- Bree's gate: two beams across its opening, where the bikes ride, are cut away; a house of Bree came hung with the Green Dragon's sign, cut away too, as are the elven boat's oars, so that it lies on the shore;
+- the mill and its wheel came apart: the mill is turned so the hole for the axle in its side faces the road, and the wheel set on it, both about the axle, which turns;
+- the Doors of Durin came closed, and narrower than drawn in the film: made 1.4 times wider and 35 m high, their two leaves (two of the model's five parts) swung open outwards a quarter turn about their hinges, so the road goes through them, and two pieces made with them: `durin_ithildin`, the drawing of ithildin laid on the stone (the arch, a tree up each pillar, the crown, the seven stars on the rock above, and on each leaf's side turned to the road a tree under the star of Feanor), which the game draws emissive, and `durin_glow`, the same drawn wider, added round it as a glow;
+- the oak over Bag End came a vivid green and the Doors of Durin a pale grey: toned (`TONED`).
+
+All of them take about 8.8 MB. `cargo test` checks that every prop is in the pack, standing on the ground and not too heavy to draw, the mill's wheel turning clear of its wall, Bree's gate leaving the road clear under its beam, the Doors of Durin open with their drawing on them, and that every prop of the track stands clear of the roads, on land or on the water as it should.
+
 ## Textures
 
 The scenery textures are CC0 (public domain) photos from [Poly Haven](https://polyhaven.com), reduced in size and retouched to look closer to 90s games: more saturation, less contrast in the asphalt cracks and the grass recoloured to a brighter green. Mipmaps are computed at startup so distant surfaces do not flicker (`src/world/textures.rs`).

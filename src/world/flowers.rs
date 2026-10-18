@@ -17,16 +17,16 @@
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, PI};
 
-use bevy::camera::visibility::VisibilityRange;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use super::Assets3d;
+use super::detail::fading_out;
 use super::foliage::{self, ALPHA_CUTOFF};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
 use super::scenery::{FlowerArea, FlowerField, FlowerKind};
-use super::terrain::{SEA_LEVEL, Terrain};
+use super::terrain::Terrain;
 use super::tufts::normals_up;
 use crate::geometry::{fbm, random01, smoothstep};
 use crate::track::Track;
@@ -391,11 +391,7 @@ pub fn spawn_flowers(
         world.spawn((
             Mesh3d(assets.meshes.add(mesh)),
             MeshMaterial3d(material.clone()),
-            VisibilityRange {
-                start_margin: 0.0..0.0,
-                end_margin: SEEN..SEEN + SEEN_FADE,
-                use_aabb: true,
-            },
+            fading_out(SEEN, SEEN_FADE, true),
             NotShadowCaster,
         ));
     }
@@ -461,7 +457,10 @@ fn clumps(track: &Track, terrain: &Terrain) -> Vec<Clump> {
                 terrain.height(point + Vec2::X) - terrain.height(point - Vec2::X),
                 terrain.height(point + Vec2::Y) - terrain.height(point - Vec2::Y),
             ) / 2.0;
-            if size(kind).is_none() || height < SEA_LEVEL + 0.5 || grade.length() > STEEPEST {
+            if size(kind).is_none()
+                || height < terrain.water_level(point) + 0.5
+                || grade.length() > STEEPEST
+            {
                 continue;
             }
             clumps.push(Clump {
@@ -550,7 +549,7 @@ fn add_clump(mesh: &mut MeshBuilder, clump: &Clump, terrain: &Terrain) {
 mod tests {
     use super::*;
     use crate::circuits::{CIRCUITS, Circuit};
-    use crate::world::terrain::Ground;
+    use crate::world::terrain::{Ground, SEA_LEVEL};
 
     /// The circuits with fields of flowers, with their track and terrain.
     fn in_flower() -> Vec<(&'static Circuit, Track, Terrain)> {

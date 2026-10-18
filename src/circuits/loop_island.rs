@@ -3,9 +3,10 @@
 //! hills under a blue sky, with the sea all around.
 //!
 //! 1. The start straight runs north between palm trees and sunflowers, with
-//!    a crest where the bike takes off.
+//!    a crest where the bike takes off just past the line, and over a broad
+//!    top where the branch to the loop parts from it.
 //! 2. A long right-hander climbs round the island's own loop, and S-bends
-//!    roll on east over the hills. On the climb to the crest, a branch forks
+//!    roll on east over the hills. On the climb to the top, a branch forks
 //!    off to the right, sweeps inside the corner and goes round the loop,
 //!    upside down at the top, before it joins the lap again on the S-bends.
 //! 3. The road climbs into a tunnel through a checkerboard ridge and comes
@@ -33,7 +34,7 @@ const BRIDGE: Span = span(1230.0, 1310.0);
 const BRIDGE_WALL: f32 = 6.0;
 const SHORE: Span = span(1660.0, 1960.0);
 /// The stretch of lap the branch with the loop leaves out: it forks off on
-/// the climb to the crest of the start straight, so the turn off the lap is
+/// the climb to the top of the start straight, so the turn off the lap is
 /// a long, gentle one.
 const SHORTCUT: Span = span(110.0, 637.0);
 
@@ -172,6 +173,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
             style: BridgeStyle::Wooden,
             fence: WOODEN_FENCE,
         }],
+        dams: &[],
         gantries: &[
             Gantry {
                 along: 0.0,
@@ -401,6 +403,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         ],
         sky: SkyStyle::Day,
         water: Water::Sea,
+        cartoon_water: true,
         pit: None,
         mine: None,
         desert: None,
@@ -447,17 +450,25 @@ const CONTROL_POINTS: [Vec2; 30] = [
     Vec2::new(3.0, 50.0),
 ];
 
-/// Ups and downs all the way round: a crest where the bike takes off on the
-/// start straight, gentle rises over the S-bends and along the shore (none
-/// to fly off in a bend), and the high ground of the tunnel.
-const ELEVATION: [(f32, f32); 31] = [
+/// Ups and downs all the way round: a crest where the bike takes off just
+/// past the line and a broad top further up the start straight, gentle rises
+/// over the S-bends and along the shore (none to fly off in a bend), and the
+/// high ground of the tunnel.
+const ELEVATION: [(f32, f32); 34] = [
     (0.0, 0.0),
-    (100.0, 0.5),
-    (160.0, 4.5),
-    // Crest: flat out, the bike flies.
-    (195.0, 6.5),
-    (235.0, 3.5),
-    (300.0, 1.5),
+    // A crest where the bike takes off flat out, just past the line: it
+    // lands on the straight, well before the branch to the loop forks off.
+    (25.0, 0.3),
+    (55.0, 2.0),
+    (85.0, 0.5),
+    (110.0, 1.0),
+    (160.0, 4.0),
+    // A broad top (over 700 m round: the bike stays on the road even at
+    // its top speed), where the branch to the loop parts from the lap and
+    // turns off on its own: a bike flying there landed in its bend.
+    (195.0, 5.0),
+    (235.0, 4.5),
+    (300.0, 2.5),
     (380.0, 3.0),
     (470.0, 7.0),
     (540.0, 9.0),
@@ -576,14 +587,39 @@ mod tests {
     use crate::track::Track;
 
     #[test]
-    fn the_branch_forks_before_the_crest_and_turns_gently() {
+    fn the_branch_forks_past_the_jump_over_a_broad_top_and_turns_gently() {
         let track = Track::new(&LOOP_ISLAND.layout);
-        // The crest of the start straight, where the bike takes off.
-        let crest = (0..track.index_at(START.to))
-            .max_by(|&a, &b| track.elevations()[a].total_cmp(&track.elevations()[b]))
-            .unwrap();
-        let crest = crest as f32 * track.step_length();
-        assert!(SHORTCUT.from < crest - 50.0, "the crest is at {crest} m");
+        let crest = |along: f32| {
+            let index = track.index_at(along);
+            track.crest(&crate::track::Nearest {
+                point: track.centerline()[index],
+                distance: 0.0,
+                index,
+                t: 0.0,
+                lateral: 0.0,
+                road: 0,
+            })
+        };
+        // The bike takes off just past the line, and lands well before the
+        // branch forks off.
+        let jump = (0..SHORTCUT.from as usize)
+            .step_by(2)
+            .max_by(|&a, &b| crest(a as f32).total_cmp(&crest(b as f32)))
+            .unwrap() as f32;
+        assert!(jump < SHORTCUT.from - 40.0, "the jump is at {jump} m");
+        // Where the branch parts from the lap, over the top of the start
+        // straight, no bike takes off, even at its top speed: one flying
+        // there landed in the branch's bend. (Against the real gravity: a
+        // bike takes off against twice it, so with room to spare.)
+        let top = crate::bike::BikeTuning::default().max_speed;
+        for along in (SHORTCUT.from as usize..START.to as usize).step_by(2) {
+            let crest = crest(along as f32);
+            assert!(
+                crest * top * top < 9.81,
+                "a crest of {:.0} m at {along} m",
+                1.0 / crest
+            );
+        }
         // The road to the loop turns off the lap in a long, easy curve, and
         // the road back is no tighter than the lap where it joins it.
         let looped = track.loops()[0];

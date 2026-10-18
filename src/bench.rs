@@ -47,7 +47,7 @@ use crate::perf_log::{
 };
 use crate::race::{Mode, Progress, Rules};
 use crate::render_scale::{NativeShare, drawn_size};
-use crate::settings::{Antialiasing, FpsLimit, Settings, ShadowQuality};
+use crate::settings::{Antialiasing, ForcePerformance, FpsLimit, Settings, ShadowQuality};
 use crate::track::Track;
 use crate::ui::text_font;
 use crate::welcome::GameMode;
@@ -82,8 +82,12 @@ pub fn settings(mut settings: Settings) -> Settings {
     settings.transient = true;
     settings.fps = FpsLimit::Unlimited;
     // Each scenario's settings as they are, not changed by the frame rate.
-    settings.performance_mode = false;
+    settings.force_performance = ForcePerformance::Off;
     settings.performance_log = true;
+    // The frame rate shown, and its own label under it (with the pixels the
+    // world is drawn at) instead of the HUD's second line.
+    settings.show_fps = true;
+    settings.show_resolution = false;
     settings
 }
 

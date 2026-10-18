@@ -1,5 +1,8 @@
-//! The sea, drawn like the cartoon sea of Zelda: The Wind Waker by its own
-//! shader (`sea.wgsl`): flat saturated blues with no lighting, white crests
+//! The sea, drawn one of two ways ([`SeaWater`]): still, dark and
+//! mirroring what stands round it, as a dam's lake (see [`super::mirror`]);
+//! or, as Options > Graphics > Water may choose and as Loop Island always
+//! has it, like the cartoon sea of Zelda: The Wind Waker, by its own shader
+//! (`sea.wgsl`): flat saturated blues with no lighting, white crests
 //! rolling in towards the coast (few and short out at sea, more, longer and
 //! thicker near it, where they break), lighter water by the coast, and foam
 //! hugging the shore.
@@ -19,8 +22,10 @@ use bevy::render::render_resource::{
 };
 use bevy::shader::ShaderRef;
 
+use super::mirror::{MirrorMaterial, Reach};
 use super::scenery::Water;
 use super::terrain::{SEA_LEVEL, Terrain};
+use crate::settings::Settings;
 use crate::track::Track;
 
 /// How far the sea reaches from the centre of the circuit (m): past the fog.
@@ -42,6 +47,78 @@ const WAVES_REACH: f32 = 400.0;
 /// (m).
 const SWELL_AROUND_START: f32 = 500.0;
 const SWELL_WATER: f32 = 150.0;
+
+/// What the mirroring sea mirrors is mapped over the track and this much
+/// round it (m), with at most this many texels along its longest side and
+/// none smaller than this (m); and a line of sight across it is followed
+/// this far (m), over the bays to the hills across them.
+const MIRROR_MARGIN: f32 = 700.0;
+const MIRROR_TEXELS: f32 = 768.0;
+const MIRROR_TEXEL_MIN: f32 = 2.5;
+const MIRROR_FOLLOW: f32 = 1500.0;
+
+/// Land further than this from the sea (m) is never met by a line of sight
+/// up from it, over all the land between: the mirroring sea leaves it out.
+pub const MIRROR_INLAND: f32 = 1000.0;
+
+/// What the mirroring sea of `track` mirrors: the map's reach.
+pub fn mirror_reach(track: &Track) -> Reach {
+    let (min, max) = track.bounds();
+    let (min, max) = (min - MIRROR_MARGIN, max + MIRROR_MARGIN);
+    Reach {
+        min,
+        max,
+        texel: ((max - min).max_element() / MIRROR_TEXELS).max(MIRROR_TEXEL_MIN),
+        level: SEA_LEVEL,
+        follow: MIRROR_FOLLOW,
+    }
+}
+
+/// The sea of a circuit and the ways it can be drawn: the cartoon one, and
+/// the mirroring one unless the track's sea is always the cartoon one.
+#[derive(Component, Clone, Debug)]
+pub struct SeaWater {
+    pub cartoon: Handle<SeaMaterial>,
+    pub mirror: Option<Handle<MirrorMaterial>>,
+}
+
+impl SeaWater {
+    /// Whether it is drawn as the cartoon sea, with the options asking for
+    /// it or not (`chosen`).
+    pub fn cartoon(&self, chosen: bool) -> bool {
+        chosen || self.mirror.is_none()
+    }
+}
+
+/// Every sea drawn as Options > Graphics > Water says (each made the
+/// cartoon one, and changed here before it is first drawn), at once when it
+/// changes.
+pub fn dress_the_sea(
+    mut commands: Commands,
+    settings: Option<Res<Settings>>,
+    seas: Query<(Entity, &SeaWater, Has<MeshMaterial3d<SeaMaterial>>)>,
+) {
+    let chosen = settings.is_some_and(|settings| settings.cartoon_water);
+    for (entity, sea, drawn_cartoon) in &seas {
+        let cartoon = sea.cartoon(chosen);
+        if cartoon == drawn_cartoon {
+            continue;
+        }
+        let mut sea_entity = commands.entity(entity);
+        match &sea.mirror {
+            Some(mirror) if !cartoon => {
+                sea_entity
+                    .remove::<MeshMaterial3d<SeaMaterial>>()
+                    .insert(MeshMaterial3d(mirror.clone()));
+            }
+            _ => {
+                sea_entity
+                    .remove::<MeshMaterial3d<MirrorMaterial>>()
+                    .insert(MeshMaterial3d(sea.cartoon.clone()));
+            }
+        }
+    }
+}
 
 /// How the sea looks (see `sea.wgsl`).
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
@@ -139,6 +216,16 @@ pub struct ShoreMap {
 }
 
 impl ShoreMap {
+    /// How far `point` is from the shore (m, positive out at sea and
+    /// negative inland), as the nearest texel of the map says (off it, the
+    /// nearest at its edge).
+    pub fn distance_at(&self, point: Vec2) -> f32 {
+        let at = ((point - self.corner) / self.texel).floor();
+        let i = (at.x.max(0.0) as usize).min(self.width as usize - 1);
+        let j = (at.y.max(0.0) as usize).min(self.height as usize - 1);
+        self.distance[j * self.width as usize + i]
+    }
+
     /// Where the sea meets the terrain of this circuit.
     pub fn new(terrain: &Terrain, track: &Track) -> Self {
         let (min, max) = track.bounds();
@@ -523,6 +610,69 @@ mod tests {
                 Water::Sea
             };
             assert_eq!(circuit.scenery.water, wanted, "{}", circuit.name);
+        }
+    }
+
+    #[test]
+    fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say() {
+        // Loop Island's sea is always the cartoon one; every other's
+        // mirrors unless the options ask for the cartoon one.
+        for circuit in &crate::circuits::CIRCUITS {
+            let cartoon = circuit.name == "Loop Island";
+            assert_eq!(circuit.scenery.cartoon_water, cartoon, "{}", circuit.name);
+        }
+        let mirroring = SeaWater {
+            cartoon: Handle::default(),
+            mirror: Some(Handle::default()),
+        };
+        assert!(!mirroring.cartoon(false) && mirroring.cartoon(true));
+        let always = SeaWater {
+            mirror: None,
+            ..mirroring.clone()
+        };
+        assert!(always.cartoon(false) && always.cartoon(true));
+        // Changed at once, either way.
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<Settings>()
+            .add_systems(Update, dress_the_sea);
+        let sea = app
+            .world_mut()
+            .spawn((mirroring, MeshMaterial3d::<SeaMaterial>(Handle::default())))
+            .id();
+        let looks = |app: &App| {
+            let sea = app.world().entity(sea);
+            (
+                sea.contains::<MeshMaterial3d<SeaMaterial>>(),
+                sea.contains::<MeshMaterial3d<MirrorMaterial>>(),
+            )
+        };
+        app.update();
+        assert_eq!(looks(&app), (false, true));
+        app.world_mut().resource_mut::<Settings>().cartoon_water = true;
+        app.update();
+        assert_eq!(looks(&app), (true, false));
+    }
+
+    #[test]
+    fn the_mirroring_sea_maps_the_whole_track_and_round_it() {
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let reach = mirror_reach(&track);
+            let (min, max) = track.bounds();
+            assert!(reach.min.cmple(min - 500.0).all() && reach.max.cmpge(max + 500.0).all());
+            let texels = (reach.max - reach.min) / reach.texel;
+            assert!(
+                texels.max_element() <= MIRROR_TEXELS + 0.5,
+                "{}",
+                circuit.name
+            );
+            assert!(
+                reach.texel >= MIRROR_TEXEL_MIN && reach.texel <= 5.0,
+                "{}",
+                circuit.name
+            );
+            assert_eq!(reach.level, SEA_LEVEL);
         }
     }
 

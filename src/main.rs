@@ -8,6 +8,7 @@ mod bench;
 mod bike;
 mod camera;
 mod circuits;
+mod debug_start;
 mod gamepads;
 mod geometry;
 mod hud;

@@ -47,6 +47,21 @@ To compile even faster while developing, link Bevy dynamically:
 cargo run --features bevy/dynamic_linking
 ```
 
+## Starting part way round the lap
+
+To look at the scenery of a stretch without riding all the way to it, start
+the game with the distance you want, in metres along the lap:
+
+```sh
+cargo run -- --from 3700        # or MOTORUST_FROM=3700 make up
+```
+
+The whole grid stands there instead of behind the finish line, in whatever
+track and mode are chosen (the distance wraps round, so 3700 on a 1.6 km
+track is 500 m). It is for development only: the lap and the times are
+counted from the finish line as ever, so the first lap is short and its
+time means nothing. See `src/debug_start.rs`.
+
 The executable is self-contained: the 3D models, textures and font are embedded with `include_bytes!`, so you do not need to copy the `assets/` folder to play (see [models.md](models.md)). On Windows the release build opens without a console window (`windows_subsystem = "windows"` in `src/main.rs`); debug builds keep it so log output stays visible.
 
 ## Web version
@@ -98,10 +113,11 @@ This is not WasmFS: WasmFS is Emscripten's file system for programs built with E
 - Gamepads show up only after you press a button with the page open, for the same reason.
 - Settings are saved in the browser's `localStorage` (key `motorust.ajustes`) instead of `ajustes.ron`.
 - The terrain is computed on a single thread (there are no threads on the web), so preparing a track takes a bit longer than on the desktop.
+- The grass, flowers and petals end at once where they stop being drawn instead of fading out (`fading_out` in `src/world/detail.rs`). On WebGL2, Bevy 0.19 binds the table of distances its fading reads (a uniform buffer of 64 entries, 1024 bytes) with a minimum size of one entry (16 bytes); wgpu then refuses the pipeline of every mesh that fades (`pbr_opaque_mesh_pipeline`, group 0, binding 14) and the game quits before it shows.
 
 ### Size
 
-Without the music, the `.wasm` file was measured at about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. Ghost Island's props and Japanese trees have since added about 4.2 MB of models (mostly JPEG and vertex data, which compress little), not measured in a web build yet. The music (`assets/music/`, ten 192 kbps MP3s: the six tracks' songs, three chill ones and the menus') adds about **41.9 MB**, which compression does not shrink: about **126 MB**, or **75 MB gzipped**, in all. The JavaScript glue is about 120 KB.
+Without the music, the `.wasm` file was measured at about **84 MB**, because the models, textures and font are embedded in it. That is about **33 MB gzipped**, which is roughly what the browser downloads. Ghost Island's props and Japanese trees have since added about 4.2 MB of models, and Fellowship Road's props about 8.8 MB more (mostly JPEG and vertex data, which compress little), not measured in a web build yet. The music (`assets/music/`, ten 192 kbps MP3s: the six tracks' songs, three chill ones and the menus') adds about **42.3 MB**, which compression does not shrink: about **126 MB**, or **75 MB gzipped**, in all. The JavaScript glue is about 120 KB.
 
 ## Continuous integration
 

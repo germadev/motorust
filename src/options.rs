@@ -20,9 +20,9 @@ use crate::pause::{DebugOptions, ReturnRate, ReverseRate, SteerRate, TurnLimit};
 use crate::render_scale::{NativeShare, drawn_size};
 use crate::settings::{
     ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
-    DIFFICULTIES, FALSE_STARTS, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS, LIGHTS_HOLDS,
-    RACE_STARTS, RENDER_SCALES, RESOLUTIONS, RaceStart, SHADOW_QUALITIES, START_LIGHTS, Settings,
-    ShadowQuality, StartedWith, WEB, cycle,
+    DIFFICULTIES, FALSE_STARTS, FORCE_PERFORMANCES, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS,
+    FpsLimit, LIGHTS_HOLDS, RACE_STARTS, RENDER_SCALES, RESOLUTIONS, RaceStart, SHADOW_QUALITIES,
+    START_LIGHTS, ScreenRate, Settings, ShadowQuality, StartedWith, TRACK_VIEWS, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
@@ -265,20 +265,21 @@ pub struct OptionsMenu {
     /// The view of the controls' mapping, while it is open.
     pub mapping: Option<Mapping>,
     /// A page of a section's of its own, while it is open: how the stick
-    /// steers, or the keyboard (Control), or the advanced options
-    /// (Graphics).
+    /// steers, or the keyboard (Control), or the performance HUD or the
+    /// advanced options (Graphics).
     pub page: Option<Page>,
     pub return_to: OptionsReturn,
     pub rescan_msg_until: f32,
 }
 
 /// The pages of a section's, each a list of its own in the panel: on
-/// Control, how the stick and the keyboard steer; on Graphics, the advanced
-/// options.
+/// Control, how the stick and the keyboard steer; on Graphics, what the
+/// performance HUD shows and the advanced options.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
     Stick,
     Keyboard,
+    PerformanceHud,
     Advanced,
 }
 
@@ -289,6 +290,9 @@ impl Page {
         match self {
             Page::Stick => at(control_items(None), ControlItem::StickBehaviour),
             Page::Keyboard => at(control_items(None), ControlItem::KeyboardBehaviour),
+            Page::PerformanceHud => graphics_items(None)
+                .iter()
+                .position(|&item| item == GraphicsItem::PerformanceHud),
             Page::Advanced => graphics_items(None)
                 .iter()
                 .position(|&item| item == GraphicsItem::Advanced),
@@ -302,6 +306,8 @@ impl Page {
             (Page::Stick, _) => "STICK",
             (Page::Keyboard, Language::Spanish) => "TECLADO",
             (Page::Keyboard, Language::English) => "KEYBOARD",
+            (Page::PerformanceHud, Language::Spanish) => "HUD DE RENDIMIENTO",
+            (Page::PerformanceHud, Language::English) => "PERFORMANCE HUD",
             (Page::Advanced, Language::Spanish) => "AVANZADO",
             (Page::Advanced, Language::English) => "ADVANCED",
         }
@@ -387,6 +393,8 @@ impl OptionsMenu {
 enum GameItem {
     Language,
     Difficulty,
+    /// How the track is seen while it is chosen.
+    TrackView,
     RaceStart,
     /// How many red lights the start has.
     StartLights,
@@ -431,23 +439,33 @@ enum GraphicsItem {
     /// [`CHOOSE_FULLSCREEN`]).
     FullscreenKind,
     Resolution,
+    /// How many frames a second at most.
+    Fps,
+    /// Whether the shadows and the render scale follow the frame rate, and
+    /// the rate they keep.
+    ForcePerformance,
     /// How much of the window's resolution the world is drawn at.
     RenderScale,
-    Fps,
-    /// Whether the shadows and the render scale follow the frame rate.
-    PerformanceMode,
     /// How far and fine the shadows are, or automatic.
     Shadows,
     /// How the edges are smoothed.
     Antialiasing,
+    /// The sea mirroring, or the cartoon one.
+    Water,
+    /// The page of what the performance HUD shows: the frame rate, the
+    /// pixels the world is drawn at and where the player is on the map.
+    PerformanceHud,
+    ShowFps,
+    ShowResolution,
+    ShowCoordinates,
+    /// The page of the advanced options, those below.
+    Advanced,
     /// The trees modelled or the classic ones.
     Trees,
     /// Whether the trees far away are drawn with lighter meshes.
     FarTrees,
     /// Whether the world is drawn lighter with the screen split.
     SplitDetail,
-    /// The page of the advanced options, those below.
-    Advanced,
     /// Whether the frame rate is written to a file (see
     /// [`crate::perf_log`]).
     PerformanceLog,
@@ -459,6 +477,7 @@ fn game_items() -> Vec<GameItem> {
     vec![
         GameItem::Language,
         GameItem::Difficulty,
+        GameItem::TrackView,
         GameItem::RaceStart,
         GameItem::StartLights,
         GameItem::LightsHold,
@@ -471,19 +490,28 @@ fn game_items() -> Vec<GameItem> {
 /// Room above a row that begins a group of its own (px).
 const GROUP_GAP: f32 = 14.0;
 
-/// Whether the row at `index` of `tab` (on `page` of Control's, if one is
-/// open) begins a group of its own, with room above: on Control, the
-/// steering after the mapping, the legend after the steering, and looking
-/// for the gamepads after the legend and its shortcuts.
+/// Whether the row at `index` of `tab` (on `page` of its, if one is open)
+/// begins a group of its own, with room above: on Control, the steering
+/// after the mapping, the legend after the steering, and looking for the
+/// gamepads after the legend and its shortcuts; on Graphics, the
+/// performance forced with what it chooses under it, and the pages.
 fn starts_group(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
-    tab == OptionsTab::Control
-        && page.is_none()
-        && matches!(
+    if page.is_some() {
+        return false;
+    }
+    match tab {
+        OptionsTab::Control => matches!(
             control_items(page).get(index),
             Some(
                 ControlItem::StickBehaviour | ControlItem::ShowLegend | ControlItem::RescanGamepads
             )
-        )
+        ),
+        OptionsTab::Graphics => matches!(
+            graphics_items(page).get(index),
+            Some(GraphicsItem::ForcePerformance | GraphicsItem::PerformanceHud)
+        ),
+        _ => false,
+    }
 }
 
 /// Whether the shortcuts for the sound and fullscreen go under the row at
@@ -497,8 +525,8 @@ fn shortcuts_after(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
 /// own.
 fn control_items(page: Option<Page>) -> Vec<ControlItem> {
     match page {
-        // (Graphics' page is not Control's.)
-        None | Some(Page::Advanced) => vec![
+        // (Graphics' pages are not Control's.)
+        None | Some(Page::PerformanceHud | Page::Advanced) => vec![
             ControlItem::Mapping,
             ControlItem::StickBehaviour,
             ControlItem::KeyboardBehaviour,
@@ -523,47 +551,57 @@ fn sound_items() -> Vec<SoundItem> {
     ]
 }
 
-/// Graphics' options; or, with its page of the advanced ones open, those:
-/// the performance log and how the frames go to the GPU.
+/// Graphics' options: the window and the frame rate, the performance
+/// forced and, under it, the render scale and the shadows it chooses when
+/// on, the edges, the water, and the pages of the performance HUD and of
+/// the advanced options. With a page open, its own: what the performance
+/// HUD shows; or the trees, the detail for two players, the performance
+/// log and how the frames go to the GPU (those three not on the web).
 fn graphics_items(page: Option<Page>) -> Vec<GraphicsItem> {
-    if page == Some(Page::Advanced) {
-        return vec![
-            GraphicsItem::PerformanceLog,
-            GraphicsItem::PipelinedRendering,
-            GraphicsItem::FrameLatency,
-        ];
-    }
-    if WEB {
-        vec![
-            GraphicsItem::Fullscreen,
-            GraphicsItem::Resolution,
-            GraphicsItem::RenderScale,
-            GraphicsItem::PerformanceMode,
-            GraphicsItem::Shadows,
-            GraphicsItem::Antialiasing,
-            GraphicsItem::Trees,
-            GraphicsItem::FarTrees,
-            GraphicsItem::SplitDetail,
-        ]
-    } else {
-        let mut items = vec![GraphicsItem::Fullscreen];
-        if CHOOSE_FULLSCREEN {
-            items.push(GraphicsItem::FullscreenKind);
+    match page {
+        Some(Page::PerformanceHud) => {
+            return vec![
+                GraphicsItem::ShowFps,
+                GraphicsItem::ShowResolution,
+                GraphicsItem::ShowCoordinates,
+            ];
         }
-        items.extend([
-            GraphicsItem::Resolution,
-            GraphicsItem::RenderScale,
-            GraphicsItem::Fps,
-            GraphicsItem::PerformanceMode,
-            GraphicsItem::Shadows,
-            GraphicsItem::Antialiasing,
-            GraphicsItem::Trees,
-            GraphicsItem::FarTrees,
-            GraphicsItem::SplitDetail,
-            GraphicsItem::Advanced,
-        ]);
-        items
+        Some(Page::Advanced) => {
+            let mut items = vec![
+                GraphicsItem::Trees,
+                GraphicsItem::FarTrees,
+                GraphicsItem::SplitDetail,
+            ];
+            if !WEB {
+                items.extend([
+                    GraphicsItem::PerformanceLog,
+                    GraphicsItem::PipelinedRendering,
+                    GraphicsItem::FrameLatency,
+                ]);
+            }
+            return items;
+        }
+        _ => {}
     }
+    let mut items = vec![GraphicsItem::Fullscreen];
+    if CHOOSE_FULLSCREEN {
+        items.push(GraphicsItem::FullscreenKind);
+    }
+    items.push(GraphicsItem::Resolution);
+    // On the web the browser decides when each frame is drawn.
+    if !WEB {
+        items.push(GraphicsItem::Fps);
+    }
+    items.extend([
+        GraphicsItem::ForcePerformance,
+        GraphicsItem::RenderScale,
+        GraphicsItem::Shadows,
+        GraphicsItem::Antialiasing,
+        GraphicsItem::Water,
+        GraphicsItem::PerformanceHud,
+        GraphicsItem::Advanced,
+    ]);
+    items
 }
 
 /// A render scale as it is shown: the share and, when it is not the whole
@@ -613,11 +651,23 @@ fn first_settings() -> &'static Settings {
 }
 
 /// Graphics' advanced options, those of its page.
-fn advanced(settings: &Settings) -> (bool, bool, u32) {
+fn advanced(settings: &Settings) -> (bool, bool, bool, bool, bool, u32) {
     (
+        settings.modelled_trees,
+        settings.lighter_far_trees,
+        settings.lighter_split_screen,
         settings.performance_log,
         settings.pipelined_rendering,
         settings.frame_latency,
+    )
+}
+
+/// What the performance HUD shows: the options of its page of Graphics'.
+fn performance_hud(settings: &Settings) -> (bool, bool, bool) {
+    (
+        settings.show_fps,
+        settings.show_resolution,
+        settings.show_coordinates,
     )
 }
 
@@ -673,6 +723,9 @@ fn section_is_default(
         (OptionsTab::Graphics, Some(Page::Advanced)) => {
             return advanced(settings) == advanced(first);
         }
+        (OptionsTab::Graphics, Some(Page::PerformanceHud)) => {
+            return performance_hud(settings) == performance_hud(first);
+        }
         _ => {}
     }
     match tab {
@@ -680,6 +733,7 @@ fn section_is_default(
             (
                 settings.language,
                 settings.difficulty,
+                settings.track_view,
                 settings.start,
                 settings.start_lights,
                 settings.lights_hold,
@@ -689,6 +743,7 @@ fn section_is_default(
             ) == (
                 first.language,
                 first.difficulty,
+                first.track_view,
                 first.start,
                 first.start_lights,
                 first.lights_hold,
@@ -705,37 +760,24 @@ fn section_is_default(
                 settings.music_enabled,
             ) == (first.fx_volume, first.music_volume, first.music_enabled)
         }
-        // (Twelve at most in a tuple compared.)
+        // Its pages' options too.
         OptionsTab::Graphics => {
-            settings.render_scale == first.render_scale
-                && settings.performance_mode == first.performance_mode
-                && (
+            let window = |settings: &Settings| {
+                (
                     settings.fullscreen,
                     settings.fullscreen_kind,
                     settings.resolution,
                     settings.fps,
+                    settings.force_performance,
+                    settings.render_scale,
                     settings.shadows,
                     settings.antialiasing,
-                    settings.modelled_trees,
-                    settings.lighter_far_trees,
-                    settings.lighter_split_screen,
-                    settings.performance_log,
-                    settings.pipelined_rendering,
-                    settings.frame_latency,
-                ) == (
-                    first.fullscreen,
-                    first.fullscreen_kind,
-                    first.resolution,
-                    first.fps,
-                    first.shadows,
-                    first.antialiasing,
-                    first.modelled_trees,
-                    first.lighter_far_trees,
-                    first.lighter_split_screen,
-                    first.performance_log,
-                    first.pipelined_rendering,
-                    first.frame_latency,
+                    settings.cartoon_water,
                 )
+            };
+            window(settings) == window(first)
+                && performance_hud(settings) == performance_hud(first)
+                && advanced(settings) == advanced(first)
         }
     }
 }
@@ -763,9 +805,11 @@ fn reset_section(
             return;
         }
         (OptionsTab::Graphics, Some(Page::Advanced)) => {
-            settings.performance_log = first.performance_log;
-            settings.pipelined_rendering = first.pipelined_rendering;
-            settings.frame_latency = first.frame_latency;
+            reset_advanced(settings, first);
+            return;
+        }
+        (OptionsTab::Graphics, Some(Page::PerformanceHud)) => {
+            reset_performance_hud(settings, first);
             return;
         }
         _ => {}
@@ -774,6 +818,7 @@ fn reset_section(
         OptionsTab::Game => {
             settings.language = first.language;
             settings.difficulty = first.difficulty;
+            settings.track_view = first.track_view;
             settings.start = first.start;
             settings.start_lights = first.start_lights;
             settings.lights_hold = first.lights_hold;
@@ -791,19 +836,33 @@ fn reset_section(
             settings.fullscreen = first.fullscreen;
             settings.fullscreen_kind = first.fullscreen_kind;
             settings.resolution = first.resolution;
-            settings.render_scale = first.render_scale;
-            settings.performance_mode = first.performance_mode;
             settings.fps = first.fps;
+            settings.force_performance = first.force_performance;
+            settings.render_scale = first.render_scale;
             settings.shadows = first.shadows;
             settings.antialiasing = first.antialiasing;
-            settings.modelled_trees = first.modelled_trees;
-            settings.lighter_far_trees = first.lighter_far_trees;
-            settings.lighter_split_screen = first.lighter_split_screen;
-            settings.performance_log = first.performance_log;
-            settings.pipelined_rendering = first.pipelined_rendering;
-            settings.frame_latency = first.frame_latency;
+            settings.cartoon_water = first.cartoon_water;
+            reset_performance_hud(settings, first);
+            reset_advanced(settings, first);
         }
     }
+}
+
+/// The advanced options of Graphics' put back as they are at first.
+fn reset_advanced(settings: &mut Settings, first: &Settings) {
+    settings.modelled_trees = first.modelled_trees;
+    settings.lighter_far_trees = first.lighter_far_trees;
+    settings.lighter_split_screen = first.lighter_split_screen;
+    settings.performance_log = first.performance_log;
+    settings.pipelined_rendering = first.pipelined_rendering;
+    settings.frame_latency = first.frame_latency;
+}
+
+/// What the performance HUD shows put back as it is at first.
+fn reset_performance_hud(settings: &mut Settings, first: &Settings) {
+    settings.show_fps = first.show_fps;
+    settings.show_resolution = first.show_resolution;
+    settings.show_coordinates = first.show_coordinates;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -917,6 +976,10 @@ fn use_options_menu(
                     settings.difficulty = cycle(&DIFFICULTIES, settings.difficulty, change);
                     sounds.write(MenuSound::Move);
                 }
+                GameItem::TrackView if change != 0 => {
+                    settings.track_view = cycle(&TRACK_VIEWS, settings.track_view, change);
+                    sounds.write(MenuSound::Move);
+                }
                 GameItem::RaceStart if change != 0 => {
                     settings.start = cycle(&RACE_STARTS, settings.start, change);
                     sounds.write(MenuSound::Move);
@@ -1022,9 +1085,15 @@ fn use_options_menu(
             let items = graphics_items(page);
             let item = items[options_menu.selected.min(items.len() - 1)];
             match item {
-                // The page of its own, from its first option.
-                GraphicsItem::Advanced if request.confirm || request.side > 0 => {
-                    options_menu.page = Some(Page::Advanced);
+                // A page of its own, from its first option.
+                GraphicsItem::PerformanceHud | GraphicsItem::Advanced
+                    if request.confirm || request.side > 0 =>
+                {
+                    options_menu.page = Some(if item == GraphicsItem::PerformanceHud {
+                        Page::PerformanceHud
+                    } else {
+                        Page::Advanced
+                    });
                     options_menu.selected = 0;
                     sounds.write(MenuSound::Confirm);
                 }
@@ -1043,8 +1112,8 @@ fn use_options_menu(
                         sounds.write(MenuSound::Move);
                     }
                 }
-                // While the performance mode chooses them, they stay.
-                GraphicsItem::RenderScale if change != 0 && !settings.performance_mode => {
+                // While the performance forced chooses them, they stay.
+                GraphicsItem::RenderScale if change != 0 && !settings.force_performance.is_on() => {
                     settings.render_scale = cycle(&RENDER_SCALES, settings.render_scale, change);
                     sounds.write(MenuSound::Move);
                 }
@@ -1052,16 +1121,33 @@ fn use_options_menu(
                     settings.fps = cycle(&FPS_LIMITS, settings.fps, change);
                     sounds.write(MenuSound::Move);
                 }
-                GraphicsItem::PerformanceMode if change != 0 => {
-                    settings.performance_mode = !settings.performance_mode;
+                GraphicsItem::ForcePerformance if change != 0 => {
+                    settings.force_performance =
+                        cycle(&FORCE_PERFORMANCES, settings.force_performance, change);
                     sounds.write(MenuSound::Move);
                 }
-                GraphicsItem::Shadows if change != 0 && !settings.performance_mode => {
+                GraphicsItem::Shadows if change != 0 && !settings.force_performance.is_on() => {
                     settings.shadows = cycle(&SHADOW_QUALITIES, settings.shadows, change);
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Antialiasing if change != 0 => {
                     settings.antialiasing = cycle(&ANTIALIASINGS, settings.antialiasing, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::Water if change != 0 => {
+                    settings.cartoon_water = !settings.cartoon_water;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::ShowFps if change != 0 => {
+                    settings.show_fps = !settings.show_fps;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::ShowResolution if change != 0 => {
+                    settings.show_resolution = !settings.show_resolution;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::ShowCoordinates if change != 0 => {
+                    settings.show_coordinates = !settings.show_coordinates;
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Trees if change != 0 => {
@@ -1123,12 +1209,15 @@ fn shadows_name(quality: ShadowQuality, auto: Level, lang: Language) -> String {
     }
 }
 
-/// What the performance mode has chosen, said so: "Rendimiento: medias".
-fn performance_said(chosen: &str, lang: Language) -> String {
-    let chosen = chosen.to_lowercase();
-    match lang {
-        Language::Spanish => format!("Rendimiento: {chosen}"),
-        Language::English => format!("Performance: {chosen}"),
+/// What a value chosen by the performance forced reads: automatic.
+const FORCED: &str = "Auto";
+
+/// The frame rate cap as Options > Graphics names it: at the screen's rate,
+/// with the rate it runs at once known (`screen`, Hz: "Screen (60 Hz)").
+fn fps_limit_name(fps: FpsLimit, screen: Option<f32>, lang: Language) -> String {
+    match (fps, screen) {
+        (FpsLimit::Screen, Some(hz)) => format!("{} ({hz:.0} Hz)", fps.name(lang)),
+        _ => fps.name(lang),
     }
 }
 
@@ -1316,11 +1405,12 @@ fn show_options_menu(
         Query<&Name, With<Gamepad>>,
     ),
     // The mapping's gamepads, drawn at the interface's scale.
-    (mut pad_arts, ui_scale, detail, native): (
+    (mut pad_arts, ui_scale, detail, native, screen): (
         ResMut<PadArts>,
         Option<Res<UiScale>>,
         Option<Res<Detail>>,
         Option<Res<NativeShare>>,
+        Option<Res<ScreenRate>>,
     ),
     // The list of options shown until now, as it was laid out.
     (lists, laid_rows): (
@@ -1362,6 +1452,13 @@ fn show_options_menu(
                         Language::English => "Difficulty",
                     },
                     format!("<  {}  >", settings.difficulty.name(lang)),
+                ),
+                GameItem::TrackView => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Vista al elegir pista",
+                        Language::English => "View when choosing the track",
+                    },
+                    format!("<  {}  >", settings.track_view.name(lang)),
                 ),
                 GameItem::RaceStart => Row::with_value(
                     match lang {
@@ -1523,6 +1620,34 @@ fn show_options_menu(
         OptionsTab::Graphics => graphics_items(options_menu.page)
             .into_iter()
             .map(|item| match item {
+                GraphicsItem::PerformanceHud => Row::with_value(
+                    match lang {
+                        Language::Spanish => "HUD de rendimiento",
+                        Language::English => "Performance HUD",
+                    },
+                    ">",
+                ),
+                GraphicsItem::ShowFps => Row::check(
+                    match lang {
+                        Language::Spanish => "Mostrar FPS",
+                        Language::English => "Show FPS",
+                    },
+                    settings.show_fps,
+                ),
+                GraphicsItem::ShowResolution => Row::check(
+                    match lang {
+                        Language::Spanish => "Mostrar resolución activa",
+                        Language::English => "Show active resolution",
+                    },
+                    settings.show_resolution,
+                ),
+                GraphicsItem::ShowCoordinates => Row::check(
+                    match lang {
+                        Language::Spanish => "Mostrar coordenadas en el mapa",
+                        Language::English => "Show coordinates on the map",
+                    },
+                    settings.show_coordinates,
+                ),
                 GraphicsItem::Advanced => Row::with_value(
                     match lang {
                         Language::Spanish => "Avanzado",
@@ -1548,14 +1673,10 @@ fn show_options_menu(
                         Language::Spanish => "Escala de resolución",
                         Language::English => "Resolution scale",
                     };
-                    // Faint, with the scale it has come to, while the
-                    // performance mode chooses it.
-                    if settings.performance_mode {
-                        let now = crate::render_scale::render_percent(detail.as_deref());
-                        Row::disabled(
-                            label,
-                            performance_said(&render_scale_name(now, window_inner, native), lang),
-                        )
+                    // Faint, automatic, while the performance forced
+                    // chooses it.
+                    if settings.force_performance.is_on() {
+                        Row::disabled(label, FORCED)
                     } else {
                         Row::with_value(
                             label,
@@ -1566,17 +1687,24 @@ fn show_options_menu(
                         )
                     }
                 }
-                GraphicsItem::Fps => {
-                    Row::with_value(lang.fps(), format!("<  {}  >", settings.fps.name(lang)))
-                }
+                GraphicsItem::Fps => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Límite FPS",
+                        Language::English => "FPS limit",
+                    },
+                    format!(
+                        "<  {}  >",
+                        fps_limit_name(settings.fps, screen.as_deref().and_then(|s| s.0), lang)
+                    ),
+                ),
                 GraphicsItem::Shadows => {
                     let label = match lang {
                         Language::Spanish => "Sombras",
                         Language::English => "Shadows",
                     };
                     let now = detail.as_deref().map_or(Level::High, |detail| detail.level);
-                    if settings.performance_mode {
-                        Row::disabled(label, performance_said(&level_name(now, lang), lang))
+                    if settings.force_performance.is_on() {
+                        Row::disabled(label, FORCED)
                     } else {
                         Row::with_value(
                             label,
@@ -1584,12 +1712,26 @@ fn show_options_menu(
                         )
                     }
                 }
-                GraphicsItem::PerformanceMode => Row::check(
+                GraphicsItem::ForcePerformance => Row::with_value(
                     match lang {
-                        Language::Spanish => "Modo rendimiento (60 fps)",
-                        Language::English => "Performance mode (60 fps)",
+                        Language::Spanish => "Forzar rendimiento",
+                        Language::English => "Force performance",
                     },
-                    settings.performance_mode,
+                    format!("<  {}  >", settings.force_performance.name(lang)),
+                ),
+                GraphicsItem::Water => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Agua",
+                        Language::English => "Water",
+                    },
+                    format!(
+                        "<  {}  >",
+                        match (settings.cartoon_water, lang) {
+                            (true, _) => "Wind Waker",
+                            (false, Language::Spanish) => "Con reflejo",
+                            (false, Language::English) => "Mirroring",
+                        }
+                    ),
                 ),
                 GraphicsItem::Antialiasing => Row::with_value(
                     "Antialiasing",
@@ -2212,6 +2354,9 @@ mod tests {
         assert_eq!(
             advanced,
             [
+                GraphicsItem::Trees,
+                GraphicsItem::FarTrees,
+                GraphicsItem::SplitDetail,
                 GraphicsItem::PerformanceLog,
                 GraphicsItem::PipelinedRendering,
                 GraphicsItem::FrameLatency
@@ -2230,7 +2375,9 @@ mod tests {
         let mut settings = Settings {
             performance_log: false,
             frame_latency: 3,
+            modelled_trees: false,
             shadows: ShadowQuality::Low,
+            show_coordinates: true,
             ..default()
         };
         let mut debug = DebugOptions::default();
@@ -2248,7 +2395,79 @@ mod tests {
             &settings,
             &debug
         ));
+        assert!(settings.modelled_trees);
         assert_eq!(settings.shadows, ShadowQuality::Low);
+        assert!(settings.show_coordinates);
+    }
+
+    #[test]
+    fn graphics_puts_the_fps_limit_under_the_resolution_and_what_the_performance_forces_under_it() {
+        let main = graphics_items(None);
+        let at = |item| main.iter().position(|&i| i == item).unwrap();
+        // The cap, renamed, right under the resolution.
+        assert_eq!(at(GraphicsItem::Fps), at(GraphicsItem::Resolution) + 1);
+        // The render scale and the shadows right under the performance
+        // forced, which chooses them when on; a group of their own.
+        let forced = at(GraphicsItem::ForcePerformance);
+        assert_eq!(at(GraphicsItem::RenderScale), forced + 1);
+        assert_eq!(at(GraphicsItem::Shadows), forced + 2);
+        assert!(starts_group(OptionsTab::Graphics, None, forced));
+        assert!(!starts_group(OptionsTab::Graphics, None, forced + 1));
+        // The water, and the two pages at the foot of the list.
+        assert!(main.contains(&GraphicsItem::Water));
+        assert_eq!(
+            main[main.len() - 2..],
+            [GraphicsItem::PerformanceHud, GraphicsItem::Advanced]
+        );
+        // Off at first; the cap says the screen's rate when known.
+        assert_eq!(first_settings().force_performance, ForcePerformance::Off);
+        assert_eq!(
+            fps_limit_name(FpsLimit::Screen, Some(59.94), Language::Spanish),
+            "De la pantalla (60 Hz)"
+        );
+        assert_eq!(
+            fps_limit_name(FpsLimit::Cap(120), Some(60.0), Language::English),
+            "120"
+        );
+        assert_eq!(ForcePerformance::Fps120.name(Language::Spanish), "120 fps");
+    }
+
+    #[test]
+    fn the_performance_hud_shows_what_its_page_says_and_resets_on_its_own() {
+        let page = Some(Page::PerformanceHud);
+        assert_eq!(
+            graphics_items(page),
+            [
+                GraphicsItem::ShowFps,
+                GraphicsItem::ShowResolution,
+                GraphicsItem::ShowCoordinates
+            ]
+        );
+        assert_eq!(
+            graphics_items(None)[Page::PerformanceHud.row()],
+            GraphicsItem::PerformanceHud
+        );
+        assert_eq!(
+            Page::PerformanceHud.title(Language::Spanish),
+            "HUD DE RENDIMIENTO"
+        );
+        let mut settings = Settings {
+            show_fps: false,
+            show_resolution: true,
+            cartoon_water: true,
+            ..default()
+        };
+        let mut debug = DebugOptions::default();
+        let graphics = OptionsTab::Graphics;
+        assert!(!section_is_default(graphics, page, &settings, &debug));
+        reset_section(graphics, page, &mut settings, &mut debug);
+        assert!(section_is_default(graphics, page, &settings, &debug));
+        assert!(settings.show_fps && !settings.show_resolution);
+        // The water is on Graphics' own list: its Reset puts it back.
+        assert!(!section_is_default(graphics, None, &settings, &debug));
+        reset_section(graphics, None, &mut settings, &mut debug);
+        assert!(!settings.cartoon_water);
+        assert!(section_is_default(graphics, None, &settings, &debug));
     }
 
     #[test]
@@ -2305,7 +2524,7 @@ mod tests {
         assert_eq!(menu.tab, OptionsTab::Graphics);
     }
 
-    use crate::settings::{Controls, Difficulty};
+    use crate::settings::{Controls, Difficulty, ForcePerformance, TrackView};
 
     #[test]
     fn reset_and_back_stand_side_by_side_at_the_foot() {
@@ -2378,6 +2597,42 @@ mod tests {
         assert_eq!(debug.stick_limit, TurnLimit::Off);
         reset_section(control, stick, &mut settings, &mut debug);
         assert!(section_is_default(control, None, &settings, &debug));
+    }
+
+    #[test]
+    fn game_offers_the_view_of_the_track_and_starts_from_the_road() {
+        // From the road at first, so that the camera of the start menu
+        // and the modes goes on into the track screen.
+        let first = Settings::default();
+        assert_eq!(first.track_view, TrackView::Trackside);
+        assert!(first.track_view.at_the_road());
+        assert!(game_items().contains(&GameItem::TrackView));
+        // Both views are offered, each with a name of its own in both
+        // languages, and only one of them is from the road.
+        assert_eq!(TRACK_VIEWS.len(), 2);
+        for lang in [Language::Spanish, Language::English] {
+            let names: Vec<&str> = TRACK_VIEWS.iter().map(|view| view.name(lang)).collect();
+            assert_ne!(names[0], names[1], "{lang:?}");
+            assert!(names.iter().all(|name| !name.is_empty()), "{lang:?}");
+        }
+        assert_eq!(
+            TRACK_VIEWS.iter().filter(|view| view.at_the_road()).count(),
+            1
+        );
+        // Changed, the section is no longer as it was, and Reset puts it
+        // back.
+        let mut settings = first.clone();
+        let mut debug = DebugOptions::default();
+        settings.track_view = cycle(&TRACK_VIEWS, settings.track_view, 1);
+        assert_eq!(settings.track_view, TrackView::Aerial);
+        assert!(!section_is_default(
+            OptionsTab::Game,
+            None,
+            &settings,
+            &debug
+        ));
+        reset_section(OptionsTab::Game, None, &mut settings, &mut debug);
+        assert_eq!(settings.track_view, first.track_view);
     }
 
     #[test]

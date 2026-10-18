@@ -245,6 +245,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                 fence: WOODEN_FENCE,
             },
         ],
+        dams: &[],
         gantries: &[
             Gantry {
                 along: 0.0,
@@ -358,6 +359,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         // rivers and lakes green-grey.
         sky: SkyStyle::HighCountry,
         water: Water::River,
+        cartoon_water: false,
         pit: None,
         desert: None,
         mine: None,

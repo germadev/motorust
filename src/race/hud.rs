@@ -14,16 +14,21 @@ use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::settings::Settings;
+use crate::ui::DESIGN_WINDOW;
 use crate::welcome::GameMode;
 
 /// Seconds a checkpoint's bonus and who is out are shown for.
 const NOTICE: f32 = 2.5;
 const GOLD: Color = Color::srgb(1.0, 0.82, 0.2);
 const RED: Color = Color::srgb(1.0, 0.3, 0.25);
-/// How big the place and the lap are (px), and the smaller words and
-/// totals round them ("1º / 8", "VUELTA 2 / 5"); and the times under them.
-const PLACE_SIZE: f32 = 40.0;
+/// How big the place and the lap are (px), the place the biggest, and the
+/// smaller words and totals round them ("1 / 8", "VUELTA 2 / 5"); and the
+/// times under them.
+const PLACE_SIZE: f32 = 88.0;
+const LAP_SIZE: f32 = 40.0;
 const TOTAL_SIZE: f32 = 24.0;
+/// How big the total after the place is (" / 8"), up at its top.
+const PLACE_TOTAL_SIZE: f32 = 30.0;
 const TIMES_SIZE: f32 = 17.0;
 /// The times' colour; and how big the last lap's is when it beat the
 /// track's record (in gold).
@@ -35,8 +40,29 @@ const WORDS: f32 = 0.55;
 /// How far above the bottom of its line the HUD's font (Russo One) sits on
 /// its baseline, as a share of its size: a number and its total, side by
 /// side at the bottom, sit on the same baseline lifting the total by the
-/// difference.
+/// difference. And how far below the top of its line its figures reach up
+/// to (0.926 of its size over the baseline in a line 1.2 tall, figures 0.71
+/// tall): a total at the top of its number is lowered by the difference.
 const BASELINE: f32 = 0.28;
+const FIGURES_TOP: f32 = 0.21;
+const FIGURES_HEIGHT: f32 = 0.71;
+/// How much of the room under the place's figures (their font's descent)
+/// the lap under it takes up.
+const UNDER_PLACE: f32 = 0.2;
+/// The total after the place: faint; in an elimination, once someone is out,
+/// yellow, going orange as fewer are left.
+const FAINT: Color = Color::srgba(1.0, 1.0, 1.0, WORDS);
+const YELLOW: Color = Color::srgb(1.0, 0.86, 0.2);
+const ORANGE: Color = Color::srgb(1.0, 0.5, 0.12);
+/// Where the line of the notices in the middle starts, down the player's
+/// half of the screen (or all of it), in percent.
+const NOTICE_TOP: f32 = 30.0;
+/// Where the middle of the false start notice's letters goes instead, down
+/// the player's half (or all of it), in percent: between the start lights
+/// (their bottom about 22.6 % down the screen) and the top of the start's
+/// arch on the grid (about 30 % down), which it would hide at the notices'
+/// own place.
+const FALSE_START_MIDDLE: f32 = 26.1;
 /// Seconds the total pops for when it changes, and how much bigger it gets.
 const POP: f32 = 0.8;
 const POP_GROWTH: f32 = 0.6;
@@ -65,6 +91,22 @@ struct Info {
     kind: InfoKind,
 }
 
+/// How far up the false start notice goes from the notices' place (see
+/// [`FALSE_START_MIDDLE`]): its node's offset then.
+#[derive(Component)]
+struct FalseStartLift(Val);
+
+/// How far up (in percent of the window's height) the false start notice,
+/// in letters `size` big, goes in a half of the screen `height` percent of
+/// the window tall: its letters' middle from where it is at the notices'
+/// place to [`FALSE_START_MIDDLE`], at the window's design size (the
+/// interface grows and shrinks with the window).
+fn false_start_lift(size: f32, height: f32) -> f32 {
+    let half = DESIGN_WINDOW.y * height / 100.0;
+    let middle = (FIGURES_TOP + FIGURES_HEIGHT / 2.0) * size / half * 100.0;
+    (NOTICE_TOP + middle - FALSE_START_MIDDLE) * height / 100.0
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum InfoKind {
     Place,
@@ -90,8 +132,8 @@ enum WatchInfo {
     Notice,
 }
 
-/// Top right, under the frame rate: who has crossed the line at the end, in
-/// order, and when.
+/// Top right, under the performance HUD: who has crossed the line at the
+/// end, in order, and when.
 #[derive(Component)]
 struct Arrivals;
 
@@ -102,6 +144,9 @@ struct Arrivals;
 struct Figured {
     text: String,
     color: Color,
+    /// The colour of what is not a figure, where it is not the figures'
+    /// own, translucent.
+    words: Option<Color>,
 }
 
 /// The runs of `text` that are figures (digits, and a colon or a point
@@ -130,21 +175,21 @@ fn figure_runs(text: &str) -> Vec<(String, bool)> {
 #[allow(clippy::type_complexity)]
 fn show_figures(
     mut commands: Commands,
-    texts: Query<
-        (Entity, &Figured, &TextFont, Option<&Children>),
+    mut texts: Query<
+        (Entity, &Figured, &TextFont, Option<&Children>, &mut Text),
         Or<(Changed<Figured>, Changed<TextFont>)>,
     >,
     mut spans: Query<(&mut TextSpan, &mut TextColor, &mut TextFont), Without<Figured>>,
 ) {
-    for (text, figured, font, children) in &texts {
+    for (text, figured, font, children, mut root) in &mut texts {
         let runs = figure_runs(&figured.text);
         let count = runs.len();
         let children: Vec<Entity> = children.map_or(Vec::new(), |c| c.iter().collect());
         for (index, (run, figure)) in runs.into_iter().enumerate() {
-            let color = if figure {
-                figured.color
-            } else {
-                figured.color.with_alpha(figured.color.alpha() * WORDS)
+            let color = match (figure, figured.words) {
+                (true, _) => figured.color,
+                (false, Some(words)) => words,
+                (false, None) => figured.color.with_alpha(figured.color.alpha() * WORDS),
             };
             match children
                 .get(index)
@@ -171,6 +216,13 @@ fn show_figures(
         for &extra in children.iter().skip(count) {
             commands.entity(extra).despawn();
         }
+        // With its last span gone the text has no children to say it
+        // changed, and the interface would go on drawing what it said
+        // (the place and the lap stayed up after the race, under the name
+        // of the bike the camera watches): the text itself says so.
+        if count == 0 && !children.is_empty() {
+            root.set_changed();
+        }
     }
 }
 
@@ -183,7 +235,12 @@ struct PlaceTotal {
     changed: Option<f32>,
 }
 
-fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<GameMode>) {
+fn spawn_race_info(
+    mut commands: Commands,
+    font: Res<UiFont>,
+    game_mode: Res<GameMode>,
+    rules: Res<Rules>,
+) {
     let players = if *game_mode == GameMode::SplitScreen {
         2
     } else {
@@ -300,33 +357,38 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                         )
                     };
                     // The place, and how many there are after it, apart,
-                    // to pop without moving the rest.
-                    column.spawn(beside()).with_children(|row| {
-                        row.spawn(info(InfoKind::Place, PLACE_SIZE, Color::WHITE));
-                        row.spawn((
-                            PlaceTotal {
-                                player,
-                                ..default()
-                            },
-                            after(PLACE_SIZE, TOTAL_SIZE),
-                            Text::new(""),
-                            Figured::default(),
-                            text(TOTAL_SIZE),
-                            TextColor(Color::WHITE),
-                            TextShadow::default(),
-                            UiTransform::IDENTITY,
-                        ));
-                    });
-                    // The lap, as big as the place, between its word and
+                    // to pop without moving the rest. None against the
+                    // clock, nor the room for it.
+                    if rules.mode != Mode::Checkpoint {
+                        let mut row = on_top();
+                        row.margin.bottom = px(-UNDER_PLACE * PLACE_SIZE);
+                        column.spawn(row).with_children(|row| {
+                            row.spawn(info(InfoKind::Place, PLACE_SIZE, Color::WHITE));
+                            row.spawn((
+                                PlaceTotal {
+                                    player,
+                                    ..default()
+                                },
+                                up_at(PLACE_SIZE, PLACE_TOTAL_SIZE),
+                                Text::new(""),
+                                Figured::default(),
+                                text(PLACE_TOTAL_SIZE),
+                                TextColor(Color::WHITE),
+                                TextShadow::default(),
+                                UiTransform::IDENTITY,
+                            ));
+                        });
+                    }
+                    // The lap, smaller than the place, between its word and
                     // how many laps there are.
                     column.spawn(beside()).with_children(|row| {
-                        let mut word = after(PLACE_SIZE, TOTAL_SIZE);
+                        let mut word = after(LAP_SIZE, TOTAL_SIZE);
                         word.margin.right = px(TOTAL_SIZE / 4.0);
                         row.spawn((info(InfoKind::LapWord, TOTAL_SIZE, Color::WHITE), word));
-                        row.spawn(info(InfoKind::Lap, PLACE_SIZE, Color::WHITE));
+                        row.spawn(info(InfoKind::Lap, LAP_SIZE, Color::WHITE));
                         row.spawn((
                             info(InfoKind::Laps, TOTAL_SIZE, Color::WHITE),
-                            after(PLACE_SIZE, TOTAL_SIZE),
+                            after(LAP_SIZE, TOTAL_SIZE),
                         ));
                     });
                     for kind in [InfoKind::LapTime, InfoKind::Clock] {
@@ -352,9 +414,10 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                     TextShadow::default(),
                 ));
                 // In the middle: notices.
+                let size = if players == 1 { 52.0 } else { 36.0 };
                 half.spawn(Node {
                     position_type: PositionType::Absolute,
-                    top: percent(30),
+                    top: percent(NOTICE_TOP),
                     width: percent(100),
                     justify_content: JustifyContent::Center,
                     ..default()
@@ -364,8 +427,9 @@ fn spawn_race_info(mut commands: Commands, font: Res<UiFont>, game_mode: Res<Gam
                         player,
                         kind: InfoKind::Notice,
                     },
+                    FalseStartLift(Val::Vh(-false_start_lift(size, height))),
                     Text::new(""),
-                    text(if players == 1 { 52.0 } else { 36.0 }),
+                    text(size),
                     TextLayout::justify(Justify::Center),
                     TextShadow {
                         offset: Vec2::splat(3.0),
@@ -392,6 +456,42 @@ fn after(number: f32, size: f32) -> Node {
         margin: UiRect::bottom(px(BASELINE * (number - size))),
         ..default()
     }
+}
+
+/// A row of a number and, after it, a smaller total (" / 8"), their tops
+/// in line.
+fn on_top() -> Node {
+    Node {
+        align_items: AlignItems::FlexStart,
+        ..default()
+    }
+}
+
+/// The node of a total `size` px big after a number `number` px big:
+/// lowered for the tops of their figures to be in line.
+fn up_at(number: f32, size: f32) -> Node {
+    Node {
+        margin: UiRect::top(px(FIGURES_TOP * (number - size))),
+        ..default()
+    }
+}
+
+/// The colour of the total after a player's place, among `racers`, `out`
+/// of them out (the player among them or not, `player_out`): faint; but in
+/// an elimination, once someone is out and while the player is still in,
+/// yellow, going orange as fewer are left, all orange with the last two.
+fn total_color(mode: Mode, racers: usize, out: usize, player_out: bool) -> Color {
+    if mode != Mode::Elimination || out == 0 || player_out {
+        return FAINT;
+    }
+    // Out with the last two left.
+    let last = racers.saturating_sub(2).max(1);
+    let t = if last <= 1 {
+        1.0
+    } else {
+        (out - 1) as f32 / (last - 1) as f32
+    };
+    YELLOW.mix(&ORANGE, t.clamp(0.0, 1.0))
 }
 
 /// A time as minutes, seconds and tenths: 1:23.4.
@@ -469,11 +569,12 @@ fn show_race_info(
         &mut TextColor,
         &mut TextFont,
         Option<&mut Figured>,
+        Option<(&mut Node, &FalseStartLift)>,
     )>,
 ) {
     let lang = settings.language;
     let target = rules.mode.laps(rules.laps);
-    for (info, mut text, mut color, mut font, figured) in &mut texts {
+    for (info, mut text, mut color, mut font, figured, lift) in &mut texts {
         let Some((rider, progress, _, _, retired)) =
             bikes.iter().find(|(_, _, player, local, _)| {
                 let index = local.map_or(usize::from(!*player), |local| local.0);
@@ -486,7 +587,7 @@ fn show_race_info(
         let (wanted, tint) = match info.kind {
             // Over for the players: the results say it all.
             _ if outcome.is_some() => (String::new(), color.0),
-            InfoKind::Place if rules.mode != Mode::Checkpoint => (ordinal(place), color.0),
+            InfoKind::Place if rules.mode != Mode::Checkpoint => (place.to_string(), color.0),
             InfoKind::LapWord => (
                 match lang {
                     Language::Spanish => "VUELTA".into(),
@@ -549,6 +650,17 @@ fn show_race_info(
                     .count() as u32;
                 let false_starts =
                     (!race.started && made > 0).then_some((made, settings.false_starts));
+                // Back on the grid, up between the lights and the arch.
+                if let Some((mut node, lift)) = lift {
+                    let top = if false_starts.is_some() && out == Out::In {
+                        lift.0
+                    } else {
+                        Val::ZERO
+                    };
+                    if node.top != top {
+                        node.top = top;
+                    }
+                }
                 notice(&rules, &standing, progress, out, false_starts, place, lang)
             }
             _ => (String::new(), color.0),
@@ -558,6 +670,7 @@ fn show_race_info(
             figured.set_if_neq(Figured {
                 text: wanted,
                 color: tint,
+                words: None,
             });
             continue;
         }
@@ -581,8 +694,9 @@ pub fn pop(elapsed: f32) -> f32 {
 }
 
 /// After each player's place, how many there are (" / 8"; in elimination,
-/// how many are still in), popping bigger and red as it changes: scaled from
-/// its left end, so nothing round it moves.
+/// how many are still in), faint, or in elimination in the colour of how
+/// few are left (see [`total_color`]), popping bigger and red as it
+/// changes: scaled from its top left corner, so nothing round it moves.
 #[allow(clippy::type_complexity)]
 fn show_place_total(
     time: Res<Time<Real>>,
@@ -616,18 +730,25 @@ fn show_place_total(
         let text = among.map_or(String::new(), |among| format!(" / {among}"));
         let popped = total.changed.map_or(0.0, |at| pop(now - at));
         let scale = 1.0 + POP_GROWTH * popped;
-        let width = node.size().x * node.inverse_scale_factor;
+        let size = node.size() * node.inverse_scale_factor;
         let popping = UiTransform {
-            translation: Val2::px(width * (scale - 1.0) / 2.0, 0.0),
+            translation: Val2::px(size.x * (scale - 1.0) / 2.0, size.y * (scale - 1.0) / 2.0),
             scale: Vec2::splat(scale),
             ..UiTransform::IDENTITY
         };
         if *transform != popping {
             *transform = popping;
         }
+        let color = total_color(
+            rules.mode,
+            standing.order.len(),
+            standing.out.len(),
+            rider.is_some_and(|rider| standing.out.contains(&rider)),
+        );
         figured.set_if_neq(Figured {
             text,
-            color: Color::WHITE.mix(&RED, popped),
+            color: color.mix(&RED, popped),
+            words: Some(FAINT.mix(&RED.with_alpha(WORDS), popped)),
         });
     }
 }
@@ -853,6 +974,127 @@ fn notice(
 mod tests {
     use super::*;
 
+    /// What a player's texts at the top left say, put together from their
+    /// spans.
+    fn top_left(app: &mut App) -> String {
+        let world = app.world_mut();
+        let mut said = Vec::new();
+        let mut texts = world.query::<(&Info, &Figured, Option<&Children>)>();
+        let texts: Vec<(Info, Vec<Entity>)> = texts
+            .iter(world)
+            .map(|(info, _, children)| (*info, children.map_or(Vec::new(), |c| c.iter().collect())))
+            .collect();
+        for (info, spans) in texts {
+            let text: String = spans
+                .iter()
+                .filter_map(|&span| world.get::<TextSpan>(span).map(|span| span.0.clone()))
+                .collect();
+            if !text.is_empty() {
+                said.push(format!("{:?}={text}", info.kind));
+            }
+        }
+        said.sort();
+        said.join(" ")
+    }
+
+    #[test]
+    fn a_false_start_notice_goes_up_between_the_lights_and_the_arch() {
+        // The top of the start's arch on the grid, down the screen (or the
+        // half): about 29.6 % on Bahía GP's grid and 30.8 % on Gold Mine's.
+        const ARCH_TOP: f32 = 29.6;
+        for (size, height) in [(52.0, 100.0), (36.0, 50.0)] {
+            // Its letters, down the half (or the screen), in percent.
+            let half = DESIGN_WINDOW.y * height / 100.0;
+            let top = NOTICE_TOP - false_start_lift(size, height) * 100.0 / height;
+            let letters = |share: f32| top + share * size / half * 100.0;
+            let (first, last) = (letters(FIGURES_TOP), letters(FIGURES_TOP + FIGURES_HEIGHT));
+            assert!(
+                (letters(FIGURES_TOP + FIGURES_HEIGHT / 2.0) - FALSE_START_MIDDLE).abs() < 1e-3
+            );
+            assert!(last < ARCH_TOP, "{size}: {first}-{last} %");
+            // On a screen of its own, under the lights (split, they are
+            // across the middle).
+            if height == 100.0 {
+                assert!(
+                    first > super::super::lights::panel_bottom() + 0.5,
+                    "{first} %"
+                );
+            }
+            // Up from the notices' own place, where the arch hid it.
+            assert!(false_start_lift(size, height) > 0.0);
+        }
+    }
+
+    #[test]
+    fn the_top_left_clears_once_the_race_is_over_for_the_players() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Font>()
+            .init_state::<GameState>()
+            .init_resource::<Settings>()
+            .init_resource::<UiFont>()
+            .init_resource::<GameMode>()
+            .insert_resource(Rules {
+                mode: Mode::Race,
+                laps: 1,
+            })
+            .init_resource::<Race>()
+            .insert_resource(Standing {
+                order: (0..8).collect(),
+                ..default()
+            })
+            .add_plugins(RaceHudPlugin);
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        let bike = app
+            .world_mut()
+            .spawn((Rider(7), Progress::default(), Player))
+            .id();
+        app.update();
+        app.update();
+        let racing = top_left(&mut app);
+        assert!(racing.split(' ').any(|said| said == "Place=8"), "{racing}");
+        assert!(racing.contains("LapTime="), "{racing}");
+        // Over the line: the lap's time goes.
+        app.world_mut().get_mut::<Progress>(bike).unwrap().finished = Some(28.8);
+        app.update();
+        app.update();
+        let finished = top_left(&mut app);
+        assert!(!finished.contains("LapTime="), "{finished}");
+        // The results up: nothing left at the top left, for the bike the
+        // camera watches to be named there.
+        app.insert_resource(super::super::Outcome {
+            mode: Mode::Race,
+            track: 0,
+            places: Vec::new(),
+            players: vec![7],
+            laps: 1,
+            record: false,
+            settled: false,
+        });
+        let before = app.world_mut().change_tick();
+        app.update();
+        app.update();
+        assert_eq!(top_left(&mut app), "");
+        // And each text emptied is to be drawn again, with nothing left in
+        // it to say so.
+        let world = app.world_mut();
+        let now = world.change_tick();
+        let mut texts = world.query_filtered::<(&Info, Ref<Text>), With<Figured>>();
+        for (info, text) in texts.iter(world) {
+            if matches!(
+                info.kind,
+                InfoKind::Place | InfoKind::Lap | InfoKind::LapWord
+            ) {
+                assert!(text.last_changed().is_newer_than(before, now), "{info:?}");
+            }
+        }
+    }
+
     #[test]
     fn the_lap_under_way_reads_with_its_time_and_then_the_last_one() {
         assert_eq!(lap_times(31.25, None, Language::Spanish), "0:31.2");
@@ -1026,6 +1268,32 @@ mod tests {
         assert_eq!(place_among(&start, Mode::Elimination, 0), (2, 8));
         // In a race, a bike out (disqualified) still counts.
         assert_eq!(place_among(&standing, Mode::Race, 0), (2, 8));
+    }
+
+    #[test]
+    fn the_total_is_faint_but_goes_yellow_then_orange_as_an_elimination_goes_on() {
+        // Faint in a race, and in an elimination with nobody out yet.
+        assert_eq!(total_color(Mode::Race, 8, 0, false), FAINT);
+        assert_eq!(total_color(Mode::Race, 8, 3, false), FAINT);
+        assert_eq!(total_color(Mode::Elimination, 8, 0, false), FAINT);
+        assert!(FAINT.alpha() < 1.0);
+        // The first out: yellow, not faint; the last two left: orange; in
+        // between, more orange the fewer are left.
+        assert_eq!(total_color(Mode::Elimination, 8, 1, false), YELLOW);
+        assert_eq!(total_color(Mode::Elimination, 8, 6, false), ORANGE);
+        let green = |out| {
+            total_color(Mode::Elimination, 8, out, false)
+                .to_srgba()
+                .green
+        };
+        for out in 1..6 {
+            assert!(green(out + 1) < green(out), "{out}");
+            assert_eq!(total_color(Mode::Elimination, 8, out, false).alpha(), 1.0);
+        }
+        // A player out counts among them all, faint.
+        assert_eq!(total_color(Mode::Elimination, 8, 4, true), FAINT);
+        // Three racing: the first out leaves the last two.
+        assert_eq!(total_color(Mode::Elimination, 3, 1, false), ORANGE);
     }
 
     #[test]

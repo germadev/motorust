@@ -28,7 +28,7 @@
 //!    a run of tight esses, four bends winding like a river, and round to
 //!    the left into the castle street.
 
-use std::f32::consts::{FRAC_PI_2, PI};
+use std::f32::consts::PI;
 
 use bevy::prelude::*;
 
@@ -57,6 +57,11 @@ const RED_RIDGE: Span = span(3764.0, 4322.0);
 const TORII_CORRIDOR: Span = span(3830.0, 4120.0);
 const TORII_WALL: f32 = 6.5;
 const CROSSING: Span = span(4672.0, 4880.0);
+/// Over the susuki hills, from the boardwalk to the lake, and down the
+/// castle ridge: the stretches the rows of small props run along (see
+/// [`PROP_ROWS`]).
+const SUSUKI: Span = span(1622.0, 2700.0);
+const CASTLE_RIDGE: Span = span(CASTLE_SPLIT.0, CROSSING.to);
 const BAMBOO: Span = span(4880.0, 5675.0);
 /// Where the road splits: in two by the temple, and three ways on the castle
 /// ridge.
@@ -180,6 +185,16 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                 tilt: Vec2::ZERO,
                 skirt: 5.0,
             },
+            // The pagoda's ground before the corridor of torii, a little
+            // over the road, so that it stands out as the riders come up
+            // at it.
+            Terrace {
+                center: PAGODA_GROUND,
+                radius: 10.0,
+                height: 25.0,
+                tilt: Vec2::ZERO,
+                skirt: 10.0,
+            },
             // The shrine in the bamboo, a little over the road.
             Terrace {
                 center: BAMBOO_SHRINE,
@@ -222,66 +237,16 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         // Stone walls along the castle street, the coast and the castle
         // ridge, a hedge round the lake, and timber everywhere else.
         walls: &[
-            // Openings of the shrine's vermilion fence where the statues,
-            // lanterns and shrines stand by the road, so that they show
-            // whole: as low as most of them, a wall would hide them.
-            WallRun {
-                span: span(53.0, 67.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
+            // The wall opens into the shrine's vermilion fence on its
+            // own where a small prop stands (see `world::japan`); the
+            // stores, which stand on no plinth, have their openings here.
             WallRun {
                 span: span(123.0, 137.0),
                 side: Side::Left,
                 style: WallStyle::ShrineFence,
             },
             WallRun {
-                span: span(193.0, 207.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
                 span: span(313.0, 327.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(323.0, 337.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(1388.0, 1402.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(1648.0, 1662.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(1648.0, 1662.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(3388.0, 3402.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(3388.0, 3402.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(3793.0, 3807.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(3793.0, 3807.0),
                 side: Side::Right,
                 style: WallStyle::ShrineFence,
             },
@@ -291,42 +256,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                 style: WallStyle::ShrineFence,
             },
             WallRun {
-                span: span(4273.0, 4287.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
                 span: span(4693.0, 4747.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(4693.0, 4707.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(4953.0, 4967.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(5153.0, 5167.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(5353.0, 5367.0),
-                side: Side::Left,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(5513.0, 5527.0),
-                side: Side::Right,
-                style: WallStyle::ShrineFence,
-            },
-            WallRun {
-                span: span(5874.0, 5888.0),
                 side: Side::Left,
                 style: WallStyle::ShrineFence,
             },
@@ -406,6 +336,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
             style: BridgeStyle::Wooden,
             fence: 0.75,
         }],
+        dams: &[],
         gantries: &[
             Gantry {
                 along: 0.0,
@@ -500,6 +431,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         waterfalls: &[],
         sky: SkyStyle::GoldenHour,
         water: Water::Sea,
+        cartoon_water: false,
         pit: None,
         desert: None,
         mine: None,
@@ -513,6 +445,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                 approach_every: 15.0,
             }],
             props: &PROPS,
+            rows: &PROP_ROWS,
             // Under the great maple, beside the road round the foot of the
             // lake.
             maple_grounds: &[MapleGround {
@@ -660,11 +593,12 @@ const PROPS: [Prop; 44] = [
     // the castle, facing the riders coming over the tunnel: ahead of them
     // all the way along the castle ridge.
     standing(PropModel::CastleKeep, -162.1, -527.7, -1.76).scaled(1.6),
-    // The temple and its pagoda on the outside of the bend at the end of
-    // its split, facing the road: the pagoda first, on the level of the
-    // road, and the temple past it.
-    standing(PropModel::TempleHall, 752.0, -262.0, FRAC_PI_2),
-    standing(PropModel::Pagoda, 745.0, -205.0, FRAC_PI_2),
+    // The temple and its pagoda before the corridor of torii, both facing
+    // the riders coming up the red ridge at them: the hall stands on the
+    // bank to the left, in the open (among the gates it was hidden), and
+    // the pagoda by the road to the right, on a terrace a little over it.
+    by_road(PropModel::TempleHall, 3640.0, 40.0).facing_riders(),
+    by_road(PropModel::Pagoda, 3780.0, -34.0).facing_riders(),
     // The shrine on stilts in the inlet, beside the boardwalk, and another
     // on land, on a terrace on the outside of a bend in the bamboo, facing
     // the riders coming down.
@@ -733,8 +667,9 @@ const PROPS: [Prop; 44] = [
     by_road(PropModel::BronzeLantern, 1395.0, -NEAR),
     by_road(PropModel::BronzeLantern, 1655.0, NEAR),
     by_road(PropModel::BronzeLantern, 1655.0, -NEAR),
-    // A torii of logs on the top of the susuki hills.
-    by_road(PropModel::LogTorii, 2350.0, 30.0),
+    // A torii of logs on the top of the susuki hills, facing the riders
+    // coming up at it: it stands against the sky all the way up.
+    by_road(PropModel::LogTorii, 2350.0, 30.0).facing_riders(),
     // Guardians at the foot of the corridor of torii.
     by_road(PropModel::Komainu, 3800.0, NEAR),
     by_road(PropModel::Komainu, 3800.0, -NEAR),
@@ -753,6 +688,99 @@ const PROPS: [Prop; 44] = [
     by_road(PropModel::Jizo, 5520.0, -NEAR),
     // And one more by the castle street.
     by_road(PropModel::Jizo, 5881.0, NEAR),
+];
+
+/// The small props over and over along the lap (see [`PropRow`]): each
+/// stands on its plinth, with the wall opening for it, so that the road
+/// is lined with them. Every row takes its kinds in turn, so that no
+/// stretch is all of one thing, and the two sides of a stretch are half a
+/// step apart, so they do not stand in pairs facing each other (but for
+/// the guardians, which come in twos). Where one of [`PROPS`] already
+/// stands, or another road runs, there is none.
+const PROP_ROWS: [PropRow; 12] = [
+    // The castle street, lit on both sides as a town's is, with a brazier
+    // and a jizō among the lanterns.
+    prop_row(
+        &[PropModel::StoneLantern, PropModel::Brazier],
+        CASTLE_STREET,
+        Side::Left,
+        NEAR,
+        70.0,
+    ),
+    prop_row(
+        &[PropModel::StoneLantern, PropModel::Jizo],
+        span(CASTLE_STREET.from + 35.0, CASTLE_STREET.to),
+        Side::Right,
+        NEAR,
+        70.0,
+    ),
+    // The coast road, on its inland side: the sea's is left open.
+    prop_row(
+        &[PropModel::Jizo, PropModel::StoneLantern, PropModel::Stele],
+        COAST,
+        Side::Right,
+        NEAR,
+        115.0,
+    ),
+    // The lonely road over the susuki hills: wayside statues, a shrine
+    // and a memorial stone.
+    prop_row(
+        &[PropModel::Jizo, PropModel::Hokora, PropModel::Stele],
+        SUSUKI,
+        Side::Left,
+        NEAR,
+        190.0,
+    ),
+    // Round the lake, on the water's side, along the shrine's fence.
+    prop_row(
+        &[PropModel::StoneLantern, PropModel::BronzeLantern],
+        LAKE_SHORE,
+        Side::Right,
+        NEAR,
+        85.0,
+    ),
+    // Up the red ridge: braziers and memorial stones, and guardians in
+    // twos, one either side, as at the foot of the corridor of torii.
+    prop_row(
+        &[PropModel::Brazier, PropModel::Stele],
+        RED_RIDGE,
+        Side::Left,
+        NEAR,
+        110.0,
+    ),
+    prop_row(&[PropModel::Komainu], RED_RIDGE, Side::Left, NEAR, 150.0),
+    prop_row(&[PropModel::Komainu], RED_RIDGE, Side::Right, NEAR, 150.0),
+    // Down the castle ridge, lit for the night.
+    prop_row(
+        &[PropModel::Brazier, PropModel::Komainu, PropModel::Stele],
+        CASTLE_RIDGE,
+        Side::Left,
+        NEAR,
+        95.0,
+    ),
+    prop_row(
+        &[PropModel::Brazier, PropModel::Hokora],
+        span(CASTLE_RIDGE.from + 47.0, CASTLE_RIDGE.to),
+        Side::Right,
+        NEAR,
+        95.0,
+    ),
+    // Down through the bamboo, where the jizō stand: a shrine and a stone
+    // among them, one side half a step after the other.
+    prop_row(
+        &[PropModel::Jizo, PropModel::Hokora],
+        BAMBOO,
+        Side::Left,
+        NEAR,
+        140.0,
+    ),
+    prop_row(
+        &[PropModel::Jizo, PropModel::Stele],
+        span(BAMBOO.from + 70.0, BAMBOO.to),
+        Side::Right,
+        NEAR,
+        140.0,
+    ),
 ];
 
 const CONTROL_POINTS: [Vec2; 110] = [
@@ -1261,6 +1289,9 @@ const MAPLE_ROAD: Vec2 = Vec2::new(874.8, 444.9);
 /// The shrine on the outside of the bend in the bamboo at 5180 m, 28 m from
 /// the road: ahead of the riders coming down to the bend.
 const BAMBOO_SHRINE: Vec2 = Vec2::new(-98.9, -305.5);
+/// Where the pagoda stands before the corridor of torii (34 m to the right
+/// of the road at 3780 m), for its terrace.
+const PAGODA_GROUND: Vec2 = Vec2::new(727.9, -126.5);
 /// The islet the great torii stands on, in the sea 56 m from the coast
 /// road (at about 1240 m).
 const TORII_ISLET: Vec2 = Vec2::new(497.0, -892.0);

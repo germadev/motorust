@@ -5,14 +5,15 @@
 //! Dragon and the mill of Bywater, its wheel turning, Bree's gate over the
 //! road and its inn, the ruins on Weathertop, the stone trolls, the halls of
 //! Rivendell, the Doors of Durin open over the road into Moria, the drawing
-//! of ithildin glowing on them, a mallorn, boats on the river and the kings
-//! of the Argonath standing in it; and, as in feudal Japan (see
+//! of ithildin glowing on them, outside and on their leaves within, a
+//! mallorn, boats on the river and the kings of the Argonath standing in
+//! it; and, as in feudal Japan (see
 //! [`super::japan`], whose props are placed alike), fields of flowers and
 //! leaves drifting down.
 //!
 //! Every prop's colours are in one texture, so they all share one material,
-//! and every kind of prop is one mesh (but the ithildin and the darkness in
-//! the doorway of the Doors of Durin, each in a material of its own).
+//! and every kind of prop is one mesh (but the ithildin on the Doors of
+//! Durin and its glow, each in a material of its own).
 
 use bevy::{
     asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
@@ -22,6 +23,7 @@ use super::Assets3d;
 use super::flowers::{FlowerPlan, spawn_flowers};
 use super::japan::{PropPack, Turning, in_view, spawn_petals, spot};
 use super::props::Footprint;
+use super::quads::MeshBuilder;
 use super::scenery::{MiddleEarthModel, Prop, Scenery, Spot};
 use super::terrain::{GRASS_TILE, SEA_LEVEL, Terrain};
 use crate::geometry::smoothstep;
@@ -31,19 +33,19 @@ use crate::track::Track;
 /// `props.bin`; the props are by [`name`].
 const WHEEL: &str = "mill_wheel";
 const CHIMNEY: &str = "chimney";
-/// The drawing of ithildin on the Doors of Durin, and the darkness of Moria
-/// in their doorway, over the tunnel: pieces of `props.bin` going with the
-/// doors.
+/// The drawing of ithildin on the Doors of Durin, and the glow round its
+/// lines: pieces of `props.bin` going with the doors.
 const ITHILDIN: &str = "durin_ithildin";
-const DOORWAY: &str = "durin_dark";
+const GLOW: &str = "durin_glow";
 /// How far in front of the rock at the mouth of the tunnel into Moria the
 /// back of the Doors of Durin stands (m): a little, so the stars drawn on
 /// the rock over them show.
 const DOORS_OFF_ROCK: f32 = 0.05;
-/// The ithildin, silver with a touch of blue, as it shines in the film;
-/// and the darkness, black.
-const ITHILDIN_COLOR: Color = Color::srgb(0.8, 0.87, 1.0);
-const DARKNESS: Color = Color::srgb(0.01, 0.01, 0.013);
+/// The ithildin, silver with a touch of blue, as it shines in the film,
+/// brighter than anything the sun lights (linear); and its glow, added over
+/// the stone round its lines.
+const ITHILDIN_LIGHT: LinearRgba = LinearRgba::rgb(2.2, 2.6, 3.6);
+const GLOW_COLOR: Color = Color::srgb(0.16, 0.22, 0.42);
 /// How far under the water a boat's keel floats (m), and how far the foot
 /// of a king of the Argonath stands under the river (m).
 const DRAUGHT: f32 = 0.6;
@@ -62,6 +64,23 @@ const BANK_BEHIND: f32 = 13.0;
 const BANK_AHEAD: f32 = 6.0;
 const BANK_SINK: f32 = 2.5;
 const BANK_STEP: f32 = 0.5;
+/// On the banks, as in Hobbiton: washing hung out on a line between two
+/// posts, and bunting strung between two poles, every other hole one or
+/// the other; the colours of the clothes and of the flags.
+const CLOTHES: [Color; 4] = [
+    Color::srgb(0.95, 0.94, 0.9),
+    Color::srgb(0.75, 0.2, 0.16),
+    Color::srgb(0.3, 0.42, 0.66),
+    Color::srgb(0.92, 0.85, 0.6),
+];
+const FLAGS: [Color; 5] = [
+    Color::srgb(0.85, 0.18, 0.15),
+    Color::srgb(0.95, 0.78, 0.2),
+    Color::srgb(0.25, 0.6, 0.3),
+    Color::srgb(0.25, 0.42, 0.8),
+    Color::srgb(0.95, 0.94, 0.9),
+];
+const POST_WOOD: Color = Color::srgb(0.42, 0.32, 0.22);
 
 /// Every prop's name in `props.bin`.
 fn name(model: MiddleEarthModel) -> &'static str {
@@ -234,16 +253,17 @@ pub fn spawn_middle_earth(
         return Vec::new();
     };
     let props = &assets.fellowship.0;
-    // Shining of themselves, unlit: the ithildin, and the darkness, which no
-    // light reaches.
+    // Shining of themselves: the ithildin, and its glow, added over the
+    // stone.
     let gate = GateMaterials {
         ithildin: assets.materials.add(StandardMaterial {
-            base_color: ITHILDIN_COLOR,
-            unlit: true,
+            base_color: Color::BLACK,
+            emissive: ITHILDIN_LIGHT,
             ..default()
         }),
-        darkness: assets.materials.add(StandardMaterial {
-            base_color: DARKNESS,
+        glow: assets.materials.add(StandardMaterial {
+            base_color: GLOW_COLOR,
+            alpha_mode: AlphaMode::Add,
             unlit: true,
             ..default()
         }),
@@ -254,6 +274,20 @@ pub fn spawn_middle_earth(
         .iter()
         .map(|prop| spawn_prop(world, track, terrain, prop, props, &gate, &mut banks))
         .collect();
+    if !banks.dressing.is_empty() {
+        // Cloth and flags, seen from either side.
+        let material = assets.materials.add(StandardMaterial {
+            perceptual_roughness: 0.9,
+            cull_mode: None,
+            double_sided: true,
+            ..default()
+        });
+        let dressing = std::mem::take(&mut banks.dressing).build();
+        world.spawn((
+            Mesh3d(assets.meshes.add(dressing)),
+            MeshMaterial3d(material),
+        ));
+    }
     if !banks.positions.is_empty() {
         // The banks are grass, as the ground they rise from.
         let material = assets.materials.add(StandardMaterial {
@@ -322,17 +356,16 @@ fn foot(track: &Track, terrain: &Terrain, prop: &Prop<MiddleEarthModel>, reach: 
     }
 }
 
-/// The materials of the ithildin on the Doors of Durin and of the darkness
-/// in their doorway.
+/// The materials of the ithildin on the Doors of Durin and of its glow.
 struct GateMaterials {
     ithildin: Handle<StandardMaterial>,
-    darkness: Handle<StandardMaterial>,
+    glow: Handle<StandardMaterial>,
 }
 
 /// A prop, standing as its [`Footing`] says; the mill with its wheel
 /// turning, a hobbit hole in its bank (added to `banks`) with its chimney
 /// over it, the Doors of Durin against the rock at the mouth of the tunnel,
-/// their ithildin shining and the darkness in their doorway. Returns the
+/// their ithildin shining. Returns the
 /// ground it takes: the middle of its box and how far it reaches from it.
 fn spawn_prop(
     world: &mut ChildSpawnerCommands,
@@ -366,7 +399,7 @@ fn spawn_prop(
     }
     world.spawn((Mesh3d(piece.mesh.clone()), material.clone(), transform));
     if prop.model == MiddleEarthModel::DurinDoors {
-        for (part, paint) in [(ITHILDIN, &gate.ithildin), (DOORWAY, &gate.darkness)] {
+        for (part, paint) in [(ITHILDIN, &gate.ithildin), (GLOW, &gate.glow)] {
             world.spawn((
                 Mesh3d(props.piece(part).mesh.clone()),
                 MeshMaterial3d(paint.clone()),
@@ -458,12 +491,18 @@ struct BankMesh {
     colors: Vec<[f32; 4]>,
     uvs: Vec<[f32; 2]>,
     indices: Vec<u32>,
+    /// The washing lines and the bunting on the banks, and how many banks
+    /// there are so far.
+    dressing: MeshBuilder,
+    count: usize,
 }
 
 impl BankMesh {
     /// The bank of a hobbit hole whose foot is at `base`, turned by
     /// `rotation`.
     fn add(&mut self, bank: &Bank, base: Vec3, rotation: Quat, terrain: &Terrain) {
+        self.dress(bank, base, rotation, terrain);
+        self.count += 1;
         let x0 = -(bank.half_width + BANK_SIDES);
         let z0 = bank.back - BANK_BEHIND;
         let z1 = bank.back + BANK_AHEAD;
@@ -495,6 +534,74 @@ impl BankMesh {
                 let c = a + columns as u32;
                 let d = c + 1;
                 self.indices.extend_from_slice(&[a, c, b, b, c, d]);
+            }
+        }
+    }
+
+    /// On the top of a bank, washing on a line between two posts, or, on
+    /// every other one, bunting between two poles higher up behind.
+    fn dress(&mut self, bank: &Bank, base: Vec3, rotation: Quat, terrain: &Terrain) {
+        // On the bank, or on the hill it is dug into where that is higher.
+        let on = |x: f32, z: f32, up: f32| {
+            let at = base + rotation * Vec3::new(x, bank.height(Vec2::new(x, z)), z);
+            let ground = at.y.max(terrain.height(Vec2::new(at.x, at.z)));
+            Vec3::new(at.x, ground + up, at.z)
+        };
+        let facing = rotation * Vec3::Z;
+        let washing = self.count.is_multiple_of(2);
+        let (span, behind, tall) = if washing {
+            (2.6, bank.back - 4.5, 1.9)
+        } else {
+            (4.2, bank.back - 8.0, 4.0)
+        };
+        let feet = [on(-span, behind, -0.3), on(span, behind, -0.3)];
+        let tops = [on(-span, behind, tall), on(span, behind, tall)];
+        for (foot, top) in feet.into_iter().zip(tops) {
+            self.dressing.beam(foot, top, 0.1, 0.1, POST_WOOD);
+        }
+        // The line, sagging a little, in pieces.
+        const PIECES: usize = 8;
+        let sag = if washing { 0.15 } else { 0.5 };
+        let line = |t: f32| tops[0].lerp(tops[1], t) - Vec3::Y * (sag * 4.0 * t * (1.0 - t) + 0.05);
+        for k in 0..PIECES {
+            let (a, b) = (k as f32 / PIECES as f32, (k + 1) as f32 / PIECES as f32);
+            self.dressing
+                .beam(line(a), line(b), 0.03, 0.03, Color::srgb(0.85, 0.82, 0.75));
+        }
+        let along = (tops[1] - tops[0]).normalize_or_zero();
+        if washing {
+            // Clothes pegged to it: shirts, sheets and towels.
+            for (k, t) in [0.2, 0.42, 0.62, 0.82].into_iter().enumerate() {
+                let at = line(t);
+                let (wide, long) = [(0.55, 0.7), (0.8, 0.9), (0.45, 0.55), (0.6, 0.8)][k];
+                let half = along * wide / 2.0;
+                self.dressing.quad(
+                    [
+                        (at - half, Vec2::ZERO),
+                        (at + half, Vec2::X),
+                        (at + half - Vec3::Y * long, Vec2::ONE),
+                        (at - half - Vec3::Y * long, Vec2::Y),
+                    ],
+                    facing,
+                    CLOTHES[k % CLOTHES.len()],
+                );
+            }
+        } else {
+            // Triangular flags hanging from it.
+            const COUNT: usize = 9;
+            for k in 0..COUNT {
+                let t = (k as f32 + 0.5) / COUNT as f32;
+                let at = line(t);
+                let half = along * 0.22;
+                self.dressing.triangle(
+                    [
+                        (at - half, Vec2::ZERO),
+                        (at + half, Vec2::X),
+                        (at - Vec3::Y * 0.5, Vec2::new(0.5, 1.0)),
+                    ],
+                    facing,
+                    FLAGS[(k + self.count) % FLAGS.len()],
+                );
             }
         }
     }
@@ -652,33 +759,34 @@ mod tests {
     }
 
     #[test]
-    fn the_doors_of_durin_open_onto_the_dark_with_their_ithildin_on_them() {
+    fn the_doors_of_durin_stand_open_with_their_ithildin_on_them() {
         let pack = pack();
         let doors = piece(&pack, "durin_doors");
         let (low, high) = bounds(doors);
         // Grand, their leaves swung open in front of them.
         assert!((high.y - 35.0).abs() < 0.1, "{high}");
         assert!(high.z - low.z > 7.0, "{low} {high}");
-        // Under the doorway, nothing in the way but at its sides.
+        // Under the arch, nothing in the way but at its sides (the feet of
+        // the pillars), and the leaves up to the arch.
         let opening = positions(doors)
             .iter()
             .filter(|p| p[1] > 0.2 && p[1] < 25.0)
             .map(|p| p[0].abs())
             .fold(f32::MAX, f32::min);
-        assert!(opening > 6.0, "{opening} m");
-        // The darkness fills the doorway from just under the tunnel's roof
-        // behind it up into the arch.
-        let (dark_low, dark_high) = bounds(piece(&pack, DOORWAY));
-        assert!(dark_low.y > 6.0 && dark_low.y <= 6.5, "{dark_low}");
-        assert!(dark_high.y > 0.8 * high.y, "{dark_high}");
-        assert!(dark_high.x > opening && -dark_low.x > opening);
-        assert!(dark_low.z > low.z && dark_high.z < high.z);
-        // The ithildin on the arch and the pillars, and the stars over it,
-        // on the rock behind.
+        assert!(opening > 5.6, "{opening} m");
+        // The ithildin on the arch and the pillars, the stars over it on the
+        // rock behind, and on the leaves, swung forward: from just above the
+        // ground to over the doors, wider than the doorway, and out on the
+        // leaves.
         let (drawn_low, drawn_high) = bounds(piece(&pack, ITHILDIN));
         assert!(drawn_high.y > high.y, "{drawn_high}");
         assert!(drawn_low.y < 2.0 && drawn_low.z > low.z, "{drawn_low}");
         assert!(drawn_high.x > opening + 2.0 && -drawn_low.x > opening + 2.0);
+        assert!(drawn_high.z > high.z - 2.5, "{drawn_high} {high}");
+        // Its glow round it, wider.
+        let (glow_low, glow_high) = bounds(piece(&pack, GLOW));
+        assert!(glow_high.x > drawn_high.x && glow_low.x < drawn_low.x);
+        assert!(glow_high.y > drawn_high.y);
     }
 
     #[test]
@@ -737,7 +845,7 @@ mod tests {
                             .map(|p| p[0].abs())
                             .fold(f32::MAX, f32::min);
                         assert!(
-                            track.wall_at(index) < opening - 0.3,
+                            track.wall_at(index) < opening,
                             "{what}: walls {} m out, the doors {opening} m",
                             track.wall_at(index)
                         );

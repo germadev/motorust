@@ -13,9 +13,10 @@
 //! otherwise) it is drawn lighter: the shadows at the lowest level, the
 //! grass, flowers and petals nearer and the trees lighter sooner.
 //!
-//! The performance mode (Options > Graphics) goes further down the same
-//! way, quicker, to keep 60 frames a second: the shadows and the share of
-//! the window's resolution the world is drawn at (see
+//! The performance forced (Options > Graphics > "Force performance") goes
+//! further down the same way, quicker, to keep 60 or 120 frames a second
+//! (no more than the frame rate cap or the screen let through): the shadows
+//! and the share of the window's resolution the world is drawn at (see
 //! [`crate::render_scale`]) together, down a ladder of [`Rung`]s
 //! ([`ladder`]). Neither makes a pipeline again, so neither stutters.
 
@@ -28,7 +29,7 @@ use bevy::prelude::*;
 use super::sky::Sunlight;
 use crate::menu::GameState;
 use crate::pause::Pause;
-use crate::settings::{Antialiasing, Settings, ShadowQuality};
+use crate::settings::{Antialiasing, ScreenRate, Settings, ShadowQuality, WEB};
 use crate::welcome::GameMode;
 
 /// How much detail the shadows have, from the most to the least.
@@ -95,7 +96,7 @@ const SHADOWS: [Rung; 3] = [
     rung(Level::Medium, 100),
     rung(Level::Low, 100),
 ];
-/// The performance mode with one view: the shadows and the resolution down
+/// The performance forced with one view: the shadows and the resolution down
 /// by turns, the shadows first, as they show least.
 const PERFORMANCE: [Rung; 8] = [
     rung(Level::High, 100),
@@ -119,8 +120,8 @@ const PERFORMANCE_SPLIT: [Rung; 6] = [
 ];
 
 /// The ladder an automatic quality goes down and up: the performance
-/// mode's (for two views drawn lighter, `split`, or one), or the shadows'
-/// alone.
+/// forced's (for two views drawn lighter, `split`, or one), or the
+/// shadows' alone.
 pub fn ladder(performance: bool, split: bool) -> &'static [Rung] {
     match (performance, split) {
         (true, false) => &PERFORMANCE,
@@ -129,10 +130,17 @@ pub fn ladder(performance: bool, split: bool) -> &'static [Rung] {
     }
 }
 
-/// The frame rate the performance mode keeps up: 60, or the cap chosen if
-/// lower.
-pub fn performance_target(settings: &Settings) -> f32 {
-    settings.fps.target().min(60.0)
+/// The frame rate the performance forced keeps up, if it is on: 60 or 120,
+/// or fewer if the frame rate cap lets fewer through (at the screen's rate,
+/// the screen at `screen` Hz, once known): the most it could ever reach.
+pub fn performance_target(settings: &Settings, screen: Option<f32>) -> Option<f32> {
+    let forced = settings.force_performance.fps()?;
+    Some(
+        settings
+            .fps
+            .bound(screen)
+            .map_or(forced, |bound| forced.min(bound)),
+    )
 }
 
 impl Detail {
@@ -206,7 +214,7 @@ pub const SHADOWS_PACE: Pace = Pace {
     keeps_up: 0.97,
     jumps: false,
 };
-/// The performance mode: a look every second, down as soon as the rate
+/// The performance forced: a look every second, down as soon as the rate
 /// falls a little short, as many rungs as it falls short by.
 pub const PERFORMANCE_PACE: Pace = Pace {
     window: 1.0,
@@ -231,7 +239,7 @@ const HOLD: (f32, f32) = (10.0, 300.0);
 pub struct AutoQuality {
     /// The rung (0, the most detail; see [`ladder`]).
     pub step: usize,
-    /// The ladder it is on (see [`ladder`]): the performance mode's, for
+    /// The ladder it is on (see [`ladder`]): the performance forced's, for
     /// two views drawn lighter.
     ladder: (bool, bool),
     /// The frames of the look under way (s), and when it began.
@@ -364,11 +372,13 @@ fn split(settings: Option<&Settings>, game_mode: Option<&GameMode>) -> bool {
         && game_mode.is_some_and(|mode| *mode == GameMode::SplitScreen)
 }
 
-/// With the performance mode or the shadows automatic, the frame rate
+/// With the performance forced or the shadows automatic, the frame rate
 /// looked at during a race (not paused), on the ladder that goes with them.
+#[allow(clippy::too_many_arguments)]
 fn adapt_quality(
     time: Res<Time<Real>>,
     settings: Option<Res<Settings>>,
+    screen: Option<Res<ScreenRate>>,
     game_mode: Option<Res<GameMode>>,
     state: Option<Res<State<GameState>>>,
     pause: Option<Res<Pause>>,
@@ -376,7 +386,7 @@ fn adapt_quality(
 ) {
     let now = time.elapsed_secs();
     let settings = settings.as_deref();
-    let performance = settings.is_some_and(|settings| settings.performance_mode);
+    let performance = settings.is_some_and(|settings| settings.force_performance.is_on());
     let split = split(settings, game_mode.as_deref());
     auto.on((performance, split), now);
     let automatic =
@@ -387,16 +397,16 @@ fn adapt_quality(
         auto.rest(now);
         return;
     };
-    let (target, pace) = if performance {
-        (performance_target(settings), &PERFORMANCE_PACE)
-    } else {
-        (settings.fps.target(), &SHADOWS_PACE)
+    let screen = screen.and_then(|screen| screen.0);
+    let (target, pace) = match performance_target(settings, screen) {
+        Some(target) => (target, &PERFORMANCE_PACE),
+        None => (settings.fps.target(), &SHADOWS_PACE),
     };
     let rungs = ladder(performance, split).len();
     auto.frame(now, time.delta_secs(), target, pace, rungs);
 }
 
-/// The detail for the players at play: with the performance mode, as far
+/// The detail for the players at play: with the performance forced, as far
 /// down its ladder as it has come; otherwise the shadows' level chosen, or
 /// come to automatically, and the render scale chosen. Split when two share
 /// the screen, unless Options > Graphics says to draw it all anyway.
@@ -408,7 +418,7 @@ pub fn choose_detail(
 ) {
     let settings = settings.as_deref();
     let split = split(settings, game_mode.as_deref());
-    let performance = settings.is_some_and(|settings| settings.performance_mode);
+    let performance = settings.is_some_and(|settings| settings.force_performance.is_on());
     let rungs = ladder(performance, split);
     let reached = rungs[auto.step.min(rungs.len() - 1)];
     let (level, scale) = match settings {
@@ -444,6 +454,32 @@ fn shadows_for_detail(
         && shadow_map.size != detail.shadow_map()
     {
         shadow_map.size = detail.shadow_map();
+    }
+}
+
+/// Drawn up to `reach` m from the cameras and fading out over `fade` m
+/// more, as the grass, the flowers and the petals are: dithered away, as
+/// Bevy fades the end of a [`VisibilityRange`]. On the web they end at
+/// once instead, halfway through the fade (see [`fading_out_on`]).
+pub fn fading_out(reach: f32, fade: f32, use_aabb: bool) -> VisibilityRange {
+    fading_out_on(WEB, reach, fade, use_aabb)
+}
+
+/// [`fading_out`], with no fade on the `web`: on WebGL2, Bevy (0.19) binds
+/// the table of ranges the dithering reads (64 of them, 1024 bytes in its
+/// shader) as if it held only one (16 bytes), so the pipeline of every mesh
+/// that fades out fails to be made and the game quits before it shows.
+/// Ending at once, they read none of it.
+fn fading_out_on(web: bool, reach: f32, fade: f32, use_aabb: bool) -> VisibilityRange {
+    let end_margin = if web {
+        reach + fade / 2.0..reach + fade / 2.0
+    } else {
+        reach..reach + fade
+    };
+    VisibilityRange {
+        start_margin: 0.0..0.0,
+        end_margin,
+        use_aabb,
     }
 }
 
@@ -532,6 +568,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn what_fades_out_ends_at_once_on_the_web() {
+        let desktop = fading_out_on(false, 100.0, 20.0, true);
+        assert_eq!(desktop.end_margin, 100.0..120.0);
+        assert!(!desktop.is_abrupt());
+        // On the web, as far on average, but with no dithering.
+        let web = fading_out_on(true, 100.0, 20.0, true);
+        assert_eq!(web.end_margin, 110.0..110.0);
+        assert!(web.is_abrupt());
+        assert!(web.use_aabb);
+        // And so it stays with two views.
+        assert!(shortened(&web, 0.55).is_abrupt());
+        assert_eq!(fading_out(100.0, 20.0, false).is_abrupt(), WEB);
+    }
+
+    #[test]
     fn each_level_draws_less_and_two_views_lighter() {
         let at = |level, split| Detail {
             level,
@@ -605,8 +656,8 @@ mod tests {
         assert_eq!(level(&auto), Level::Medium);
     }
 
-    /// `seconds` of frames at `fps` from `from` (s) in the performance mode
-    /// with one view, aiming at 60.
+    /// `seconds` of frames at `fps` from `from` (s) with the performance
+    /// forced, one view, aiming at 60.
     fn perform(auto: &mut AutoQuality, from: f32, seconds: f32, fps: f32) -> f32 {
         let dt = 1.0 / fps;
         let mut now = from;
@@ -618,7 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn the_performance_mode_goes_down_quickly_as_far_as_it_falls_short() {
+    fn the_performance_forced_goes_down_quickly_as_far_as_it_falls_short() {
         let mut auto = AutoQuality::default();
         auto.on((true, false), 0.0);
         // At 45 fps: after a second settling and a second looking, three
@@ -666,17 +717,37 @@ mod tests {
         );
         assert!(SHADOWS.iter().all(|rung| rung.scale == 100));
         assert_eq!(ladder(true, true).len(), PERFORMANCE_SPLIT.len());
-        // 60, or the cap if lower.
-        let mut settings = Settings::default();
-        assert_eq!(performance_target(&settings), 60.0);
-        settings.fps = crate::settings::FpsLimit::Cap(30);
-        assert_eq!(performance_target(&settings), 30.0);
-        settings.fps = crate::settings::FpsLimit::Cap(144);
-        assert_eq!(performance_target(&settings), 60.0);
     }
 
     #[test]
-    fn the_detail_comes_from_the_performance_mode_or_from_the_options() {
+    fn the_performance_forced_keeps_60_or_120_as_far_as_the_cap_and_the_screen_let_it() {
+        use crate::settings::{ForcePerformance, FpsLimit};
+        let mut settings = Settings::default();
+        // Off: nothing kept.
+        assert_eq!(performance_target(&settings, Some(60.0)), None);
+        // 60, or the cap if lower.
+        settings.force_performance = ForcePerformance::Fps60;
+        settings.fps = FpsLimit::Unlimited;
+        assert_eq!(performance_target(&settings, Some(60.0)), Some(60.0));
+        settings.fps = FpsLimit::Cap(30);
+        assert_eq!(performance_target(&settings, None), Some(30.0));
+        settings.fps = FpsLimit::Cap(144);
+        assert_eq!(performance_target(&settings, None), Some(60.0));
+        // 120, unless the cap or the screen, at its rate, let fewer through
+        // (it would never get there, and come down to the last rung).
+        settings.force_performance = ForcePerformance::Fps120;
+        settings.fps = FpsLimit::Cap(120);
+        assert_eq!(performance_target(&settings, Some(60.0)), Some(120.0));
+        settings.fps = FpsLimit::Unlimited;
+        assert_eq!(performance_target(&settings, Some(60.0)), Some(120.0));
+        settings.fps = FpsLimit::Screen;
+        assert_eq!(performance_target(&settings, Some(60.0)), Some(60.0));
+        assert_eq!(performance_target(&settings, Some(180.0)), Some(120.0));
+        assert_eq!(performance_target(&settings, None), Some(120.0));
+    }
+
+    #[test]
+    fn the_detail_comes_from_the_performance_forced_or_from_the_options() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .init_resource::<GameMode>()
@@ -693,8 +764,10 @@ mod tests {
             (detail(&app).level, detail(&app).scale),
             (Level::Medium, 70)
         );
-        // In the performance mode, as far down its ladder as it has come.
-        app.world_mut().resource_mut::<Settings>().performance_mode = true;
+        // With the performance forced, as far down its ladder as it has
+        // come.
+        app.world_mut().resource_mut::<Settings>().force_performance =
+            crate::settings::ForcePerformance::Fps120;
         app.update();
         app.world_mut().resource_mut::<AutoQuality>().step = 4;
         app.update();

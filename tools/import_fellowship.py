@@ -39,11 +39,12 @@ Some models need mending as they are read:
   about their hinges, as they open in the book and the film, so that the
   road goes through them into Moria (sized by its height, the gate stands
   over the road with its leaves just outside the walls of a narrow way
-  through it). With them, two pieces of their own, drawn in a material of
-  their own by the game: `durin_ithildin`, the drawing of ithildin on the
-  arch and the rock over it (the arch, two trees up the pillars, the crown
-  and the seven stars), and `durin_dark`, the darkness of Moria filling the
-  doorway over the tunnel the road goes into.
+  through it, into Moria's halls). With them, two pieces of their own,
+  drawn in materials of their own by the game: `durin_ithildin`, the
+  drawing of ithildin on the arch and the rock over it (the arch, two trees
+  up the pillars, the crown and the seven stars) and on the side of each
+  leaf turned to the road (a tree under the star of Feanor), and
+  `durin_glow`, the same drawn wider, the glow round its lines.
 - Textures toned (`TONED`): the oak over Bag End came a vivid green, the
   Doors of Durin a pale grey (darker, the drawing glowing on them in the
   game stands out).
@@ -125,16 +126,17 @@ TONED = {
 WHEEL_SUNK = 0.3
 WHEEL_GAP = 0.1
 # How much wider the Doors of Durin are made, closer to the arch drawn in
-# the film. Over the doorway, the darkness starts this high over the
-# gate's foot (m): just under the roof of the tunnel behind it
-# (`TUNNEL_HEIGHT`, 6.5 m over the road, in `src/world/structures.rs`).
+# the film.
 DURIN_WIDER = 1.4
-DURIN_DARK_FROM = 6.3
 # The ithildin's lines: how wide (m), how far in front of the stone (m),
-# and how long their pieces are at most (m), each laid on the stone.
+# and how long their pieces are at most (m), each laid on the stone; and
+# the glow round them: as much wider, nearer the stone, its stars bigger.
 ITHILDIN_WIDTH = 0.38
 ITHILDIN_OFF = 0.08
 ITHILDIN_STEP = 0.4
+GLOW_WIDTH = 1.5
+GLOW_OFF = 0.05
+GLOW_GROW = 1.8
 CELL = 512
 COLUMNS = 6
 MARGIN = 2
@@ -287,28 +289,42 @@ def widened(positions, normals, factor):
     return positions * stretch, bent
 
 
+def hinges(positions, indices, leaves):
+    """Each leaf of the Doors of Durin, as it came (in metres): which side it
+    is (-1 left, +1 right), its triangles' corners, and the hinge it swings
+    about (x, z): the back of its outer edge, against the pillar."""
+    triangles = indices.reshape(-1, 3)
+    for side in (-1.0, 1.0):
+        mine = triangles[leaves & (side * positions[triangles].mean(axis=1)[:, 0] > 0)]
+        corners = mine.reshape(-1)
+        leaf = positions[corners]
+        yield side, corners, np.array([side * np.abs(leaf[:, 0]).max(), leaf[:, 2].min()])
+
+
+def swing(points, normals, side, hinge):
+    """`points` and `normals` of a leaf swung open outwards, a quarter turn
+    about its `hinge`: the left leaf (-X) turns its free edge from +X to +Z,
+    the right one from -X to +Z."""
+    p, n = points.copy(), normals.copy()
+    dx, dz = points[:, 0] - hinge[0], points[:, 2] - hinge[1]
+    if side < 0:
+        p[:, 0], p[:, 2] = hinge[0] - dz, hinge[1] + dx
+        n[:, 0], n[:, 2] = -normals[:, 2], normals[:, 0]
+    else:
+        p[:, 0], p[:, 2] = hinge[0] + dz, hinge[1] - dx
+        n[:, 0], n[:, 2] = normals[:, 2], -normals[:, 0]
+    return p, n
+
+
 def swung_open(positions, normals, uvs, indices, leaves):
-    """The doors (in metres) with their leaves swung open outwards, a
-    quarter turn each about its hinge: the back of its outer edge, against
-    the pillar. The leaves get vertices of their own."""
+    """The doors (in metres) with their leaves swung open outwards (see
+    [`swing`]). The leaves get vertices of their own."""
     triangles = indices.reshape(-1, 3)
     frame = triangles[~leaves].reshape(-1)
     p, n, u, i = [positions], [normals], [uvs], [frame]
     count = len(positions)
-    for side in (-1.0, 1.0):
-        mine = triangles[leaves & (side * positions[triangles].mean(axis=1)[:, 0] > 0)]
-        corners = mine.reshape(-1)
-        leaf_p, leaf_n = positions[corners].copy(), normals[corners].copy()
-        hinge = np.array([side * np.abs(leaf_p[:, 0]).max(), leaf_p[:, 2].min()])
-        dx, dz = leaf_p[:, 0] - hinge[0], leaf_p[:, 2] - hinge[1]
-        # The left leaf (-X) turns its free edge from +X to +Z, the right
-        # one from -X to +Z.
-        if side < 0:
-            leaf_p[:, 0], leaf_p[:, 2] = hinge[0] - dz, hinge[1] + dx
-            leaf_n[:, 0], leaf_n[:, 2] = -normals[corners][:, 2], normals[corners][:, 0]
-        else:
-            leaf_p[:, 0], leaf_p[:, 2] = hinge[0] + dz, hinge[1] - dx
-            leaf_n[:, 0], leaf_n[:, 2] = normals[corners][:, 2], -normals[corners][:, 0]
+    for side, corners, hinge in hinges(positions, indices, leaves):
+        leaf_p, leaf_n = swing(positions[corners], normals[corners], side, hinge)
         p.append(leaf_p)
         n.append(leaf_n)
         u.append(uvs[corners])
@@ -337,58 +353,11 @@ def frontmost(positions, indices, points):
     return found
 
 
-def ithildin(positions, indices):
-    """The drawing of ithildin on the Doors of Durin (in metres, the doors
-    open): an arch on the pillars, a tree climbing each, its branches
-    spreading under the arch, the crown over its keystone and the seven
-    stars round it on the rock; as ribbons laid on the stone just in front
-    of it, or on the rock behind (the back of the gate)."""
-    low, high = positions.min(axis=0), positions.max(axis=0)
-    height = high[1] - low[1]
-    pillar = 0.172 * DURIN_WIDER * height
-    spring = 0.664 * height
-    ring = high[1] - spring - 0.09 * height
-    back = low[2]
-    lines = []
-
-    def arc(cx, cy, rx, ry, start, end, count=48):
-        t = np.linspace(start, end, count)
-        return np.stack([cx + rx * np.cos(t), cy + ry * np.sin(t)], axis=1)
-
-    # The arch, down the pillars to their feet.
-    lines.append(np.concatenate([
-        [[-pillar, 0.04 * height]],
-        arc(0.0, spring, pillar, ring, np.pi, 0.0),
-        [[pillar, 0.04 * height]],
-    ]))
-    # A tree up each pillar, outside the arch's line (inside it, the leaves
-    # open hide the pillar): its trunk, and its branches spreading up and in
-    # over the arch.
-    for side in (-1.0, 1.0):
-        trunk = side * (pillar + 0.03 * height)
-        lines.append(np.array([[trunk, 0.06 * height], [trunk, spring - 0.06 * height]]))
-        for up, angle in [(0.0, 20.0), (0.04, 38.0), (0.08, 56.0)]:
-            start = np.array([trunk, spring - 0.1 * height + up * height])
-            t = np.linspace(0.0, 1.0, 16)[:, None]
-            # Ending on the ring of the arch, inside its line.
-            a = np.radians(angle if side > 0 else 180.0 - angle)
-            end = np.array([0.88 * pillar * np.cos(a), spring + 0.88 * ring * np.sin(a)])
-            bend = np.array([trunk, end[1]])
-            lines.append((1 - t) ** 2 * start + 2 * t * (1 - t) * bend + t**2 * end)
-    # The crown on the keystone.
-    crown_y, crown = high[1] - 0.075 * height, 0.045 * height
-    lines.append(np.array([
-        [-crown, crown_y], [-crown, crown_y + crown], [-crown / 2, crown_y + crown * 0.55],
-        [0.0, crown_y + crown * 1.15], [crown / 2, crown_y + crown * 0.55], [crown, crown_y + crown],
-        [crown, crown_y], [-crown, crown_y],
-    ]))
-    # Ribbons, their pieces laid on the stone.
+def drawing(lines, stars, lay, width, grow=1.0):
+    """Ribbons `width` wide along `lines` (each points x, y) and eight-pointed
+    stars (centre, radius), every point at the depth `lay` gives it (z):
+    vertices and triangles. Stars `grow` times as big."""
     vertices, triangles = [], []
-
-    def lay(points):
-        on = frontmost(positions, indices, points)
-        return np.where(np.isnan(on), back, on) + ITHILDIN_OFF
-
     for line in lines:
         dense = [line[0]]
         for a, b in zip(line[:-1], line[1:]):
@@ -397,10 +366,9 @@ def ithildin(positions, indices):
         dense = np.array(dense)
         ahead = np.gradient(dense, axis=0)
         ahead /= np.linalg.norm(ahead, axis=1, keepdims=True).clip(1e-9)
-        side = np.stack([-ahead[:, 1], ahead[:, 0]], axis=1) * ITHILDIN_WIDTH / 2
+        side = np.stack([-ahead[:, 1], ahead[:, 0]], axis=1) * width / 2
         left, right = dense + side, dense - side
-        zl, zr = lay(left), lay(right)
-        z = np.maximum(zl, zr)
+        z = lay(left, right)
         start = len(vertices)
         for k in range(len(dense)):
             vertices.append([left[k, 0], left[k, 1], z[k]])
@@ -408,68 +376,132 @@ def ithildin(positions, indices):
         for k in range(len(dense) - 1):
             a = start + 2 * k
             triangles += [[a, a + 1, a + 3], [a, a + 3, a + 2]]
-    # The seven stars, round the arch on the rock over it.
+    for centre, radius in stars:
+        star = []
+        for j in range(8):
+            r = grow * (radius if j % 2 == 0 else radius / 3.0)
+            a = np.pi / 2 + j * np.pi / 4
+            star.append(centre + r * np.array([np.cos(a), np.sin(a)]))
+        z = lay(np.array(star + [centre]), np.array(star + [centre])).max()
+        start = len(vertices)
+        vertices.append([centre[0], centre[1], z])
+        vertices += [[x, y, z] for x, y in star]
+        triangles += [[start, start + 1 + j, start + 1 + (j + 1) % 8] for j in range(8)]
+    return np.array(vertices).reshape(-1, 3), np.array(triangles, dtype=np.uint32).reshape(-1, 3)
+
+
+def facing_out(vertices, triangles, normal):
+    """`triangles` wound counter-clockwise seen from `normal`."""
+    corners = vertices[triangles]
+    turn = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]) @ normal
+    triangles = triangles.copy()
+    triangles[turn < 0] = triangles[turn < 0][:, [0, 2, 1]]
+    return triangles
+
+
+def ithildin(positions, indices, leaves, width, off, grow=1.0):
+    """The drawing of ithildin on the Doors of Durin (in metres, the doors
+    open), as ribbons `width` wide laid `off` in front of the stone: on the
+    front, an arch on the pillars, a tree climbing each, its branches
+    spreading over the arch, the crown on its keystone and the seven stars
+    round it on the rock behind (the back of the gate); and on each leaf,
+    swung open, on the side it turns to the road, a tree under the star of
+    Feanor. Its vertices, normals, texture coordinates and triangles."""
+    triangles = indices.reshape(-1, 3)
+    frame = triangles[~leaves].reshape(-1)
+    low, high = positions.min(axis=0), positions.max(axis=0)
+    height = high[1] - low[1]
+    pillar = 0.172 * DURIN_WIDER * height
+    spring = 0.664 * height
+    ring = high[1] - spring - 0.09 * height
+    back = low[2]
+
+    def arc(cx, cy, rx, ry, start, end, count=48):
+        t = np.linspace(start, end, count)
+        return np.stack([cx + rx * np.cos(t), cy + ry * np.sin(t)], axis=1)
+
+    def curve(start, bend, end):
+        t = np.linspace(0.0, 1.0, 16)[:, None]
+        return (1 - t) ** 2 * start + 2 * t * (1 - t) * bend + t**2 * end
+
+    lines = [np.concatenate([
+        [[-pillar, 0.04 * height]],
+        arc(0.0, spring, pillar, ring, np.pi, 0.0),
+        [[pillar, 0.04 * height]],
+    ])]
+    # A tree up each pillar, outside the arch's line (inside it, the leaves
+    # open hide the pillar).
+    for side in (-1.0, 1.0):
+        trunk = side * (pillar + 0.03 * height)
+        lines.append(np.array([[trunk, 0.06 * height], [trunk, spring - 0.06 * height]]))
+        for up, angle in [(0.0, 20.0), (0.04, 38.0), (0.08, 56.0)]:
+            start = np.array([trunk, spring - 0.1 * height + up * height])
+            a = np.radians(angle if side > 0 else 180.0 - angle)
+            end = np.array([0.88 * pillar * np.cos(a), spring + 0.88 * ring * np.sin(a)])
+            lines.append(curve(start, np.array([trunk, end[1]]), end))
+    crown_y, crown = high[1] - 0.075 * height, 0.045 * height
+    lines.append(np.array([
+        [-crown, crown_y], [-crown, crown_y + crown], [-crown / 2, crown_y + crown * 0.55],
+        [0.0, crown_y + crown * 1.15], [crown / 2, crown_y + crown * 0.55], [crown, crown_y + crown],
+        [crown, crown_y], [-crown, crown_y],
+    ]))
+    stars = []
     for k in range(7):
         angle = np.radians(58.0 + k * 64.0 / 6.0)
         centre = np.array([0.0, spring]) + np.array(
             [np.cos(angle) * (pillar + 0.12 * height), np.sin(angle) * (ring + 0.13 * height)]
         )
-        star = []
-        for j in range(8):
-            radius = 0.022 * height if j % 2 == 0 else 0.007 * height
-            a = np.pi / 2 + j * np.pi / 4
-            star.append(centre + radius * np.array([np.cos(a), np.sin(a)]))
-        z = lay(np.array(star + [centre])).max()
-        start = len(vertices)
-        vertices.append([centre[0], centre[1], z])
-        vertices += [[x, y, z] for x, y in star]
-        triangles += [[start, start + 1 + j, start + 1 + (j + 1) % 8] for j in range(8)]
-    vertices = np.array(vertices)
-    # Facing the front (+Z), counter-clockwise from there.
-    triangles = np.array(triangles, dtype=np.uint32)
-    corners = vertices[triangles]
-    facing = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])[:, 2]
-    triangles[facing < 0] = triangles[facing < 0][:, [0, 2, 1]]
-    normals = np.tile([0.0, 0.0, 1.0], (len(vertices), 1))
-    return vertices, normals, np.zeros((len(vertices), 2)), triangles.reshape(-1)
+        stars.append((centre, 0.022 * height))
 
+    def lay_front(left, right):
+        on = lambda points: frontmost(positions, frame, points)
+        zl, zr = on(left), on(right)
+        return np.maximum(np.where(np.isnan(zl), back, zl), np.where(np.isnan(zr), back, zr)) + off
 
-def doorway_dark(leaves):
-    """The darkness of Moria in the doorway (in metres), where the leaves
-    stood closed, from `DURIN_DARK_FROM` up into the arch: a little wider,
-    its edges hidden in the stone, in the plane of their backs."""
-    hull = convex_hull(leaves[:, :2])
-    back = leaves[:, 2].min()
-    middle = hull.mean(axis=0)
-    hull = middle + (hull - middle) * np.array([1.04, 1.02])
-    hull[:, 1] = np.maximum(hull[:, 1], DURIN_DARK_FROM)
-    centre = np.array([0.0, (hull[:, 1].min() + hull[:, 1].max()) / 2.0])
-    vertices = np.concatenate([[centre], hull])
-    vertices = np.concatenate([vertices, np.full((len(vertices), 1), back)], axis=1)
-    count = len(hull)
-    triangles = np.array([[0, 1 + k, 1 + (k + 1) % count] for k in range(count)], dtype=np.uint32)
-    normals = np.tile([0.0, 0.0, 1.0], (len(vertices), 1))
-    return vertices, normals, np.zeros((len(vertices), 2)), triangles.reshape(-1)
+    v, t = drawing(lines, stars, lay_front, width, grow)
+    t = facing_out(v, t, np.array([0.0, 0.0, 1.0]))
+    parts = [(v, np.tile([0.0, 0.0, 1.0], (len(v), 1)), t)]
+    # On each leaf, seen from behind as it stood closed (the side it turns to
+    # the road open): a tree up its middle and the star over it.
+    for side, corners, hinge in hinges(positions, indices, leaves):
+        leaf = positions[corners]
+        mirrored = leaf * np.array([1.0, 1.0, -1.0])
+        flat = np.arange(len(corners), dtype=np.uint32)
+        top = leaf[:, 1].max()
+        middle = hinge[0] / 2.0
+        span = abs(hinge[0])
+        lines = [np.array([[middle, 0.08 * top], [middle, 0.62 * top]])]
+        for up, reach in [(0.44, 0.3), (0.5, 0.36), (0.56, 0.4)]:
+            for lean in (-1.0, 1.0):
+                start = np.array([middle, up * top])
+                end = np.array([middle + lean * reach * span, (up + 0.14) * top])
+                lines.append(curve(start, np.array([middle + lean * 0.5 * reach * span, up * top]), end))
+        stars = [(np.array([middle, 0.8 * top]), 0.16 * span)]
+        stars += [(np.array([middle + d * 0.3 * span, (0.8 + abs(d) * 0.05 - 0.09) * top]), 0.06 * span) for d in (-1.0, 1.0)]
 
+        def lay_leaf(left, right):
+            on = lambda points: -frontmost(mirrored, flat, points)
+            zl, zr = on(left), on(right)
+            behind = leaf[:, 2].min()
+            return np.minimum(np.where(np.isnan(zl), behind, zl), np.where(np.isnan(zr), behind, zr)) - off
 
-def convex_hull(points):
-    """The convex hull of `points` (x, y), counter-clockwise."""
-    points = np.unique(points.round(4), axis=0)
-    points = points[np.lexsort((points[:, 1], points[:, 0]))]
-
-    def half(ordered):
-        chain = []
-        for point in ordered:
-            while len(chain) >= 2:
-                a, b = chain[-1] - chain[-2], point - chain[-2]
-                if a[0] * b[1] - a[1] * b[0] > 0:
-                    break
-                chain.pop()
-            chain.append(point)
-        return chain
-
-    lower, upper = half(points), half(points[::-1])
-    return np.array(lower[:-1] + upper[:-1])
+        v, t = drawing(lines, stars, lay_leaf, width, grow)
+        v, n = swing(v, np.tile([0.0, 0.0, -1.0], (len(v), 1)), side, hinge)
+        t = facing_out(v, t, n[0])
+        parts.append((v, n, t))
+    vertices, normals, tris, count = [], [], [], 0
+    for v, n, t in parts:
+        vertices.append(v)
+        normals.append(n)
+        tris.append(t + count)
+        count += len(v)
+    vertices = np.concatenate(vertices)
+    return (
+        vertices,
+        np.concatenate(normals),
+        np.zeros((len(vertices), 2)),
+        np.concatenate(tris).astype(np.uint32).reshape(-1),
+    )
 
 
 def turned(positions, normals):
@@ -558,14 +590,11 @@ def main():
             placed = (positions - centre) * scale
             bent = normals / scale
             bent /= np.linalg.norm(bent, axis=1, keepdims=True).clip(1e-9)
-            closed = placed[indices.reshape(-1, 3)[leaves].reshape(-1)]
-            triangles = indices.reshape(-1, 3)
-            frame = (placed, triangles[~leaves].reshape(-1))
             opened = swung_open(placed, bent, moved, indices, leaves)
             for piece, (p, n, u, i) in (
                 ("durin_doors", opened),
-                ("durin_ithildin", ithildin(*frame)),
-                ("durin_dark", doorway_dark(closed)),
+                ("durin_ithildin", ithildin(placed, indices, leaves, ITHILDIN_WIDTH, ITHILDIN_OFF)),
+                ("durin_glow", ithildin(placed, indices, leaves, GLOW_WIDTH, GLOW_OFF, GLOW_GROW)),
             ):
                 p, n, u, i = compact(p, n, u, i)
                 pieces.append((piece, p, n, u, i))

@@ -972,6 +972,17 @@ impl Track {
         (self.offset_point(index, GRID_LANES[column]), heading)
     }
 
+    /// Grid slot `slot`, with the grid `along` metres along the lap
+    /// instead of behind the finish line: the same formation, for looking
+    /// at the scenery part way round (see [`crate::debug_start`]).
+    pub fn grid_slot_at(&self, slot: usize, along: f32) -> (Vec2, f32) {
+        let (row, column) = (slot / GRID_LANES.len(), slot % GRID_LANES.len());
+        let back = START_BEHIND_SAMPLES + row * GRID_ROW_SAMPLES + column;
+        let index = self.wrap(self.index_at(along) as isize - back as isize);
+        let (_, heading) = self.pose_at(index);
+        (self.offset_point(index, GRID_LANES[column]), heading)
+    }
+
     /// How far to the left of the centre line grid slot `slot` is (m).
     pub fn grid_lane(slot: usize) -> f32 {
         GRID_LANES[slot % GRID_LANES.len()]
@@ -1777,6 +1788,42 @@ mod tests {
             (start + track.centerline().len() - index) % track.centerline().len()
         };
         assert!((1..8).all(|slot| behind(slot) > behind(slot - 1)));
+    }
+
+    #[test]
+    fn the_grid_can_be_moved_along_the_lap_keeping_its_formation() {
+        let track = track();
+        let lap = track.lap_length();
+        for along in [0.0, 300.0, lap / 2.0, lap - 10.0] {
+            let moved: Vec<_> = (0..8).map(|slot| track.grid_slot_at(slot, along)).collect();
+            // The pole stands just behind the distance asked, where the
+            // grid stands behind the finish line, and on the asphalt.
+            let pole = track.nearest(moved[0].0);
+            let behind = (along - track.along(&pole)).rem_euclid(lap);
+            assert!(
+                behind < (START_BEHIND_SAMPLES + 2) as f32 * SAMPLE_SPACING,
+                "the pole is {behind} m behind {along} m"
+            );
+            for (slot, (point, _)) in moved.iter().enumerate() {
+                assert!(
+                    track.distance_to_centerline(*point) < track.half_width() - 1.0,
+                    "slot {slot} off the asphalt"
+                );
+                for (other, (point2, _)) in moved.iter().enumerate().skip(slot + 1) {
+                    assert!(
+                        point.distance(*point2) > 3.0,
+                        "slots {slot} and {other} on top of each other"
+                    );
+                }
+            }
+        }
+        // Moved by the lap, it is the grid as it always was.
+        for slot in 0..8 {
+            let (point, heading) = track.grid_slot(slot);
+            let (moved, turned) = track.grid_slot_at(slot, lap);
+            assert!(point.distance(moved) < 1e-3, "slot {slot}");
+            assert!((heading - turned).abs() < 1e-3, "slot {slot}");
+        }
     }
 
     #[test]

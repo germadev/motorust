@@ -88,9 +88,10 @@ impl Plugin for MenuPlugin {
         app.init_state::<GameState>()
             .init_resource::<Choice>()
             .init_resource::<SplitChoices>()
+            .init_resource::<OrbitState>()
             .add_systems(
                 OnEnter(GameState::Select),
-                (spawn_showcase, reset_split_choices, spawn_menu),
+                (spawn_showcase, reset_split_choices, spawn_menu, look_afresh),
             )
             .add_systems(
                 Update,
@@ -730,10 +731,18 @@ struct Orbit {
     angle: f32,
 }
 
-#[derive(Default)]
+#[derive(Resource, Default)]
 struct OrbitState {
     p1: Orbit,
     p2: Orbit,
+}
+
+/// Coming to the bikes, the camera looks at the bike chosen at once, not
+/// from where it looked the last time (another track's bikes, maybe): only
+/// changing bike here glides from one to the other.
+fn look_afresh(mut orbits: ResMut<OrbitState>) {
+    orbits.p1.focus = None;
+    orbits.p2.focus = None;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -746,7 +755,7 @@ fn orbit_camera(
     bikes: Query<(&Showcase, &Transform), Without<Camera3d>>,
     mut cameras: Query<(&CameraPlayer, &mut Transform, &mut Projection), With<Camera3d>>,
     mut glide: ResMut<CameraGlide>,
-    mut orbits: Local<OrbitState>,
+    mut orbits: ResMut<OrbitState>,
 ) {
     let dt = time.delta_secs();
     let stick = right_stick(&gamepads).x;

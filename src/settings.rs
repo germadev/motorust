@@ -24,11 +24,15 @@ impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ToggleMute>()
             .init_resource::<ControlsTest>()
+            .init_resource::<ScreenRate>()
             .add_systems(
                 PreUpdate,
                 gamepad_shortcuts.after(bevy::input::InputSystems),
             )
-            .add_systems(Update, (toggle_fullscreen, apply_settings).chain());
+            .add_systems(
+                Update,
+                (toggle_fullscreen, apply_settings, follow_screen_rate).chain(),
+            );
         // En la web, el navegador decide cuándo se dibuja cada fotograma.
         if !WEB {
             // The cap is kept where the frame is shown, in the render world.
@@ -88,6 +92,9 @@ pub struct Settings {
     pub show_total_time: bool,
     /// How fast the rivals ride, and how much time the checkpoints give.
     pub difficulty: Difficulty,
+    /// How the track is seen while it is chosen: from the road, as in the
+    /// menus before it, or from above.
+    pub track_view: TrackView,
     /// Whether each frame is drawn while the next one is simulated
     /// (Bevy's pipelined rendering): more frames per second when the CPU
     /// holds them back, a frame more between the controls and the screen.
@@ -117,9 +124,20 @@ pub struct Settings {
     /// at the window's own.
     pub render_scale: u32,
     /// Whether the shadows and the render scale are lowered and raised as
-    /// the frame rate asks, to keep 60 frames a second (see
+    /// the frame rate asks, to keep 60 or 120 frames a second (see
     /// [`crate::world::detail`]), instead of as chosen.
-    pub performance_mode: bool,
+    pub force_performance: ForcePerformance,
+    /// What the performance HUD shows at the top right: the frame rate, the
+    /// pixels the world is drawn at, and, on the race's map, where the
+    /// player is (see [`crate::hud`] and [`crate::minimap`]).
+    pub show_fps: bool,
+    pub show_resolution: bool,
+    pub show_coordinates: bool,
+    /// Whether the sea is drawn as in *The Wind Waker* (flat cartoon blues
+    /// with waves rolling in), as it always is on Loop Island; otherwise it
+    /// is still and dark and mirrors what stands round it, as a dam's lake
+    /// (see [`crate::world`]).
+    pub cartoon_water: bool,
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
@@ -201,6 +219,40 @@ impl From<&Settings> for StartedWith {
         Self {
             pipelined_rendering: settings.pipelined_rendering,
             frame_latency: settings.frame_latency,
+        }
+    }
+}
+
+/// How the track is shown while it is chosen (see
+/// [`crate::track_select`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum TrackView {
+    /// From the road, as in the menus before it: the camera goes on along
+    /// the track it was already flying over, so nothing jumps between the
+    /// start menu, the modes and the track.
+    #[default]
+    Trackside,
+    /// From high above, turning slowly round the whole track: the lap is
+    /// seen whole, as a map of it.
+    Aerial,
+}
+
+/// The views that can be chosen, in order.
+pub const TRACK_VIEWS: [TrackView; 2] = [TrackView::Trackside, TrackView::Aerial];
+
+impl TrackView {
+    /// Whether the track is seen from the road while it is chosen (the
+    /// other view is from above).
+    pub fn at_the_road(self) -> bool {
+        matches!(self, TrackView::Trackside)
+    }
+
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (TrackView::Trackside, Language::Spanish) => "A pie de pista",
+            (TrackView::Trackside, Language::English) => "Trackside",
+            (TrackView::Aerial, Language::Spanish) => "Aérea",
+            (TrackView::Aerial, Language::English) => "Aerial",
         }
     }
 }
@@ -306,6 +358,7 @@ impl Default for Settings {
             centre_results: false,
             show_total_time: false,
             difficulty: Difficulty::default(),
+            track_view: TrackView::default(),
             pipelined_rendering: true,
             modelled_trees: true,
             lighter_far_trees: false,
@@ -314,7 +367,11 @@ impl Default for Settings {
             shadows: ShadowQuality::default(),
             antialiasing: Antialiasing::default(),
             render_scale: DEFAULT_RENDER_SCALE,
-            performance_mode: false,
+            force_performance: ForcePerformance::Off,
+            show_fps: true,
+            show_resolution: false,
+            show_coordinates: false,
+            cartoon_water: false,
             frame_latency: DEFAULT_FRAME_LATENCY,
             records: crate::race::Records::default(),
             transient: false,
@@ -491,14 +548,105 @@ impl FpsLimit {
         }
     }
 
-    /// Con un número fijo también se espera a la pantalla para enseñar cada
-    /// fotograma, así la imagen no se corta.
+    /// How each frame goes to the screen. At the screen's rate, on its beat
+    /// (FifoRelaxed, else Fifo): the image never tears. With a fixed cap,
+    /// which [`limit_frames`] keeps, not on the screen's beat: on it, a cap
+    /// over the screen's rate could never be reached (120 stayed at 60 on a
+    /// BC-250 whose gamescope session ran the screen at 60 Hz), so each
+    /// frame is handed over to be shown at the next refresh, the newest one
+    /// then (Mailbox), still without tearing. Where there is no Mailbox
+    /// (Metal, on macOS, has only Fifo and Immediate) the cap stays on the
+    /// screen's beat rather than tear ([`CAP_ON_MAILBOX`]). Unlimited, each
+    /// frame shown at once (Immediate first): the least lag, tearing.
     fn present_mode(self) -> PresentMode {
         match self {
-            FpsLimit::Screen | FpsLimit::Cap(_) => PresentMode::AutoVsync,
+            FpsLimit::Screen => PresentMode::AutoVsync,
+            FpsLimit::Cap(_) if CAP_ON_MAILBOX => PresentMode::Mailbox,
+            FpsLimit::Cap(_) => PresentMode::AutoVsync,
             FpsLimit::Unlimited => PresentMode::AutoNoVsync,
         }
     }
+
+    /// The most frames a second the cap lets through, where the screen at
+    /// `screen` Hz (if known) shows them: the cap; at the screen's rate,
+    /// its rate; unlimited, no bound.
+    pub fn bound(self, screen: Option<f32>) -> Option<f32> {
+        match self {
+            FpsLimit::Cap(fps) => Some(fps as f32),
+            FpsLimit::Screen => screen,
+            FpsLimit::Unlimited => None,
+        }
+    }
+}
+
+/// Whether a fixed cap hands its frames over to be shown at the next
+/// refresh (Mailbox) rather than on the screen's beat: everywhere but on
+/// macOS, where Metal has no Mailbox (Bevy would fall back to Immediate,
+/// which tears).
+const CAP_ON_MAILBOX: bool = !cfg!(target_os = "macos");
+
+/// Whether the shadows and the render scale follow the frame rate, and the
+/// frame rate they keep: off (as chosen), 60 or 120 frames a second.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum ForcePerformance {
+    #[default]
+    Off,
+    Fps60,
+    Fps120,
+}
+
+/// The choices, in order.
+pub const FORCE_PERFORMANCES: [ForcePerformance; 3] = [
+    ForcePerformance::Off,
+    ForcePerformance::Fps60,
+    ForcePerformance::Fps120,
+];
+
+impl ForcePerformance {
+    /// The frame rate kept, if on.
+    pub fn fps(self) -> Option<f32> {
+        match self {
+            ForcePerformance::Off => None,
+            ForcePerformance::Fps60 => Some(60.0),
+            ForcePerformance::Fps120 => Some(120.0),
+        }
+    }
+
+    pub fn is_on(self) -> bool {
+        self != ForcePerformance::Off
+    }
+
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (ForcePerformance::Off, Language::Spanish) => "No",
+            (ForcePerformance::Off, Language::English) => "Off",
+            (ForcePerformance::Fps60, _) => "60 fps",
+            (ForcePerformance::Fps120, _) => "120 fps",
+        }
+    }
+}
+
+/// The refresh rate of the screen the window is on (Hz), once known.
+#[derive(Resource, Clone, Copy, Default, PartialEq, Debug)]
+pub struct ScreenRate(pub Option<f32>);
+
+/// Keeps [`ScreenRate`] as the monitor the window is on (or the main one)
+/// says.
+fn follow_screen_rate(
+    window: Query<Option<&OnMonitor>, With<PrimaryWindow>>,
+    monitors: Query<(&Monitor, Has<PrimaryMonitor>)>,
+    mut rate: ResMut<ScreenRate>,
+) {
+    let on = window.iter().next().flatten();
+    let monitor = on
+        .and_then(|on| monitors.get(on.0).ok())
+        .or_else(|| monitors.iter().find(|(_, primary)| *primary))
+        .map(|(monitor, _)| monitor);
+    let hz = monitor
+        .and_then(|monitor| monitor.refresh_rate_millihertz)
+        .filter(|&millihertz| millihertz > 0)
+        .map(|millihertz| millihertz as f32 / 1000.0);
+    rate.set_if_neq(ScreenRate(hz));
 }
 
 /// La opción de `options` que va `step` puestos después de `current`, dando la
@@ -1151,13 +1299,20 @@ impl Settings {
         let Some(text) = storage::read() else {
             return Self::default();
         };
-        let mut settings = ron::from_str::<Self>(&text).unwrap_or_else(|error| {
+        let settings = ron::from_str::<Self>(&text).unwrap_or_else(|error| {
             eprintln!(
                 "No se entienden los ajustes de {}: {error}. Se usan los de siempre",
                 storage::place()
             );
             Self::default()
         });
+        settings.brought_up_to_date(&text)
+    }
+
+    /// These settings, read from `text` as saved by an earlier version,
+    /// with what has changed since put as it would be now.
+    fn brought_up_to_date(self, text: &str) -> Self {
+        let mut settings = self;
         if settings.resolution == Resolution::Fullscreen {
             settings.fullscreen = true;
             settings.resolution = Resolution::Dynamic;
@@ -1168,6 +1323,10 @@ impl Settings {
             && matches!(settings.resolution, Resolution::Window(..))
         {
             settings.fullscreen_kind = FullscreenKind::Exclusive;
+        }
+        // Saved when the performance mode was on or off, at 60 fps.
+        if text.contains("performance_mode: true") && !text.contains("force_performance") {
+            settings.force_performance = ForcePerformance::Fps60;
         }
         settings.controls.give_the_wheelie_a_button();
         // Ghost Island was Tsushima Isle.
@@ -1602,6 +1761,64 @@ mod tests {
         )
         .unwrap();
         assert_eq!(older.records.best_lap("Bahía GP"), Some(71.25));
+    }
+
+    #[test]
+    fn the_performance_forced_the_performance_hud_and_the_water_start_as_they_were() {
+        let fresh: Settings = ron::from_str("()").unwrap();
+        // Nothing forced; the frame rate shown, the rest of the HUD not;
+        // the sea mirroring, not the cartoon one.
+        assert_eq!(fresh.force_performance, ForcePerformance::Off);
+        assert!(fresh.show_fps && !fresh.show_resolution && !fresh.show_coordinates);
+        assert!(!fresh.cartoon_water);
+        // The performance mode on, as saved before: forced to 60 fps; off,
+        // nothing forced; and once saved again, as chosen.
+        let on = "(performance_mode: true, fps: Unlimited)";
+        let loaded = ron::from_str::<Settings>(on)
+            .unwrap()
+            .brought_up_to_date(on);
+        assert_eq!(loaded.force_performance, ForcePerformance::Fps60);
+        assert_eq!(loaded.fps, FpsLimit::Unlimited);
+        let off = "(performance_mode: false)";
+        let loaded = ron::from_str::<Settings>(off)
+            .unwrap()
+            .brought_up_to_date(off);
+        assert_eq!(loaded.force_performance, ForcePerformance::Off);
+        let now = "(performance_mode: true, force_performance: Fps120)";
+        let loaded = ron::from_str::<Settings>(now)
+            .unwrap()
+            .brought_up_to_date(now);
+        assert_eq!(loaded.force_performance, ForcePerformance::Fps120);
+        // Off, 60 and 120, in turn.
+        assert_eq!(
+            FORCE_PERFORMANCES.map(ForcePerformance::fps),
+            [None, Some(60.0), Some(120.0)]
+        );
+        assert_eq!(
+            cycle(&FORCE_PERFORMANCES, ForcePerformance::Fps120, 1),
+            ForcePerformance::Off
+        );
+    }
+
+    #[test]
+    fn a_fixed_cap_does_not_wait_for_the_screen_where_it_need_not_tear() {
+        // The screen's rate on its beat; unlimited, at once.
+        assert_eq!(FpsLimit::Screen.present_mode(), PresentMode::AutoVsync);
+        assert_eq!(FpsLimit::Unlimited.present_mode(), PresentMode::AutoNoVsync);
+        // A cap of 120 on a screen at 60 Hz must not be held to 60: the
+        // newest frame shown at each refresh, without tearing, but where
+        // there is no such thing (macOS).
+        let cap = FpsLimit::Cap(120).present_mode();
+        if cfg!(target_os = "macos") {
+            assert_eq!(cap, PresentMode::AutoVsync);
+        } else {
+            assert_eq!(cap, PresentMode::Mailbox);
+        }
+        // How many frames each lets through on a screen at 60 Hz.
+        assert_eq!(FpsLimit::Cap(120).bound(Some(60.0)), Some(120.0));
+        assert_eq!(FpsLimit::Screen.bound(Some(60.0)), Some(60.0));
+        assert_eq!(FpsLimit::Screen.bound(None), None);
+        assert_eq!(FpsLimit::Unlimited.bound(Some(60.0)), None);
     }
 
     #[test]

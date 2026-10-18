@@ -46,6 +46,16 @@ const RECALL_PAUSE: f32 = 1.5;
 /// lights go out, a jump start.
 const JUMP_SPEED: f32 = 1.0;
 
+/// How big each light is (px) on a screen of its own, and on a split one;
+/// how far down a screen of its own the panel of lights is (percent); its
+/// padding, across and down, as a share of a light's size; and its border
+/// (px).
+const LAMP: f32 = 46.0;
+const LAMP_SPLIT: f32 = 34.0;
+const PANEL_TOP: f32 = 14.0;
+const PANEL_PADDING: Vec2 = Vec2::new(0.45, 0.3);
+const PANEL_BORDER: f32 = 2.0;
+
 const RED: Color = Color::srgb(1.0, 0.1, 0.06);
 const GREEN: Color = Color::srgb(0.15, 0.95, 0.3);
 const DARK: Color = Color::srgb(0.12, 0.12, 0.13);
@@ -295,9 +305,17 @@ struct LightsPanel;
 #[derive(Component)]
 struct Lamp(u32);
 
+/// How far down a screen of its own the panel of lights reaches (percent, at
+/// the window's design size: the interface grows and shrinks with it).
+#[cfg(test)]
+pub fn panel_bottom() -> f32 {
+    let tall = LAMP * (1.0 + 2.0 * PANEL_PADDING.y) + 2.0 * PANEL_BORDER;
+    PANEL_TOP + tall / crate::ui::DESIGN_WINDOW.y * 100.0
+}
+
 fn spawn_lights(mut commands: Commands, game_mode: Res<GameMode>, lights: Res<StartLights>) {
     let two = *game_mode == GameMode::SplitScreen;
-    let size = if two { 34.0 } else { 46.0 };
+    let size = if two { LAMP_SPLIT } else { LAMP };
     commands
         .spawn((
             DespawnOnExit(GameState::Race),
@@ -308,7 +326,7 @@ fn spawn_lights(mut commands: Commands, game_mode: Res<GameMode>, lights: Res<St
                 top: if two {
                     Val::Percent(50.0)
                 } else {
-                    Val::Percent(14.0)
+                    Val::Percent(PANEL_TOP)
                 },
                 margin: UiRect::top(px(if two { -size } else { 0.0 })),
                 justify_content: JustifyContent::Center,
@@ -322,9 +340,9 @@ fn spawn_lights(mut commands: Commands, game_mode: Res<GameMode>, lights: Res<St
             row.spawn((
                 Node {
                     column_gap: px(size * 0.35),
-                    padding: UiRect::axes(px(size * 0.45), px(size * 0.3)),
+                    padding: UiRect::axes(px(size * PANEL_PADDING.x), px(size * PANEL_PADDING.y)),
                     border_radius: BorderRadius::all(px(size * 0.4)),
-                    border: UiRect::all(px(2)),
+                    border: UiRect::all(px(PANEL_BORDER)),
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.02, 0.02, 0.03, 0.88)),

@@ -1494,6 +1494,62 @@ mod tests {
         (Track::new(&circuit.layout), &circuit.scenery)
     }
 
+    /// The halls of Moria, through Fellowship Road's mountain, and its track.
+    fn moria() -> (Track, &'static crate::world::scenery::Scenery) {
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| {
+                circuit.scenery.mine.is_none() && circuit.scenery.excavation().is_some()
+            })
+            .expect("a circuit has halls dug as a mine's");
+        (Track::new(&circuit.layout), &circuit.scenery)
+    }
+
+    #[test]
+    fn moria_s_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars() {
+        let (track, scenery) = moria();
+        let halls = scenery.excavation().unwrap();
+        let span = scenery.tunnels[0];
+        let cave = Cave::new(&track, span, halls);
+        let widest = halls
+            .iter()
+            .max_by(|a, b| a.width.total_cmp(&b.width))
+            .unwrap();
+        assert_eq!(widest.stone, Stone::Masonry);
+        let index = track.index_at((widest.span.from + widest.span.to) / 2.0);
+        let wall = track.wall_at(index);
+        // Inside out to its own walls, far past the road's.
+        for side in [-1.0, 1.0] {
+            let inside = track.offset_point(index, side * (wall + widest.width - 1.0));
+            assert!(cave.spot(inside).edge() < 0.0);
+            let past = track.offset_point(index, side * (wall + widest.width + 1.5));
+            assert!(cave.spot(past).edge() > 0.0);
+        }
+        // Its roof high over the road.
+        let point = track.centerline()[index];
+        let spot = cave.spot(point);
+        assert!(
+            cave.roof(point, &spot) > 25.0,
+            "{}",
+            cave.roof(point, &spot)
+        );
+        // Built: low walls along the road, pillars, the halls of masonry and
+        // the natural caves, lit by lamps on iron posts.
+        let mut parts = Parts::default();
+        let lanterns = cave.timber_and_lanterns(&mut parts);
+        assert!(lanterns.len() > 10, "{} lamps", lanterns.len());
+        assert!(parts.timber.is_empty() && !parts.iron.is_empty());
+        let painter = Painter {
+            lanterns: &lanterns,
+        };
+        cave.carve(&painter, &mut parts);
+        assert!(!parts.rock[Stone::Masonry.index()].is_empty());
+        assert!(!parts.rock[Stone::Cave.index()].is_empty());
+        let mut built = Parts::default();
+        cave.parapets_and_pillars(&painter, &mut built);
+        assert!(!built.rock[Stone::Masonry.index()].is_empty());
+    }
+
     #[test]
     fn the_halls_are_high_and_the_galleries_lower() {
         let (track, scenery) = gold_mine();

@@ -63,6 +63,7 @@ pub const BAY: Circuit = Circuit {
         ],
         tunnels: &[],
         bridges: &[],
+        dams: &[],
         gantries: &[
             Gantry {
                 along: 0.0,
@@ -224,6 +225,7 @@ pub const BAY: Circuit = Circuit {
         waterfalls: &[],
         sky: SkyStyle::Day,
         water: Water::Sea,
+        cartoon_water: false,
         pit: None,
         mine: None,
         desert: None,

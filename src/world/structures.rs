@@ -19,7 +19,7 @@ use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
 
 /// Alto de las paredes del túnel hasta el techo (m), y lo que se abomba la
 /// roca de encima.
-const TUNNEL_HEIGHT: f32 = 6.5;
+pub(crate) const TUNNEL_HEIGHT: f32 = 6.5;
 const TUNNEL_ROCK: f32 = 15.0;
 /// Hasta dónde llega la roca del túnel a cada lado de la línea central (m).
 pub const TUNNEL_SHELL: f32 = WALL_DISTANCE + 12.0;
@@ -92,12 +92,14 @@ pub fn structure_pieces(
     terrain: &Terrain,
     scenery: &Scenery,
     textures: &WorldTextures,
+    within: Option<Span>,
 ) -> (Vec<(Mesh, StandardMaterial)>, Vec<Lamp>, Vec<GroundMesh>) {
     let mut pieces = Vec::new();
     let mut lamps = Vec::new();
     let mut ground = Vec::new();
     let lap = track.lap_length();
-    for tunnel in scenery.tunnels {
+    let wanted = |span: &Span| within.is_none_or(|stretch| span.overlaps(&stretch, lap));
+    for tunnel in scenery.tunnels.iter().filter(|tunnel| wanted(tunnel)) {
         // A mine's tunnels are its excavation, and Moria's its halls.
         if let Some(halls) = scenery.excavation() {
             let (cavern, lanterns) =
@@ -208,7 +210,14 @@ pub fn structure_pieces(
             pieces.push((mesh, material));
         }
     }
-    for bridge in scenery.bridges {
+    if scenery.dams.iter().any(|dam| wanted(&dam.crest)) {
+        pieces.extend(super::dam::dam_pieces(track, terrain, scenery, textures));
+    }
+    for bridge in scenery.bridges.iter().filter(|bridge| wanted(&bridge.span)) {
+        // A dam's crest is the dam (see `dam`).
+        if bridge.style == BridgeStyle::Dam {
+            continue;
+        }
         let indices = indices(track, bridge.span, lap);
         if bridge.style.wooden() {
             let old = bridge.style == BridgeStyle::OldWooden;
@@ -330,7 +339,7 @@ fn passing_over(
 }
 
 /// Los puntos del trazado de un tramo, en orden de carrera.
-fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
+pub(super) fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
     let first = track.index_at(span.from);
     let count = (span.length(lap) / track.step_length()).round() as usize;
     (0..=count)
@@ -1418,10 +1427,24 @@ mod tests {
                     BridgeStyle::Wooden | BridgeStyle::OldWooden => continue,
                     BridgeStyle::RedArches => bridge_meshes(&track, &terrain, &indices),
                     BridgeStyle::Truss => truss_bridge_meshes(&track, &terrain, &indices),
+                    // A dam's crest is the dam's own concrete.
+                    BridgeStyle::Dam => {
+                        let dam = scenery
+                            .dams
+                            .iter()
+                            .find(|dam| dam.crest == bridge.span)
+                            .expect("a dam's crest is a dam's");
+                        (
+                            super::super::dam::dam_mesh(&track, &terrain, dam),
+                            Mesh::from(Cuboid::default()),
+                        )
+                    }
                 };
                 let middle = indices[indices.len() / 2];
-                let beside = track.half_width() + 0.5;
-                let by_the_wall = WALL_DISTANCE - 0.3;
+                // From the asphalt's edge out to the walls, which close in
+                // where the road over it is narrow.
+                let beside = track.half_width_at(middle);
+                let by_the_wall = track.wall_at(middle) - 0.3;
                 for lateral in [-by_the_wall, -beside, beside, by_the_wall] {
                     let road = track.surface_point(middle, lateral);
                     let top = top_at(&deck, Vec2::new(road.x, road.z)).unwrap_or_else(|| {
