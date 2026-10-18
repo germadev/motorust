@@ -418,7 +418,9 @@ struct Finishing(HashMap<usize, (Shown, Option<Work<Rest>>)>);
 struct Previewing(HashMap<usize, Work<Prepared>>);
 
 /// The quick looks at the start of the circuits in the world, by index in
-/// [`CIRCUITS`]: each goes when its circuit's first part comes.
+/// [`CIRCUITS`]: each hidden when its circuit's first part comes, and kept,
+/// through the races too, for whenever its circuit is not there (see
+/// [`unload_unused_circuits`]).
 #[derive(Resource, Default)]
 struct PreviewRoots(HashMap<usize, Entity>);
 
@@ -479,8 +481,10 @@ fn preparing_in_the_menus(state: Option<Res<State<GameState>>>) -> bool {
 /// while the chosen one is worked on now), so that going from one to the
 /// next in the tracks menu is instant: seen from the road, a look at the
 /// start of each first; the first part of each, those nearest the one
-/// chosen first; and then the rest of each. Each is put in the world when it
-/// is ready ([`spawn_prepared_circuit`]). The menus go on meanwhile.
+/// chosen first; then the rest of each; and last, seen from the road, a
+/// look at the start of those built with none (the first circuit, built at
+/// start-up), kept for after a race. Each is put in the world when it is
+/// ready ([`spawn_prepared_circuit`]). The menus go on meanwhile.
 #[allow(clippy::too_many_arguments)]
 fn queue_circuits(
     current: Res<CurrentCircuit>,
@@ -542,6 +546,15 @@ fn queue_circuits(
             &textures,
             Urgency::Background,
         ));
+        return;
+    }
+    if previews_wanted(settings.as_deref()) {
+        let unseen =
+            nearest(&mut (0..CIRCUITS.len()).filter(|index| !previews.0.contains_key(index)));
+        if let Some(index) = unseen {
+            let work = start_previewing(index, &textures, Urgency::Background);
+            previewing.0.insert(index, work);
+        }
     }
 }
 
@@ -594,7 +607,7 @@ fn spawn_prepared_circuit(
         return;
     }
     // A look at the start of a circuit: shown if it is the one chosen,
-    // unless its first part has come.
+    // unless its first part has come; hidden otherwise, kept for later.
     let ready = chosen_first(previewing.0.keys().copied().collect())
         .into_iter()
         .find_map(|index| {
@@ -604,8 +617,8 @@ fn spawn_prepared_circuit(
     if let Some((index, prepared)) = ready {
         previewing.0.remove(&index);
         let built = roots.iter().any(|root| root.0 == index) || finishing.0.contains_key(&index);
-        if !built && !builder.previews.0.contains_key(&index) {
-            let visibility = if index == current.0 {
+        if !builder.previews.0.contains_key(&index) {
+            let visibility = if index == current.0 && !built {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
@@ -701,10 +714,15 @@ fn complete_the_circuit(
 }
 
 /// Going on to a race, the circuits prepared in the menus but the one
-/// chosen go, to free their memory, and the work on them is let go.
+/// chosen go, to free their memory, and the work on them is let go. Their
+/// looks at the start stay, hidden, if the tracks menu is seen from the
+/// road: some 15 to 40 MB each, they show any circuit at once in the menus
+/// after the race, while it is prepared again.
+#[allow(clippy::too_many_arguments)]
 fn unload_unused_circuits(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
+    settings: Option<Res<Settings>>,
     roots: Query<(Entity, &WorldRoot)>,
     mut preparing: ResMut<Preparing>,
     mut finishing: ResMut<Finishing>,
@@ -721,8 +739,9 @@ fn unload_unused_circuits(
     preparing.0.retain(|&index, _| index == current.0);
     finishing.0.retain(|&index, _| index == current.0);
     previewing.0.retain(|&index, _| index == current.0);
+    let looks_wanted = previews_wanted(settings.as_deref());
     previews.0.retain(|&index, &mut entity| {
-        let kept = index == current.0;
+        let kept = looks_wanted || index == current.0;
         if !kept {
             commands.entity(entity).despawn();
         }
@@ -765,9 +784,11 @@ fn rebuild_world(
             *visibility = Visibility::Hidden;
         }
     }
-    // Its look at the start, till it comes.
+    // Its look at the start, till it comes (not seen from above, where a
+    // look kept from before the option changed would show its edges).
+    let looks_wanted = previews_wanted(settings.as_deref());
     for (look, mut visibility) in &mut looks {
-        *visibility = if look.0 == current.0 && !found {
+        *visibility = if look.0 == current.0 && !found && looks_wanted {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -779,7 +800,7 @@ fn rebuild_world(
         if !found {
             // A look at its start first, if there is none, then the whole
             // of it, on the same thread, every core.
-            if previews_wanted(settings.as_deref())
+            if looks_wanted
                 && !builder.previews.0.contains_key(&current.0)
                 && previewing
                     .0
@@ -868,7 +889,7 @@ struct Shown {
 }
 
 /// Puts the first part of a prepared circuit in the world (see
-/// [`Prepared`]), its look at the start going; or, if it is a look at a
+/// [`Prepared`]), its look at the start hidden; or, if it is a look at a
 /// `stretch` of it (see [`preview`]), that, with the arches on the stretch.
 fn build(
     commands: &mut Commands,
@@ -975,8 +996,8 @@ fn build(
         .id();
     match stretch {
         None => {
-            if let Some(look) = builder.previews.0.remove(&basis.index) {
-                commands.entity(look).despawn();
+            if let Some(&look) = builder.previews.0.get(&basis.index) {
+                commands.entity(look).insert(Visibility::Hidden);
             }
         }
         Some(_) => {
@@ -1333,19 +1354,149 @@ mod tests {
             app.update();
         }
         app.update();
-        assert_eq!(
-            looks
-                .iter(app.world())
-                .filter(|(look, _)| look.0 == last)
-                .count(),
-            0
-        );
+        // Its look stays, hidden, for when the circuit has gone.
+        let kept: Vec<_> = looks
+            .iter(app.world())
+            .filter(|(look, _)| look.0 == last)
+            .map(|(_, visibility)| *visibility)
+            .collect();
+        assert_eq!(kept, [Visibility::Hidden]);
         let mut roots = app.world_mut().query::<(&WorldRoot, &Visibility)>();
         assert!(
             roots
                 .iter(app.world())
                 .any(|(root, visibility)| root.0 == last && *visibility == Visibility::Inherited)
         );
+    }
+
+    /// A world on the welcome screen, the tracks menu seen as `view`, and
+    /// every circuit but the first (built at start-up) looked at by its
+    /// start already, and built too if `built`: stand-ins, empty, so as not
+    /// to wait for them all.
+    fn app_with_looks(view: crate::settings::TrackView, built: bool) -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Mesh>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .insert_resource(Settings {
+                track_view: view,
+                ..default()
+            })
+            .add_plugins(WorldPlugin);
+        for index in 1..CIRCUITS.len() {
+            if built {
+                app.world_mut()
+                    .spawn((WorldRoot(index), Visibility::Hidden));
+            }
+            let look = app
+                .world_mut()
+                .spawn((PreviewRoot(index), Visibility::Hidden))
+                .id();
+            app.world_mut()
+                .resource_mut::<PreviewRoots>()
+                .0
+                .insert(index, look);
+        }
+        app.update();
+        app
+    }
+
+    /// The looks at the start in the world, by circuit, with how they are
+    /// seen.
+    fn looks(app: &mut App) -> Vec<(usize, Visibility)> {
+        let mut looks = app.world_mut().query::<(&PreviewRoot, &Visibility)>();
+        let mut seen: Vec<_> = looks
+            .iter(app.world())
+            .map(|(look, visibility)| (look.0, *visibility))
+            .collect();
+        seen.sort_by_key(|&(index, _)| index);
+        seen
+    }
+
+    #[test]
+    fn the_looks_at_the_starts_stay_through_a_race() {
+        let mut app = app_with_looks(crate::settings::TrackView::Trackside, true);
+        // Every circuit built, and every one looked at but the first: a
+        // look at its start comes last, and is kept hidden, as it is
+        // there whole.
+        let previewing: Vec<usize> = app
+            .world()
+            .resource::<Previewing>()
+            .0
+            .keys()
+            .copied()
+            .collect();
+        assert_eq!(previewing, [0]);
+        let started = std::time::Instant::now();
+        while !app.world().resource::<PreviewRoots>().0.contains_key(&0) {
+            assert!(started.elapsed().as_secs() < 120, "no look at its start");
+            app.update();
+        }
+        app.update();
+        let hidden: Vec<_> = (0..CIRCUITS.len())
+            .map(|index| (index, Visibility::Hidden))
+            .collect();
+        assert_eq!(looks(&mut app), hidden);
+
+        // On to a race on the first: the other circuits go, the looks
+        // stay, hidden.
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        app.update();
+        let mut roots = app.world_mut().query::<&WorldRoot>();
+        let built: Vec<usize> = roots.iter(app.world()).map(|root| root.0).collect();
+        assert_eq!(built, [0]);
+        assert_eq!(looks(&mut app), hidden);
+
+        // Back in the tracks menu, another circuit is seen by its start at
+        // once, while it is prepared again.
+        for state in [GameState::Welcome, GameState::Tracks] {
+            app.world_mut()
+                .resource_mut::<NextState<GameState>>()
+                .set(state);
+            app.update();
+        }
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = 2;
+        app.update();
+        assert!(app.world().resource::<CircuitLoading>().0);
+        let seen: Vec<usize> = looks(&mut app)
+            .into_iter()
+            .filter(|&(_, visibility)| visibility == Visibility::Inherited)
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(seen, [2]);
+    }
+
+    #[test]
+    fn seen_from_above_the_looks_at_the_starts_go_with_a_race() {
+        // Looks from when the menu was seen from the road: none shown, and
+        // all gone with a race.
+        let mut app = app_with_looks(crate::settings::TrackView::Aerial, false);
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Tracks);
+        app.update();
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = 2;
+        app.update();
+        assert!(
+            looks(&mut app)
+                .iter()
+                .all(|&(_, visibility)| visibility == Visibility::Hidden)
+        );
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Race);
+        app.update();
+        app.update();
+        // The one raced on keeps its own, as before, hidden as it comes
+        // whole.
+        assert_eq!(looks(&mut app), [(2, Visibility::Hidden)]);
     }
 
     #[test]
