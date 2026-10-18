@@ -132,6 +132,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 Vec2::new(278.4, -381.0),
             ],
             rise: &[],
+            narrows: &[],
         }],
     },
     scenery: Scenery {

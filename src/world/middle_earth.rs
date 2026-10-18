@@ -55,18 +55,24 @@ const WADE: f32 = 1.2;
 /// stand (m), past the walls: the ground under them sets its foot.
 const GATE_TOWERS: f32 = 14.5;
 
-/// The bank a hobbit hole is set into, as the hillside it is dug into: how
-/// high it rises over the top of its front (m), how far it reaches either
-/// side of it (m) and behind it (m), wide and low so that the banks of the
-/// holes in a row run into one another; how far past its front it comes
-/// either side of it, framing it flush as a cut in the hill does (m); how
-/// far its edge sinks into the ground at least (m), and how far under the
-/// ground round it, where that falls away (m); and how finely its mesh is
-/// cut (m).
-const BANK_OVER: f32 = 0.5;
-const BANK_SIDES: f32 = 10.0;
-const BANK_BEHIND: f32 = 14.0;
-const BANK_WING: f32 = 1.5;
+/// The little hill a hobbit hole is dug into, over its rooms and round its
+/// front: its top so much higher than the hole's (m), level over the middle
+/// of the hole (its share of its width) and to just behind its back (m),
+/// and falling away, rounded, to so far past its sides (m), so far behind
+/// that (m) and, either side of it, so far before its front (m); the hill
+/// cut away round the hole, flush with its sides, the cut opening out so
+/// much for each metre before its front (m) and softened over so many
+/// metres (m); how far its edge sinks into the ground at least (m), and how
+/// far under the ground round it, where that falls away (m); and how finely
+/// its mesh is cut (m).
+const HILL_RISE: f32 = 3.0;
+const HILL_CORE: f32 = 0.75;
+const HILL_CROWN: f32 = 1.0;
+const HILL_SIDES: f32 = 5.0;
+const HILL_BEHIND: f32 = 11.0;
+const HILL_BEFORE: f32 = 2.0;
+const CUT_FLARE: f32 = 1.5;
+const CUT_SOFT: f32 = 0.7;
 const BANK_SINK: f32 = 2.5;
 const BANK_UNDER: f32 = 0.3;
 const BANK_STEP: f32 = 0.5;
@@ -474,8 +480,9 @@ fn spawn_prop(
     }
     // A hobbit hole takes the ground of its bank.
     let (middle, reach) = if footing(prop.model) == Footing::Bank {
-        let middle = bank.back + (bank.ahead() - BANK_BEHIND) / 2.0;
-        let reach = (bank.half_width + BANK_SIDES).max((bank.ahead() + BANK_BEHIND) / 2.0);
+        let (x0, z0, z1) = bank.extent();
+        let middle = (z0 + z1) / 2.0;
+        let reach = x0.max((z1 - z0) / 2.0);
         (Vec3::new(0.0, 0.0, middle), reach)
     } else {
         ((low + high) / 2.0, reach)
@@ -551,11 +558,11 @@ fn path_footprints(paths: &[&[Vec2]]) -> Vec<Footprint> {
         .collect()
 }
 
-/// The grassy bank a hobbit hole is set into, in its own frame (its front
-/// facing +Z, its foot at the origin): flat-topped, a little higher than
-/// its front, sloping down behind it and to its sides, and either side of
-/// it coming forward past its front, so that it stands in a hollow of the
-/// bank; over its front, a lip of grass.
+/// The grassy hill a hobbit hole is dug into, in its own frame (its front
+/// facing +Z, its foot at the origin): a little round hill over its rooms,
+/// higher than its front, falling away behind it and to its sides and,
+/// either side of it, coming down round its front, which stands flush in a
+/// cut opening out before it.
 #[derive(Clone, Copy)]
 struct Bank {
     /// How far the front reaches either side of its middle (m).
@@ -564,7 +571,7 @@ struct Bank {
     /// forward its front (m).
     back: f32,
     front: f32,
-    /// How high the top of the bank is (m).
+    /// How high the top of the hole is (m).
     top: f32,
     /// How far under its foot its edge is (m).
     sink: f32,
@@ -578,26 +585,26 @@ impl Bank {
             half_width: high.x.max(-low.x),
             back: low.z,
             front: high.z,
-            top: high.y + BANK_OVER,
+            top: high.y,
             sink: BANK_SINK,
         }
     }
 
-    /// How far forward of its back it reaches either side of its front: to
-    /// just past the front.
-    fn ahead(&self) -> f32 {
-        self.front - self.back + BANK_WING
+    /// How far it reaches, in its frame: either side of its middle (m), and
+    /// back and forward (z, m).
+    fn extent(&self) -> (f32, f32, f32) {
+        (
+            self.half_width + HILL_SIDES,
+            self.back - HILL_CROWN - HILL_BEHIND,
+            self.front + HILL_BEFORE,
+        )
     }
 
     /// The same bank with its foot at `base`, turned by `rotation`, its edge
     /// sunk deeper where the ground round it falls away, so that all round
     /// it is `BANK_UNDER` under the ground at least.
     fn sunk(self, base: Vec3, rotation: Quat, terrain: &Terrain) -> Self {
-        let (x0, z0, z1) = (
-            self.half_width + BANK_SIDES,
-            self.back - BANK_BEHIND,
-            self.back + self.ahead(),
-        );
+        let (x0, z0, z1) = self.extent();
         let across = (2.0 * x0 / BANK_STEP).ceil() as usize;
         let deep = (z1 - z0) / BANK_STEP;
         let edge = (0..=across)
@@ -621,20 +628,26 @@ impl Bank {
     /// The height of the bank at `at` (x, z) in its frame (m): down to
     /// `-sink` at its edge, into the ground.
     fn height(&self, at: Vec2) -> f32 {
-        let across = at.x.abs() / (self.half_width + BANK_SIDES);
-        let behind = self.back - at.y;
-        // Either side of the front the bank comes forward, flush with it;
-        // over it, it stops at its back.
-        let ahead = 0.15
-            + (self.ahead() - 0.15)
-                * smoothstep(self.half_width - 0.3, self.half_width + 0.6, at.x.abs());
-        let along = if behind >= 0.0 {
-            behind / BANK_BEHIND
+        // The hill: level over the hole, rounded down to its edge, across
+        // and along.
+        let core = HILL_CORE * self.half_width;
+        let across = (at.x.abs() - core).max(0.0) / (self.half_width - core + HILL_SIDES);
+        let crown = self.back - HILL_CROWN;
+        let along = if at.y > self.front {
+            (at.y - self.front) / HILL_BEFORE
         } else {
-            -behind / ahead
+            (crown - at.y).max(0.0) / HILL_BEHIND
         };
-        let d = (across * across + along * along).sqrt();
-        (self.top + self.sink) * (1.0 - smoothstep(0.55, 1.0, d)) - self.sink
+        let up = (1.0 - smoothstep(0.0, 1.0, across)) * (1.0 - smoothstep(0.0, 1.0, along));
+        let hill = (self.top + HILL_RISE) * up - self.sink * (1.0 - up) * (1.0 - up);
+        // Cut away round the hole from just behind its back, flush with its
+        // sides, and opening out before its front.
+        if at.y <= self.back + 0.15 {
+            return hill;
+        }
+        let cut = self.half_width + 0.15 + CUT_FLARE * (at.y - self.front).max(0.0);
+        let away = 1.0 - smoothstep(cut, cut + CUT_SOFT, at.x.abs());
+        hill.lerp(-self.sink, away)
     }
 }
 
@@ -660,9 +673,8 @@ impl BankMesh {
     fn add(&mut self, bank: &Bank, base: Vec3, rotation: Quat, terrain: &Terrain) {
         self.dress(bank, base, rotation, terrain);
         self.count += 1;
-        let x0 = -(bank.half_width + BANK_SIDES);
-        let z0 = bank.back - BANK_BEHIND;
-        let z1 = bank.back + bank.ahead();
+        let (x0, z0, z1) = bank.extent();
+        let x0 = -x0;
         let columns = ((-2.0 * x0) / BANK_STEP).ceil() as usize + 1;
         let rows = ((z1 - z0) / BANK_STEP).ceil() as usize + 1;
         let start = self.positions.len() as u32;
@@ -681,6 +693,7 @@ impl BankMesh {
                 self.positions.push(p.to_array());
                 self.normals.push(n.to_array());
                 self.colors.push(terrain.grass_color(p, n));
+                // The grass laid along its slopes as well as over its top.
                 self.uvs.push([p.x / GRASS_TILE, (p.z - p.y) / GRASS_TILE]);
             }
         }
@@ -985,29 +998,43 @@ mod tests {
     }
 
     #[test]
-    fn a_hobbit_hole_stands_in_a_hollow_of_its_bank() {
+    fn a_hobbit_hole_is_dug_into_a_little_hill() {
         let bank = Bank {
-            half_width: 3.5,
-            back: -0.5,
+            half_width: 4.5,
+            back: -1.0,
             front: 0.5,
-            top: 4.7,
+            top: 5.6,
             sink: BANK_SINK,
         };
-        // Over its back, the top of the bank; nothing of it in front of its
-        // front, before its door.
-        assert!((bank.height(Vec2::new(0.0, -0.5)) - 4.7).abs() < 1e-3);
-        assert!(bank.height(Vec2::new(0.0, 0.5)) < 0.0);
-        assert!(bank.height(Vec2::new(2.0, 1.5)) < 0.0);
-        // Either side of it, the bank as high as over it, flush with its
-        // front, as a cut in a hillside; and no further forward than just
-        // past it, in no bulge either side of the door.
-        assert!(bank.height(Vec2::new(4.2, 0.5)) > 4.5);
-        assert!(bank.height(Vec2::new(4.5, 0.5 + BANK_WING + 0.2)) < 0.0);
-        assert!(bank.height(Vec2::new(8.0, 3.0)) < 0.0);
-        // Behind it, and to its sides, it slopes down into the ground.
-        assert!(bank.height(Vec2::new(0.0, -6.0)) > 4.0);
-        assert!((bank.height(Vec2::new(0.0, -0.5 - BANK_BEHIND)) + BANK_SINK).abs() < 1e-3);
-        assert!((bank.height(Vec2::new(3.5 + BANK_SIDES, -0.5)) + BANK_SINK).abs() < 1e-3);
+        // Behind it a little hill, higher than its top; either side of it
+        // as high as its top, flush with its sides.
+        assert!(bank.height(Vec2::new(0.0, -1.5)) > 5.6 + 2.0);
+        assert!(bank.height(Vec2::new(0.0, -1.0 - HILL_CROWN)) > 5.6 + 2.0);
+        assert!(bank.height(Vec2::new(5.4, 0.0)) > 5.6);
+        // Over it and before it nothing: the hill cut away round it, the
+        // cut opening out before it.
+        assert!(bank.height(Vec2::new(0.0, -0.5)) < 0.0);
+        assert!(bank.height(Vec2::new(4.4, 0.0)) < 0.0);
+        assert!(bank.height(Vec2::new(0.0, 0.6)) < 0.0);
+        assert!(bank.height(Vec2::new(4.0, 1.0)) < 0.0);
+        assert!(bank.height(Vec2::new(5.5, 3.0)) < 0.0);
+        // Either side of it the hill comes down round its front, with no
+        // bulge standing out before it.
+        assert!(bank.height(Vec2::new(6.0, 1.0)) < 4.0);
+        assert!(bank.height(Vec2::new(7.0, 2.5)) < 0.0);
+        // Behind it the hill falls away, rounded, into the ground.
+        let behind = bank.height(Vec2::new(0.0, -8.0));
+        assert!(behind > 0.5 && behind < 5.6, "{behind}");
+        let (x0, z0, z1) = bank.extent();
+        for at in [
+            Vec2::new(0.0, z0),
+            Vec2::new(x0, -0.5),
+            Vec2::new(-x0, -3.0),
+            Vec2::new(4.5, z1),
+            Vec2::new(8.0, z1),
+        ] {
+            assert!((bank.height(at) + BANK_SINK).abs() < 1e-3, "{at}");
+        }
     }
 
     #[test]
@@ -1130,10 +1157,10 @@ mod tests {
                     bank.sink
                 );
                 // Round its edge, its foot is in the ground: no bank floats.
-                let x0 = bank.half_width + BANK_SIDES;
+                let (x0, z0, z1) = bank.extent();
                 for k in 0..=40 {
                     let x = -x0 + 2.0 * x0 * k as f32 / 40.0;
-                    for z in [bank.back - BANK_BEHIND, bank.back + bank.ahead()] {
+                    for z in [z0, z1] {
                         let local = Vec3::new(x, bank.height(Vec2::new(x, z)), z);
                         let world = base + rotation * local;
                         let ground = terrain.height(Vec2::new(world.x, world.z));

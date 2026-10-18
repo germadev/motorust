@@ -228,9 +228,9 @@ pub enum SkyStyle {
     Mediterranean,
     GoldenHour,
     Dusk,
-    /// A bright late summer afternoon in high country, graded as a film
-    /// is: the light of New Zealand, where *The Lord of the Rings* was
-    /// shot.
+    /// A summer sunset in high country, the hills' long shadows over one
+    /// another, graded as a film is: the light of New Zealand, where *The
+    /// Lord of the Rings* was shot.
     HighCountry,
 }
 
@@ -528,6 +528,14 @@ impl Scenery {
             (_, Some(middle_earth)) if !middle_earth.halls.is_empty() => Some(middle_earth.halls),
             _ => None,
         }
+    }
+
+    /// Where the ground stays grass however steep it is (see
+    /// [`MiddleEarth::turf`]).
+    pub fn turf(&self) -> &'static [Turf] {
+        self.middle_earth
+            .as_ref()
+            .map_or(&[], |middle_earth| middle_earth.turf)
     }
 
     /// The fields of flowers, of feudal Japan or of Middle-earth.
@@ -884,6 +892,16 @@ pub struct MiddleEarth {
     /// Footpaths of bare earth, as between the hobbit holes: each a line of
     /// points (x, z) over the ground.
     pub paths: &'static [&'static [Vec2]],
+    /// Where the ground stays grass however steep it is (but sheer), as the
+    /// banks and the cut doorsteps of Hobbiton's hillsides are.
+    pub turf: &'static [Turf],
+}
+
+/// A round stretch of land whose steep slopes are grass, not rock (see
+/// [`MiddleEarth::turf`]).
+pub struct Turf {
+    pub center: Vec2,
+    pub radius: f32,
 }
 
 /// One of the props of Middle-earth, made with Meshy (see

@@ -11,8 +11,11 @@ Island's:
 - `props.bin`: every prop as a piece named after it, centred on the origin
   with its lowest point on the ground (a tree on the foot of its trunk), up
   along +Y, at the game's size (`SIZES`).
-- `color.jpg`: their colour textures together, each brought down to `CELL`
-  pixels square, in a grid of `COLUMNS`.
+- `color.jpg`: their colour textures together in one atlas `ATLAS` pixels
+  square, each brought down to a square cell: `CELL` pixels, or more for
+  the big buildings the riders pass close by (`CELLS`: the Prancing Pony,
+  whose archway they ride through, and others), packed as quarters of
+  quarters (`cells`).
 
 Some models need mending as they are read:
 
@@ -139,8 +142,36 @@ GLOW_WIDTH = 1.5
 GLOW_OFF = 0.05
 GLOW_GROW = 1.8
 CELL = 512
-COLUMNS = 6
+CELLS = {
+    "prancing_pony": 2048,
+    "last_homely_house": 1024,
+    "green_dragon": 1024,
+    "bree_house_a": 1024,
+    "bag_end": 1024,
+}
+ATLAS = 4096
 MARGIN = 2
+
+
+def cells(names):
+    """Where each prop's cell goes in the atlas (x, y, size), the biggest
+    first: each a quarter of a free square, split until it is the cell's
+    size, so that cells of sizes in powers of two pack without gaps."""
+    free = [(0, 0, ATLAS)]
+    spots = {}
+    for name in sorted(names, key=lambda name: -CELLS.get(name, CELL)):
+        size = CELLS.get(name, CELL)
+        fits = [square for square in free if square[2] >= size]
+        if not fits:
+            sys.exit(f"the atlas has no room left for {name}")
+        square = min(fits, key=lambda square: (square[2], square[1], square[0]))
+        free.remove(square)
+        x, y, side = square
+        while side > size:
+            side //= 2
+            free += [(x + side, y, side), (x, y + side, side), (x + side, y + side, side)]
+        spots[name] = (x, y, size)
+    return spots
 
 
 def welded(positions):
@@ -573,24 +604,24 @@ def main():
     given = {name: path for name, path in props}
     if ("mill" in given) != ("mill_wheel" in given):
         sys.exit("the mill and its wheel go together")
-    rows = (len(props) + COLUMNS - 1) // COLUMNS
-    atlas = Image.new("RGB", (COLUMNS * CELL, rows * CELL))
-    size = np.array([COLUMNS * CELL, rows * CELL], dtype=np.float64)
+    spots = cells([name for name, _ in props])
+    atlas = Image.new("RGB", (ATLAS, ATLAS))
+    size = np.array([ATLAS, ATLAS], dtype=np.float64)
     pieces = []
     mill = None
-    for slot, (name, path) in enumerate(props):
+    for name, path in props:
         positions, normals, uvs, indices, color = read_glb(path)
-        column, row = slot % COLUMNS, slot // COLUMNS
-        inner = CELL - 2 * MARGIN
+        x, y, side = spots[name]
+        inner = side - 2 * MARGIN
         texture = color.resize((inner, inner), Image.LANCZOS)
         if name in TONED:
             saturation, brightness = TONED[name]
             texture = ImageEnhance.Color(texture).enhance(saturation)
             texture = ImageEnhance.Brightness(texture).enhance(brightness)
-        cell = texture.resize((CELL, CELL), Image.NEAREST)
+        cell = texture.resize((side, side), Image.NEAREST)
         cell.paste(texture, (MARGIN, MARGIN))
-        atlas.paste(cell, (column * CELL, row * CELL))
-        corner = np.array([column * CELL + MARGIN, row * CELL + MARGIN], dtype=np.float64)
+        atlas.paste(cell, (x, y))
+        corner = np.array([x + MARGIN, y + MARGIN], dtype=np.float64)
 
         if name == "stone_trolls":
             positions, normals, uvs, indices = without_third_leg(positions, normals, uvs, indices, color)

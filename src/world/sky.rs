@@ -173,33 +173,34 @@ impl Palette {
                 fog: FOG,
                 grade: Grade::NONE,
             },
-            // A bright late summer afternoon in high country: the sun well up
-            // in the south-east, warm, lighting the fronts of the hills and the
-            // faces of the rock, the shade filled by a clear sky; a quiet blue
-            // overhead paling to a warm, light haze at the horizon, so that the
-            // hills fade into it one behind another; white clouds, a touch
-            // warm. Graded as a film is: the greens and blues a little held
-            // back, a little more contrast, light and luminous.
+            // A summer sunset in high country: the sun low in the south-east
+            // and golden, raking across the hills so that each casts a long
+            // shadow over the next and the fronts of the hills glow, the
+            // shade cool and darker, filled less by the sky; the sky blue
+            // overhead, golden towards the sun and the horizon, a warm haze
+            // fading the hills one behind another; and the picture graded as
+            // a film is, a little less saturated, with more contrast, warm,
+            // and lit up so that it stays bright.
             SkyStyle::HighCountry => Self {
-                zenith: Color::srgb(0.24, 0.45, 0.8),
-                above_horizon: Color::srgb(0.55, 0.69, 0.88),
-                horizon: Color::srgb(0.86, 0.86, 0.84),
-                glow: 0.25,
-                glow_color: Color::srgb(1.0, 0.92, 0.76),
+                zenith: Color::srgb(0.24, 0.4, 0.72),
+                above_horizon: Color::srgb(0.64, 0.64, 0.78),
+                horizon: Color::srgb(0.98, 0.8, 0.64),
+                glow: 0.55,
+                glow_color: Color::srgb(1.0, 0.72, 0.5),
                 sun_azimuth: SUN_AZIMUTH,
-                sun_elevation: 0.62,
-                sun_disc: Color::srgb(1.0, 0.97, 0.88),
-                sunlight: Color::srgb(1.0, 0.94, 0.84),
-                sunlight_strength: 1.15,
-                ambient: Color::srgb(0.72, 0.78, 0.92),
-                ambient_brightness: 720.0,
-                clouds: Color::srgb(1.0, 0.98, 0.94),
+                sun_elevation: 0.26,
+                sun_disc: Color::srgb(1.0, 0.85, 0.62),
+                sunlight: Color::srgb(1.0, 0.82, 0.62),
+                sunlight_strength: 1.35,
+                ambient: Color::srgb(0.58, 0.64, 0.86),
+                ambient_brightness: 430.0,
+                clouds: Color::srgb(1.0, 0.84, 0.72),
                 fog: HAZE,
                 grade: Grade {
-                    saturation: 0.88,
-                    contrast: 1.06,
-                    exposure: 0.25,
-                    warmth: 0.004,
+                    saturation: 0.9,
+                    contrast: 1.14,
+                    exposure: 0.3,
+                    warmth: 0.012,
                     highlight_saturation: 0.9,
                 },
             },
@@ -1208,28 +1209,29 @@ mod tests {
     }
 
     #[test]
-    fn high_country_is_bright_hazy_and_graded_as_a_film() {
-        // A late afternoon's sun, a little lower than a summer day's and
-        // warm, but as strong; the shade filled by the sky; a quieter sky,
-        // paler at the horizon; a haze from nearer; and a picture a little
-        // less saturated than a summer day's, with a little more contrast,
-        // and lighter.
+    fn high_country_is_a_bright_sunset_of_long_shadows_graded_as_a_film() {
+        // A sunset's sun, low and golden, stronger than a summer day's; the
+        // shade filled less by the sky, so the hills' shadows stand out; a
+        // quieter sky overhead and golden at the horizon; a haze from
+        // nearer; and a picture a little less saturated than a summer day's,
+        // with more contrast, warm, and lit up.
         let day = Palette::of(SkyStyle::Day);
         let high = Palette::of(SkyStyle::HighCountry);
-        assert!(high.sun_elevation > 0.5 && high.sun_elevation < day.sun_elevation);
+        assert!(high.sun_elevation < 0.35 && high.sun_elevation > 0.15);
         let sun = high.sunlight.to_srgba();
-        assert!(sun.red > sun.blue + 0.1);
-        assert!(high.sunlight_strength >= 1.0);
-        assert!(high.ambient_brightness >= day.ambient_brightness);
+        assert!(sun.red > sun.blue + 0.3);
+        assert!(high.sunlight_strength > day.sunlight_strength);
+        assert!(high.ambient_brightness < day.ambient_brightness * 0.7);
         let vivid = |c: Color| {
             let c = c.to_srgba();
             c.blue - c.red.min(c.green)
         };
         assert!(vivid(high.sky_color(Vec3::Y)) < vivid(day.sky_color(Vec3::Y)));
-        assert!(vivid(high.horizon) < vivid(day.horizon));
+        let horizon = high.horizon.to_srgba();
+        assert!(horizon.red > horizon.blue + 0.2);
         assert!(high.fog.0 < day.fog.0);
-        assert!(high.grade.saturation < 1.0 && high.grade.contrast > 1.0);
-        assert!(high.grade.exposure > 0.0);
+        assert!(high.grade.saturation < 1.0 && high.grade.contrast > 1.1);
+        assert!(high.grade.exposure > 0.0 && high.grade.warmth > 0.0);
     }
 
     /// The lowest row of cloud `data` thicker than half in column `x`, if

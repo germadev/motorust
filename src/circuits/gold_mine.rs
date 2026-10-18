@@ -118,6 +118,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &HIGH_ROAD_RISE,
+                narrows: &[],
             },
             // The deep road, to the right, through a dip.
             Branch {
@@ -127,6 +128,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &DEEP_ROAD_RISE,
+                narrows: &[],
             },
             // The upper gallery, to the left, over a hump.
             Branch {
@@ -136,6 +138,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &UPPER_GALLERY_RISE,
+                narrows: &[],
             },
             // The lower gallery, to the right, through a dip.
             Branch {
@@ -145,6 +148,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &LOWER_GALLERY_RISE,
+                narrows: &[],
             },
         ],
     },

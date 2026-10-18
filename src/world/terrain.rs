@@ -13,7 +13,7 @@ use bevy::{
 use super::cavern::excavation_width;
 use super::dam::DamGround;
 use super::flowers::{FlowerMap, phlox_color};
-use super::scenery::{Coast, FlowerKind, Greens, Pit, Scenery, Side, Soil, span};
+use super::scenery::{Coast, FlowerKind, Greens, Pit, Scenery, Side, Soil, Turf, span};
 use super::sky::MEDITERRANEAN_SUN;
 use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
@@ -111,6 +111,8 @@ pub struct Terrain {
     soil: Soil,
     /// Where the grass is in flower, if anywhere.
     flowers: Option<FlowerMap>,
+    /// Where the ground stays grass however steep it is.
+    turf: &'static [Turf],
     /// The corners of the fine part of the grid, round the roads: past it
     /// the land is wild (see [`grass_tint`]).
     fine: (Vec2, Vec2),
@@ -223,9 +225,12 @@ impl Terrain {
             .zip(hollow.iter().zip(&mountain).zip(&up))
             .map(|(p, ((&hollow, &mountain), &up))| (p, hollow, mountain, up))
             .collect();
+        let turf = scenery.turf();
         let sites = on_cores(&grid, threads, |part: &[(Vec3, f32, f32, f32)]| {
             part.iter()
-                .map(|&(p, hollow, mountain, up)| site(p, flowers.as_ref(), hollow, mountain, up))
+                .map(|&(p, hollow, mountain, up)| {
+                    site(p, flowers.as_ref(), turf, hollow, mountain, up)
+                })
                 .collect::<Vec<_>>()
         });
         Self {
@@ -235,6 +240,7 @@ impl Terrain {
             sites,
             soil: scenery.soil,
             flowers,
+            turf,
             fine,
             mountain,
             hollow,
@@ -388,6 +394,7 @@ impl Terrain {
         site(
             p,
             self.flowers.as_ref(),
+            self.turf,
             self.on_grid(&self.hollow, point),
             self.on_grid(&self.mountain, point),
             self.on_grid(&self.up, point),
@@ -795,7 +802,7 @@ pub fn spawn_terrain(
 /// The ground at `point` (x, height, z), where it faces `normal`.
 fn classify(point: Vec3, normal: Vec3) -> Ground {
     let (snow_line, tree_line) = lines(point, 0.0);
-    ground_of(point.y, snow_line, tree_line, normal, 0.0)
+    ground_of(point.y, snow_line, tree_line, normal, 0.0, false)
 }
 
 /// The snow line and the tree line over `point` (m), reaching up and down
@@ -891,6 +898,8 @@ struct Site {
     flowers: Option<FlowerKind>,
     /// How much of it is mountain across the sea.
     mountain: f32,
+    /// Whether it is turf, grass however steep (but sheer).
+    turf: bool,
     /// How much its ground faces up (the upward part of its normal,
     /// smoothed over the grid), a little more or less here and there, so
     /// the rock of the steep faces does not end along a contour.
@@ -898,9 +907,16 @@ struct Site {
 }
 
 /// What the look of the ground at `p` (x, height, z) turns on but the way
-/// it faces, where the grass is in `flowers`, `hollow` down a gully of a
-/// mountain across the sea and `mountain` its share of it.
-fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32, up: f32) -> Site {
+/// it faces, where the grass is in `flowers` and is `turf`, `hollow` down a
+/// gully of a mountain across the sea and `mountain` its share of it.
+fn site(
+    p: Vec3,
+    flowers: Option<&FlowerMap>,
+    turf: &[Turf],
+    hollow: f32,
+    mountain: f32,
+    up: f32,
+) -> Site {
     let (snow_line, tree_line) = lines(p, hollow);
     let ground = Vec2::new(p.x, p.z);
     Site {
@@ -909,6 +925,9 @@ fn site(p: Vec3, flowers: Option<&FlowerMap>, hollow: f32, mountain: f32, up: f3
         tree_line,
         flowers: flowers.and_then(|map| map.at(ground)),
         mountain,
+        turf: turf
+            .iter()
+            .any(|turf| ground.distance(turf.center) < turf.radius),
         up: up + CLIFF_RAGGED * 2.0 * (fbm(ground / 13.0 + Vec2::splat(5.0), 2) - 0.5),
     }
 }
@@ -946,6 +965,7 @@ fn look(site: &Site) -> Look {
         site.tree_line,
         Vec3::Y * site.up,
         site.mountain,
+        site.turf,
     );
     let flowers = if ground == Ground::Grass {
         site.flowers
@@ -970,10 +990,19 @@ fn inside(point: Vec2, [p, q, r]: [Vec2; 3]) -> f32 {
 /// The ground `height` m up, under the snow line and the tree line there,
 /// where it faces `normal`; on a mountain across the sea (`mountain` over
 /// a half), by the lines alone, but for sheer faces: snow however steep,
-/// and forest up to the tree line.
-fn ground_of(height: f32, snow_line: f32, tree_line: f32, normal: Vec3, mountain: f32) -> Ground {
+/// and forest up to the tree line; on `turf`, grass but on sheer faces.
+fn ground_of(
+    height: f32,
+    snow_line: f32,
+    tree_line: f32,
+    normal: Vec3,
+    mountain: f32,
+    turf: bool,
+) -> Ground {
     let (snow_normal, cliff_normal) = if mountain > 0.5 {
         (0.0, MOUNTAIN_CLIFF_NORMAL_Y)
+    } else if turf {
+        (SNOW_NORMAL_Y, MOUNTAIN_CLIFF_NORMAL_Y)
     } else {
         (SNOW_NORMAL_Y, CLIFF_NORMAL_Y)
     };
