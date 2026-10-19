@@ -61,6 +61,8 @@ pub struct Context {
     pub split_detail: bool,
     pub shadows: String,
     pub antialiasing: String,
+    /// The relief of the scenery's textures.
+    pub relief: String,
     /// The performance forced: off, or the frame rate it keeps.
     pub performance: String,
     /// The sea: mirroring or the cartoon one.
@@ -81,7 +83,7 @@ impl Context {
     fn pairs(&self) -> String {
         format!(
             "state={} mode={} players={} paused={} track={:?} trees={} lighter_far_trees={} \
-             lighter_split_screen={} force_performance={} water={} shadows={} antialiasing={} render_scale={} render={} fps_limit={} \
+             lighter_split_screen={} force_performance={} water={} shadows={} antialiasing={} relief={} render_scale={} render={} fps_limit={} \
              resolution={} fullscreen={} pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
             self.state,
             self.mode,
@@ -95,6 +97,7 @@ impl Context {
             self.water,
             self.shadows,
             self.antialiasing,
+            self.relief,
             self.render_scale,
             self.render,
             self.fps_limit,
@@ -588,6 +591,7 @@ fn log_performance(
             detail.as_deref().map(|detail| detail.level)
         ),
         antialiasing: format!("{:?}", settings.antialiasing),
+        relief: format!("{:?}", settings.relief),
         // As the options say, or as far as the performance forced has come.
         render_scale: render_percent(detail.as_deref()),
         render: window.map_or_else(

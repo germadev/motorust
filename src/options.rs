@@ -21,8 +21,9 @@ use crate::render_scale::{NativeShare, drawn_size};
 use crate::settings::{
     ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
     DIFFICULTIES, FALSE_STARTS, FORCE_PERFORMANCES, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS,
-    FpsLimit, LIGHTS_HOLDS, RACE_STARTS, RENDER_SCALES, RESOLUTIONS, RaceStart, SHADOW_QUALITIES,
-    START_LIGHTS, ScreenRate, Settings, ShadowQuality, StartedWith, TRACK_VIEWS, WEB, cycle,
+    FpsLimit, LIGHTS_HOLDS, RACE_STARTS, RELIEFS, RENDER_SCALES, RESOLUTIONS, RaceStart,
+    SHADOW_QUALITIES, START_LIGHTS, ScreenRate, Settings, ShadowQuality, StartedWith, TRACK_VIEWS,
+    WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
@@ -450,6 +451,8 @@ enum GraphicsItem {
     Shadows,
     /// How the edges are smoothed.
     Antialiasing,
+    /// The relief of the scenery's textures.
+    Relief,
     /// The sea mirroring, or the cartoon one.
     Water,
     /// The page of what the performance HUD shows: the frame rate, the
@@ -597,6 +600,7 @@ fn graphics_items(page: Option<Page>) -> Vec<GraphicsItem> {
         GraphicsItem::RenderScale,
         GraphicsItem::Shadows,
         GraphicsItem::Antialiasing,
+        GraphicsItem::Relief,
         GraphicsItem::Water,
         GraphicsItem::PerformanceHud,
         GraphicsItem::Advanced,
@@ -772,6 +776,7 @@ fn section_is_default(
                     settings.render_scale,
                     settings.shadows,
                     settings.antialiasing,
+                    settings.relief,
                     settings.cartoon_water,
                 )
             };
@@ -841,6 +846,7 @@ fn reset_section(
             settings.render_scale = first.render_scale;
             settings.shadows = first.shadows;
             settings.antialiasing = first.antialiasing;
+            settings.relief = first.relief;
             settings.cartoon_water = first.cartoon_water;
             reset_performance_hud(settings, first);
             reset_advanced(settings, first);
@@ -1132,6 +1138,10 @@ fn use_options_menu(
                 }
                 GraphicsItem::Antialiasing if change != 0 => {
                     settings.antialiasing = cycle(&ANTIALIASINGS, settings.antialiasing, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::Relief if change != 0 => {
+                    settings.relief = cycle(&RELIEFS, settings.relief, change);
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Water if change != 0 => {
@@ -1744,6 +1754,13 @@ fn show_options_menu(
                             (Antialiasing::Off, Language::English) => "Off",
                         }
                     ),
+                ),
+                GraphicsItem::Relief => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Relieve",
+                        Language::English => "Relief",
+                    },
+                    format!("<  {}  >", settings.relief.name(lang)),
                 ),
                 GraphicsItem::Trees => Row::with_value(
                     match lang {
@@ -2430,6 +2447,24 @@ mod tests {
             "120"
         );
         assert_eq!(ForcePerformance::Fps120.name(Language::Spanish), "120 fps");
+    }
+
+    #[test]
+    fn the_relief_is_on_graphics_own_list_under_the_antialiasing_and_resets_with_it() {
+        use crate::settings::Relief;
+        let main = graphics_items(None);
+        let at = |item| main.iter().position(|&i| i == item).unwrap();
+        assert_eq!(at(GraphicsItem::Relief), at(GraphicsItem::Antialiasing) + 1);
+        let mut settings = Settings {
+            relief: Relief::Off,
+            ..default()
+        };
+        let mut debug = DebugOptions::default();
+        let graphics = OptionsTab::Graphics;
+        assert!(!section_is_default(graphics, None, &settings, &debug));
+        reset_section(graphics, None, &mut settings, &mut debug);
+        assert_eq!(settings.relief, Relief::Normal);
+        assert!(section_is_default(graphics, None, &settings, &debug));
     }
 
     #[test]

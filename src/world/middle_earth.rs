@@ -20,6 +20,7 @@ use bevy::{
 };
 
 use super::Assets3d;
+use super::detail::fading_out;
 use super::flowers::{FlowerPlan, spawn_flowers};
 use super::japan::{PropPack, Turning, in_view, spawn_petals, spot};
 use super::props::Footprint;
@@ -69,6 +70,11 @@ const GLOW_CORE: f32 = 0.6;
 const SHAFT_PLANES: usize = 6;
 const SHAFT_LENGTH: f32 = 110.0;
 const SHAFT_CLEAR: f32 = 30.0;
+/// How far from the cameras the shafts show (m, to their middle, some 55 m
+/// up over what they light), fading out over so many more: seen coming up
+/// to what they light, not from afar.
+const SHAFT_REACH: f32 = 150.0;
+const SHAFT_FADE: f32 = 60.0;
 
 /// The hill a hobbit hole is dug into, a dome over its rooms behind its
 /// front: so many times as high as the hole and as wide as its front,
@@ -437,6 +443,7 @@ pub fn spawn_middle_earth(
             world.spawn((
                 Mesh3d(assets.meshes.add(shaft_mesh(glow, shaft))),
                 MeshMaterial3d(material.clone()),
+                fading_out(SHAFT_REACH, SHAFT_FADE, true),
             ));
         }
     }
@@ -1699,6 +1706,16 @@ mod tests {
         // Brightest down its middle, a little over what it lights, faint
         // even there.
         assert!((brightest - shaft.light).abs() < 1e-4, "{brightest}");
+    }
+
+    #[test]
+    fn a_sunbeam_s_shaft_shows_coming_up_to_what_it_lights_not_from_afar() {
+        let range = fading_out(SHAFT_REACH, SHAFT_FADE, true);
+        // Its middle, half way up it, from the road 60 m short of what it
+        // lights: whole; from 250 m off, gone.
+        let to_middle = |off: f32| Vec2::new(off, SHAFT_LENGTH / 2.0).length();
+        assert!(to_middle(60.0) < range.end_margin.start);
+        assert!(to_middle(250.0) > range.end_margin.end);
     }
 
     #[test]

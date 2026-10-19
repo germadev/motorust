@@ -13,7 +13,7 @@ use super::scenery::{
     Span,
 };
 use super::terrain::{CLIFF_NORMAL_Y, GRASS_TILE, Ground, GroundMesh, Terrain};
-use super::textures::WorldTextures;
+use super::textures::{PLANK_BOARD, PLANK_GAP, WorldTextures};
 use crate::geometry::{fbm, random01, smoothstep};
 use crate::track::{Nearest, SURFACE_Y, Track, WALL_DISTANCE};
 
@@ -78,6 +78,9 @@ const DECK_TILE: f32 = 4.0;
 /// and the colours of the wood.
 const PLANK_TILE: f32 = 4.0;
 const PLANK_LIFT: f32 = 0.02;
+/// How thick the boards of a wooden bridge are (m), seen through the gaps
+/// between them.
+const PLANK_THICKNESS: f32 = 0.07;
 const POST_WOOD: Color = Color::srgb(0.34, 0.2, 0.09);
 const RAIL_WOOD: Color = Color::srgb(0.52, 0.33, 0.15);
 /// An old bridge's wood, weathered grey.
@@ -259,6 +262,8 @@ pub fn structure_pieces(
                 StandardMaterial {
                     base_color_texture: Some(textures.planks.clone()),
                     perceptual_roughness: if old { 0.95 } else { 0.85 },
+                    // The gaps between the boards seen through.
+                    alpha_mode: AlphaMode::Mask(0.5),
                     ..default()
                 },
             ));
@@ -982,6 +987,42 @@ fn wooden_bridge_meshes(
         } else {
             Color::WHITE
         };
+        // The boards' ends either side of each gap between them, as thick
+        // as a board, seen through the gap (see `textures::planks`): the
+        // end of the board before it, facing on along the road, and the
+        // start of the one after, facing back.
+        let forward = (deck(j, 0.0) - deck(i, 0.0)).normalize_or_zero();
+        let first = (v0 / PLANK_BOARD).floor() as i32;
+        for next in first..=(v1 / PLANK_BOARD).ceil() as i32 {
+            let gap = next as f32 * PLANK_BOARD;
+            for (at, facing, of) in [(gap, forward, next - 1), (gap + PLANK_GAP, -forward, next)] {
+                if !(v0..v1).contains(&at) {
+                    continue;
+                }
+                let t = (at - v0) / (v1 - v0);
+                let edge = edge(i) + (edge(j) - edge(i)) * t;
+                let point = |lateral: f32| deck(i, lateral).lerp(deck(j, lateral), t);
+                // Its wood from the middle of its board.
+                let v = (of as f32 + 0.5) * PLANK_BOARD;
+                let thick = Vec3::Y * PLANK_THICKNESS;
+                planks.quad(
+                    [
+                        (point(-edge), Vec2::new(0.0, v)),
+                        (point(edge), Vec2::new(2.0 * edge / PLANK_TILE, v)),
+                        (
+                            point(edge) - thick,
+                            Vec2::new(2.0 * edge / PLANK_TILE, v + PLANK_THICKNESS / PLANK_TILE),
+                        ),
+                        (
+                            point(-edge) - thick,
+                            Vec2::new(0.0, v + PLANK_THICKNESS / PLANK_TILE),
+                        ),
+                    ],
+                    facing,
+                    board,
+                );
+            }
+        }
         // The boards run across the road: along them is U.
         for (lift, facing) in [(Vec3::ZERO, Vec3::Y), (down, Vec3::NEG_Y)] {
             planks.quad(
@@ -1488,5 +1529,41 @@ mod tests {
             }
         }
         assert!(checked > 0, "some circuit has a concrete bridge");
+    }
+
+    #[test]
+    fn a_wooden_bridge_s_boards_show_their_ends_at_each_gap() {
+        let circuit = &CIRCUITS[2];
+        let bridge = circuit
+            .scenery
+            .bridges
+            .iter()
+            .find(|bridge| bridge.style == BridgeStyle::Wooden)
+            .expect("Loop Island has a wooden bridge");
+        let track = Track::new(&circuit.layout);
+        let terrain = Terrain::new(&track, &circuit.scenery);
+        let indices = indices(&track, bridge.span, track.lap_length());
+        let (planks, _) = wooden_bridge_meshes(&track, &terrain, &indices, bridge.fence, false);
+        let Some(VertexAttributeValues::Float32x3(normals)) =
+            planks.attribute(Mesh::ATTRIBUTE_NORMAL)
+        else {
+            panic!("the planks have normals");
+        };
+        // Two ends at each gap, a board apart, facing along the road, each
+        // a quad (four corners).
+        let length = (indices.len() - 1) as f32 * track.step_length();
+        let gaps = length / (PLANK_BOARD * PLANK_TILE);
+        let middle = indices[indices.len() / 2];
+        let line = track.centerline();
+        let along = (line[middle + 1] - line[middle]).normalize();
+        let ends = normals
+            .iter()
+            .filter(|n| Vec3::from(**n).dot(Vec3::new(along.x, 0.0, along.y)).abs() > 0.9)
+            .count()
+            / 4;
+        assert!(
+            (ends as f32 - 2.0 * gaps).abs() <= 4.0,
+            "{ends} ends for {gaps} gaps"
+        );
     }
 }

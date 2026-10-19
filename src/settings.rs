@@ -119,6 +119,9 @@ pub struct Settings {
     /// How the edges are smoothed (see [`crate::world::detail`]): fixed, as
     /// changing it makes every pipeline again.
     pub antialiasing: Antialiasing,
+    /// The relief of the scenery's textures: none, normal maps, or normal
+    /// maps and parallax (see [`crate::world::relief`]).
+    pub relief: Relief,
     /// How much of the window's resolution the world is drawn at (%), scaled
     /// up to it (see [`crate::render_scale`]); the interface is always drawn
     /// at the window's own.
@@ -366,6 +369,7 @@ impl Default for Settings {
             performance_log: true,
             shadows: ShadowQuality::default(),
             antialiasing: Antialiasing::default(),
+            relief: Relief::default(),
             render_scale: DEFAULT_RENDER_SCALE,
             force_performance: ForcePerformance::Off,
             show_fps: true,
@@ -513,6 +517,37 @@ pub enum Antialiasing {
 /// The ways of smoothing the edges that can be chosen, in order.
 pub const ANTIALIASINGS: [Antialiasing; 3] =
     [Antialiasing::Msaa, Antialiasing::Fxaa, Antialiasing::Off];
+
+/// The relief of the scenery's textures (see [`crate::world::relief`]):
+/// none, as they always were; normal maps, which light their bumps as the
+/// sun falls on them; or normal maps and, on the grass and the surfaces
+/// seen close (the walls, the planks, the tunnels' panels, the roofs),
+/// parallax, which shifts their bumps with the point of view as well, so
+/// they do not look flat going slowly by, at the cost of several more
+/// readings of a texture for each of their pixels.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Relief {
+    Off,
+    #[default]
+    Normal,
+    Parallax,
+}
+
+/// The reliefs that can be chosen, in order.
+pub const RELIEFS: [Relief; 3] = [Relief::Off, Relief::Normal, Relief::Parallax];
+
+impl Relief {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (Relief::Off, Language::Spanish) => "No",
+            (Relief::Off, Language::English) => "Off",
+            (Relief::Normal, Language::Spanish) => "Normales",
+            (Relief::Normal, Language::English) => "Normal maps",
+            (Relief::Parallax, Language::Spanish) => "Normales y parallax",
+            (Relief::Parallax, Language::English) => "Normals and parallax",
+        }
+    }
+}
 
 /// The render scales that can be chosen (% of the window's resolution, see
 /// [`Settings::render_scale`]), in order, and the one at first: all of it.
@@ -1761,6 +1796,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(older.records.best_lap("Bahía GP"), Some(71.25));
+    }
+
+    #[test]
+    fn the_relief_starts_with_normal_maps_and_is_kept() {
+        assert_eq!(Settings::default().relief, Relief::Normal);
+        // Saved before it was an option: normal maps.
+        let older: Settings = ron::from_str("(fps: Unlimited)").unwrap();
+        assert_eq!(older.relief, Relief::Normal);
+        for relief in RELIEFS {
+            let text = ron::ser::to_string(&Settings {
+                relief,
+                ..default()
+            })
+            .unwrap();
+            assert_eq!(ron::from_str::<Settings>(&text).unwrap().relief, relief);
+        }
+        assert_eq!(
+            Relief::Parallax.name(Language::Spanish),
+            "Normales y parallax"
+        );
+        assert_eq!(Relief::Off.name(Language::English), "Off");
     }
 
     #[test]

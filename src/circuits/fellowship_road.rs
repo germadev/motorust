@@ -79,8 +79,10 @@ const AMON_HEN: Span = span(CAUSEWAY.to, WOOD.from);
 /// Where the seat of seeing stands by the road up Amon Hen (m).
 const AMON_HEN_SEAT: f32 = 5405.1;
 /// How far from the middle the walls stand over the bridge on the Water in
-/// Hobbiton, an old, narrow one (m).
+/// Hobbiton, an old, narrow one (m), and over the bridge on the Brandywine,
+/// as narrow.
 const HOBBITON_BRIDGE_WALL: f32 = 6.5;
+const BRANDYWINE_WALL: f32 = 6.5;
 /// Where the road splits: a way through the Prancing Pony in Bree, in two in
 /// Rivendell, three ways in Lothlórien.
 const BREE_SPLIT: (f32, f32) = (1097.1, 1525.9);
@@ -107,29 +109,29 @@ const RIVENDELL_TURF: f32 = 0.6;
 /// Anduin's gorge (see `MiddleEarth::rock_tints`).
 const GORGE_STONE: Color = Color::srgb(0.62, 0.53, 0.44);
 /// The sunbeams down from the sky onto Rivendell's halls: how bright on
-/// them (lx), spread wide over them and round them, and their light,
-/// golden.
-const SUNBEAM: f32 = 4500.0;
+/// them (lx), over them and a little round them, and their light, golden.
+const SUNBEAM: f32 = 4000.0;
 /// How bright the diffused sunbeams are on what they light (lx): less, so
 /// that the seat of seeing and the ruins on Weathertop keep their detail;
 /// and Amon Hen's, the most diffused, still less.
-const DIFFUSED_SUNBEAM: f32 = 3500.0;
-const AMON_HEN_SUNBEAM: f32 = 2500.0;
+const DIFFUSED_SUNBEAM: f32 = 3100.0;
+const AMON_HEN_SUNBEAM: f32 = 2200.0;
 const SUNBEAM_LIGHT: Color = Color::srgb(1.0, 0.84, 0.58);
 /// How their shafts show in the air (see `Shaft`): Rivendell's diffused,
-/// spreading to four and a half times as wide up into the sky; Amon Sûl's
-/// more, to six times as wide, and fainter; Amon Hen's most, to nine.
+/// spreading to a little over three times as wide up into the sky; Amon
+/// Sûl's more, to four and a half times as wide, and fainter; Amon Hen's
+/// most, to six and a half.
 const SUNBEAM_SHAFT: Shaft = Shaft {
-    spread: 4.5,
-    light: 0.032,
+    spread: 3.2,
+    light: 0.027,
 };
 const DIFFUSED_SHAFT: Shaft = Shaft {
-    spread: 6.0,
-    light: 0.03,
+    spread: 4.5,
+    light: 0.025,
 };
 const AMON_HEN_SHAFT: Shaft = Shaft {
-    spread: 9.0,
-    light: 0.024,
+    spread: 6.5,
+    light: 0.02,
 };
 
 pub const FELLOWSHIP_ROAD: Circuit = Circuit {
@@ -174,14 +176,20 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                 factor: 0.25,
             },
         ],
-        // The old bridge over the Water in Hobbiton, the way through the
-        // Doors of Durin, between their leaves, and the causeway between the
-        // kings are narrower than the road: its walls close in on them.
+        // The old bridges over the Water in Hobbiton and over the
+        // Brandywine, the way through the Doors of Durin, between their
+        // leaves, and the causeway between the kings are narrower than the
+        // road: its walls close in on them.
         narrows: &[
             Narrowing {
                 from: HOBBITON_BRIDGE.from,
                 to: HOBBITON_BRIDGE.to,
                 wall: HOBBITON_BRIDGE_WALL,
+            },
+            Narrowing {
+                from: BRANDYWINE.from,
+                to: BRANDYWINE.to,
+                wall: BRANDYWINE_WALL,
             },
             Narrowing {
                 from: MORIA.from - 12.0,
@@ -609,7 +617,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1624.5, 27.3, 49.0),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.12,
+                    angle: 0.095,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 Glow {
@@ -617,7 +625,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1619.1, 40.0, 112.5),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.25,
+                    angle: 0.2,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 Glow {
@@ -625,7 +633,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1577.1, 53.2, 151.9),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.12,
+                    angle: 0.095,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 // And, wider and far more diffused, one on the seat of seeing
@@ -636,7 +644,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(96.8, 16.3, 324.2),
                     illuminance: AMON_HEN_SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.2,
+                    angle: 0.16,
                     shaft: Some(AMON_HEN_SHAFT),
                 },
                 Glow {
