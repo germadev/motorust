@@ -26,6 +26,7 @@ use bevy::camera::visibility::VisibilityRange;
 use bevy::light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap};
 use bevy::prelude::*;
 
+use super::realm::PortalView;
 use super::sky::Sunlight;
 use crate::menu::GameState;
 use crate::pause::Pause;
@@ -536,7 +537,8 @@ fn antialias(
             Has<Camera3d>,
             Option<&RenderTarget>,
         ),
-        With<Camera>,
+        // A portal view takes its player's camera's (see `super::realm`).
+        (With<Camera>, Without<PortalView>),
     >,
 ) {
     let chosen = settings
