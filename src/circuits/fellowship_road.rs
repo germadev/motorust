@@ -203,8 +203,10 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
     scenery: Scenery {
         coast: Coast::Inland(water),
         hills: 26.0,
-        greens: Greens::Countryside,
-        grass_shade: 0.8,
+        // A lush green land's greens, deep: lighter, the low sun made them
+        // pale and vivid.
+        greens: Greens::Lush,
+        grass_shade: 0.55,
         massifs: &MASSIFS,
         cuttings: &CUTTINGS,
         terraces: &KNOLLS,

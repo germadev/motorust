@@ -130,6 +130,10 @@ pub enum Greens {
     /// water, and dark scrub up the slopes before the rock, in patches of
     /// every size with ragged edges.
     Mediterranean,
+    /// A lush green land's, as the Shire's: the countryside's, but deeper
+    /// and greener, not yellowed by the sun, with darker drifts where the
+    /// grass grows thick.
+    Lush,
 }
 
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un

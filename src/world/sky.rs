@@ -179,8 +179,10 @@ impl Palette {
             // shade cool and darker, filled less by the sky; the sky blue
             // overhead, golden towards the sun and the horizon, a warm haze
             // fading the hills one behind another; and the picture graded as
-            // a film is, a little less saturated, with more contrast, warm,
-            // and lit up so that it stays bright.
+            // a film is, less saturated, with more contrast, a little warm,
+            // and lit up so that it stays bright, its highlights losing more
+            // of their colour, as film's do, so that the grass in the sun is
+            // not vivid.
             SkyStyle::HighCountry => Self {
                 zenith: Color::srgb(0.24, 0.4, 0.72),
                 above_horizon: Color::srgb(0.64, 0.64, 0.78),
@@ -197,11 +199,11 @@ impl Palette {
                 clouds: Color::srgb(1.0, 0.84, 0.72),
                 fog: HAZE,
                 grade: Grade {
-                    saturation: 0.9,
+                    saturation: 0.84,
                     contrast: 1.14,
-                    exposure: 0.3,
-                    warmth: 0.012,
-                    highlight_saturation: 0.9,
+                    exposure: 0.25,
+                    warmth: 0.008,
+                    highlight_saturation: 0.72,
                 },
             },
             // A clear Mediterranean summer afternoon, as a photograph shows

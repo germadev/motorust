@@ -1492,7 +1492,25 @@ fn greens_tint(greens: Greens, p: Vec3, normal: Vec3, wild: f32) -> Color {
         Greens::Lawn => lawn_tint(p, normal),
         Greens::Countryside => grass_tint(p, normal, wild),
         Greens::Mediterranean => mediterranean_tint(p, normal, wild),
+        Greens::Lush => lush_tint(p, normal, wild),
     }
+}
+
+/// A lush green land's greens (`Greens::Lush`), as tints over the grass's
+/// texture: the countryside's (see [`grass_tint`]), its forests as they
+/// are, but its grass deeper and greener, less red in it, as the grass of
+/// a wet land is in the sun, not yellowed by it; and darker where it grows
+/// thick, in drifts some tens of metres across, so that a green hill is
+/// not one flat green.
+fn lush_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
+    const LUSH: Color = Color::srgb(0.5, 0.82, 0.5);
+    const THICK: Color = Color::srgb(0.4, 0.64, 0.4);
+    let at = Vec2::new(p.x, p.z);
+    let grass = 1.0 - smoothstep(FOREST_FROM, FOREST_FULL, p.y).max(wild);
+    let thick = smoothstep(0.42, 0.68, fbm(at / 28.0 + Vec2::splat(53.0), 3));
+    grass_tint(p, normal, wild)
+        .mix(&LUSH, 0.5 * grass)
+        .mix(&THICK, 0.5 * thick * grass)
 }
 
 /// A Mediterranean island's greens in summer (`Greens::Mediterranean`), as
@@ -2363,6 +2381,22 @@ mod tests {
             // The countryside's are its own, forest in the wild.
             assert_eq!(
                 greens_tint(Greens::Countryside, p, up, 1.0),
+                grass_tint(p, up, 1.0)
+            );
+            // A lush land's, greener than the countryside's but its
+            // forests the same.
+            let (lush, plain) = (
+                greens_tint(Greens::Lush, p, up, 0.0).to_srgba(),
+                grass_tint(p, up, 0.0).to_srgba(),
+            );
+            if p.y < FOREST_FROM {
+                assert!(
+                    lush.green / lush.red > plain.green / plain.red,
+                    "{lush:?} {plain:?}"
+                );
+            }
+            assert_eq!(
+                greens_tint(Greens::Lush, p, up, 1.0),
                 grass_tint(p, up, 1.0)
             );
         }
