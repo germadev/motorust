@@ -23,7 +23,9 @@ use bevy::{
 };
 
 use super::generate_mipmaps;
+use super::realm::Realm;
 use super::scenery::SkyStyle;
+use crate::camera::CameraPlayer;
 use crate::circuits::CurrentCircuit;
 use crate::geometry::{fbm, smoothstep, value_noise};
 
@@ -288,9 +290,9 @@ pub struct SkyParts {
     dome: Handle<Mesh>,
     sun: Entity,
     sun_material: Handle<StandardMaterial>,
+    /// The sun as it looks through the air, and in space.
+    sun_images: [Handle<Image>; 2],
     space_sky: Entity,
-    earth_body: Entity,
-    moon_body: Entity,
     /// Each cloud's material and how opaque it is.
     clouds: Vec<(Handle<StandardMaterial>, f32)>,
 }
@@ -346,6 +348,26 @@ const CIRRUS_OPACITY: f32 = 0.55;
 /// The sun: how big it looks (m, at the clouds' distance), and its image.
 const SUN_SIZE: f32 = 520.0;
 const SUN_IMAGE: u32 = 128;
+/// The bodies of the space sky, how big they look (degrees across): about
+/// 3.5 times their true size (the Moon 0.52°, the Earth seen from the Moon
+/// 1.9°), or they would be a few pixels across, but in their true
+/// proportion; and the sun seen with no air round it, a small, sharp disc
+/// (0.53° truly) with a short glow out to this many times its radius.
+const MOON_DIAMETER: f32 = 1.8;
+const EARTH_DIAMETER: f32 = 6.6;
+const SPACE_SUN_DIAMETER: f32 = 0.9;
+const SPACE_SUN_GLOW: f32 = 7.0;
+const SPACE_SUN_IMAGE: u32 = 256;
+/// How far the Moon and the Earth are drawn (m): inside the stars.
+const BODY_DISTANCE: f32 = CLOUD_DISTANCE * 0.94;
+/// The longitude of the Earth facing the Moon (rad, east): Europe and Africa.
+const EARTH_FACING: f32 = 0.3;
+/// Where the Moon is seen from the Earth, and the Earth from the Moon: the
+/// sun, at 0.32π, lights each about half, as they truly look a week from a
+/// new moon.
+const MOON_AZIMUTH: f32 = 1.88 * std::f32::consts::PI;
+const EARTH_AZIMUTH: f32 = 0.82 * std::f32::consts::PI;
+const BODY_ELEVATION: f32 = 0.44;
 
 #[derive(Component)]
 pub struct Sky;
@@ -369,6 +391,28 @@ pub fn spawn_sky(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    let sun_images = [sun_image(), space_sun_image()].map(|image| images.add(image));
+    let sun_material = materials.add(StandardMaterial {
+        base_color_texture: Some(sun_images[0].clone()),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        fog_enabled: false,
+        cull_mode: None,
+        double_sided: true,
+        ..default()
+    });
+    // The Moon and the Earth as photographed (NASA's Lunar Reconnaissance
+    // Orbiter and Blue Marble), lit in their meshes' colours.
+    let mut photographed = |image: Image| {
+        materials.add(StandardMaterial {
+            base_color_texture: Some(images.add(image)),
+            unlit: true,
+            fog_enabled: false,
+            ..default()
+        })
+    };
+    let moon_material = photographed(moon_map());
+    let earth_material = photographed(earth_map());
     // Far away and drawn as they are: no light, no fog, seen from inside.
     let mut flat = |image: Option<Image>, alpha_mode: AlphaMode, color: Color| {
         materials.add(StandardMaterial {
@@ -383,10 +427,23 @@ pub fn spawn_sky(
         })
     };
     let dome_material = flat(None, AlphaMode::Opaque, Color::WHITE);
-    let sun_material = flat(Some(sun_image()), AlphaMode::Blend, Color::WHITE);
-    let earth_material = flat(Some(earth_image()), AlphaMode::Blend, Color::WHITE);
-    let moon_material = flat(Some(moon_image()), AlphaMode::Blend, Color::WHITE);
+    let earth_halo = flat(None, AlphaMode::Blend, Color::WHITE);
     let star_material = flat(None, AlphaMode::Opaque, Color::WHITE);
+    // The glow of the Milky Way, added to the sky behind the stars.
+    // The Milky Way: its stars, sown as thick as its map is bright, and a
+    // faint glow of the map itself behind them.
+    let mut milky_way_map = photograph(include_bytes!("../../assets/textures/milky_way.jpg"));
+    enhance_milky_way(&mut milky_way_map);
+    let milky_way_stars = meshes.add(milky_way_stars_mesh(&milky_way_map));
+    let milky_way_material = materials.add(StandardMaterial {
+        base_color_texture: Some(images.add(milky_way_map)),
+        alpha_mode: AlphaMode::Add,
+        unlit: true,
+        fog_enabled: false,
+        cull_mode: None,
+        double_sided: true,
+        ..default()
+    });
     let cloud_images: Vec<Handle<Image>> = (0..CLOUD_SHAPES)
         .map(|shape| images.add(cloud_image(shape)))
         .collect();
@@ -438,8 +495,6 @@ pub fn spawn_sky(
 
     let mut sun = Entity::PLACEHOLDER;
     let mut space_sky = Entity::PLACEHOLDER;
-    let mut earth_body = Entity::PLACEHOLDER;
-    let mut moon_body = Entity::PLACEHOLDER;
     commands
         .spawn((
             Sky,
@@ -463,35 +518,68 @@ pub fn spawn_sky(
                 .spawn((Transform::default(), Visibility::Hidden))
                 .with_children(|space| {
                     space.spawn((
+                        Mesh3d(meshes.add(milky_way_mesh())),
+                        MeshMaterial3d(milky_way_material),
+                        Transform::default(),
+                        NotShadowCaster,
+                    ));
+                    space.spawn((
+                        Mesh3d(milky_way_stars),
+                        MeshMaterial3d(star_material.clone()),
+                        Transform::default(),
+                        NotShadowCaster,
+                    ));
+                    space.spawn((
                         Mesh3d(stars),
                         MeshMaterial3d(star_material),
                         Transform::default(),
                         NotShadowCaster,
                     ));
+                    // Lit by the sun of the space sky, where it is.
+                    let sun = Palette::of(SkyStyle::Space).sun_direction();
                     // Seen from Earth (the start straight and mountain ridges): the Moon.
-                    let moon_at =
-                        direction(1.88 * std::f32::consts::PI, 0.44) * (CLOUD_DISTANCE * 0.94);
-                    moon_body = space
-                        .spawn((
-                            Mesh3d(quad.clone()),
-                            MeshMaterial3d(moon_material),
-                            facing_the_camera(moon_at, Vec2::splat(880.0)),
-                            Visibility::Inherited,
-                            NotShadowCaster,
-                        ))
-                        .id();
-                    // Seen from the Moon (after crossing the portal): the Earth.
-                    let earth_at =
-                        direction(0.82 * std::f32::consts::PI, 0.44) * (CLOUD_DISTANCE * 0.94);
-                    earth_body = space
-                        .spawn((
-                            Mesh3d(quad.clone()),
-                            MeshMaterial3d(earth_material),
-                            facing_the_camera(earth_at, Vec2::splat(940.0)),
-                            Visibility::Hidden,
-                            NotShadowCaster,
-                        ))
-                        .id();
+                    let (moon_place, _, moon_mesh) =
+                        body(MOON_AZIMUTH, MOON_DIAMETER, 0.0, sun, Body::Moon);
+                    space.spawn((
+                        Mesh3d(meshes.add(moon_mesh)),
+                        MeshMaterial3d(moon_material),
+                        moon_place,
+                        Visibility::Inherited,
+                        Realm::Earth.layers(),
+                        NotShadowCaster,
+                    ));
+                    // Seen from the Moon (after crossing the portal): the Earth,
+                    // with the thin blue glow of its air round its lit side.
+                    let (earth_place, radius, earth_mesh) = body(
+                        EARTH_AZIMUTH,
+                        EARTH_DIAMETER,
+                        EARTH_FACING,
+                        sun,
+                        Body::Earth,
+                    );
+                    let halo_image = images.add(halo_image(earth_place.rotation.inverse() * sun));
+                    if let Some(mut halo) = materials.get_mut(&earth_halo) {
+                        halo.base_color_texture = Some(halo_image);
+                    }
+                    let behind = earth_place.translation + earth_place.forward() * radius;
+                    space.spawn((
+                        Mesh3d(meshes.add(earth_mesh)),
+                        MeshMaterial3d(earth_material),
+                        earth_place,
+                        Visibility::Inherited,
+                        Realm::Moon.beyond_layers(),
+                        NotShadowCaster,
+                    ));
+                    space.spawn((
+                        Mesh3d(quad.clone()),
+                        MeshMaterial3d(earth_halo),
+                        Transform::from_translation(behind)
+                            .with_rotation(earth_place.rotation)
+                            .with_scale(Vec3::splat(2.0 * radius * HALO_REACH)),
+                        Visibility::Inherited,
+                        Realm::Moon.beyond_layers(),
+                        NotShadowCaster,
+                    ));
                 })
                 .id();
             sky.spawn((Clouds, Transform::default(), Visibility::default()))
@@ -514,9 +602,8 @@ pub fn spawn_sky(
         dome,
         sun,
         sun_material,
+        sun_images,
         space_sky,
-        earth_body,
-        moon_body,
         clouds: clouds
             .into_iter()
             .map(|(material, opacity, ..)| (material, opacity))
@@ -589,11 +676,19 @@ pub fn light_the_sky(
         };
     }
     let sun = palette.sun_direction();
+    // In space, the sun with no air round it: small and sharp.
+    let space = style == SkyStyle::Space;
+    let sun_size = if space {
+        2.0 * SPACE_SUN_GLOW * CLOUD_DISTANCE * (SPACE_SUN_DIAMETER.to_radians() / 2.0).tan()
+    } else {
+        SUN_SIZE
+    };
     if let Ok(mut transform) = transforms.get_mut(parts.sun) {
-        *transform = facing_the_camera(sun * CLOUD_DISTANCE, Vec2::splat(SUN_SIZE));
+        *transform = facing_the_camera(sun * CLOUD_DISTANCE, Vec2::splat(sun_size));
     }
     if let Some(mut material) = materials.get_mut(&parts.sun_material) {
         material.base_color = palette.sun_disc;
+        material.base_color_texture = Some(parts.sun_images[usize::from(space)].clone());
     }
     let cloud_alpha = palette.clouds.alpha();
     for (material, opacity) in &parts.clouds {
@@ -1081,180 +1176,353 @@ fn sun_image() -> Image {
     smooth_image(size, size, data)
 }
 
-/// The Earth seen from the Moon: a blue-ocean sphere with continents,
-/// swirling white cloud bands, a soft blue atmospheric limb, and a crescent
-/// terminator lit from the sun's side.
-fn earth_image() -> Image {
-    let size = 256u32;
+/// The sun seen from the Moon, with no air to spread its light: a small
+/// white disc, darker towards its rim (as the sun's limb truly is), and a
+/// short glow round it.
+fn space_sun_image() -> Image {
+    let size = SPACE_SUN_IMAGE;
+    let disc = 1.0 / SPACE_SUN_GLOW;
     let mut data = Vec::with_capacity((size * size * 4) as usize);
-    let sun = Vec3::new(0.68, 0.36, 0.64).normalize();
     for y in 0..size {
         for x in 0..size {
             let p = (Vec2::new(x as f32, y as f32) + 0.5) / size as f32 * 2.0 - 1.0;
             let r = p.length();
-            let radius = 0.82;
-            if r > 0.98 {
-                data.extend([0, 0, 0, 0]);
-                continue;
-            }
-            if r > radius {
-                let halo = (1.0 - (r - radius) / (0.98 - radius))
-                    .clamp(0.0, 1.0)
-                    .powi(3)
-                    * 0.55;
-                data.extend([85, 165, 255, (halo * 255.0).round() as u8]);
-                continue;
-            }
-            let u = p / radius;
-            let z = (1.0 - u.length_squared()).max(0.0).sqrt();
-            let normal = Vec3::new(u.x, -u.y, z).normalize();
-            let lat_lon = Vec2::new(normal.x.atan2(normal.z) * 1.4, normal.y * 2.2);
-            let continent = fbm(lat_lon * 1.6 + Vec2::new(3.1, 1.7), 4);
-            let desert = fbm(lat_lon * 2.8 + Vec2::new(9.2, 4.3), 2);
-            let ocean = [0.07f32, 0.28, 0.68];
-            let green = [0.16f32, 0.48, 0.24];
-            let ochre = [0.68f32, 0.58, 0.36];
-            let land_mask = smoothstep(0.49, 0.55, continent);
-            let land: [f32; 3] =
-                std::array::from_fn(|i| green[i].lerp(ochre[i], smoothstep(0.45, 0.7, desert)));
-            let polar = smoothstep(0.72, 0.88, normal.y.abs());
-            let mut surface: [f32; 3] =
-                std::array::from_fn(|i| ocean[i].lerp(land[i], land_mask).lerp(0.95, polar));
-            // Swirling cloud bands.
-            let swirl = fbm(lat_lon * 2.4 + Vec2::new(5.4, 8.1), 3);
-            let clouds = smoothstep(0.46, 0.74, fbm(lat_lon * 3.2 + Vec2::splat(swirl * 1.4), 4));
-            for c in &mut surface {
-                *c = c.lerp(0.98, clouds * 0.85);
-            }
-            // Atmospheric limb bluing and day/night terminator.
-            let limb = (1.0 - z).powi(3);
-            let atm = [0.38f32, 0.68, 1.0];
-            let lit = smoothstep(-0.12, 0.35, normal.dot(sun));
-            let shade = 0.08 + 0.92 * lit;
-            let edge = ((radius - r) * size as f32 * 0.5 + 0.5).clamp(0.0, 1.0);
-            let rgb: [u8; 3] = std::array::from_fn(|i| {
-                let c = surface[i].lerp(atm[i], limb * 0.55) * shade + atm[i] * limb * 0.25 * lit;
-                (c.clamp(0.0, 1.0) * 255.0).round() as u8
-            });
-            data.extend([rgb[0], rgb[1], rgb[2], (edge * 255.0).round() as u8]);
+            let (light, alpha) = if r < disc {
+                let mu = (1.0 - (r / disc).powi(2)).max(0.0).sqrt();
+                let edge = ((disc - r) * size as f32 * 0.5).clamp(0.0, 1.0);
+                (0.62 + 0.38 * mu, 1.0f32.min(0.4 + edge))
+            } else {
+                let out = (r - disc) / disc;
+                let glow = 0.5 * (-out * 1.4).exp() + 0.12 * (-out * 0.35).exp();
+                (1.0, glow * smoothstep(1.0, 0.75, r))
+            };
+            data.extend([
+                (255.0 * light) as u8,
+                (252.0 * light) as u8,
+                (244.0 * light) as u8,
+                (alpha.clamp(0.0, 1.0) * 255.0).round() as u8,
+            ]);
         }
     }
     smooth_image(size, size, data)
 }
 
-/// The Moon seen from Earth: a silvery-grey lunar sphere with dark basalt
-/// maria, bright cratered highlands, impact craters with sunlit rims, a soft
-/// lunar corona, and a day/night terminator.
-fn moon_image() -> Image {
+/// A photograph mapped round a sphere (longitude across, from 180° west to
+/// 180° east, latitude down, from the north pole), as an sRGB image with
+/// mipmaps and smooth sampling.
+fn photograph(bytes: &[u8]) -> Image {
+    let mut image = Image::from_buffer(
+        bytes,
+        bevy::image::ImageType::Extension("jpg"),
+        bevy::image::CompressedImageFormats::NONE,
+        true,
+        ImageSampler::Descriptor(ImageSamplerDescriptor {
+            mag_filter: ImageFilterMode::Linear,
+            min_filter: ImageFilterMode::Linear,
+            mipmap_filter: ImageFilterMode::Linear,
+            ..ImageSamplerDescriptor::default()
+        }),
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .expect("the maps of the Moon and the Earth are valid JPEGs");
+    generate_mipmaps(&mut image);
+    image
+}
+
+/// The Moon as NASA's Lunar Reconnaissance Orbiter photographed it (its
+/// colour mosaic, from NASA's CGI Moon Kit).
+fn moon_map() -> Image {
+    photograph(include_bytes!("../../assets/textures/moon.jpg"))
+}
+
+/// The Earth as NASA's Blue Marble shows it, with its clouds over it.
+fn earth_map() -> Image {
+    let mut earth = photograph(include_bytes!("../../assets/textures/earth.jpg"));
+    let clouds = photograph(include_bytes!("../../assets/textures/earth_clouds.jpg"));
+    if let (Some(surface), Some(cover)) = (earth.data.as_mut(), clouds.data.as_ref()) {
+        let texels = surface.len().min(cover.len()) / 4;
+        for k in 0..texels {
+            let cloud = (cover[k * 4] as f32 / 255.0).powf(1.3) * 0.92;
+            for c in 0..3 {
+                let at = k * 4 + c;
+                surface[at] = (surface[at] as f32).lerp(250.0, cloud).round() as u8;
+            }
+        }
+    }
+    generate_mipmaps(&mut earth);
+    earth
+}
+
+/// Which body of the space sky, for how the sun lights it.
+#[derive(Clone, Copy, PartialEq)]
+enum Body {
+    Moon,
+    Earth,
+}
+
+impl Body {
+    /// How bright its surface is (0 to 1) facing the sun as `light` says
+    /// (the cosine of the angle to it): the Moon's dust looks nearly as
+    /// bright to its terminator, with the faint earthshine on its night
+    /// side; the Earth darkens towards its terminator as a ball does, and
+    /// its night is black.
+    fn brightness(self, light: f32) -> f32 {
+        match self {
+            Body::Moon => {
+                0.035 + 0.965 * smoothstep(-0.02, 0.12, light) * (0.72 + 0.28 * light.max(0.0))
+            }
+            Body::Earth => {
+                0.008 + 0.992 * smoothstep(-0.06, 0.18, light) * (0.3 + 0.7 * light.max(0.0))
+            }
+        }
+    }
+}
+
+/// How far round the Earth its air glows (of its radius).
+const HALO_REACH: f32 = 1.07;
+
+/// A body of the space sky seen at `azimuth` (and [`BODY_ELEVATION`]),
+/// `diameter` degrees across: where it is, facing the camera at the middle
+/// of the sky with the longitude `facing` of its map, its north up; its
+/// radius (m); and its mesh, a sphere that size (unscaled) with its map
+/// round it, lit by the sun towards `sun` in its vertices' colours.
+fn body(azimuth: f32, diameter: f32, facing: f32, sun: Vec3, kind: Body) -> (Transform, f32, Mesh) {
+    const SECTORS: usize = 64;
+    const STACKS: usize = 32;
+    let toward = direction(azimuth, BODY_ELEVATION);
+    let radius = BODY_DISTANCE * (diameter.to_radians() / 2.0).tan();
+    let place = Transform::from_translation(toward * BODY_DISTANCE).looking_to(toward, Vec3::Y);
+    // The sun in the sphere's own frame: +Z towards the camera, +Y north.
+    let sun = place.rotation.inverse() * sun;
+    let mut positions = Vec::with_capacity((SECTORS + 1) * (STACKS + 1));
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut colors = Vec::with_capacity(positions.capacity());
+    for i in 0..=STACKS {
+        let v = i as f32 / STACKS as f32;
+        let latitude = FRAC_PI_2 - v * std::f32::consts::PI;
+        for j in 0..=SECTORS {
+            let u = j as f32 / SECTORS as f32;
+            // The middle of the map, longitude 0 (and the facing one), towards
+            // the camera; east to its right.
+            let longitude = (u - 0.5) * TAU - facing;
+            let normal = Vec3::new(
+                latitude.cos() * longitude.sin(),
+                latitude.sin(),
+                latitude.cos() * longitude.cos(),
+            );
+            let light = kind.brightness(normal.dot(sun));
+            positions.push((normal * radius).to_array());
+            normals.push(normal.to_array());
+            uvs.push([u, v]);
+            colors.push(LinearRgba::gray(light).to_f32_array());
+        }
+    }
+    let mut indices = Vec::with_capacity(SECTORS * STACKS * 6);
+    for i in 0..STACKS {
+        for j in 0..SECTORS {
+            let a = (i * (SECTORS + 1) + j) as u32;
+            let b = a + SECTORS as u32 + 1;
+            // Counter-clockwise seen from outside.
+            indices.extend([a, a + 1, b, a + 1, b + 1, b]);
+        }
+    }
+    let mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32(indices));
+    (place, radius, mesh)
+}
+
+/// The glow of the Earth's air round its rim, brighter on its side towards
+/// the sun (`sun`, in the frame of the quad it is drawn on: +X right, +Y up,
+/// +Z towards the camera), as an image the quad's size: the Earth's disc
+/// reaches `1 / HALO_REACH` of it.
+fn halo_image(sun: Vec3) -> Image {
     let size = 256u32;
+    let rim = 1.0 / HALO_REACH;
+    let across = Vec2::new(sun.x, sun.y).normalize_or_zero();
     let mut data = Vec::with_capacity((size * size * 4) as usize);
-    let sun = Vec3::new(0.68, 0.36, 0.64).normalize();
-    let craters: [(Vec2, f32); 7] = [
-        (Vec2::new(-0.22, 0.34), 0.16),
-        (Vec2::new(0.28, -0.18), 0.14),
-        (Vec2::new(-0.36, -0.24), 0.12),
-        (Vec2::new(0.12, 0.22), 0.10),
-        (Vec2::new(0.38, 0.26), 0.09),
-        (Vec2::new(-0.08, -0.38), 0.11),
-        (Vec2::new(-0.44, 0.06), 0.08),
-    ];
     for y in 0..size {
         for x in 0..size {
             let p = (Vec2::new(x as f32, y as f32) + 0.5) / size as f32 * 2.0 - 1.0;
+            let p = Vec2::new(p.x, -p.y);
             let r = p.length();
-            let radius = 0.80;
-            if r > 0.98 {
-                data.extend([0, 0, 0, 0]);
-                continue;
-            }
-            if r > radius {
-                let halo = (1.0 - (r - radius) / (0.98 - radius))
-                    .clamp(0.0, 1.0)
-                    .powi(3)
-                    * 0.42;
-                data.extend([215, 226, 245, (halo * 255.0).round() as u8]);
-                continue;
-            }
-            let u = p / radius;
-            let z = (1.0 - u.length_squared()).max(0.0).sqrt();
-            let normal = Vec3::new(u.x, -u.y, z).normalize();
-            let lat_lon = Vec2::new(normal.x.atan2(normal.z) * 1.5, normal.y * 2.1);
-            // Dark basalt maria basins vs bright highland anorthosite.
-            let mare_field = fbm(lat_lon * 1.4 + Vec2::new(2.3, 4.7), 4);
-            let detail = fbm(lat_lon * 5.2 + Vec2::new(8.1, 1.9), 3);
-            let mare_mask = smoothstep(0.46, 0.58, mare_field);
-            let highland = [0.78f32, 0.81, 0.86];
-            let mare = [0.38f32, 0.42, 0.49];
-            let mut albedo: [f32; 3] = std::array::from_fn(|i| {
-                highland[i].lerp(mare[i], mare_mask) * (0.88 + 0.24 * detail)
-            });
-            // Circular craters with bright ejecta rims and bowl shading.
-            let mut crater_normal = normal;
-            for &(center, cr) in &craters {
-                let d = u.distance(center) / cr;
-                if d < 1.35 {
-                    let rim = (-((d - 1.0) * 5.5).powi(2)).exp();
-                    for c in &mut albedo {
-                        *c = (*c + 0.16 * rim).min(0.98);
-                    }
-                    if d < 1.0 {
-                        let offset = (u - center) / cr;
-                        crater_normal = (crater_normal
-                            + Vec3::new(-offset.x, offset.y, 0.0) * 0.45)
-                            .normalize();
-                    }
-                }
-            }
-            let lit = smoothstep(-0.10, 0.32, crater_normal.dot(sun));
-            let shade = 0.06 + 0.94 * lit;
-            let edge = ((radius - r) * size as f32 * 0.5 + 0.5).clamp(0.0, 1.0);
-            let rgb: [u8; 3] = std::array::from_fn(|i| {
-                ((albedo[i] * shade).clamp(0.0, 1.0) * 255.0).round() as u8
-            });
-            data.extend([rgb[0], rgb[1], rgb[2], (edge * 255.0).round() as u8]);
+            let glow = if r < rim {
+                0.0
+            } else {
+                (1.0 - (r - rim) / (1.0 - rim)).clamp(0.0, 1.0).powi(2)
+            };
+            // Lit where the rim faces the sun, a little round behind it.
+            let side = p.normalize_or_zero().dot(across) * (1.0 - sun.z.abs()) + sun.z.max(0.0);
+            let lit = smoothstep(-0.25, 0.5, side);
+            let alpha = glow * lit * 0.85;
+            data.extend([110, 170, 255, (alpha.clamp(0.0, 1.0) * 255.0).round() as u8]);
         }
     }
     smooth_image(size, size, data)
 }
 
-/// A single batched mesh of stars scattered across the upper hemisphere of
-/// the sky dome (`SkyStyle::Space`).
-fn stars_mesh() -> Mesh {
-    const STARS: u32 = 420;
-    const STAR_DISTANCE: f32 = 4350.0;
-    let mut positions = Vec::with_capacity(STARS as usize * 4);
-    let mut normals = Vec::with_capacity(STARS as usize * 4);
-    let mut colors = Vec::with_capacity(STARS as usize * 4);
-    let mut indices = Vec::with_capacity(STARS as usize * 6);
-    for i in 0..STARS {
-        let azimuth = random(i, 10) * TAU;
-        let elevation = 0.05 + random(i, 11).powf(0.85) * (FRAC_PI_2 - 0.08);
-        let dir = direction(azimuth, elevation);
-        let center = dir * STAR_DISTANCE;
-        let right = dir.cross(Vec3::Y).normalize_or_zero();
-        let up = right.cross(dir).normalize_or_zero();
-        let half = (5.5 + 9.5 * random(i, 12).powi(3)) * 0.5;
-        let brightness = 0.55 + 0.45 * random(i, 13);
-        let tint = match i % 5 {
-            0 => Color::srgb(0.78 * brightness, 0.88 * brightness, 1.0 * brightness),
-            1 => Color::srgb(1.0 * brightness, 0.92 * brightness, 0.76 * brightness),
-            _ => Color::srgb(brightness, brightness, brightness),
+/// How far the Milky Way is drawn (m): its glow behind the stars, inside
+/// the dome, and its own stars between them.
+const MILKY_WAY_DISTANCE: f32 = 4420.0;
+const MILKY_WAY_STAR_DISTANCE: f32 = 4385.0;
+/// How far the map of the Milky Way reaches either side of its plane (rad):
+/// past it the sky is dark (the Small Magellanic Cloud, at -44°, is in).
+const MILKY_WAY_REACH: f32 = std::f32::consts::FRAC_PI_4;
+/// How many stars the Milky Way is drawn with, and how many places along it
+/// are tried for them at most.
+const MILKY_WAY_STARS: u32 = 20_000;
+const MILKY_WAY_TRIES: u32 = 3_000_000;
+/// Where the heart of the Milky Way (in Sagittarius) is seen: low in the
+/// south-west, the band rising from it across the sky.
+const GALACTIC_CENTRE_AZIMUTH: f32 = 1.22 * std::f32::consts::PI;
+const GALACTIC_CENTRE_ELEVATION: f32 = 0.3;
+
+/// A point of the celestial sphere at right ascension `ra` and declination
+/// `dec` (rad), in a frame with the celestial north pole up (+Y), as seen
+/// from inside.
+fn celestial(ra: f32, dec: f32) -> Vec3 {
+    Vec3::new(dec.cos() * ra.cos(), dec.sin(), -dec.cos() * ra.sin())
+}
+
+/// How the celestial sphere is turned in the sky: the heart of the Milky
+/// Way where it is seen (see [`GALACTIC_CENTRE_AZIMUTH`]), and the band
+/// standing up from the horizon there (the galactic pole level with it).
+fn celestial_turn() -> Quat {
+    let centre = celestial(266.4_f32.to_radians(), (-28.9_f32).to_radians());
+    let pole = celestial(192.86_f32.to_radians(), 27.13_f32.to_radians());
+    let target = direction(GALACTIC_CENTRE_AZIMUTH, GALACTIC_CENTRE_ELEVATION);
+    let to_target = Quat::from_rotation_arc(centre, target);
+    (0..360)
+        .map(|degree| Quat::from_axis_angle(target, (degree as f32).to_radians()) * to_target)
+        .min_by(|a, b| (*a * pole).y.abs().total_cmp(&(*b * pole).y.abs()))
+        .unwrap_or(to_target)
+}
+
+/// Where in the sky galactic longitude `l` and latitude `b` (rad) are, the
+/// celestial sphere turned as [`celestial_turn`] says: from the galactic
+/// centre, longitude growing towards Cygnus (l = 90°), latitude towards the
+/// north galactic pole.
+fn galactic(l: f32, b: f32) -> Vec3 {
+    let turn = celestial_turn();
+    let centre = turn * celestial(266.4_f32.to_radians(), (-28.9_f32).to_radians());
+    let pole = turn * celestial(192.86_f32.to_radians(), 27.13_f32.to_radians());
+    let pole = (pole - centre * pole.dot(centre)).normalize();
+    let quarter = pole.cross(centre);
+    centre * (b.cos() * l.cos()) + quarter * (b.cos() * l.sin()) + pole * b.sin()
+}
+
+/// Where on the map of the Milky Way (`uv`, 0 to 1) galactic longitude and
+/// latitude are: longitude growing to the left from 0 in the middle,
+/// latitude from [`MILKY_WAY_REACH`] at the top to minus it at the bottom.
+fn galactic_at(uv: Vec2) -> (f32, f32) {
+    ((0.5 - uv.x) * TAU, (1.0 - 2.0 * uv.y) * MILKY_WAY_REACH)
+}
+
+/// NASA's map of the Milky Way brought out gently, so it lies in the sky
+/// rather than over it: its faint light lifted a little, its lanes of dust a
+/// little deeper, the source's orange softened, blue-violet in the faint
+/// glow and cream-gold in the bright clouds; dimmed overall, and fading to
+/// nothing towards the edges of the band the map covers (see
+/// [`MILKY_WAY_REACH`]), so no edge shows anywhere.
+fn enhance_milky_way(map: &mut Image) {
+    let (width, height) = (map.width() as usize, map.height() as usize);
+    let Some(data) = map.data.as_mut() else {
+        return;
+    };
+    for (row, texels) in data.as_chunks_mut::<4>().0.chunks_mut(width).enumerate() {
+        // Latitude across the band, 0 in its middle, 1 at its edges.
+        let across = ((row as f32 + 0.5) / height as f32 * 2.0 - 1.0).abs();
+        let fade = smoothstep(1.0, 0.6, across);
+        for texel in texels {
+            let rgb = [0, 1, 2].map(|c| texel[c] as f32 / 255.0);
+            let bright = (rgb[0] + rgb[1] + rgb[2]) / 3.0;
+            // Faint light lifted a little, the brightest kept.
+            let lifted = (1.0 - (-bright * 1.6).exp()) / (1.0 - (-1.6f32).exp());
+            // The dust a little deeper, smoothly down to nothing.
+            let toned = lifted * (0.55 + 0.45 * smoothstep(0.0, 0.45, lifted));
+            let scale = if bright > 1e-4 { toned / bright } else { 0.0 };
+            let warm = smoothstep(0.2, 0.7, toned);
+            let white = smoothstep(0.6, 0.95, toned);
+            let tint = [0.86 + 0.12 * warm, 0.92 + 0.1 * warm, 1.14 - 0.3 * warm]
+                .map(|tint| tint + (1.0 - tint) * white);
+            for c in 0..3 {
+                let saturated = toned + (rgb[c] * scale - toned) * (0.75 - 0.25 * white);
+                let shown = saturated * tint[c] * MILKY_WAY_LIGHT * fade;
+                texel[c] = (shown.clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
         }
-        .to_linear()
-        .to_f32_array();
-        let base = positions.len() as u32;
-        for corner in [
-            center - right * half - up * half,
-            center + right * half - up * half,
-            center + right * half + up * half,
-            center - right * half + up * half,
-        ] {
-            positions.push(corner.to_array());
-            normals.push((-dir).to_array());
-            colors.push(tint);
-        }
-        indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }
+    generate_mipmaps(map);
+}
+
+/// How bright the Milky Way is drawn, of its brought-out map's light.
+const MILKY_WAY_LIGHT: f32 = 0.75;
+
+/// How likely a star of the Milky Way is where its map (`map`) is this
+/// bright (sRGB, 0 to 1): none in the dark sky round it nor in its lanes of
+/// dust, more and more towards its bright clouds of stars.
+fn star_likelihood(bright: f32) -> f32 {
+    ((bright - 0.02) / 0.4).clamp(0.0, 1.0).powf(1.5)
+}
+
+/// The colour (sRGB, 0 to 1) and how bright (the mean of its channels) the
+/// map of the Milky Way (`map`) is at `uv`.
+fn map_texel(map: &Image, uv: Vec2) -> ([f32; 3], f32) {
+    let (width, height) = (map.width() as usize, map.height() as usize);
+    let Some(data) = map.data.as_ref() else {
+        return ([0.0; 3], 0.0);
+    };
+    let x = ((uv.x.rem_euclid(1.0) * width as f32) as usize).min(width - 1);
+    let y = ((uv.y.clamp(0.0, 1.0) * height as f32) as usize).min(height - 1);
+    let at = (y * width + x) * 4;
+    let rgb = [0, 1, 2].map(|c| data[at + c] as f32 / 255.0);
+    (rgb, (rgb[0] + rgb[1] + rgb[2]) / 3.0)
+}
+
+/// A star quad `half` m across either way, at `toward` `distance` m out,
+/// facing the middle of the sky, in `color` (linear).
+#[allow(clippy::too_many_arguments)]
+fn push_star(
+    positions: &mut Vec<[f32; 3]>,
+    normals: &mut Vec<[f32; 3]>,
+    colors: &mut Vec<[f32; 4]>,
+    indices: &mut Vec<u32>,
+    toward: Vec3,
+    distance: f32,
+    half: f32,
+    color: [f32; 4],
+) {
+    let center = toward * distance;
+    let right = toward.cross(Vec3::Y).normalize_or(Vec3::X);
+    let up = right.cross(toward).normalize_or_zero();
+    let base = positions.len() as u32;
+    for corner in [
+        center - right * half - up * half,
+        center + right * half - up * half,
+        center + right * half + up * half,
+        center - right * half + up * half,
+    ] {
+        positions.push(corner.to_array());
+        normals.push((-toward).to_array());
+        colors.push(color);
+    }
+    indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+}
+
+/// Points of light (`positions`, `normals`, `colors`, `indices`) as a mesh.
+fn star_mesh(
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    colors: Vec<[f32; 4]>,
+    indices: Vec<u32>,
+) -> Mesh {
     Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::RENDER_WORLD,
@@ -1263,6 +1531,135 @@ fn stars_mesh() -> Mesh {
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_indices(Indices::U32(indices))
+}
+
+/// The stars of the Milky Way, sharp points over its map: sown along it as
+/// thick as the map is bright (see [`star_likelihood`]), each tinted by it
+/// (the warm heart, the bluer arms), most faint and a few bright. One mesh.
+fn milky_way_stars_mesh(map: &Image) -> Mesh {
+    let mut positions = Vec::with_capacity(MILKY_WAY_STARS as usize * 4);
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut colors = Vec::with_capacity(positions.capacity());
+    let mut indices = Vec::with_capacity(MILKY_WAY_STARS as usize * 6);
+    let mut sown = 0;
+    let reach = MILKY_WAY_REACH.sin();
+    for k in 0..MILKY_WAY_TRIES {
+        if sown >= MILKY_WAY_STARS {
+            break;
+        }
+        // Evenly over the sphere's band the map covers.
+        let l = random(k, 30) * TAU;
+        let b = ((2.0 * random(k, 31) - 1.0) * reach).asin();
+        let uv = Vec2::new(
+            (0.5 - l / TAU).rem_euclid(1.0),
+            0.5 - b / (2.0 * MILKY_WAY_REACH),
+        );
+        let (tint, bright) = map_texel(map, uv);
+        if random(k, 32) > star_likelihood(bright) {
+            continue;
+        }
+        sown += 1;
+        // About a pixel, a few of them bigger and brighter.
+        let half = 2.2 + 3.4 * random(k, 33).powi(10);
+        let light = 0.28 + 0.6 * random(k, 34).powi(3);
+        let peak = tint[0].max(tint[1]).max(tint[2]).max(1e-3);
+        let color: [f32; 3] = std::array::from_fn(|c| (0.6 + 0.4 * tint[c] / peak) * light);
+        let color = Color::srgb(color[0], color[1], color[2])
+            .to_linear()
+            .to_f32_array();
+        push_star(
+            &mut positions,
+            &mut normals,
+            &mut colors,
+            &mut indices,
+            galactic(l, b),
+            MILKY_WAY_STAR_DISTANCE,
+            half,
+            color,
+        );
+    }
+    star_mesh(positions, normals, colors, indices)
+}
+
+/// The Milky Way's band round the sky: seen from inside, with NASA's map of
+/// it in galactic longitude and latitude (see [`galactic_at`]), placed as
+/// [`galactic`] says.
+fn milky_way_mesh() -> Mesh {
+    const SECTORS: usize = 192;
+    const STACKS: usize = 48;
+    let mut positions = Vec::with_capacity((SECTORS + 1) * (STACKS + 1));
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut colors = Vec::with_capacity(positions.capacity());
+    for i in 0..=STACKS {
+        let v = i as f32 / STACKS as f32;
+        for j in 0..=SECTORS {
+            let u = j as f32 / SECTORS as f32;
+            let (l, b) = galactic_at(Vec2::new(u, v));
+            let toward = galactic(l, b);
+            positions.push((toward * MILKY_WAY_DISTANCE).to_array());
+            normals.push((-toward).to_array());
+            uvs.push([u, v]);
+            // Dimmed low down, through more air (and haze, on the Earth).
+            let clear = 0.15 + 0.85 * smoothstep(-0.05, 0.4, toward.y);
+            colors.push(LinearRgba::gray(clear).to_f32_array());
+        }
+    }
+    let mut indices = Vec::with_capacity(SECTORS * STACKS * 6);
+    for i in 0..STACKS {
+        for j in 0..SECTORS {
+            let a = (i * (SECTORS + 1) + j) as u32;
+            let b = a + SECTORS as u32 + 1;
+            indices.extend([a, b, a + 1, a + 1, b, b + 1]);
+        }
+    }
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32(indices))
+}
+
+/// A single batched mesh of stars scattered over the sky (`SkyStyle::Space`),
+/// as a long exposure shows them away from any light: thousands, nearly all
+/// faint, a few bright, white, blue-white and orange.
+fn stars_mesh() -> Mesh {
+    const STARS: u32 = 5000;
+    const STAR_DISTANCE: f32 = 4350.0;
+    let mut positions = Vec::with_capacity(STARS as usize * 4);
+    let mut normals = Vec::with_capacity(STARS as usize * 4);
+    let mut colors = Vec::with_capacity(STARS as usize * 4);
+    let mut indices = Vec::with_capacity(STARS as usize * 6);
+    for i in 0..STARS {
+        // Evenly over the sky, down to just under the horizon.
+        let azimuth = random(i, 10) * TAU;
+        let elevation = (random(i, 11) * 1.05 - 0.05).clamp(-1.0, 1.0).asin();
+        let bright = random(i, 13).powi(4);
+        let half = 2.2 + 4.5 * bright.powi(2);
+        let light = 0.3 + 0.7 * bright;
+        let tint = match i % 7 {
+            0 | 1 => Color::srgb(0.78 * light, 0.88 * light, light),
+            2 => Color::srgb(light, 0.86 * light, 0.66 * light),
+            _ => Color::srgb(light, light, light),
+        }
+        .to_linear()
+        .to_f32_array();
+        push_star(
+            &mut positions,
+            &mut normals,
+            &mut colors,
+            &mut indices,
+            direction(azimuth, elevation),
+            STAR_DISTANCE,
+            half,
+            tint,
+        );
+    }
+    star_mesh(positions, normals, colors, indices)
 }
 
 /// An sRGB image with mipmaps and smooth sampling.
@@ -1288,36 +1685,16 @@ fn smooth_image(width: u32, height: u32, data: Vec<u8>) -> Image {
     image
 }
 
-/// La cúpula sigue a la cámara (solo en posición, no en giro), y en el cielo
-/// espacial muestra la Luna desde la Tierra y la Tierra desde la Luna.
+/// La cúpula sigue a la cámara del primer jugador (solo en posición, no en
+/// giro). In the space sky, the Moon is seen from the Earth and the Earth
+/// from the Moon: each is drawn on the layers of the realm it is seen from
+/// (see [`super::realm`]).
 pub fn follow_camera(
-    cameras: Query<&Transform, (With<Camera3d>, Without<Sky>)>,
+    cameras: Query<(&Transform, &CameraPlayer), Without<Sky>>,
     mut sky: Single<&mut Transform, With<Sky>>,
-    parts: Option<Res<SkyParts>>,
-    mut visibilities: Query<&mut Visibility>,
 ) {
-    if let Some(camera) = cameras.iter().next() {
+    if let Some((camera, _)) = cameras.iter().find(|(_, player)| player.0 == 0) {
         sky.translation = camera.translation;
-        if let Some(parts) = parts {
-            let on_earth = super::terrain::is_earth_realm(Vec2::new(
-                camera.translation.x,
-                camera.translation.z,
-            ));
-            if let Ok(mut vis) = visibilities.get_mut(parts.moon_body) {
-                *vis = if on_earth {
-                    Visibility::Inherited
-                } else {
-                    Visibility::Hidden
-                };
-            }
-            if let Ok(mut vis) = visibilities.get_mut(parts.earth_body) {
-                *vis = if on_earth {
-                    Visibility::Hidden
-                } else {
-                    Visibility::Inherited
-                };
-            }
-        }
     }
 }
 
@@ -1592,5 +1969,98 @@ mod tests {
             let elevation = (at.y / at.length()).asin();
             assert!((CLOUD_ELEVATION.0..=CLOUD_ELEVATION.1).contains(&elevation));
         }
+    }
+
+    #[test]
+    fn the_milky_way_rises_from_sagittarius_above_the_horizon() {
+        let turn = celestial_turn();
+        let centre = turn * celestial(266.4_f32.to_radians(), (-28.9_f32).to_radians());
+        let target = direction(GALACTIC_CENTRE_AZIMUTH, GALACTIC_CENTRE_ELEVATION);
+        assert!(centre.angle_between(target) < 0.01);
+        // The galactic pole level with the horizon: the band stands up.
+        let pole = turn * celestial(192.86_f32.to_radians(), 27.13_f32.to_radians());
+        assert!(pole.y.abs() < 0.02, "{pole}");
+        // So it passes overhead, or nearly.
+        let highest = (0..360)
+            .map(|degree| {
+                let l = (degree as f32).to_radians();
+                // Along the band: perpendicular to the pole, from the centre.
+                let along = centre * l.cos() + pole.cross(centre) * l.sin();
+                along.y
+            })
+            .fold(f32::MIN, f32::max);
+        assert!(highest > 0.9, "{highest}");
+    }
+
+    #[test]
+    fn the_moon_and_the_earth_are_as_big_as_they_should_look() {
+        let sun = Palette::of(SkyStyle::Space).sun_direction();
+        for (azimuth, diameter, kind) in [
+            (MOON_AZIMUTH, MOON_DIAMETER, Body::Moon),
+            (EARTH_AZIMUTH, EARTH_DIAMETER, Body::Earth),
+        ] {
+            let (place, radius, mesh) = body(azimuth, diameter, 0.0, sun, kind);
+            // Placed unscaled: the mesh is its size already.
+            assert_eq!(place.scale, Vec3::ONE);
+            let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) =
+                mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+            else {
+                panic!("a sphere has positions");
+            };
+            let farthest = positions
+                .iter()
+                .map(|p| Vec3::from(*p).length())
+                .fold(0.0, f32::max);
+            assert!((farthest - radius).abs() < 0.01 * radius);
+            // Seen from the middle of the sky, that many degrees across.
+            let seen = 2.0 * (radius / place.translation.length()).atan();
+            assert!((seen.to_degrees() - diameter).abs() < 0.05, "{seen}");
+        }
+    }
+
+    #[test]
+    fn the_milky_way_is_sown_with_stars_along_its_band() {
+        let map = photograph(include_bytes!("../../assets/textures/milky_way.jpg"));
+        let mesh = milky_way_stars_mesh(&map);
+        let stars = mesh.count_vertices() / 4;
+        assert_eq!(stars, MILKY_WAY_STARS as usize);
+        // None in the dark sky, many in the bright band.
+        assert_eq!(star_likelihood(0.01), 0.0);
+        assert!(star_likelihood(0.5) > 0.5);
+        // Most of them near the band: within 20° of it (of the galactic
+        // plane), which is a third of the sky.
+        let turn = celestial_turn();
+        let pole = turn * celestial(192.86_f32.to_radians(), 27.13_f32.to_radians());
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("stars have positions");
+        };
+        let near = positions
+            .chunks(4)
+            .filter(|corners| {
+                let middle = corners.iter().map(|p| Vec3::from(*p)).sum::<Vec3>() / 4.0;
+                middle.normalize().dot(pole).abs() < 20f32.to_radians().sin()
+            })
+            .count();
+        assert!(near * 10 > stars * 7, "{near} of {stars} near the band");
+    }
+
+    /// Writes the enhanced map of the Milky Way to `$MILKY_WAY_PREVIEW` (a
+    /// PNG), to look at while tuning [`enhance_milky_way`].
+    #[test]
+    #[ignore]
+    fn preview_the_milky_way() {
+        let Ok(out) = std::env::var("MILKY_WAY_PREVIEW") else {
+            return;
+        };
+        let mut map = photograph(include_bytes!("../../assets/textures/milky_way.jpg"));
+        enhance_milky_way(&mut map);
+        let (width, height) = (map.width(), map.height());
+        let data = map.data.unwrap()[..(width * height * 4) as usize].to_vec();
+        image::RgbaImage::from_raw(width, height, data)
+            .unwrap()
+            .save(out)
+            .unwrap();
     }
 }

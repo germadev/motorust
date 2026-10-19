@@ -10,12 +10,15 @@
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
+use bevy::app::Propagate;
+use bevy::camera::visibility::RenderLayers;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use super::Assets3d;
 use super::props::{Footprint, row_points};
 use super::quads::MeshBuilder;
+use super::realm::{CURTAIN_RADIUS, GATE_HEIGHT, OVERVIEW_LAYER, PortalGate};
 use super::scenery::{
     Biodome, LunarBoulders, Observatory, Portal, RadioDish, Rocket, Rover, Row, Scenery,
     StationArch,
@@ -73,7 +76,8 @@ pub fn turn_dishes(time: Res<Time>, mut dishes: Query<(&mut Transform, &DishSwee
     let t = time.elapsed_secs() * DISH_RATE;
     for (mut transform, dish) in &mut dishes {
         let yaw = dish.base_yaw + DISH_SWEEP * (t + dish.phase).sin();
-        let pitch = -0.52 + 0.12 * ((t + dish.phase) * 0.7).cos();
+        // Tilted back so the reflector (facing -Z) looks up at the sky.
+        let pitch = 0.85 + 0.12 * ((t + dish.phase) * 0.7).cos();
         transform.rotation = Quat::from_rotation_y(yaw) * Quat::from_rotation_x(pitch);
     }
 }
@@ -1303,7 +1307,7 @@ fn spawn_portals(
     let frame_glow_mesh = assets.meshes.add(frame_glow);
     let outer_ring_mesh = assets.meshes.add(portal_ring_mesh(11.4, 12.1, 0.55));
     let inner_ring_mesh = assets.meshes.add(portal_ring_mesh(10.3, 10.9, 0.42));
-    let vortex_mesh = assets.meshes.add(portal_vortex_mesh(10.3));
+    let vortex_mesh = assets.meshes.add(portal_vortex_mesh(CURTAIN_RADIUS));
 
     let violet_glow = assets.materials.add(StandardMaterial {
         base_color: Color::srgb(0.85, 0.45, 1.0),
@@ -1331,8 +1335,15 @@ fn spawn_portals(
         let transform = Transform::from_xyz(center.x, base_y, center.y)
             .with_rotation(Quat::from_rotation_y(heading));
 
+        // Shared by both realms: its frame stands in each, and its curtain
+        // shows the other (see `super::realm`).
         world
-            .spawn((transform, Visibility::default()))
+            .spawn((
+                transform,
+                Visibility::default(),
+                PortalGate,
+                Propagate(RenderLayers::layer(0)),
+            ))
             .with_children(|gate| {
                 gate.spawn((
                     Mesh3d(frame_hull_mesh.clone()),
@@ -1342,11 +1353,14 @@ fn spawn_portals(
                     Mesh3d(frame_glow_mesh.clone()),
                     MeshMaterial3d(glow.clone()),
                 ));
-                // Translucent energy curtain centered at y = 4.2 m.
+                // Translucent energy curtain, as seen from above in the
+                // menus; in a race each rider sees the other realm through
+                // their own curtain instead (see `super::realm`).
                 gate.spawn((
                     Mesh3d(vortex_mesh.clone()),
                     MeshMaterial3d(vortex_mat.clone()),
-                    Transform::from_xyz(0.0, 4.2, 0.0),
+                    Transform::from_xyz(0.0, GATE_HEIGHT, 0.0),
+                    Propagate(RenderLayers::layer(OVERVIEW_LAYER)),
                     NotShadowCaster,
                 ));
                 // Counter-rotating plasma rings around the portal aperture.

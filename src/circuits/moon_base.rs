@@ -371,24 +371,45 @@ pub const MOON_BASE: Circuit = Circuit {
         ],
         // Trees, forests and cottages populate the Earth stretch (`2895..4600..1120 m`),
         // where `is_earth_realm` is true and `Terrain::ground` is `Ground::Grass`.
+        // Not all green: autumn maples in crimson, golden ginkgos and
+        // almonds and cherries in pink blossom among the greens.
         trees: &[
             Species::Broadleaf,
             Species::Tall,
             Species::MaritimePine,
             Species::Poplar,
+            Species::Momiji,
+            Species::Ginkgo,
+            Species::Almond,
+            Species::Sakura,
         ],
         forests: &[
             Forest {
                 span: span(320.0, 760.0),
-                species: &[Species::Tall, Species::Broadleaf],
+                species: &[
+                    Species::Tall,
+                    Species::Broadleaf,
+                    Species::Momiji,
+                    Species::Ginkgo,
+                ],
             },
             Forest {
                 span: span(3140.0, 3840.0),
-                species: &[Species::MaritimePine, Species::Broadleaf],
+                species: &[
+                    Species::MaritimePine,
+                    Species::Broadleaf,
+                    Species::Almond,
+                    Species::Momiji,
+                ],
             },
             Forest {
                 span: span(3860.0, 4480.0),
-                species: &[Species::Tall, Species::Poplar],
+                species: &[
+                    Species::Tall,
+                    Species::Poplar,
+                    Species::Ginkgo,
+                    Species::Sakura,
+                ],
             },
         ],
         houses: Houses {

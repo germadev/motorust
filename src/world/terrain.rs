@@ -7,11 +7,13 @@
 //! y cada vez más gruesa hacia el horizonte.
 
 use bevy::{
-    asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
+    asset::RenderAssetUsages, camera::visibility::RenderLayers, mesh::Indices, prelude::*,
+    render::render_resource::PrimitiveTopology,
 };
 
 use super::dam::DamGround;
 use super::flowers::{FlowerMap, phlox_color};
+use super::realm::Realm;
 use super::scenery::{Coast, FlowerKind, Greens, Pit, Scenery, Side, Soil, span};
 use super::sky::MEDITERRANEAN_SUN;
 use super::structures::{TUNNEL_SHELL, Tunnels};
@@ -137,6 +139,9 @@ pub struct GroundMesh {
     pub ground: Ground,
     pub flowers: Option<FlowerKind>,
     pub mesh: Mesh,
+    /// The layers it is drawn on, on a circuit split between the Earth and
+    /// the Moon (see [`super::realm`]); otherwise the default one.
+    pub layers: Option<RenderLayers>,
 }
 
 impl Terrain {
@@ -374,11 +379,11 @@ impl Terrain {
     /// player sees there.
     fn look_drawn(&self, point: Vec2) -> Look {
         let (corners, indices) = self.triangle_at(point);
-        let looks = indices.map(|index| look(&self.sites[index]));
+        let looks = indices.map(|index| look(&self.sites[index], None));
         let flat = corners.map(|corner| Vec2::new(corner.x, corner.z));
         // The piece it is furthest inside of: on a border, either.
         let mut drawn = (f32::MIN, looks[0]);
-        for (piece, weights) in self.cut(corners, looks).into_iter().flatten() {
+        for (piece, weights) in self.cut(corners, looks, None).into_iter().flatten() {
             let piece_corners = weights.map(|w| flat[0] * w.x + flat[1] * w.y + flat[2] * w.z);
             let depth = inside(point, piece_corners);
             if depth > drawn.0 {
@@ -407,8 +412,9 @@ impl Terrain {
     /// same; otherwise cut along the borders between the looks, found along
     /// its edges, so that they run smoothly across the land instead of
     /// round whole triangles, in steps. Each piece has its look and its
-    /// corners, as weights of the triangle's, turning the same way.
-    fn cut(&self, corners: [Vec3; 3], looks: [Look; 3]) -> Pieces {
+    /// corners, as weights of the triangle's, turning the same way. The
+    /// looks are those of the ground drawn as `style` says (see [`look`]).
+    fn cut(&self, corners: [Vec3; 3], looks: [Look; 3], style: Option<Realm>) -> Pieces {
         const ONE: [Vec3; 3] = [Vec3::X, Vec3::Y, Vec3::Z];
         let mut pieces = Pieces::default();
         if looks[0] == looks[1] && looks[1] == looks[2] {
@@ -417,7 +423,7 @@ impl Terrain {
         }
         // Where the look changes along the edge from corner k to corner l.
         let edge = |k: usize, l: usize| {
-            let t = self.border([corners[k], corners[l]], [looks[k], looks[l]]);
+            let t = self.border([corners[k], corners[l]], [looks[k], looks[l]], style);
             ONE[k].lerp(ONE[l], t)
         };
         match (0..3).find(|&k| looks[(k + 1) % 3] == looks[(k + 2) % 3]) {
@@ -447,14 +453,14 @@ impl Terrain {
     /// from `from`, at `a`, to `to`, at `b`: found by halving it, the same
     /// whichever way the edge is walked, so that the triangles either side
     /// of it agree.
-    fn border(&self, [a, b]: [Vec3; 2], [from, to]: [Look; 2]) -> f32 {
+    fn border(&self, [a, b]: [Vec3; 2], [from, to]: [Look; 2], style: Option<Realm>) -> f32 {
         if (b.x, b.z) < (a.x, a.z) {
-            return 1.0 - self.border([b, a], [to, from]);
+            return 1.0 - self.border([b, a], [to, from], style);
         }
         let (mut near, mut far) = (0.0, 1.0);
         for _ in 0..BORDER_STEPS {
             let t = (near + far) / 2.0;
-            if look(&self.site(a.lerp(b, t))) == from {
+            if look(&self.site(a.lerp(b, t)), style) == from {
                 near = t;
             } else {
                 far = t;
@@ -525,8 +531,15 @@ impl Terrain {
 
     /// The ground's meshes over the cells in rows `cells` of the grid (see
     /// [`Self::meshes`]), its points' normals given: their vertices shared
-    /// within it.
-    fn band(&self, cells: std::ops::Range<usize>, normals: &[Vec3]) -> Band {
+    /// within it. Drawn as `style` says (see [`Self::meshes_as`]), and only
+    /// the triangles of the grid on `side`, if given.
+    fn band(
+        &self,
+        cells: std::ops::Range<usize>,
+        normals: &[Vec3],
+        style: Option<Realm>,
+        side: Option<Realm>,
+    ) -> Band {
         let width = self.xs.len();
         let position =
             |i: usize, j: usize| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
@@ -546,9 +559,12 @@ impl Terrain {
                     let indices = triangle.map(|k| corners[k].1 * width + corners[k].0);
                     let points = triangle.map(|k| position(corners[k].0, corners[k].1));
                     let [a, b, c] = points;
+                    if side.is_some_and(|side| Realm::of_triangle(points) != side) {
+                        continue;
+                    }
                     let face = (b - a).cross(c - a).normalize();
-                    let looks = indices.map(|index| look(&self.sites[index]));
-                    for (look, weights) in self.cut(points, looks).into_iter().flatten() {
+                    let looks = indices.map(|index| look(&self.sites[index], style));
+                    for (look, weights) in self.cut(points, looks, style).into_iter().flatten() {
                         let (ground_type, flowers) = look;
                         let builder = match look {
                             (Ground::Grass, Some(kind)) => {
@@ -632,8 +648,10 @@ impl Terrain {
                                         Vec2::new(tilted_u + micro_warp.x, tilted_v + micro_warp.y)
                                     }
                                 };
-                                let earth =
-                                    self.soil == Soil::Lunar && is_earth_realm(Vec2::new(p.x, p.z));
+                                let earth = self.soil == Soil::Lunar
+                                    && style.map_or(is_earth_realm(Vec2::new(p.x, p.z)), |style| {
+                                        style == Realm::Earth
+                                    });
                                 let color = match (self.soil, ground_type, flowers) {
                                     (_, _, Some(kind)) => self.meadow_color(p, normal, kind),
                                     (Soil::Checkered, Ground::Rock, _) => {
@@ -685,6 +703,22 @@ impl Terrain {
     /// however many. Pure data: they can be worked out away from the main
     /// thread.
     pub fn meshes(&self, threads: usize) -> Vec<GroundMesh> {
+        self.meshes_as(threads, None, None)
+    }
+
+    /// The ground's meshes as [`Self::meshes`] makes them, but, on a circuit
+    /// split between the Earth and the Moon (see [`super::realm`]), all of
+    /// it drawn as the ground of `style` (Earth's grass or the Moon's
+    /// regolith) wherever it lies, and only the part of it on `side`: what
+    /// one realm sees of its own ground, or of the land beyond its border
+    /// that only the other realm's riders are on. Each is drawn on the
+    /// layers that realm's cameras see.
+    pub fn meshes_as(
+        &self,
+        threads: usize,
+        style: Option<Realm>,
+        side: Option<Realm>,
+    ) -> Vec<GroundMesh> {
         let (width, depth) = (self.xs.len(), self.zs.len());
         let position =
             |i: usize, j: usize| Vec3::new(self.xs[i], self.heights[j * width + i], self.zs[j]);
@@ -713,7 +747,7 @@ impl Terrain {
             part.iter()
                 .map(|&band| {
                     let rows = band * BAND_ROWS..((band + 1) * BAND_ROWS).min(cells);
-                    (band, self.band(rows, &normals))
+                    (band, self.band(rows, &normals, style, side))
                 })
                 .collect()
         });
@@ -733,10 +767,15 @@ impl Terrain {
             Soil::Rock | Soil::Mine | Soil::Lunar => ROCK_TILE,
             Soil::Checkered => SOIL_TILE,
         };
+        let layers = style.map(|style| match side {
+            Some(side) if side != style => style.beyond_layers(),
+            _ => style.layers(),
+        });
         let ground = |ground: Ground, flowers: Option<FlowerKind>, mesh: Mesh| GroundMesh {
             ground,
             flowers,
             mesh,
+            layers: layers.clone(),
         };
         let mut meshes = vec![
             ground(Ground::Grass, None, grass.build(GRASS_TILE)),
@@ -768,6 +807,7 @@ pub fn spawn_terrain(
         ground,
         flowers,
         mesh,
+        layers,
     } in ground_meshes
     {
         if mesh.count_vertices() == 0 {
@@ -794,7 +834,7 @@ pub fn spawn_terrain(
             // Snow, white but for its shading (see `ground_vertex_color`).
             (Ground::Snow, _) => (None, 0.55, 0.35),
         };
-        world.spawn((
+        let mut piece = world.spawn((
             Mesh3d(meshes.add(mesh)),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color_texture: texture.cloned(),
@@ -803,6 +843,9 @@ pub fn spawn_terrain(
                 ..default()
             })),
         ));
+        if let Some(layers) = layers {
+            piece.insert(layers);
+        }
     }
 }
 
@@ -973,7 +1016,9 @@ pub(super) fn on_cores<T: Sync, R: Send>(
 
 /// What the ground at `site` is drawn as: by its smoothed slope, so the
 /// borders of the cliffs run smoothly too, as the others do.
-fn look(site: &Site) -> Look {
+/// Drawn as `style` says on a circuit split between the Earth and the Moon
+/// (see [`Terrain::meshes_as`]): its ground all of one realm.
+fn look(site: &Site, style: Option<Realm>) -> Look {
     let mut ground = ground_of(
         site.height,
         site.snow_line,
@@ -981,7 +1026,8 @@ fn look(site: &Site) -> Look {
         Vec3::Y * site.up,
         site.mountain,
     );
-    if site.lunar && ground != Ground::Rock {
+    let lunar = style.map_or(site.lunar, |style| style == Realm::Moon);
+    if lunar && ground != Ground::Rock {
         ground = Ground::Sand;
     }
     let flowers = if ground == Ground::Grass {
@@ -2440,7 +2486,7 @@ mod tests {
                     continue;
                 }
                 of += 1;
-                count += usize::from(look(site).0 == ground);
+                count += usize::from(look(site, None).0 == ground);
             }
             assert!(of > 20, "{of} points");
             count as f32 / of as f32
@@ -2490,21 +2536,21 @@ mod tests {
                 let face = (b - a).cross(c - a).normalize();
                 // On the triangle, as drawn.
                 let height = a.y - (face.x * (point.x - a.x) + face.z * (point.y - a.z)) / face.y;
-                let truth = look(&terrain.site(Vec3::new(point.x, height, point.y)));
+                let truth = look(&terrain.site(Vec3::new(point.x, height, point.y)), None);
                 if terrain.look_drawn(point) != truth {
                     cut += 1;
                 }
-                if look(&terrain.site((a + b + c) / 3.0)) != truth {
+                if look(&terrain.site((a + b + c) / 3.0), None) != truth {
                     whole += 1;
                 }
                 // Cut, a triangle's pieces cover it, turning its way.
-                let looks = indices.map(|index| look(&terrain.sites[index]));
+                let looks = indices.map(|index| look(&terrain.sites[index], None));
                 if looks[0] != looks[1] || looks[1] != looks[2] {
                     borders += 1;
                     let flat = corners.map(|corner| Vec2::new(corner.x, corner.z));
                     let area = |[p, q, r]: [Vec2; 3]| (q - p).perp_dot(r - p);
                     let pieces: Vec<f32> = terrain
-                        .cut(corners, looks)
+                        .cut(corners, looks, None)
                         .into_iter()
                         .flatten()
                         .map(|(_, weights)| {

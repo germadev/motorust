@@ -21,6 +21,18 @@ stone wall photo gives its fine grain to a procedural wall of rough stones.
 | `textures/roof.jpg` | [Clay Roof Tiles](https://polyhaven.com/a/clay_roof_tiles) |
 | `textures/plaster.jpg` | [Plastered Wall](https://polyhaven.com/a/plastered_wall) |
 
+## The Moon, the Earth and the Milky Way
+
+The maps of the Moon, the Earth and the Milky Way in the space sky are NASA imagery, in the
+public domain, downsized to 1024 × 512 (but the Milky Way, see below):
+
+| File | Original |
+|---|---|
+| `textures/moon.jpg` | [CGI Moon Kit](https://svs.gsfc.nasa.gov/4720) colour map, Lunar Reconnaissance Orbiter (NASA's Scientific Visualization Studio) |
+| `textures/earth.jpg` | [Blue Marble: land surface, shallow water and shaded topography](https://visibleearth.nasa.gov/images/57752) (NASA Earth Observatory) |
+| `textures/earth_clouds.jpg` | [Blue Marble: clouds](https://visibleearth.nasa.gov/images/57747) (NASA Earth Observatory) |
+| `textures/milky_way.jpg` | [Deep Star Maps 2020](https://svs.gsfc.nasa.gov/4851), the Milky Way alone in galactic coordinates, 4096 × 2048 (converted from its EXR), cut to the band 45° either side of the galactic plane (NASA's Scientific Visualization Studio, from ESA's Gaia and other surveys) |
+
 ## Models
 
 The bikes and their riders (`models/shogun`, `models/kraken`, `models/falcon`,

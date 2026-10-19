@@ -18,6 +18,7 @@ mod mirror;
 mod preview;
 mod props;
 mod quads;
+pub mod realm;
 mod road;
 pub mod scenery;
 mod sea;
@@ -36,6 +37,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::asset::embedded_asset;
+use bevy::camera::primitives::MeshAabb;
 use bevy::pbr::PbrPlugin;
 use bevy::tasks::{Task, TaskPool, TaskPoolBuilder, block_on, poll_once};
 use bevy::{
@@ -76,6 +78,7 @@ impl Plugin for WorldPlugin {
             lamps::LampsPlugin,
             detail::DetailPlugin,
             shadow_fade::ShadowFadePlugin,
+            realm::RealmPlugin,
         ));
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
@@ -246,7 +249,11 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
     let terrain = terrain::Terrain::on_threads(&track, scenery, urgency.threads());
-    let mut ground = terrain.meshes(urgency.threads());
+    let mut ground = if realm::splits(scenery) {
+        realm_ground(&terrain, urgency.threads())
+    } else {
+        terrain.meshes(urgency.threads())
+    };
     let shore = sea::ShoreMap::new(&terrain, &track);
     let shore_image = shore.image();
     let roadside = Roadside {
@@ -284,6 +291,21 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         lamps,
         meadows,
     }
+}
+
+/// The ground of a circuit split between the Earth and the Moon (see
+/// [`realm`]): each realm's own, and the land beyond its border drawn as
+/// its own, each on its layers.
+fn realm_ground(terrain: &terrain::Terrain, threads: usize) -> Vec<terrain::GroundMesh> {
+    use realm::Realm;
+    [Realm::Moon, Realm::Earth]
+        .into_iter()
+        .flat_map(|style| {
+            [style, style.other()]
+                .into_iter()
+                .flat_map(move |side| terrain.meshes_as(threads, Some(style), Some(side)))
+        })
+        .collect()
 }
 
 /// The rest of a circuit whose first part is `basis` (see [`Rest`]).
@@ -946,6 +968,7 @@ fn build(
         mirrored_leaves: Vec::new(),
     };
     let (track, terrain) = (&*basis.track, &*basis.terrain);
+    let split = realm::splits(scenery);
     let mut root = commands.spawn((lamps::Lamps(lamps), Transform::default(), visibility));
     match stretch {
         None => {
@@ -973,17 +996,47 @@ fn build(
                 // What is see-through or glows (light, dust) casts no
                 // shadow.
                 let shadowless = matches!(material.alpha_mode, AlphaMode::Add | AlphaMode::Blend);
-                let mut piece = world.spawn((
-                    Mesh3d(assets.meshes.add(mesh)),
-                    MeshMaterial3d(assets.materials.add(material)),
-                ));
-                if shadowless {
-                    piece.insert(NotShadowCaster);
+                let material = assets.materials.add(material);
+                // On a split circuit, the part of each in each realm.
+                let parts: Vec<_> = if split {
+                    [realm::Realm::Earth, realm::Realm::Moon]
+                        .into_iter()
+                        .filter_map(|realm| {
+                            realm::part_in(&mesh, realm).map(|part| (part, Some(realm.layers())))
+                        })
+                        .collect()
+                } else {
+                    vec![(mesh, None)]
+                };
+                for (mesh, layers) in parts {
+                    let mut piece = world.spawn((
+                        Mesh3d(assets.meshes.add(mesh)),
+                        MeshMaterial3d(material.clone()),
+                    ));
+                    if shadowless {
+                        piece.insert(NotShadowCaster);
+                    }
+                    if let Some(layers) = layers {
+                        piece.insert(layers);
+                    }
                 }
             }
-            road::spawn_gantries(world, track, scenery, stretch, &mut assets);
-            if stretch.is_none() {
-                structures::spawn_signs(world, track, terrain, scenery, &mut assets);
+            let mut put_up = |world: &mut ChildSpawnerCommands| {
+                road::spawn_gantries(world, track, scenery, stretch, &mut assets);
+                if stretch.is_none() {
+                    structures::spawn_signs(world, track, terrain, scenery, &mut assets);
+                }
+            };
+            if split {
+                world
+                    .spawn((
+                        realm::RealmScenery,
+                        Transform::default(),
+                        Visibility::default(),
+                    ))
+                    .with_children(|scenery| put_up(scenery));
+            } else {
+                put_up(world);
             }
             // The sea: the cartoon one at first, mirroring, if it should,
             // before it is first drawn (see `sea::dress_the_sea`).
@@ -991,12 +1044,17 @@ fn build(
                 cartoon: cartoon_sea,
                 mirror: sea_mirror.clone(),
             };
-            world.spawn((
+            let mut sea = world.spawn((
                 Mesh3d(builder.sea.0.clone()),
                 MeshMaterial3d(sea_water.cartoon.clone()),
                 sea_water,
                 Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
             ));
+            // The Moon has no seas: on a split circuit, the sea is the
+            // Earth's.
+            if split {
+                sea.insert(realm::Realm::Earth.layers());
+            }
         })
         .id();
     match stretch {
@@ -1029,6 +1087,7 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
         return;
     };
     let scenery = &CIRCUITS[basis.index].scenery;
+    let split = realm::splits(scenery);
     let mut assets = Assets3d {
         textures: &builder.textures,
         props: &builder.props,
@@ -1041,22 +1100,50 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
     world_root.with_children(|world| {
         for piece in rest.grass {
             let range = piece.range();
-            world.spawn((
+            // On a split circuit, the grass is drawn in the realm it grows
+            // in: the Earth's, as the Moon has none.
+            let layers = split.then(|| {
+                piece
+                    .mesh
+                    .compute_aabb()
+                    .map_or(realm::Realm::Earth, |aabb| {
+                        realm::Realm::at(Vec2::new(aabb.center.x, aabb.center.z))
+                    })
+                    .layers()
+            });
+            let mut grass = world.spawn((
                 Mesh3d(assets.meshes.add(piece.mesh)),
                 MeshMaterial3d(assets.materials.add(piece.material)),
                 range,
                 NotShadowCaster,
             ));
+            if let Some(layers) = layers {
+                grass.insert(layers);
+            }
         }
-        props::spawn_props(
-            world,
-            &basis.track,
-            &basis.terrain,
-            scenery,
-            &rest.trees,
-            rest.flowers,
-            &mut assets,
-        );
+        let put_up = |world: &mut ChildSpawnerCommands| {
+            props::spawn_props(
+                world,
+                &basis.track,
+                &basis.terrain,
+                scenery,
+                &rest.trees,
+                rest.flowers,
+                &mut assets,
+            );
+        };
+        // On a split circuit, each in the realm it stands in.
+        if split {
+            world
+                .spawn((
+                    realm::RealmScenery,
+                    Transform::default(),
+                    Visibility::default(),
+                ))
+                .with_children(put_up);
+        } else {
+            put_up(world);
+        }
     });
     // The sea mirroring what stands round it too, now that it stands.
     if let (Some(handle), Some(mut mirror)) = (sea_mirror, rest.sea_mirror) {

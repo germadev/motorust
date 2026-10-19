@@ -15,7 +15,7 @@ use bevy::shader::ShaderRef;
 use bevy::ui::UiSystems;
 use bevy::window::PrimaryWindow;
 
-use crate::camera::CameraGlide;
+use crate::camera::{CameraGlide, CameraPlayer};
 use crate::circuits::CurrentCircuit;
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
@@ -782,7 +782,7 @@ fn fly_over_track(
     time: Res<Time>,
     track: Res<Track>,
     circuit: Res<CurrentCircuit>,
-    camera: Single<(&mut Transform, &mut Projection), With<Camera3d>>,
+    camera: Single<(&mut Transform, &mut Projection), With<CameraPlayer>>,
     mut glide: ResMut<CameraGlide>,
     mut travelled: Local<f32>,
     mut chosen: Local<bool>,
