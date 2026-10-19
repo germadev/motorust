@@ -691,8 +691,11 @@ const fn fence(span: Span, side: Side) -> WallRun {
 /// through the Shire's fields (not Hobbiton's lawns, kept green),
 /// irises round the pond; gold tussock grass up Weathertop and down to the
 /// ford, and silver in the Anduin's gorge, as on the hills of Otago where
-/// the film was made.
-const FLOWERS: [FlowerField; 12] = [
+/// the film was made. And the grass not green everywhere: leaves fallen
+/// under the trees of the wood at the start, Rivendell's and Lothlórien's,
+/// and the grass worn down to bare earth round Bree, and both round Amon
+/// Hen, each in patches with grass between them.
+const FLOWERS: [FlowerField; 17] = [
     FlowerField {
         area: FlowerArea::Round {
             center: POND,
@@ -796,6 +799,46 @@ const FLOWERS: [FlowerField; 12] = [
             outer: 4.0,
         },
         kinds: &[FlowerKind::Phlox, FlowerKind::White],
+    },
+    FlowerField {
+        area: FlowerArea::Road {
+            span: WOOD,
+            near: 14.0,
+            far: 90.0,
+        },
+        kinds: &[FlowerKind::FallenLeaves],
+    },
+    FlowerField {
+        area: FlowerArea::Road {
+            span: BREE,
+            near: 12.0,
+            far: 70.0,
+        },
+        kinds: &[FlowerKind::BareEarth],
+    },
+    FlowerField {
+        area: FlowerArea::Road {
+            span: RIVENDELL,
+            near: 14.0,
+            far: 120.0,
+        },
+        kinds: &[FlowerKind::FallenLeaves],
+    },
+    FlowerField {
+        area: FlowerArea::Road {
+            span: LOTHLORIEN,
+            near: 14.0,
+            far: 120.0,
+        },
+        kinds: &[FlowerKind::FallenLeaves],
+    },
+    FlowerField {
+        area: FlowerArea::Road {
+            span: AMON_HEN,
+            near: 14.0,
+            far: 100.0,
+        },
+        kinds: &[FlowerKind::FallenLeaves, FlowerKind::BareEarth],
     },
 ];
 

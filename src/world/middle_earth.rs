@@ -55,29 +55,26 @@ const WADE: f32 = 1.2;
 /// stand (m), past the walls: the ground under them sets its foot.
 const GATE_TOWERS: f32 = 14.5;
 
-/// The little hill a hobbit hole is dug into, a dome over its rooms behind
-/// its front: its top so much higher than the hole's (m), its middle so far
-/// behind the hole's back (m), round from its middle out to so far past the
-/// hole's sides (m), so far behind its middle (m) and so far before the
-/// hole's front (m), its top the share of that round its middle where it
-/// is all but level; the dome cut away round the hole, flush with its
-/// sides, the cut opening out so much for each metre before its front (m)
-/// and softened over so many metres (m); how far its edge sinks into the
-/// ground at least (m), how far under the ground its mesh lies where the
-/// ground is higher (m), and over how many metres the two round into one
-/// another (m); and how finely its mesh is cut (m).
-const HILL_RISE: f32 = 3.0;
-const HILL_MIDDLE: f32 = 1.0;
-const HILL_SIDES: f32 = 6.5;
-const HILL_BEHIND: f32 = 13.0;
-const HILL_BEFORE: f32 = 2.5;
-const HILL_TOP: f32 = 0.3;
+/// The hill a hobbit hole is dug into, a dome over its rooms behind its
+/// front: so many times as high as the hole and as wide as its front,
+/// round and curved all over (a paraboloid), its middle behind the hole so
+/// that its surface comes down to the top of the hole's back and no higher,
+/// over the hole; the dome cut away round the hole, flush with its sides,
+/// the cut opening out so much for each metre before its front (m) and
+/// softened over so many metres (m); how far its mesh reaches from its
+/// middle (times its reach), how far its edge sinks into the ground at
+/// least (m), how far under the ground its mesh lies where the ground is
+/// higher (m), and over how many metres the two round into one another
+/// (m); and how finely its mesh is cut (m).
+const HILL_HEIGHT: f32 = 2.0;
+const HILL_WIDTH: f32 = 3.5;
 const CUT_FLARE: f32 = 1.5;
 const CUT_SOFT: f32 = 0.7;
+const HILL_MESH: f32 = 1.35;
 const BANK_SINK: f32 = 2.5;
 const BANK_UNDER: f32 = 0.3;
-const BANK_BLEND: f32 = 2.0;
-const BANK_STEP: f32 = 0.5;
+const BANK_BLEND: f32 = 3.0;
+const BANK_STEP: f32 = 0.6;
 /// Before each hole, its garden: a low fence of weathered pickets round it,
 /// this far out either side of its front and this far before it (m), posts
 /// this far apart (m), so high (m), and a gap for its gate in the middle
@@ -595,11 +592,23 @@ impl Bank {
     /// How far it reaches, in its frame: either side of its middle (m), and
     /// back and forward (z, m).
     fn extent(&self) -> (f32, f32, f32) {
+        let (middle, reach) = (self.middle(), self.reach());
         (
-            self.half_width + HILL_SIDES,
-            self.back - HILL_MIDDLE - HILL_BEHIND,
-            self.front + HILL_BEFORE,
+            HILL_MESH * reach,
+            middle - HILL_MESH * reach,
+            middle + HILL_MESH * reach,
         )
+    }
+
+    /// How far the dome reaches from its middle (m), every way.
+    fn reach(&self) -> f32 {
+        HILL_WIDTH * self.half_width
+    }
+
+    /// Where the middle of the dome is (z, m): behind the hole, so far that
+    /// over the hole's back the dome is as high as the hole.
+    fn middle(&self) -> f32 {
+        self.back - self.reach() * (1.0 - 1.0 / HILL_HEIGHT).sqrt()
     }
 
     /// The same bank with its foot at `base`, turned by `rotation`, its edge
@@ -630,17 +639,14 @@ impl Bank {
     /// The height of the bank at `at` (x, z) in its frame (m): down to
     /// `-sink` at its edge, into the ground.
     fn height(&self, at: Vec2) -> f32 {
-        // The dome: round about its middle, behind the hole, its top all
-        // but level and its sides falling away, rounded, to its edge.
-        let middle = self.back - HILL_MIDDLE;
-        let across = at.x / (self.half_width + HILL_SIDES);
-        let along = if at.y > middle {
-            (at.y - middle) / (self.front + HILL_BEFORE - middle)
-        } else {
-            (middle - at.y) / HILL_BEHIND
-        };
-        let up = 1.0 - smoothstep(HILL_TOP, 1.0, (across * across + along * along).sqrt());
-        let hill = (self.top + HILL_RISE) * up - self.sink * (1.0 - up) * (1.0 - up);
+        // The dome: round about its middle, behind the hole, curved all
+        // over, on down into the ground past its foot, and down to its
+        // sunk edge by the edge of its mesh.
+        let off = (at - Vec2::new(0.0, self.middle())) / self.reach();
+        let r = off.length();
+        let hill =
+            HILL_HEIGHT * self.top * (1.0 - r * r) - self.sink * smoothstep(1.0, HILL_MESH, r);
+        let hill = hill.max(-self.sink);
         // Cut away round the hole from just behind its back, flush with its
         // sides, and opening out before its front.
         if at.y <= self.back + 0.15 {
@@ -1018,18 +1024,24 @@ mod tests {
             top: 5.6,
             sink: BANK_SINK,
         };
-        // Behind it a dome, higher than its top, as high as its top either
-        // side of its back.
-        assert!(bank.height(Vec2::new(0.0, -1.5)) > 5.6 + 2.0);
-        assert!(bank.height(Vec2::new(0.0, -1.0 - HILL_MIDDLE)) > 5.6 + 2.0);
-        assert!(bank.height(Vec2::new(5.4, -1.0)) > 5.6);
-        // Round: as high as far from its middle every way.
-        let middle = Vec2::new(0.0, -1.0 - HILL_MIDDLE);
-        let reach = Vec2::new(4.5 + HILL_SIDES, HILL_BEHIND);
-        let round = |angle: f32| {
-            bank.height(middle + reach * 0.6 * Vec2::new(angle.cos(), -angle.sin().abs()))
+        // Behind it a dome twice as high as it, as wide as its front three
+        // times and more, coming down to its top over its back, and no
+        // higher: no brow of grass over it.
+        let (middle, reach) = (bank.middle(), bank.reach());
+        assert!(2.0 * reach > 3.0 * 2.0 * 4.5);
+        assert!((bank.height(Vec2::new(0.0, middle)) - 2.0 * 5.6).abs() < 1e-3);
+        assert!((bank.height(Vec2::new(0.0, -1.0)) - 5.6).abs() < 1e-3);
+        assert!(bank.height(Vec2::new(4.5, -1.0)) < 5.6);
+        // Round, and curved all over: as high as far from its middle every
+        // way, and higher the nearer its middle.
+        let round = |angle: f32, share: f32| {
+            let at = Vec2::new(0.0, middle) + reach * share * Vec2::new(angle.cos(), angle.sin());
+            bank.height(at)
         };
-        assert!((round(0.3) - round(1.2)).abs() < 1e-3);
+        for share in [0.2, 0.5, 0.8] {
+            assert!((round(0.3, share) - round(-2.0, share)).abs() < 1e-3);
+            assert!(round(-1.0, share) < round(-1.0, share - 0.1));
+        }
         // Over it and before it nothing: the hill cut away round it, the
         // cut opening out before it.
         assert!(bank.height(Vec2::new(0.0, -0.5)) < 0.0);
@@ -1041,10 +1053,6 @@ mod tests {
         // bulge standing out before it.
         assert!(bank.height(Vec2::new(6.0, 1.0)) < 4.0);
         assert!(bank.height(Vec2::new(7.0, 2.5)) < 0.0);
-        // Behind it the dome falls away, rounded, into the ground.
-        let behind = bank.height(Vec2::new(0.0, -12.0));
-        assert!(behind > 0.0 && behind < 5.6, "{behind}");
-        assert!(bank.height(Vec2::new(0.0, -8.0)) < bank.height(Vec2::new(0.0, -2.0)));
         let (x0, z0, z1) = bank.extent();
         for at in [
             Vec2::new(0.0, z0),
@@ -1190,7 +1198,7 @@ mod tests {
                 let base = Vec3::new(position.x, foot, position.y);
                 let bank = Bank::of(low, high).sunk(base, rotation, terrain);
                 assert!(
-                    bank.sink < 12.0,
+                    bank.sink < 16.0,
                     "{}: {:?}'s bank sinks {} m",
                     circuit.name,
                     prop.model,

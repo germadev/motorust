@@ -606,6 +606,12 @@ pub enum FlowerKind {
     /// in bands of magenta, pink, lavender and white, as round the lakes at
     /// the foot of Mount Fuji.
     Phlox,
+    /// Not flowers, but the grass worn down to bare earth, brown and dusty,
+    /// with tufts of grass and pebbles in it, as round a town or a wood.
+    BareEarth,
+    /// Not flowers, but leaves fallen over the grass, brown, rust, ochre,
+    /// gold and red, as under the trees in autumn.
+    FallenLeaves,
 }
 
 /// Petals, or leaves, drifting down through the air over an area, falling

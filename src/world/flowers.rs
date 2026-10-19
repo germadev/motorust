@@ -99,12 +99,14 @@ const SEEN_FADE: f32 = 20.0;
 const ROAD_CELL: f32 = 32.0;
 
 /// A point of a road's centre line: where, where its walls are (m from it)
-/// and, on the lap, how far round it is (m from the finish line).
+/// and how far round the lap it is (m from the finish line): on a road off
+/// the lap, the stretch of the lap it stands in for, so that a field along
+/// a stretch of the lap lies round the ways of a split there too.
 #[derive(Clone, Copy)]
 struct RoadPoint {
     at: Vec2,
     wall: f32,
-    along: Option<f32>,
+    along: f32,
 }
 
 /// The points of the centre lines of all the roads, by squares of ground.
@@ -129,7 +131,7 @@ impl Roads {
                 cells.entry(road_cell(at)).or_default().push(RoadPoint {
                     at,
                     wall: line.wall_at(index),
-                    along: (road == 0).then(|| track.lap_along_at(index)),
+                    along: line.lap_along_at(index),
                 });
             }
         }
@@ -305,7 +307,7 @@ fn fullness(area: &FlowerArea, point: Vec2, roads: &Roads, lap: f32) -> Option<f
         }
         FlowerArea::Road { span, near, far } => {
             let (road, distance) = roads.nearest(point, far)?;
-            let along = road.along?;
+            let along = road.along;
             if distance < near || !span.contains(along, lap) {
                 return None;
             }
@@ -326,7 +328,7 @@ fn size(kind: FlowerKind) -> Option<(f32, f32, f32)> {
         FlowerKind::Yellow => Some((0.85, 1.6, 0.75)),
         FlowerKind::Iris => Some((0.95, 1.3, 0.68)),
         FlowerKind::Susuki => Some((1.7, 1.8, 0.8)),
-        FlowerKind::Phlox => None,
+        FlowerKind::Phlox | FlowerKind::BareEarth | FlowerKind::FallenLeaves => None,
     }
 }
 
@@ -707,7 +709,11 @@ mod tests {
             for clump in clumps.iter().step_by(11) {
                 let point = Vec2::new(clump.root.x, clump.root.z);
                 assert_eq!(terrain.flowers_drawn(point), Some(clump.kind));
-                assert_ne!(clump.kind, FlowerKind::Phlox, "phlox hugs the ground");
+                assert!(
+                    !foliage::hugs_the_ground(clump.kind),
+                    "{:?} hugs the ground",
+                    clump.kind
+                );
                 let nearest = track.nearest(point);
                 let wall = track.road(nearest.road).wall_at(nearest.index);
                 assert!(nearest.distance > wall + 1.0, "{point}");

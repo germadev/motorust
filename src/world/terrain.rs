@@ -470,11 +470,17 @@ impl Terrain {
 
     /// The colour of grass in flower with `kind` at `p` (x, height, z),
     /// facing `normal`, as a tint over the meadow's texture (linear RGBA):
-    /// moss phlox in its drifts, or the grass's greens, gentler, so the
-    /// flowers stay bright.
+    /// moss phlox in its drifts; bare earth and fallen leaves in their own
+    /// colours, a little lighter or darker here and there, as light as the
+    /// grass is; or the grass's greens, gentler, so the flowers stay bright.
     pub fn meadow_color(&self, p: Vec3, normal: Vec3, kind: FlowerKind) -> [f32; 4] {
         if kind == FlowerKind::Phlox {
             return phlox_color(Vec2::new(p.x, p.z));
+        }
+        if matches!(kind, FlowerKind::BareEarth | FlowerKind::FallenLeaves) {
+            let mottle = 0.85 + 0.3 * fbm(Vec2::new(p.x, p.z) / 23.0 + Vec2::splat(13.0), 2);
+            let light = mottle * (1.0 + self.grass_shade) / 2.0;
+            return [light, light, light, 1.0];
         }
         shaded(
             self.grass_tint(p, normal, 0.0).mix(&Color::WHITE, 0.6),
