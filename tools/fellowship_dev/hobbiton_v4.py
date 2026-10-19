@@ -22,7 +22,10 @@ to be no steeper than 35 degrees; the hobbit holes on the left up the
 flank of the first hill, low and high by turns, facing the riders coming;
 those on the right on the south flank of the second, low, high and low,
 turned south-south-west, towards the bridge and the low sun in the
-south-east (`sun`, how much their fronts face it); and the other
+south-east (`sun`, how much their fronts face it); the Green Dragon on
+the other side of the road, on the outside of the last bend, raised over
+the road and facing the riders, with Bag End and the party tree past it,
+none of them hiding another seen from the road (`clear`); and the other
 buildings, each checked to be seen ahead from the road as the game clears
 the view to its landmarks (`ahead`: 220 m, 0.6 rad).
 
@@ -194,15 +197,37 @@ B_HEADING = math.atan2(-B_FACING[0], -B_FACING[1])
 HOLES_A = [("HobbitDoorBlue", 570.0, 90.0), ("HobbitDoorRed", 550.0, 130.0),
            ("HobbitDoorYellow", 460.0, 100.0), ("HobbitDoorGreen", 450.0, 140.0)]
 MILL = ("Mill", 360.0, 108.0)
-HOLES_B = [("HobbitDoorGreen", on_hill(HILL_B, 140, 0.8)),
-           ("HobbitDoorRed", on_hill(HILL_B, 175, 0.55)),
-           ("HobbitDoorYellow", on_hill(HILL_B, 205, 0.78))]
-GREEN_DRAGON = ("GreenDragon", np.array([375.0, -385.0]))
-SIGN = ("GreenDragonSign", 550.0, -13.5)
-PARTY_TREE = ("PartyTree", 700.0, 45.0)
+HOLES_B = [("HobbitDoorGreen", on_hill(HILL_B, 155, 0.8)),
+           ("HobbitDoorRed", on_hill(HILL_B, 190, 0.55)),
+           ("HobbitDoorYellow", on_hill(HILL_B, 220, 0.78))]
+# On the left of the last bend, on a terrace 2 m over the road, facing the
+# riders coming (as `facing_riders`, the road 110 m back); the party tree
+# past Bag End, so that none of them hides another (`clear`).
+GREEN_DRAGON = ("GreenDragon", 700.0, 52.0)
+SIGN = ("GreenDragonSign", 668.0, 13.5)
+PARTY_TREE = ("PartyTree", 800.0, 50.0)
 BAG_END = ("BagEnd", 770.0, 70.0)
 OAK = ("BagEndOak", 778.0, 84.0)
 ROOT_TREE = ("RootTree", 845.0, 22.0)
+
+def clear(front, front_half, front_tall, behind, views=range(540, 771, 10), cam=2.5, lim=45.0):
+    """The least angle (degrees) between a building `front` (its middle,
+    the height of its foot) and what stands `behind` it (each its middle,
+    the height of its foot, its half width and its height), seen from the
+    road coming at them, within `lim` of straight ahead."""
+    def box(e, ey, f, p, base, half, tall):
+        d = p - e; dist = np.linalg.norm(d)
+        az = math.degrees(math.atan2(f[0] * d[1] - f[1] * d[0], f @ d)); w = math.degrees(half / dist)
+        return (az - w, az + w, math.degrees(math.atan2(base - ey, dist)), math.degrees(math.atan2(base + tall - ey, dist)))
+    worst = 1e9
+    for va in views:
+        e = pos(va); ey = float(LAP.h[LAP.index_at(va)]) + cam; f = fwd(heading(va))
+        g = box(e, ey, f, front[0], front[1], front_half, front_tall)
+        for p, h, half, tall in behind:
+            b = box(e, ey, f, p, h, half, tall)
+            if abs((g[0] + g[1]) / 2) < lim and abs((b[0] + b[1]) / 2) < lim:
+                worst = min(worst, max(b[0] - g[1], g[0] - b[1], b[2] - g[3], g[2] - b[3]))
+    return worst
 
 def ahead(p, a_from=0.0, a_to=1100.0, angle=0.6, near=11.5, far=220.0):
     """The alongs from which `p` is within `angle` of straight ahead."""
@@ -230,8 +255,11 @@ if __name__ == "__main__":
         print(f"{name:15s} at {np.round(c, 1)} R {rad:.0f} {h:.0f} m: {h * shape(road_d(c) / rad):.1f} m at the road,"
               f" {wet:.1f} m at the water, steepest {math.degrees(math.atan(h * 1.5 / (0.55 * rad))):.0f} deg")
     print("the right's fronts face the sun by", round(float(B_FACING @ SUN), 2), "heading", round(B_HEADING, 4))
-    placed = [(n, pos(a, l)) for n, a, l in HOLES_A + [MILL]] + HOLES_B + [GREEN_DRAGON] \
-        + [(n, pos(a, l)) for n, a, l in [SIGN, PARTY_TREE, BAG_END, OAK, ROOT_TREE]]
+    placed = [(n, pos(a, l)) for n, a, l in HOLES_A + [MILL]] + HOLES_B \
+        + [(n, pos(a, l)) for n, a, l in [GREEN_DRAGON, SIGN, PARTY_TREE, BAG_END, OAK, ROOT_TREE]]
+    gd = pos(*GREEN_DRAGON[1:])
+    behind = [(pos(*BAG_END[1:]), 20.6, 6.0, 12.0), (pos(*OAK[1:]), 22.0, 7.0, 16.0), (pos(*PARTY_TREE[1:]), 5.0, 10.0, 24.0)]
+    print("the Green Dragon clear of Bag End, its oak and the party tree by", round(clear((gd, 6.8), 16.5, 9.0, behind), 1), "degrees")
     for name, p in placed:
         print(f"{name:18s} at {np.round(p, 1)}: {road_d(p):5.1f} m from the road, {water_d(p):5.1f} m from the water,"
               f" seen ahead from {ahead(p)}")

@@ -176,7 +176,10 @@ impl Palette {
             // A summer sunset in high country: the sun low in the south-east
             // and golden, raking across the hills so that each casts a long
             // shadow over the next and the fronts of the hills glow, the
-            // shade cool and darker, filled less by the sky; the sky blue
+            // shade cool, filled by the sky a little less than on a summer
+            // day, so that what the sun lights from behind (the halls and
+            // the rock at the head of Rivendell's valley, ahead of the
+            // riders coming south) is not dull; the sky blue
             // overhead, golden towards the sun and the horizon, a warm haze
             // fading the hills one behind another; and the picture graded as
             // a film is, less saturated, with more contrast, a little warm,
@@ -195,7 +198,7 @@ impl Palette {
                 sunlight: Color::srgb(1.0, 0.82, 0.62),
                 sunlight_strength: 1.35,
                 ambient: Color::srgb(0.58, 0.64, 0.86),
-                ambient_brightness: 430.0,
+                ambient_brightness: 600.0,
                 clouds: Color::srgb(1.0, 0.84, 0.72),
                 fog: HAZE,
                 grade: Grade {
@@ -1213,7 +1216,8 @@ mod tests {
     #[test]
     fn high_country_is_a_bright_sunset_of_long_shadows_graded_as_a_film() {
         // A sunset's sun, low and golden, stronger than a summer day's; the
-        // shade filled less by the sky, so the hills' shadows stand out; a
+        // shade filled less by the sky, so the hills' shadows stand out, but
+        // not so little that what the sun lights from behind is dull; a
         // quieter sky overhead and golden at the horizon; a haze from
         // nearer; and a picture a little less saturated than a summer day's,
         // with more contrast, warm, and lit up.
@@ -1223,7 +1227,8 @@ mod tests {
         let sun = high.sunlight.to_srgba();
         assert!(sun.red > sun.blue + 0.3);
         assert!(high.sunlight_strength > day.sunlight_strength);
-        assert!(high.ambient_brightness < day.ambient_brightness * 0.7);
+        assert!(high.ambient_brightness < day.ambient_brightness * 0.9);
+        assert!(high.ambient_brightness > day.ambient_brightness * 0.8);
         let vivid = |c: Color| {
             let c = c.to_srgba();
             c.blue - c.red.min(c.green)
