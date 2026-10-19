@@ -16,8 +16,8 @@ left): the Water, the pool, the hills, the hobbit holes and the other
 buildings, each checked to be seen ahead from the road (`ahead`): the
 first holes past the bridge on the left, where the riders look all
 through the sweep to the right, across the water; each row of holes
-staggered up its hill, each hole further out and higher than the one
-before it and to one side of it, so that none hides another.
+up its hill at heights that alternate, low and high (not a staircase),
+each to one side of the others, so that none hides another.
 
 Run: `python3 tools/fellowship_dev/hobbiton_v3.py [name=value ...]` from the
 repository root prints the last arc, the lap's length and its tightest
@@ -181,12 +181,12 @@ def ahead(p, a_from=0.0, a_to=900.0, angle=0.45, near=50.0, far=260.0):
     return (min(seen), max(seen), len(seen) * 4)
 
 
-HOLES_A = [("HobbitDoorBlue", 410.0, 40.0), ("HobbitDoorRed", 400.0, 60.0),
-           ("HobbitDoorYellow", 390.0, 80.0), ("HobbitDoorGreen", 380.0, 100.0)]
+HOLES_A = [("HobbitDoorBlue", 420.0, 55.0), ("HobbitDoorRed", 400.0, 100.0),
+           ("HobbitDoorYellow", 380.0, 55.0), ("HobbitDoorGreen", 370.0, 100.0)]
 MILL = ("Mill", 350.0, 70.0)
 POND_AT = (560.0, -74.0); POND_R = 24.0
-HOLES_B = [("HobbitDoorGreen", 600.0, -116.0), ("HobbitDoorRed", 580.0, -136.0),
-           ("HobbitDoorYellow", 560.0, -156.0)]
+HOLES_B = [("HobbitDoorGreen", 610.0, -125.0), ("HobbitDoorRed", 580.0, -155.0),
+           ("HobbitDoorYellow", 550.0, -125.0)]
 GREEN_DRAGON = ("GreenDragon", 620.0, -96.0)
 SIGN = ("GreenDragonSign", 520.0, -13.5)
 PARTY_TREE = ("PartyTree", 640.0, 42.0)

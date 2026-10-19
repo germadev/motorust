@@ -26,6 +26,9 @@ Some models need mending as they are read:
   quarter and a third of the way up, where the bikes ride through: they are
   cut away. Sized by its opening, as the torii over Ghost Island's road,
   and squashed down to `SIZES`' height, from the 19 m it would stand.
+- The Prancing Pony (`prancing_pony`): its archway, through which a way
+  of Bree's road runs, is made wider (`PONY_ARCH`): the inn stretched
+  along X about it, and the rest of it moved out either side.
 - A house of Bree (`bree_house_a`) came hung with the Green Dragon's sign,
   off its right side: cut away (the Green Dragon is in Bywater).
 - The elven boat (`elven_boat`) came with four oars out over its sides,
@@ -132,6 +135,11 @@ WHEEL_GAP = 0.1
 # How much wider the Doors of Durin are made, closer to the arch drawn in
 # the film.
 DURIN_WIDER = 1.4
+# The Prancing Pony's archway, through which a way of Bree's road runs: its
+# middle (x, m, as the inn is sized), how far either side of it the inn is
+# stretched (m: the archway and its jambs), and how much wider it is made
+# either side (m), the rest of the inn moved out by as much.
+PONY_ARCH = (-0.75, 2.5, 2.0)
 # The ithildin's lines: how wide (m), how far in front of the stone (m),
 # and how long their pieces are at most (m), each laid on the stone; and
 # the glow round them: as much wider, nearer the stone, its stars bigger.
@@ -319,6 +327,22 @@ def widened(positions, normals, factor):
     bent = normals / stretch
     bent /= np.linalg.norm(bent, axis=1, keepdims=True).clip(1e-9)
     return positions * stretch, bent
+
+
+def arch_widened(positions, normals, middle, reach, wider):
+    """The Prancing Pony with its archway made wider: within `reach` of its
+    `middle` (x) stretched along X, so that it is `wider` wider either side,
+    and the rest moved out either side by as much; its normals turned to
+    match. As the inn stretches out as much either way, it stays centred."""
+    x = positions[:, 0] - middle
+    stretch = (reach + wider) / reach
+    within = np.abs(x) <= reach
+    p = positions.copy()
+    p[:, 0] = middle + np.where(within, x * stretch, x + np.sign(x) * wider)
+    n = normals.copy()
+    n[within, 0] /= stretch
+    n /= np.linalg.norm(n, axis=1, keepdims=True).clip(1e-9)
+    return p, n
 
 
 def hinges(positions, indices, leaves):
@@ -683,6 +707,8 @@ def main():
         placed = (positions - centre) * scale
         bent = normals / scale
         bent /= np.linalg.norm(bent, axis=1, keepdims=True).clip(1e-9)
+        if name == "prancing_pony":
+            placed, bent = arch_widened(placed, bent, *PONY_ARCH)
         p, n, u, i = compact(placed, bent, moved, indices)
         pieces.append((name, p, n, u, i))
         report(name, p, i)
