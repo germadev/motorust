@@ -183,7 +183,7 @@ pub const MOON_BASE: Circuit = Circuit {
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 2240.0,
+                along: 2290.0,
                 color: ORANGE,
                 text: Some("CHECKPOINT"),
             },
