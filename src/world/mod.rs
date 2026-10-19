@@ -1310,13 +1310,16 @@ mod tests {
         // background: the menu goes on at once, the circuit on its way.
         let last = CIRCUITS.len() - 1;
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
-        let started = std::time::Instant::now();
         app.update();
-        assert!(started.elapsed().as_secs_f32() < 1.0, "the menu stopped");
+        // The menu goes on at once: the circuit is on its way, not waited
+        // for. (A wall-clock bound here only measured how loaded the machine
+        // was when the whole suite ran in parallel.)
         assert_eq!(
             *app.world().resource::<CircuitLoading>(),
             CircuitLoading(true)
         );
+        assert!(app.world().resource::<Preparing>().0.contains_key(&last));
+        let started = std::time::Instant::now();
         // It comes, shown alone, with what lies beside its roads.
         let mut roots = app.world_mut().query::<(&WorldRoot, &Visibility)>();
         while app.world().resource::<CircuitLoading>().0 {
