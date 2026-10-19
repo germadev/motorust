@@ -199,7 +199,7 @@ impl Palette {
                 clouds: Color::srgb(1.0, 0.84, 0.72),
                 fog: HAZE,
                 grade: Grade {
-                    saturation: 0.84,
+                    saturation: 0.88,
                     contrast: 1.14,
                     exposure: 0.25,
                     warmth: 0.008,

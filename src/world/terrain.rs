@@ -1498,18 +1498,19 @@ fn greens_tint(greens: Greens, p: Vec3, normal: Vec3, wild: f32) -> Color {
 
 /// A lush green land's greens (`Greens::Lush`), as tints over the grass's
 /// texture: the countryside's (see [`grass_tint`]), its forests as they
-/// are, but its grass deeper and greener, less red in it, as the grass of
-/// a wet land is in the sun, not yellowed by it; and darker where it grows
-/// thick, in drifts some tens of metres across, so that a green hill is
-/// not one flat green.
+/// are, but its grass deep, rich and green, little red and less blue in
+/// it, as the grass of a wet land is in the sun (the Shire's at
+/// Matamata: about sRGB 80, 125, 35 in the sun), not yellowed nor
+/// paled by it; and darker where it grows thick, in drifts some tens of
+/// metres across, so that a green hill is not one flat green.
 fn lush_tint(p: Vec3, normal: Vec3, wild: f32) -> Color {
-    const LUSH: Color = Color::srgb(0.5, 0.82, 0.5);
-    const THICK: Color = Color::srgb(0.4, 0.64, 0.4);
+    const LUSH: Color = Color::srgb(0.39, 0.68, 0.17);
+    const THICK: Color = Color::srgb(0.3, 0.52, 0.12);
     let at = Vec2::new(p.x, p.z);
     let grass = 1.0 - smoothstep(FOREST_FROM, FOREST_FULL, p.y).max(wild);
     let thick = smoothstep(0.42, 0.68, fbm(at / 28.0 + Vec2::splat(53.0), 3));
     grass_tint(p, normal, wild)
-        .mix(&LUSH, 0.5 * grass)
+        .mix(&LUSH, 0.75 * grass)
         .mix(&THICK, 0.5 * thick * grass)
 }
 
