@@ -905,6 +905,24 @@ pub struct MiddleEarth {
     /// Where the ground stays grass however steep it is (but sheer), as the
     /// banks and the cut doorsteps of Hobbiton's hillsides are.
     pub turf: &'static [Turf],
+    /// Lights that fill a stretch of land the low sun lights only from
+    /// behind, as Rivendell's halls are, seen by the riders coming at them.
+    pub glows: &'static [Glow],
+}
+
+/// A light that fills what the low sun lights only from behind (see
+/// [`MiddleEarth::glows`]): shining from `from` at `to`, `illuminance` lux
+/// there, in `color`, in a cone `angle` radians round its axis, casting no
+/// shadow, as the evening sky's light does. With `shaft`, it comes down from
+/// the sky onto one building, a sunbeam through the clouds, and its shaft
+/// shows in the air.
+pub struct Glow {
+    pub from: Vec3,
+    pub to: Vec3,
+    pub illuminance: f32,
+    pub color: Color,
+    pub angle: f32,
+    pub shaft: bool,
 }
 
 /// A round stretch of land whose steep slopes are grass, not rock (see

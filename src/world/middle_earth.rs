@@ -24,7 +24,7 @@ use super::flowers::{FlowerPlan, spawn_flowers};
 use super::japan::{PropPack, Turning, in_view, spawn_petals, spot};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
-use super::scenery::{MiddleEarthModel, Prop, Scenery, Spot};
+use super::scenery::{Glow, MiddleEarthModel, Prop, Scenery, Spot};
 use super::terrain::{GRASS_TILE, SEA_LEVEL, Terrain};
 use crate::geometry::{fbm, smoothstep};
 use crate::track::Track;
@@ -54,6 +54,21 @@ const WADE: f32 = 1.2;
 /// How far either side of the middle of the road the towers of Bree's gate
 /// stand (m), past the walls: the ground under them sets its foot.
 const GATE_TOWERS: f32 = 14.5;
+/// How far past what it lights the light of a [`Glow`] reaches, as many
+/// times as far as it is from it: so far that it is as bright there as it
+/// says (its light fades out only towards the end of its reach), and dark
+/// well past it.
+const GLOW_REACH: f32 = 2.5;
+/// How much of a [`Glow`]'s cone it lights fully, the rest fading out to
+/// its edge.
+const GLOW_CORE: f32 = 0.6;
+/// The shaft of a [`Glow`] coming down from the sky, seen in the air: how
+/// many planes crossed round its axis make it, how far up from what it
+/// lights it shows (m), and how bright it is down its middle and at its
+/// foot (linear, added over what is behind it, as light is).
+const SHAFT_PLANES: usize = 4;
+const SHAFT_LENGTH: f32 = 110.0;
+const SHAFT_LIGHT: f32 = 0.05;
 
 /// The hill a hobbit hole is dug into, a dome over its rooms behind its
 /// front: so many times as high as the hole and as wide as its front,
@@ -347,6 +362,31 @@ pub fn spawn_middle_earth(
         world.spawn((Mesh3d(assets.meshes.add(paths)), MeshMaterial3d(material)));
     }
     taken.extend(path_footprints(middle_earth.paths));
+    for glow in middle_earth.glows {
+        world.spawn((
+            glow_light(glow),
+            Transform::from_translation(glow.from).looking_at(glow.to, Vec3::Y),
+        ));
+    }
+    let shafts = middle_earth.glows.iter().filter(|glow| glow.shaft);
+    if shafts.clone().next().is_some() {
+        // Light in the air: added over what is behind it, seen from either
+        // side, not fogged.
+        let material = assets.materials.add(StandardMaterial {
+            unlit: true,
+            alpha_mode: AlphaMode::Add,
+            cull_mode: None,
+            double_sided: true,
+            fog_enabled: false,
+            ..default()
+        });
+        for glow in shafts {
+            world.spawn((
+                Mesh3d(assets.meshes.add(shaft_mesh(glow))),
+                MeshMaterial3d(material.clone()),
+            ));
+        }
+    }
     spawn_petals(world, track, terrain, middle_earth.petals, assets);
     let meadows = spawn_flowers(
         world,
@@ -364,6 +404,62 @@ pub fn spawn_middle_earth(
         taken.extend(in_view(track, position));
     }
     taken
+}
+
+/// The light of a [`Glow`]: a spot light shining at its target, as bright
+/// there as the glow says (a spot light's lumens spread as a point light's,
+/// over the whole sphere), reaching well past it, casting no shadow.
+fn glow_light(glow: &Glow) -> SpotLight {
+    let distance = glow.from.distance(glow.to);
+    SpotLight {
+        color: glow.color,
+        intensity: glow.illuminance * 4.0 * std::f32::consts::PI * distance * distance,
+        range: distance * GLOW_REACH,
+        radius: 0.0,
+        shadow_maps_enabled: false,
+        outer_angle: glow.angle,
+        inner_angle: glow.angle * GLOW_CORE,
+        ..default()
+    }
+}
+
+/// The shaft of light a [`Glow`] comes down from the sky in, as it shows in
+/// the air: planes crossed round its axis, from what it lights up towards
+/// where it comes from, as wide as its full light, brightest down their
+/// middle and at their foot, fading out to their edges and up into the sky.
+fn shaft_mesh(glow: &Glow) -> Mesh {
+    const ROWS: usize = 8;
+    const ACROSS: [f32; 5] = [-1.0, -0.5, 0.0, 0.5, 1.0];
+    let distance = glow.from.distance(glow.to);
+    let up = (glow.from - glow.to) / distance;
+    let length = SHAFT_LENGTH.min(distance);
+    let radius = distance * (glow.angle * GLOW_CORE).tan();
+    let light = glow.color.to_linear();
+    let mut builder = MeshBuilder::default();
+    for plane in 0..SHAFT_PLANES {
+        let turn = plane as f32 * std::f32::consts::PI / SHAFT_PLANES as f32;
+        let across = Quat::from_axis_angle(up, turn) * up.any_orthonormal_vector();
+        let corner = |row: usize, column: usize| {
+            let t = row as f32 / ROWS as f32;
+            let fade = (1.0 - t).powi(2) * (1.0 - ACROSS[column].abs());
+            (
+                glow.to + up * length * t + across * radius * ACROSS[column],
+                Vec2::new(column as f32, row as f32),
+                // Added as light is, by its colour alone: opaque.
+                Color::from((light * (SHAFT_LIGHT * fade)).with_alpha(1.0)),
+            )
+        };
+        let facing = across.cross(up);
+        for row in 0..ROWS {
+            for column in 0..ACROSS.len() - 1 {
+                let (a, b) = (corner(row, column), corner(row, column + 1));
+                let (c, d) = (corner(row + 1, column + 1), corner(row + 1, column));
+                builder.shaded_triangle([a, b, c], facing);
+                builder.shaded_triangle([a, c, d], facing);
+            }
+        }
+    }
+    builder.build()
 }
 
 /// The lowest of the ground under a prop round `position`, `reach` metres
@@ -852,6 +948,7 @@ mod tests {
     use crate::circuits::CIRCUITS;
     use crate::track::WALL_DISTANCE;
     use crate::world::japan::{VIEW_CLEAR, bounds};
+    use bevy::mesh::VertexAttributeValues;
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
@@ -1224,6 +1321,98 @@ mod tests {
             }
             assert!(banks >= 5, "{}: {banks} hobbit holes", circuit.name);
         }
+    }
+
+    #[test]
+    fn glows_light_rivendell_s_halls_on_the_side_the_riders_see() {
+        for (circuit, track, terrain) in &in_middle_earth() {
+            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            assert!(!middle_earth.glows.is_empty(), "{}", circuit.name);
+            for glow in middle_earth.glows {
+                // As bright on what it lights as it says, and reaching
+                // well past it.
+                let light = glow_light(glow);
+                let distance = glow.from.distance(glow.to);
+                let lux = light.intensity / (4.0 * std::f32::consts::PI * distance * distance);
+                assert!((lux / glow.illuminance - 1.0).abs() < 1e-3, "{lux} lx");
+                assert!(light.range > 2.0 * distance);
+                assert!(!light.shadow_maps_enabled);
+            }
+            // The halls at the head of Rivendell's valley, which the low sun
+            // lights from behind as the riders come down it: each in the
+            // full light of a glow, which falls on its front, and in a
+            // sunbeam's, down from the sky onto it.
+            let halls = [
+                MiddleEarthModel::Gazebo,
+                MiddleEarthModel::LastHomelyHouse,
+                MiddleEarthModel::ElvenTower,
+            ];
+            for prop in middle_earth
+                .props
+                .iter()
+                .filter(|p| halls.contains(&p.model))
+            {
+                let (position, rotation) = spot(track, prop);
+                let at = Vec3::new(position.x, terrain.height(position) + 8.0, position.y);
+                let front = rotation * Vec3::Z;
+                let lit = |glow: &&Glow| {
+                    let axis = glow.to - glow.from;
+                    axis.angle_between(at - glow.from) < glow.angle * GLOW_CORE
+                        && (at - glow.from).dot(front) < 0.0
+                };
+                assert!(
+                    middle_earth.glows.iter().any(|glow| lit(&glow)),
+                    "{}: {:?} in the shade",
+                    circuit.name,
+                    prop.model
+                );
+                assert!(
+                    middle_earth
+                        .glows
+                        .iter()
+                        .filter(|glow| glow.shaft)
+                        .any(|glow| {
+                            let down = glow.from - glow.to;
+                            lit(&glow) && down.y > 0.8 * down.length()
+                        }),
+                    "{}: no sunbeam on {:?}",
+                    circuit.name,
+                    prop.model
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_sunbeam_s_shaft_fades_out_to_its_edges_and_up_into_the_sky() {
+        let glow = Glow {
+            from: Vec3::new(0.0, 150.0, 0.0),
+            to: Vec3::ZERO,
+            illuminance: 6000.0,
+            color: Color::WHITE,
+            angle: 0.1,
+            shaft: true,
+        };
+        let mesh = shaft_mesh(&glow);
+        let colors = match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {
+            Some(VertexAttributeValues::Float32x4(colors)) => colors.clone(),
+            _ => panic!("no colours"),
+        };
+        let radius = 150.0 * (0.1 * GLOW_CORE).tan();
+        let mut brightest = 0.0f32;
+        for (p, c) in positions(&mesh).iter().zip(&colors) {
+            let (out, up) = (Vec2::new(p[0], p[2]).length(), p[1]);
+            // As wide as the glow's full light, as high as it shows.
+            assert!(out < radius + 1e-3 && (-1e-3..=SHAFT_LENGTH + 1e-3).contains(&up));
+            // Dark (adding nothing) at its edges and at its top.
+            if out > radius - 1e-3 || up > SHAFT_LENGTH - 1e-3 {
+                assert!(c[0].max(c[1]).max(c[2]) < 1e-6, "{c:?} at {p:?}");
+            }
+            assert_eq!(c[3], 1.0);
+            brightest = brightest.max(c[0]);
+        }
+        // Brightest down its middle at its foot, faint even there.
+        assert!((brightest - SHAFT_LIGHT).abs() < 1e-4, "{brightest}");
     }
 
     #[test]

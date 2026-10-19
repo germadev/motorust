@@ -92,6 +92,13 @@ const LORIEN_SPLIT: (f32, f32) = (4187.1, 4537.1);
 const GOLD: Color = Color::srgb(0.86, 0.68, 0.22);
 const GREEN: Color = Color::srgb(0.22, 0.45, 0.2);
 const CREAM: Color = Color::srgb(0.93, 0.88, 0.72);
+/// The warm light that fills Rivendell's valley (see `MiddleEarth::glows`),
+/// as of the evening sky over it.
+const RIVENDELL_LIGHT: Color = Color::srgb(1.0, 0.86, 0.68);
+/// The sunbeams down from the sky onto Rivendell's halls: how bright on
+/// them (lx), and their light, golden.
+const SUNBEAM: f32 = 6000.0;
+const SUNBEAM_LIGHT: Color = Color::srgb(1.0, 0.84, 0.58);
 
 pub const FELLOWSHIP_ROAD: Circuit = Circuit {
     name: "Fellowship Road",
@@ -435,6 +442,65 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                 center: Vec2::new(285.0, -495.0),
                 radius: 250.0,
             }],
+            // Rivendell's halls and the rock at the head of its valley, which
+            // the low sun in the south-east lights only from behind as the
+            // riders come down the valley at them: a warm light, as of the
+            // evening sky, from behind and over the riders, fills them. And
+            // up the valley, where the rock on its east side shades both its
+            // walls, a light across it onto each wall. And over each of its
+            // halls, the pavilion, the Last Homely House and the tower, a
+            // sunbeam down from the sky through the clouds, leaning towards
+            // the riders, its shaft showing in the air.
+            glows: &[
+                Glow {
+                    from: Vec3::new(1549.2, 133.2, -93.5),
+                    to: Vec3::new(1613.0, 36.0, 105.0),
+                    illuminance: 3500.0,
+                    color: RIVENDELL_LIGHT,
+                    angle: 0.6,
+                    shaft: false,
+                },
+                Glow {
+                    from: Vec3::new(1720.0, 100.0, -300.0),
+                    to: Vec3::new(1565.8, 25.0, -221.8),
+                    illuminance: 2500.0,
+                    color: RIVENDELL_LIGHT,
+                    angle: 0.7,
+                    shaft: false,
+                },
+                Glow {
+                    from: Vec3::new(1450.0, 100.0, -300.0),
+                    to: Vec3::new(1634.0, 20.0, -208.0),
+                    illuminance: 2500.0,
+                    color: RIVENDELL_LIGHT,
+                    angle: 0.7,
+                    shaft: false,
+                },
+                Glow {
+                    from: Vec3::new(1604.8, 163.2, -11.3),
+                    to: Vec3::new(1624.5, 27.3, 49.0),
+                    illuminance: SUNBEAM,
+                    color: SUNBEAM_LIGHT,
+                    angle: 0.067,
+                    shaft: true,
+                },
+                Glow {
+                    from: Vec3::new(1599.4, 175.9, 52.2),
+                    to: Vec3::new(1619.1, 40.0, 112.5),
+                    illuminance: SUNBEAM,
+                    color: SUNBEAM_LIGHT,
+                    angle: 0.166,
+                    shaft: true,
+                },
+                Glow {
+                    from: Vec3::new(1557.5, 189.1, 91.7),
+                    to: Vec3::new(1577.1, 53.2, 151.9),
+                    illuminance: SUNBEAM,
+                    color: SUNBEAM_LIGHT,
+                    angle: 0.067,
+                    shaft: true,
+                },
+            ],
         }),
     },
 };
@@ -557,7 +623,7 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     by_road(MiddleEarthModel::ElvenLamp, 2795.1, -13.5),
     by_road(MiddleEarthModel::Gazebo, 2815.0, 48.0).facing_riders(),
     by_road(MiddleEarthModel::LastHomelyHouse, 2857.1, 58.0).facing_riders(),
-    by_road(MiddleEarthModel::ElvenTower, 2885.1, 70.0)
+    by_road(MiddleEarthModel::ElvenTower, 2891.7, 50.3)
         .scaled(1.25)
         .facing_riders(),
     // The Doors of Durin, open, in the sheer Walls of Moria: the road goes
@@ -630,7 +696,8 @@ const KNOLLS: [Terrace; 17] = [
     knoll(1545.1, -654.1, 8.0, 25.9),
     // Rivendell's halls, one over another: the pavilion to the left of the
     // others, 4 m over the road, the Last Homely House on a ledge 10 m over
-    // it, and the tower on a crag cut into the rock behind, 12 m over it.
+    // it, and the tower on a ledge at the edge of the rock behind, 16 m
+    // over it, where nothing of the rock hides it from the road.
     knoll(1624.5, 49.0, 6.0, 22.8),
     Terrace {
         center: Vec2::new(1620.0, 110.0),
@@ -639,7 +706,7 @@ const KNOLLS: [Terrace; 17] = [
         tilt: Vec2::ZERO,
         skirt: 10.0,
     },
-    knoll(1598.0, 160.0, 6.0, 34.0),
+    knoll(1577.1, 151.9, 6.0, 38.2),
 ];
 
 /// A knoll a building stands on (see `KNOLLS`): level, its edge blending
