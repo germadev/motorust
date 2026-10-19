@@ -58,6 +58,14 @@ const RING_SPIN: f32 = 3.5;
 /// in front of the rock face so that it does not sink into it.
 const FALLS_TOP: f32 = WALL_DISTANCE + 22.0;
 const FALLS_BOTTOM: f32 = WALL_DISTANCE + 0.9;
+/// Its foot, where the water lands, is where the rock rises: looked for
+/// out from just past the wall, in steps of so many metres, as the last
+/// point where the ground lies at most so high over the road (m), and no
+/// further out than this past `FALLS_BOTTOM` (m).
+const FALLS_FOOT_FROM: f32 = WALL_DISTANCE + 0.3;
+const FALLS_FOOT_STEP: f32 = 0.25;
+const FALLS_FOOT_RISE: f32 = 1.5;
+const FALLS_FOOT_PAST: f32 = 2.0;
 const FALLS_STATIONS: usize = 44;
 const FALLS_IN_FRONT: f32 = 0.8;
 /// Size (m) of each repetition of the water texture, and how many of them
@@ -850,8 +858,8 @@ pub fn spawn_waterfalls(
 
 /// Adds the sheet of water of a waterfall to `mesh`: draped a little in
 /// front of the ground, from the stream on top of the cutting, over its
-/// edge and down its face, to the pool at its foot. Returns where the foam
-/// goes.
+/// edge and down its face, to the pool at its foot (see [`falls_foot`]).
+/// Returns where the foam goes.
 fn waterfall_sheet(
     mesh: &mut MeshBuilder,
     track: &Track,
@@ -868,9 +876,14 @@ fn waterfall_sheet(
         let ground = terrain.height(behind).max(terrain.height(at));
         Vec3::new(at.x, ground + 0.08, at.y)
     };
-    let stations: Vec<f32> = (0..=FALLS_STATIONS)
-        .map(|k| FALLS_TOP.lerp(FALLS_BOTTOM, k as f32 / FALLS_STATIONS as f32))
+    let feet: Vec<f32> = (0..=columns)
+        .map(|k| falls_foot(track, terrain, first + k, side))
         .collect();
+    let stations = |foot: f32| -> Vec<f32> {
+        (0..=FALLS_STATIONS)
+            .map(|k| FALLS_TOP.lerp(foot, k as f32 / FALLS_STATIONS as f32))
+            .collect()
+    };
     for k in 0..columns {
         let (i, j) = (first + k, first + k + 1);
         let (u0, u1) = (
@@ -882,9 +895,10 @@ fn waterfall_sheet(
             Vec3::new(toward.x, 1.0, toward.y)
         };
         let mut v = 0.0;
-        for pair in stations.windows(2) {
-            let (a0, a1) = (point(i, pair[0]), point(i, pair[1]));
-            let (b0, b1) = (point(j, pair[0]), point(j, pair[1]));
+        let (near, far) = (stations(feet[k]), stations(feet[k + 1]));
+        for (a, b) in near.windows(2).zip(far.windows(2)) {
+            let (a0, a1) = (point(i, a[0]), point(i, a[1]));
+            let (b0, b1) = (point(j, b[0]), point(j, b[1]));
             let down = a0.distance(a1) / FALLS_TILE;
             mesh.quad(
                 [
@@ -901,10 +915,29 @@ fn waterfall_sheet(
     }
     (0..=columns)
         .map(|k| {
-            let at = track.offset_point(first + k, side * (FALLS_BOTTOM + 0.4));
+            let at = track.offset_point(first + k, side * feet[k]);
             Vec3::new(at.x, terrain.height(at) + 0.1, at.y)
         })
         .collect()
+}
+
+/// How far from the middle of the road the foot of a waterfall's rock face
+/// is at sample `index`, on `side` (its sign): where the ground starts to
+/// rise. The terrain is a grid coarser than the gap between the wall and
+/// the rock, so how high its ground stands just past the wall varies along
+/// a cliff; the water ends, and its foam lands, at the ground's own foot.
+fn falls_foot(track: &Track, terrain: &Terrain, index: usize, side: f32) -> f32 {
+    let mut foot = FALLS_FOOT_FROM;
+    let mut lateral = FALLS_FOOT_FROM;
+    while lateral <= FALLS_BOTTOM + FALLS_FOOT_PAST {
+        let at = track.offset_point(index, side * lateral);
+        if terrain.height(at) > track.road_height(at) + FALLS_FOOT_RISE {
+            break;
+        }
+        foot = lateral;
+        lateral += FALLS_FOOT_STEP;
+    }
+    foot
 }
 
 #[cfg(test)]
@@ -1003,7 +1036,9 @@ mod tests {
                     let road = track.road_height(Vec2::new(p.x, p.z));
                     assert!(
                         p.y - road < 4.0 && top - p.y > 6.0,
-                        "foam {} m up",
+                        "{}: the waterfall at {}'s foam {} m up",
+                        circuit.name,
+                        waterfall.along,
                         p.y - road
                     );
                 }

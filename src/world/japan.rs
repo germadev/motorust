@@ -171,14 +171,14 @@ const MODELS: [PropModel; 19] = [
     PropModel::WaterWheel,
 ];
 
-/// A piece of the pack: its mesh and the corners of the box round it, in
-/// its own frame, and points over its faces for the water to mirror it
-/// (see [`surface`]).
-struct Piece {
-    mesh: Handle<Mesh>,
-    low: Vec3,
-    high: Vec3,
-    surface: Vec<MirrorPoint>,
+/// A piece of a pack: its mesh and the corners of the box round it, in its
+/// own frame, and points over its faces for the water to mirror it (see
+/// [`surface`]).
+pub(super) struct Piece {
+    pub(super) mesh: Handle<Mesh>,
+    pub(super) low: Vec3,
+    pub(super) high: Vec3,
+    pub(super) surface: Vec<MirrorPoint>,
 }
 
 /// How far apart the points over a prop's faces are, at most (m of the
@@ -251,28 +251,28 @@ fn surface(mesh: &Mesh, atlas: &Image) -> Vec<MirrorPoint> {
     points
 }
 
-/// The props' meshes, by name, and their one material.
-#[derive(Resource)]
-pub struct ModelledProps {
+/// A pack of props made with Meshy: their meshes, by name, and their one
+/// material, in the colours of all of them.
+pub(super) struct PropPack {
     pieces: Vec<(String, Piece)>,
-    material: Handle<StandardMaterial>,
+    pub(super) material: Handle<StandardMaterial>,
 }
 
-impl ModelledProps {
-    fn piece(&self, name: &str) -> &Piece {
+impl PropPack {
+    pub(super) fn piece(&self, name: &str) -> &Piece {
         &self
             .pieces
             .iter()
             .find(|(piece, _)| piece == name)
-            .unwrap_or_else(|| panic!("no {name} in props.bin"))
+            .unwrap_or_else(|| panic!("no {name} in the pack"))
             .1
     }
-}
 
-impl FromWorld for ModelledProps {
-    fn from_world(world: &mut World) -> Self {
-        let pack = read(include_bytes!("../../assets/models/props/props.bin"));
-        let atlas = texture(include_bytes!("../../assets/models/props/color.jpg"), true);
+    /// The pack in `bin` (see `tools/import_props.py`) and its colours in
+    /// `color`.
+    pub(super) fn load(world: &mut World, bin: &[u8], color: &[u8]) -> Self {
+        let pack = read(bin);
+        let atlas = texture(color, true);
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
         let pieces = pack
             .meshes
@@ -305,8 +305,22 @@ impl FromWorld for ModelledProps {
     }
 }
 
+/// The props of feudal Japan.
+#[derive(Resource)]
+pub struct ModelledProps(pub(super) PropPack);
+
+impl FromWorld for ModelledProps {
+    fn from_world(world: &mut World) -> Self {
+        Self(PropPack::load(
+            world,
+            include_bytes!("../../assets/models/props/props.bin"),
+            include_bytes!("../../assets/models/props/color.jpg"),
+        ))
+    }
+}
+
 /// The corners of the box round a mesh.
-fn bounds(mesh: &Mesh) -> (Vec3, Vec3) {
+pub(super) fn bounds(mesh: &Mesh) -> (Vec3, Vec3) {
     mesh.attribute(Mesh::ATTRIBUTE_POSITION)
         .and_then(|positions| positions.as_float3())
         .expect("a prop has positions")
@@ -379,7 +393,7 @@ pub fn spawn_japan(
     let Some(japan) = &scenery.japan else {
         return Vec::new();
     };
-    spawn_corridors(world, track, terrain, japan, assets.props);
+    spawn_corridors(world, track, terrain, japan, &assets.props.0);
     let mut plinths = Plinths::default();
     let mut taken: Vec<Footprint> = japan
         .props
@@ -390,7 +404,7 @@ pub fn spawn_japan(
                 track,
                 terrain,
                 prop,
-                (assets.props, &mut assets.mirrored),
+                (&assets.props.0, &mut assets.mirrored),
                 &mut plinths,
             )
         })
@@ -407,7 +421,7 @@ pub fn spawn_japan(
                 track,
                 terrain,
                 &prop,
-                (assets.props, &mut assets.mirrored),
+                (&assets.props.0, &mut assets.mirrored),
                 &mut plinths,
             ));
         }
@@ -449,14 +463,14 @@ const VIEW_ANGLE: f32 = 0.6;
 /// How wide the ground is kept clear of trees either side of a line from
 /// the road to a landmark (m), and every how far along the road one is
 /// drawn (m).
-const VIEW_CLEAR: f32 = 4.5;
+pub(super) const VIEW_CLEAR: f32 = 4.5;
 const VIEW_EVERY: f32 = 16.0;
 
 /// The ground to keep clear of trees so that a landmark at `position` is in
 /// view all the way as the road comes at it: along lines from the road,
 /// where it is ahead of the riders, to it, past the road's walls (circles
 /// along each, as footprints for the trees to keep out of).
-fn in_view(track: &Track, position: Vec2) -> Vec<Footprint> {
+pub(super) fn in_view(track: &Track, position: Vec2) -> Vec<Footprint> {
     let mut clear = Vec::new();
     let step = track.step_length();
     let every = (VIEW_EVERY / step).round().max(1.0) as usize;
@@ -549,7 +563,7 @@ fn spawn_corridors(
     track: &Track,
     terrain: &Terrain,
     japan: &Japan,
-    props: &ModelledProps,
+    props: &PropPack,
 ) {
     for corridor in japan.corridors {
         for gate in corridor_gates(track, corridor) {
@@ -580,7 +594,7 @@ fn spawn_corridors(
 }
 
 /// Where a prop stands and which way it faces.
-fn spot(track: &Track, prop: &Prop) -> (Vec2, Quat) {
+pub(super) fn spot<M>(track: &Track, prop: &Prop<M>) -> (Vec2, Quat) {
     let (position, facing) = match prop.spot {
         Spot::Road { along, lateral } => {
             let index = track.index_at(along);
@@ -594,9 +608,16 @@ fn spot(track: &Track, prop: &Prop) -> (Vec2, Quat) {
             };
             (point, facing(track.offset_point(looks, 0.0) - point))
         }
+        Spot::Over { along } => {
+            let (point, heading) = track.pose_at(track.index_at(along));
+            (point, facing(forward(heading)))
+        }
         Spot::At { position, heading } => (position, facing(forward(heading))),
     };
-    (position, facing * Quat::from_rotation_z(prop.lean))
+    (
+        position,
+        facing * Quat::from_rotation_y(prop.turn) * Quat::from_rotation_z(prop.lean),
+    )
 }
 
 /// The plinths the small props by the road stand on: one mesh for the
@@ -750,7 +771,7 @@ pub(super) fn prop_fence(japan: &Japan, lap: f32, along: f32, side: Side) -> boo
         Spot::Road { along: at, lateral } => {
             prop.model.plinth().is_some() && side_at(lateral) == side && apart(at) < FENCE_OPENING
         }
-        Spot::At { .. } => false,
+        Spot::Over { .. } | Spot::At { .. } => false,
     });
     by_hand
         || japan.rows.iter().any(|row| {
@@ -766,7 +787,7 @@ pub(super) fn prop_fence(japan: &Japan, lap: f32, along: f32, side: Side) -> boo
 fn stands_on(prop: &Prop) -> Option<Plinth> {
     match prop.spot {
         Spot::Road { .. } => prop.model.plinth(),
-        Spot::At { .. } => None,
+        Spot::Over { .. } | Spot::At { .. } => None,
     }
 }
 
@@ -808,7 +829,7 @@ fn spawn_prop(
     track: &Track,
     terrain: &Terrain,
     prop: &Prop,
-    (props, mirrored): (&ModelledProps, &mut Vec<MirrorPoint>),
+    (props, mirrored): (&PropPack, &mut Vec<MirrorPoint>),
     plinths: &mut Plinths,
 ) -> Footprint {
     let piece = props.piece(name(prop.model));
@@ -962,7 +983,7 @@ fn plan_petals(track: &Track, terrain: &Terrain, petals: &Petals, seed: u32) -> 
 }
 
 /// The petals in the air, one mesh and one material for each kind.
-fn spawn_petals(
+pub(super) fn spawn_petals(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
@@ -973,6 +994,7 @@ fn spawn_petals(
         let (mesh, color) = match area.kind {
             PetalKind::Maple => (maple_leaf_mesh(), Color::srgb(0.7, 0.22, 0.12)),
             PetalKind::Cherry => (cherry_petal_mesh(), Color::srgb(0.98, 0.93, 0.95)),
+            PetalKind::Gold => (cherry_petal_mesh(), Color::srgb(0.93, 0.72, 0.24)),
         };
         let mesh = assets.meshes.add(mesh);
         // Unlit: a petal is too small, and turns too fast, to show its
@@ -1058,7 +1080,7 @@ fn cherry_petal_mesh() -> Mesh {
 }
 
 /// The rotation that turns a prop's front (+Z) towards `direction` (x, z).
-fn facing(direction: Vec2) -> Quat {
+pub(super) fn facing(direction: Vec2) -> Quat {
     Quat::from_rotation_y(direction.x.atan2(direction.y))
 }
 

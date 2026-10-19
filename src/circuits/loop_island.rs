@@ -32,6 +32,8 @@ const BRIDGE: Span = span(1230.0, 1310.0);
 /// How far from the centre line the fences of the wooden bridge stand (m):
 /// the bridge is narrower than the asphalt of the road.
 const BRIDGE_WALL: f32 = 6.0;
+/// The halo the rear wheel leaves behind it riding a wheelie: Sonic's blue.
+const SPIN_HALO: Color = Color::srgb(0.2, 0.5, 1.0);
 const SHORE: Span = span(1660.0, 1960.0);
 /// The stretch of lap the branch with the loop leaves out: it forks off on
 /// the climb to the top of the start straight, so the turn off the lap is
@@ -132,6 +134,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 Vec2::new(278.4, -381.0),
             ],
             rise: &[],
+            narrows: &[],
         }],
     },
     scenery: Scenery {
@@ -407,7 +410,11 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        // Riding a wheelie, the rear wheel leaves a blue halo behind it, as
+        // Sonic spinning.
+        wheelie_halo: Some(SPIN_HALO),
         japan: None,
+        middle_earth: None,
         space: None,
     },
 };

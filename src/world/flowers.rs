@@ -61,8 +61,11 @@ const ISLAND: f32 = 200.0;
 /// everywhere has several (m).
 const KIND_PATCH: f32 = 90.0;
 /// How far the flowers keep from the walls of the roads (m): the shoulders
-/// stay grass.
+/// stay grass, but for the fields on them (see [`FlowerArea::Shoulders`]),
+/// which reach as far, in patches with this share of grass between them (as
+/// a threshold of the noise of the gaps).
 const CLEAR_OF_WALL: f32 = 2.0;
+const SHOULDER_GAPS: f32 = 0.5;
 /// The colours of moss phlox: magenta, and drifts of pink, lavender and
 /// white over it, each drift of its own size (m) and found where its own
 /// noise passes a threshold (rarer the higher), blending into what is
@@ -99,12 +102,14 @@ const SEEN_FADE: f32 = 20.0;
 const ROAD_CELL: f32 = 32.0;
 
 /// A point of a road's centre line: where, where its walls are (m from it)
-/// and, on the lap, how far round it is (m from the finish line).
+/// and how far round the lap it is (m from the finish line): on a road off
+/// the lap, the stretch of the lap it stands in for, so that a field along
+/// a stretch of the lap lies round the ways of a split there too.
 #[derive(Clone, Copy)]
 struct RoadPoint {
     at: Vec2,
     wall: f32,
-    along: Option<f32>,
+    along: f32,
 }
 
 /// The points of the centre lines of all the roads, by squares of ground.
@@ -129,7 +134,7 @@ impl Roads {
                 cells.entry(road_cell(at)).or_default().push(RoadPoint {
                     at,
                     wall: line.wall_at(index),
-                    along: (road == 0).then(|| track.lap_along_at(index)),
+                    along: line.lap_along_at(index),
                 });
             }
         }
@@ -179,24 +184,31 @@ impl FlowerMap {
     /// What is in flower at `point`, if anything (whether the ground there
     /// is grass, dry and so on is the terrain's to say).
     pub fn at(&self, point: Vec2) -> Option<FlowerKind> {
-        if self
+        let shoulder = self
             .roads
             .nearest(point, ROAD_CELL)
-            .is_some_and(|(road, distance)| distance < road.wall + CLEAR_OF_WALL)
-        {
-            return None;
-        }
-        self.field_at(point)
+            .is_some_and(|(road, distance)| distance < road.wall + CLEAR_OF_WALL);
+        self.field_where(point, shoulder)
     }
 
     /// What the field at `point` is in flower with, if anything, whatever
     /// road runs there: over a tunnel, say, where the road is under the
     /// ground.
     pub fn field_at(&self, point: Vec2) -> Option<FlowerKind> {
+        self.field_where(point, false)
+    }
+
+    /// What the field at `point` is in flower with, if anything: of the
+    /// fields on the shoulders of the roads, if it is on one (`shoulder`),
+    /// or else of the others.
+    fn field_where(&self, point: Vec2, shoulder: bool) -> Option<FlowerKind> {
         if point.cmplt(self.bounds.0).any() || point.cmpgt(self.bounds.1).any() {
             return None;
         }
         for (f, field) in self.fields.iter().enumerate() {
+            if matches!(field.area, FlowerArea::Shoulders { .. }) != shoulder {
+                continue;
+            }
             // Past the middle of its ragged edge, the next field.
             let full = fullness(&field.area, point, &self.roads, self.lap);
             if full.is_none_or(|full| full < 0.5) {
@@ -224,8 +236,14 @@ impl FlowerMap {
             {
                 return None;
             }
-            // Gaps of grass, in drifts, more where the fields mingle.
-            if noise(GAPS_SIZE, 17.0) < GAPS + GAPS_AT_BORDER * near {
+            // Gaps of grass, in drifts, more where the fields mingle; on
+            // the shoulders, as much grass as not.
+            let gaps = if shoulder {
+                SHOULDER_GAPS
+            } else {
+                GAPS + GAPS_AT_BORDER * near
+            };
+            if noise(GAPS_SIZE, 17.0) < gaps {
                 return None;
             }
             let pick = random01(plot) * kinds;
@@ -305,13 +323,18 @@ fn fullness(area: &FlowerArea, point: Vec2, roads: &Roads, lap: f32) -> Option<f
         }
         FlowerArea::Road { span, near, far } => {
             let (road, distance) = roads.nearest(point, far)?;
-            let along = road.along?;
+            let along = road.along;
             if distance < near || !span.contains(along, lap) {
                 return None;
             }
             // Thinning out at both ends of the stretch too.
             let ends = span.weight(along, lap, EDGE * 2.0);
             Some(ends * smoothstep(far, far - EDGE, distance + ragged))
+        }
+        FlowerArea::Shoulders { span } => {
+            let (road, distance) = roads.nearest(point, ROAD_CELL)?;
+            (distance < road.wall + CLEAR_OF_WALL && span.contains(road.along, lap))
+                .then(|| span.weight(road.along, lap, EDGE * 2.0))
         }
     }
 }
@@ -326,7 +349,7 @@ fn size(kind: FlowerKind) -> Option<(f32, f32, f32)> {
         FlowerKind::Yellow => Some((0.85, 1.6, 0.75)),
         FlowerKind::Iris => Some((0.95, 1.3, 0.68)),
         FlowerKind::Susuki => Some((1.7, 1.8, 0.8)),
-        FlowerKind::Phlox => None,
+        FlowerKind::Phlox | FlowerKind::BareEarth | FlowerKind::FallenLeaves => None,
     }
 }
 
@@ -555,13 +578,7 @@ mod tests {
     fn in_flower() -> Vec<(&'static Circuit, Track, Terrain)> {
         CIRCUITS
             .iter()
-            .filter(|circuit| {
-                circuit
-                    .scenery
-                    .japan
-                    .as_ref()
-                    .is_some_and(|japan| !japan.flowers.is_empty())
-            })
+            .filter(|circuit| !circuit.scenery.flower_fields().is_empty())
             .map(|circuit| {
                 let track = Track::new(&circuit.layout);
                 let terrain = Terrain::new(&track, &circuit.scenery);
@@ -641,7 +658,17 @@ mod tests {
 
     #[test]
     fn most_of_the_grass_is_in_flower_but_the_shoulders() {
-        let circuits = in_flower();
+        // Where the fields reach everywhere, as on Ghost Island.
+        let circuits: Vec<_> = in_flower()
+            .into_iter()
+            .filter(|(circuit, ..)| {
+                circuit
+                    .scenery
+                    .flower_fields()
+                    .iter()
+                    .any(|field| matches!(field.area, FlowerArea::Everywhere))
+            })
+            .collect();
         assert!(!circuits.is_empty());
         for (circuit, track, terrain) in &circuits {
             let (min, max) = track.bounds();
@@ -686,8 +713,7 @@ mod tests {
                 "{}: grass between the fields: {share}",
                 circuit.name
             );
-            let japan = circuit.scenery.japan.as_ref().unwrap();
-            for field in japan.flowers {
+            for field in circuit.scenery.flower_fields() {
                 for kind in field.kinds {
                     assert!(kinds.contains(kind), "{}: no {kind:?}", circuit.name);
                 }
@@ -704,7 +730,11 @@ mod tests {
             for clump in clumps.iter().step_by(11) {
                 let point = Vec2::new(clump.root.x, clump.root.z);
                 assert_eq!(terrain.flowers_drawn(point), Some(clump.kind));
-                assert_ne!(clump.kind, FlowerKind::Phlox, "phlox hugs the ground");
+                assert!(
+                    !foliage::hugs_the_ground(clump.kind),
+                    "{:?} hugs the ground",
+                    clump.kind
+                );
                 let nearest = track.nearest(point);
                 let wall = track.road(nearest.road).wall_at(nearest.index);
                 assert!(nearest.distance > wall + 1.0, "{point}");

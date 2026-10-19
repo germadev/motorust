@@ -130,6 +130,10 @@ pub enum Greens {
     /// water, and dark scrub up the slopes before the rock, in patches of
     /// every size with ragged edges.
     Mediterranean,
+    /// A lush green land's, as the Shire's: the countryside's, but deeper
+    /// and greener, not yellowed by the sun, with darker drifts where the
+    /// grass grows thick.
+    Lush,
 }
 
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un
@@ -169,6 +173,11 @@ pub enum Coast {
     /// `Function` does to the sea's. The land drops to them right beyond the
     /// walls where their shores are near, as it does to the sea.
     OutlineWithLakes(&'static [Vec2], fn(Vec2) -> f32),
+    /// Inland, with no sea: the function gives the signed distance to the
+    /// shores of the rivers and lakes, negative in the water, as `Function`
+    /// does; but, as round an island's lakes, the land drops to them right
+    /// beyond the walls where their shores are near.
+    Inland(fn(Vec2) -> f32),
 }
 
 /// Cómo se cierra la carretera por los lados.
@@ -189,6 +198,9 @@ pub enum WallStyle {
     /// A low vermilion fence of posts and rails, as round a shrine: like
     /// the railing, the ground beyond it shows through.
     ShrineFence,
+    /// A low fence of weathered wooden posts and rails, as along the lanes
+    /// of the Shire: the ground beyond it shows through.
+    Fence,
     /// A low concrete parapet, as along a dam's crest on its lake's side:
     /// the water shows over it, a little way down.
     Parapet,
@@ -205,6 +217,9 @@ pub enum Soil {
     /// A desert canyon of red and ochre rock over dry, dusty earth; its
     /// tunnels are mine galleries propped with timber and lit by lanterns.
     Mine,
+    /// Grey granite and schist, bare and hard, as the Argonath are carved
+    /// from: the rock of the high country of *The Lord of the Rings*.
+    Granite,
     /// Grey lunar regolith and basaltic crater rock; its tunnels are
     /// pressurized space-station corridors lit by cool white-cyan strips.
     Lunar,
@@ -221,6 +236,10 @@ pub enum SkyStyle {
     Mediterranean,
     GoldenHour,
     Dusk,
+    /// A summer sunset in high country, the hills' long shadows over one
+    /// another, graded as a film is: the light of New Zealand, where *The
+    /// Lord of the Rings* was shot.
+    HighCountry,
     Space,
 }
 
@@ -230,6 +249,9 @@ pub enum SkyStyle {
 pub enum Water {
     Sea,
     Iron,
+    /// The rivers and lakes of high country: deep green and grey, clearer
+    /// over the shallows.
+    River,
 }
 
 /// An open-pit mine round the water (see [`Scenery::pit`]): benches cut in
@@ -260,6 +282,13 @@ pub struct Bridge {
 /// How high the fence of a wooden bridge usually stands over its deck (m).
 pub const WOODEN_FENCE: f32 = 1.2;
 
+impl BridgeStyle {
+    /// Whether it is of wood, old or new, with its own fence.
+    pub fn wooden(self) -> bool {
+        matches!(self, BridgeStyle::Wooden | BridgeStyle::OldWooden)
+    }
+}
+
 /// How a bridge is built.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BridgeStyle {
@@ -267,6 +296,9 @@ pub enum BridgeStyle {
     RedArches,
     /// A wooden deck of planks on log piers, with a wooden fence on each side.
     Wooden,
+    /// The same, old and weathered: its boards silver-grey, patched darker
+    /// and mossy, its posts leaning a little and its rails sagging.
+    OldWooden,
     /// A concrete deck between two steel through trusses, braced across
     /// overhead, on concrete piers, as in West Way (Moto Racer).
     Truss,
@@ -486,12 +518,58 @@ pub struct Scenery {
     /// The roadside of a desert of the American West, if the road runs
     /// through one.
     pub desert: Option<Desert>,
+    /// The colour of the halo the rear wheel leaves behind it on the road
+    /// while the bike rides a wheelie, as Sonic's spin (Loop Island's), or
+    /// `None` for none (see `crate::bike::wheelie_halo`).
+    pub wheelie_halo: Option<Color>,
     /// The scenery of feudal Japan, from models made with Meshy, or `None`:
     /// see [`Japan`].
     pub japan: Option<Japan>,
+    /// The scenery of Middle-earth, from models made with Meshy, or `None`:
+    /// see [`MiddleEarth`].
+    pub middle_earth: Option<MiddleEarth>,
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
     pub space: Option<Space>,
+}
+
+impl Scenery {
+    /// The halls of the tunnels where they are excavations, a mine's or
+    /// Moria's (see [`super::cavern`]), rather than tunnels lined with
+    /// concrete panels.
+    pub fn excavation(&self) -> Option<&'static [Hall]> {
+        match (&self.mine, &self.middle_earth) {
+            (Some(mine), _) if self.soil == Soil::Mine => Some(mine.halls),
+            _ if self.soil == Soil::Mine => Some(&[]),
+            (_, Some(middle_earth)) if !middle_earth.halls.is_empty() => Some(middle_earth.halls),
+            _ => None,
+        }
+    }
+
+    /// Where the ground stays grass however steep it is (see
+    /// [`MiddleEarth::turf`]).
+    pub fn turf(&self) -> &'static [Turf] {
+        self.middle_earth
+            .as_ref()
+            .map_or(&[], |middle_earth| middle_earth.turf)
+    }
+
+    /// Where the granite is of another colour (see
+    /// [`MiddleEarth::rock_tints`]).
+    pub fn rock_tints(&self) -> &'static [RockTint] {
+        self.middle_earth
+            .as_ref()
+            .map_or(&[], |middle_earth| middle_earth.rock_tints)
+    }
+
+    /// The fields of flowers, of feudal Japan or of Middle-earth.
+    pub fn flower_fields(&self) -> &'static [FlowerField] {
+        match (&self.japan, &self.middle_earth) {
+            (Some(japan), _) => japan.flowers,
+            (None, Some(middle_earth)) => middle_earth.flowers,
+            (None, None) => &[],
+        }
+    }
 }
 
 /// The scenery of feudal Japan, as at Ghost Island (see
@@ -517,14 +595,21 @@ pub struct FlowerField {
 }
 
 /// Where a field of flowers grows: beside a stretch of the lap, on both
-/// sides, from `near` to `far` metres from its centre line; round a point,
-/// from `inner` to `outer` metres from it (a ring round a lake, or, from 0,
-/// a round meadow, which nothing else is put in); or everywhere else.
+/// sides, from `near` to `far` metres from its centre line; on the
+/// shoulders of the roads along a stretch of the lap, between the asphalt
+/// and the walls (in patches, with as much grass between them: bare earth
+/// worn by the wheels, or fallen leaves), which the other fields keep off;
+/// round a point, from `inner` to `outer` metres from it (a ring round a
+/// lake, or, from 0, a round meadow, which nothing else is put in); or
+/// everywhere else.
 pub enum FlowerArea {
     Road {
         span: Span,
         near: f32,
         far: f32,
+    },
+    Shoulders {
+        span: Span,
     },
     Round {
         center: Vec2,
@@ -552,6 +637,12 @@ pub enum FlowerKind {
     /// in bands of magenta, pink, lavender and white, as round the lakes at
     /// the foot of Mount Fuji.
     Phlox,
+    /// Not flowers, but the grass worn down to bare earth, brown and dusty,
+    /// with tufts of grass and pebbles in it, as round a town or a wood.
+    BareEarth,
+    /// Not flowers, but leaves fallen over the grass, brown, rust, ochre,
+    /// gold and red, as under the trees in autumn.
+    FallenLeaves,
 }
 
 /// Petals, or leaves, drifting down through the air over an area, falling
@@ -574,6 +665,8 @@ pub enum PetalKind {
     Maple,
     /// White cherry petals.
     Cherry,
+    /// The golden leaves of the mallorns.
+    Gold,
 }
 
 /// A clearing carpeted with red maple leaves, ringed with low logs, as
@@ -685,16 +778,20 @@ pub enum Plinth {
 
 /// A prop and where it stands, facing: by the road, `along` metres from the
 /// finish line and `lateral` metres to the left of its centre line (to the
-/// right if negative), facing the road; or anywhere, at `position` (x, z)
-/// facing `heading` (see [`crate::geometry`]). It stands on the ground, or
-/// in the sea, with its foot a little under the water; `scale` times as big
-/// as made (see [`Prop::scaled`]), and leaning `lean` radians towards its
-/// side that was -X as made (see [`Prop::leaning`]).
+/// right if negative), facing the road; over the road, facing along it; or
+/// anywhere, at `position` (x, z) facing `heading` (see
+/// [`crate::geometry`]). It stands on the ground, or in the water, with its
+/// foot a little under it; `scale` times as big as made (see
+/// [`Prop::scaled`]), turned `turn` radians from that (see
+/// [`Prop::turned`]), and leaning `lean` radians towards its side that was
+/// -X as made (see [`Prop::leaning`]). Its model is one of feudal Japan's
+/// ([`PropModel`]) or of Middle-earth's ([`MiddleEarthModel`]).
 #[derive(Clone, Copy, Debug)]
-pub struct Prop {
-    pub model: PropModel,
+pub struct Prop<M = PropModel> {
+    pub model: M,
     pub spot: Spot,
     pub scale: f32,
+    pub turn: f32,
     pub lean: f32,
     /// Whether it faces the riders coming up the road at it, instead of
     /// the road beside it (see [`Prop::facing_riders`]).
@@ -703,25 +800,55 @@ pub struct Prop {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Spot {
-    Road { along: f32, lateral: f32 },
-    At { position: Vec2, heading: f32 },
+    Road {
+        along: f32,
+        lateral: f32,
+    },
+    /// Over the middle of the road, as a gate the road runs through.
+    Over {
+        along: f32,
+    },
+    At {
+        position: Vec2,
+        heading: f32,
+    },
 }
 
 /// A prop by the road (see [`Prop`]).
-pub const fn by_road(model: PropModel, along: f32, lateral: f32) -> Prop {
+pub const fn by_road<M: Copy>(model: M, along: f32, lateral: f32) -> Prop<M> {
     Prop {
         model,
         spot: Spot::Road { along, lateral },
         scale: 1.0,
+        turn: 0.0,
         lean: 0.0,
         facing_riders: false,
     }
 }
 
-impl Prop {
+/// A prop over the road, facing along it (see [`Prop`]).
+pub const fn over_road<M: Copy>(model: M, along: f32) -> Prop<M> {
+    Prop {
+        model,
+        spot: Spot::Over { along },
+        scale: 1.0,
+        turn: 0.0,
+        lean: 0.0,
+        facing_riders: false,
+    }
+}
+
+impl<M: Copy> Prop<M> {
     /// The same prop, `scale` times as big.
     pub const fn scaled(self, scale: f32) -> Self {
         Prop { scale, ..self }
+    }
+
+    /// The same prop turned `turn` radians about its foot (anticlockwise
+    /// seen from above): one by the road turned to face the riders coming
+    /// along it.
+    pub const fn turned(self, turn: f32) -> Self {
+        Prop { turn, ..self }
     }
 
     /// The same prop leaning `lean` radians about its foot, towards its side
@@ -774,7 +901,7 @@ pub const fn prop_row(
 }
 
 /// A prop anywhere (see [`Prop`]).
-pub const fn standing(model: PropModel, x: f32, z: f32, heading: f32) -> Prop {
+pub const fn standing<M: Copy>(model: M, x: f32, z: f32, heading: f32) -> Prop<M> {
     Prop {
         model,
         spot: Spot::At {
@@ -782,9 +909,146 @@ pub const fn standing(model: PropModel, x: f32, z: f32, heading: f32) -> Prop {
             heading,
         },
         scale: 1.0,
+        turn: 0.0,
         lean: 0.0,
         facing_riders: false,
     }
+}
+
+/// The scenery of Middle-earth, as at Fellowship Road (see
+/// [`crate::world::middle_earth`]): props made with Meshy standing about,
+/// hobbit holes in their grassy banks, fields of flowers and leaves
+/// drifting down.
+pub struct MiddleEarth {
+    pub props: &'static [Prop<MiddleEarthModel>],
+    pub flowers: &'static [FlowerField],
+    pub petals: &'static [Petals],
+    /// The halls of Moria: where there are, the tunnels are excavations, as
+    /// a mine's, through them (see [`Scenery::excavation`]).
+    pub halls: &'static [Hall],
+    /// Footpaths of bare earth, as between the hobbit holes: each a line of
+    /// points (x, z) over the ground.
+    pub paths: &'static [&'static [Vec2]],
+    /// Where the ground stays grass steeper than elsewhere, as the banks and
+    /// the cut doorsteps of Hobbiton's hillsides are (but sheer), or the
+    /// ledges of Rivendell's rock, its faces mossy.
+    pub turf: &'static [Turf],
+    /// Where the granite is of another colour, as the browner rock of the
+    /// Anduin's gorge.
+    pub rock_tints: &'static [RockTint],
+    /// Lights that fill a stretch of land the low sun lights only from
+    /// behind, as Rivendell's halls are, seen by the riders coming at them.
+    pub glows: &'static [Glow],
+}
+
+/// A light that fills what the low sun lights only from behind (see
+/// [`MiddleEarth::glows`]): shining from `from` at `to`, `illuminance` lux
+/// there, in `color`, in a cone `angle` radians round its axis, casting no
+/// shadow, as the evening sky's light does. With a `shaft`, it comes down
+/// from the sky onto one building, a sunbeam through the clouds, and its
+/// shaft shows in the air.
+pub struct Glow {
+    pub from: Vec3,
+    pub to: Vec3,
+    pub illuminance: f32,
+    pub color: Color,
+    pub angle: f32,
+    pub shaft: Option<Shaft>,
+}
+
+/// How a sunbeam's shaft shows in the air (see [`Glow::shaft`]): how many
+/// times wider than at its foot it spreads at its top, and how bright it is
+/// down its middle at its foot (linear, added over what is behind it, as
+/// light is); the more it spreads and the fainter, the more diffused.
+#[derive(Clone, Copy)]
+pub struct Shaft {
+    pub spread: f32,
+    pub light: f32,
+}
+
+/// A round stretch of land whose steep slopes are grass, not rock (see
+/// [`MiddleEarth::turf`]): grass up to `steepest`, the upward part of the
+/// ground's normal under which it is rock (0.45: all but sheer faces; more,
+/// grass on the ledges and gentler slopes of a rock face, rock between); and
+/// its granite green with moss over much of it.
+pub struct Turf {
+    pub center: Vec2,
+    pub radius: f32,
+    pub steepest: f32,
+}
+
+/// A round stretch of land whose granite is of another colour (see
+/// [`MiddleEarth::rock_tints`]): `color`, as light as the grey it stands
+/// for, fading back into the grey over the outer quarter of `radius`.
+pub struct RockTint {
+    pub center: Vec2,
+    pub radius: f32,
+    pub color: Color,
+}
+
+/// One of the props of Middle-earth, made with Meshy (see
+/// [`crate::world::middle_earth`]), in the order of the film.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MiddleEarthModel {
+    /// The front of a hobbit hole, with its round door (green, yellow, red
+    /// or blue), set into a grassy bank, a chimney rising out of it.
+    HobbitDoorGreen,
+    HobbitDoorYellow,
+    HobbitDoorRed,
+    HobbitDoorBlue,
+    /// Bag End: the grandest hobbit hole, its picket fence before its
+    /// garden, set into its hill.
+    BagEnd,
+    /// The great pine of the party field.
+    PartyTree,
+    /// The gnarled oak on the hill over Bag End.
+    BagEndOak,
+    /// The mill of Bywater, its wheel turning.
+    Mill,
+    /// The Green Dragon of Bywater: a long, low inn under rounded thatch.
+    GreenDragon,
+    /// Its sign on its post.
+    GreenDragonSign,
+    /// Gandalf's cart, loaded with fireworks.
+    GandalfCart,
+    LogPile,
+    Scarecrow,
+    /// The old tree the hobbits hid under, its roots arched over a hollow.
+    RootTree,
+    /// The ferry raft over the Brandywine.
+    Ferry,
+    /// Bree's gate, over the road.
+    BreeGate,
+    /// The Prancing Pony: three storeys over an archway into its yard.
+    PrancingPony,
+    /// Houses of Bree: a wide one under thatch, a tall, narrow one.
+    BreeHouseA,
+    BreeHouseB,
+    /// The ring of ruins of Amon Sûl on Weathertop, and a broken arch.
+    WeathertopRuin,
+    RuinArch,
+    /// The three trolls turned to stone.
+    StoneTrolls,
+    /// The Last Homely House of Rivendell, an elven tower, the domed
+    /// pavilion and the lamps of its paths.
+    LastHomelyHouse,
+    ElvenTower,
+    Gazebo,
+    ElvenLamp,
+    /// The Doors of Durin, closed, in the Walls of Moria.
+    DurinDoors,
+    /// A mallorn of Lothlórien with its flet and its stair round its trunk.
+    MallornFlet,
+    /// Galadriel's swan ship, the sailing ship of the elves and an elven
+    /// rowing boat.
+    SwanShip,
+    ElvenShip,
+    ElvenBoat,
+    /// The kings of the Argonath: the first crowned, the second helmed.
+    ArgonathA,
+    ArgonathB,
+    /// The seat of seeing on Amon Hen.
+    AmonHenSeat,
 }
 
 /// The roadside of a desert of the American West, as in West Way (Moto
@@ -888,6 +1152,10 @@ pub struct Hall {
     pub span: Span,
     pub stone: Stone,
     pub crown: f32,
+    /// How much wider than the road between its walls the hall is, either
+    /// side (m): where it is, the road runs through it between low walls of
+    /// its stone (none in a mine).
+    pub width: f32,
 }
 
 /// What the rock of a stretch of a mine's excavation is like, and the
@@ -902,6 +1170,11 @@ pub enum Stone {
     Slate,
     /// Ochre clay, its walls lined with planks, over beaten earth.
     Clay,
+    /// The dwarves' masonry, as in Moria: walls and vaults of dressed grey
+    /// blocks over flagstones, great pillars in the widest halls.
+    Masonry,
+    /// A natural cave in grey granite, over grit.
+    Cave,
 }
 
 /// A rail line beside the road over a span, `lateral` metres from its

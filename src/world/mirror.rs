@@ -39,6 +39,8 @@ const SKY_MAP: (u32, u32) = (64, 16);
 /// the sea's too; and the wine red of a flooded pit rich in iron.
 const DEEP: Color = Color::srgb(0.06, 0.17, 0.22);
 const DEEP_IRON: Color = Color::srgb(0.24, 0.06, 0.04);
+/// High country's rivers and lakes: deep green and grey.
+const DEEP_RIVER: Color = Color::srgb(0.07, 0.18, 0.2);
 /// How bright the sun's glint on the water is.
 const GLINT: f32 = 4.0;
 /// The ground as it is lit for the mirror: its colour times this much in
@@ -415,6 +417,7 @@ pub fn deep(water: Water) -> Color {
     match water {
         Water::Sea => DEEP,
         Water::Iron => DEEP_IRON,
+        Water::River => DEEP_RIVER,
     }
 }
 

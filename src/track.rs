@@ -65,7 +65,9 @@ const NARROW_MARGIN: f32 = 0.5;
 /// closer walls once it has parted from it: another way through, past rock
 /// between the two. It runs at the height of the lap beside it, higher or
 /// lower by what `rise` says: (metres along it, metres above the lap beside
-/// it) at some points, smoothly in between, and none at its ends.
+/// it) at some points, smoothly in between, and none at its ends. Its walls
+/// close in further where `narrows` says, as the lap's do (`from` and `to`
+/// in metres along it): through an archway, say.
 pub struct Branch {
     pub from: f32,
     pub to: f32,
@@ -73,6 +75,7 @@ pub struct Branch {
     pub vertical_loop: Option<VerticalLoop>,
     pub exit: &'static [Vec2],
     pub rise: &'static [(f32, f32)],
+    pub narrows: &'static [Narrowing],
 }
 
 /// A vertical loop the bikes ride round, upside down at the top.
@@ -531,7 +534,19 @@ impl Track {
         let counts_as = |s: f32| (branch.from + span * s / length) % lap;
         let middle = centerline[centerline.len() / 2];
         let side = self.project_on_lap(middle).lateral.signum();
-        let road = self.side_road(centerline, None, branch.rise, counts_as);
+        let mut road = self.side_road(centerline, None, branch.rise, counts_as);
+        for (i, wall) in road.walls.iter_mut().enumerate() {
+            let along = i as f32 * road.step;
+            *wall = branch
+                .narrows
+                .iter()
+                .map(|narrow| {
+                    let closed = smoothstep(narrow.from - NARROW_EASE, narrow.from, along)
+                        * (1.0 - smoothstep(narrow.to, narrow.to + NARROW_EASE, along));
+                    wall.lerp(narrow.wall.min(*wall), closed)
+                })
+                .fold(*wall, f32::min);
+        }
         self.forks.push(Fork {
             road: self.side_roads.len() + 1,
             fork: self.index_at(branch.from),

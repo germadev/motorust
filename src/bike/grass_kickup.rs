@@ -191,7 +191,7 @@ impl Plugin for GrassKickupPlugin {
 /// A puff of dust: four soft discs through its middle, three standing at
 /// 60° from each other and one lying flat, so it looks round from anywhere.
 /// One metre across; every normal points up (see [`DustAssets`]).
-fn puff_mesh() -> Mesh {
+pub(super) fn puff_mesh() -> Mesh {
     let mut positions = Vec::new();
     let mut uvs = Vec::new();
     let mut indices = Vec::new();
@@ -225,7 +225,7 @@ fn puff_mesh() -> Mesh {
 }
 
 /// A soft, billowing disc of white, clear at its edge.
-fn puff_image() -> Image {
+pub(super) fn puff_image() -> Image {
     const SIZE: u32 = 64;
     let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
     for y in 0..SIZE {

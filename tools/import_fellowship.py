@@ -1,0 +1,742 @@
+#!/usr/bin/env python3
+"""Prepares the props of Fellowship Road modelled with Meshy for the game:
+hobbit holes, inns, a mill, gates and houses, ruins, elven halls, boats,
+statues and great trees.
+
+Reads one GLB per prop (a single textured mesh, normalised to a unit box)
+and writes to `assets/models/fellowship/` what the game loads
+(`src/world/middle_earth.rs`), as `tools/import_props.py` does for Ghost
+Island's:
+
+- `props.bin`: every prop as a piece named after it, centred on the origin
+  with its lowest point on the ground (a tree on the foot of its trunk), up
+  along +Y, at the game's size (`SIZES`).
+- `color.jpg`: their colour textures together in one atlas `ATLAS` pixels
+  square, each brought down to a square cell: `CELL` pixels, or more for
+  the big buildings the riders pass close by (`CELLS`: the Prancing Pony,
+  whose archway they ride through, and others), packed as quarters of
+  quarters (`cells`).
+
+Some models need mending as they are read:
+
+- The stone trolls (`stone_trolls`): the left one came with a third leg out
+  of its back, between its two. It is cut away, and the hole it leaves in
+  its hip closed with a fan of triangles in the colour of its stone.
+- Bree's gate (`bree_gate`): Meshy put two beams across its opening, a
+  quarter and a third of the way up, where the bikes ride through: they are
+  cut away. Sized by its opening, as the torii over Ghost Island's road,
+  and squashed down to `SIZES`' height, from the 19 m it would stand.
+- The Prancing Pony (`prancing_pony`): its archway, through which a way
+  of Bree's road runs, is made wider (`PONY_ARCH`): the inn stretched
+  along X about it, and the rest of it moved out either side.
+- A house of Bree (`bree_house_a`) came hung with the Green Dragon's sign,
+  off its right side: cut away (the Green Dragon is in Bywater).
+- The elven boat (`elven_boat`) came with four oars out over its sides,
+  lower than its keel: cut away, so that it lies on the shore.
+- The mill (`mill`) and its wheel (`mill_wheel`) came apart, the mill with
+  a hole for the axle in its side: the mill is turned so that that side
+  faces +Z (the road, as the game places it) and the wheel is set against
+  it, its axle in the hole, its rim a little below the ground; both have
+  their origin at the middle of the axle, about which the wheel turns (on
+  Z), as Ghost Island's water wheel.
+- The Doors of Durin (`durin_doors`) came closed, and narrower than they
+  are drawn in the film: they are made wider (`DURIN_WIDER`), and their
+  two leaves cut from the frame and swung open outwards, a quarter turn
+  about their hinges, as they open in the book and the film, so that the
+  road goes through them into Moria (sized by its height, the gate stands
+  over the road with its leaves just outside the walls of a narrow way
+  through it, into Moria's halls). With them, two pieces of their own,
+  drawn in materials of their own by the game: `durin_ithildin`, the
+  drawing of ithildin, a design of our own, on the arch and the rock over
+  it (the arch, a vine up each pillar, a mountain on the keystone, a
+  crescent moon between six lozenges) and on the side of each leaf turned
+  to the road (a lozenge round a rayed sun, over a stem of chevrons), and
+  `durin_glow`, the same drawn wider, the glow round its lines.
+- Textures toned (`TONED`): the oak over Bag End came a vivid green, the
+  Doors of Durin a pale grey (darker, the drawing glowing on them in the
+  game stands out).
+
+Every prop faces +Z as Meshy made it, its width along X. Usage:
+python3 tools/import_fellowship.py NAME=PROP.glb [NAME=PROP.glb ...] with
+the names of `SIZES` (`mill_wheel` too). Needs numpy and Pillow.
+"""
+
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageEnhance
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from import_props import compact, keep_triangles, place, texels  # noqa: E402
+from import_trees import read_glb  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "assets" / "models" / "fellowship"
+
+# How big each prop is in the game: by its height (m), its length (m, the
+# longest way across, for a boat or a ring of ruins), or for the gate how
+# far from its middle its towers' inner faces stand (m, just outside the
+# road's walls) and its height (m). "foot" stands a tree on the foot of its
+# trunk, in the order of the lap.
+SIZES = {
+    # Hobbiton.
+    "hobbit_door_green": ("height", 4.0),
+    "hobbit_door_yellow": ("height", 4.0),
+    "hobbit_door_red": ("height", 4.0),
+    "hobbit_door_blue": ("height", 4.0),
+    "bag_end": ("height", 5.5),
+    "chimney": ("height", 2.4),
+    "party_tree": ("height", 24.0, "foot"),
+    "bag_end_oak": ("height", 14.0, "foot"),
+    "mill": ("height", 11.0),
+    "green_dragon": ("height", 8.0),
+    "green_dragon_sign": ("height", 3.2),
+    "gandalf_cart": ("length", 4.5),
+    "log_pile": ("height", 1.5),
+    # The Shire.
+    "scarecrow": ("height", 2.3),
+    "root_tree": ("height", 16.0, "foot"),
+    "ferry": ("length", 9.0),
+    # Bree.
+    "bree_gate": ("opening", 11.63, 15.4),
+    "prancing_pony": ("height", 14.0),
+    "bree_house_a": ("height", 10.0),
+    "bree_house_b": ("height", 11.0),
+    # Weathertop and the Trollshaws.
+    "weathertop_ruin": ("length", 32.0),
+    "ruin_arch": ("height", 6.0),
+    "stone_trolls": ("height", 7.0),
+    # Rivendell.
+    "last_homely_house": ("height", 18.0),
+    "gazebo": ("height", 9.0),
+    "elven_tower": ("height", 24.0),
+    "elven_lamp": ("height", 3.4),
+    # Moria.
+    "durin_doors": ("height", 35.0),
+    # Lothlórien, the Anduin and Amon Hen.
+    "mallorn_flet": ("height", 38.0, "foot"),
+    "swan_ship": ("length", 16.0),
+    "elven_ship": ("length", 20.0),
+    "elven_boat": ("length", 6.0),
+    "argonath_a": ("height", 60.0),
+    "argonath_b": ("height", 60.0),
+    "amon_hen_seat": ("height", 9.0),
+}
+# How saturated and how bright each texture is left (1 as it came).
+TONED = {
+    "bag_end_oak": (0.8, 0.95),
+    "durin_doors": (0.9, 0.72),
+}
+# How far the mill wheel's rim reaches below the ground (m), and how far
+# out from the mill's wall it turns (m, between the wall and its side).
+WHEEL_SUNK = 0.3
+WHEEL_GAP = 0.1
+# How much wider the Doors of Durin are made, closer to the arch drawn in
+# the film.
+DURIN_WIDER = 1.4
+# The Prancing Pony's archway, through which a way of Bree's road runs: its
+# middle (x, m, as the inn is sized), how far either side of it the inn is
+# stretched (m: the archway and its jambs), and how much wider it is made
+# either side (m), the rest of the inn moved out by as much.
+PONY_ARCH = (-0.75, 2.5, 2.0)
+# The ithildin's lines: how wide (m), how far in front of the stone (m),
+# and how long their pieces are at most (m), each laid on the stone; and
+# the glow round them: as much wider, nearer the stone, its stars bigger.
+ITHILDIN_WIDTH = 0.38
+ITHILDIN_OFF = 0.08
+ITHILDIN_STEP = 0.4
+GLOW_WIDTH = 1.5
+GLOW_OFF = 0.05
+GLOW_GROW = 1.8
+CELL = 512
+CELLS = {
+    "prancing_pony": 2048,
+    "last_homely_house": 1024,
+    "green_dragon": 1024,
+    "bree_house_a": 1024,
+    "bag_end": 1024,
+}
+ATLAS = 4096
+MARGIN = 2
+
+
+def cells(names):
+    """Where each prop's cell goes in the atlas (x, y, size), the biggest
+    first: each a quarter of a free square, split until it is the cell's
+    size, so that cells of sizes in powers of two pack without gaps."""
+    free = [(0, 0, ATLAS)]
+    spots = {}
+    for name in sorted(names, key=lambda name: -CELLS.get(name, CELL)):
+        size = CELLS.get(name, CELL)
+        fits = [square for square in free if square[2] >= size]
+        if not fits:
+            sys.exit(f"the atlas has no room left for {name}")
+        square = min(fits, key=lambda square: (square[2], square[1], square[0]))
+        free.remove(square)
+        x, y, side = square
+        while side > size:
+            side //= 2
+            free += [(x + side, y, side), (x, y + side, side), (x + side, y + side, side)]
+        spots[name] = (x, y, size)
+    return spots
+
+
+def welded(positions):
+    """An index per vertex, the same for vertices at the same place (Meshy
+    splits them along the seams of its texture)."""
+    _, ids = np.unique(np.round(positions, 5), axis=0, return_inverse=True)
+    return ids.ravel()
+
+
+def parts(positions, indices):
+    """The connected part each triangle belongs to (a label per triangle),
+    vertices at the same place counting as one."""
+    ids = welded(positions)
+    parent = np.arange(ids.max() + 1)
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    triangles = ids[indices.reshape(-1, 3)]
+    for a, b, c in triangles:
+        root = find(a)
+        parent[find(b)] = root
+        parent[find(c)] = root
+    return np.array([find(a) for a in triangles[:, 0]])
+
+
+def without_third_leg(positions, normals, uvs, indices, color):
+    """The stone trolls without the third leg out of the left one's back
+    (the largest part): the triangles of it behind its hips, between its two
+    legs and low; the hole left in its hip closed with a fan of triangles
+    about its middle, all in the colour of the stone where it was cut."""
+    triangles = indices.reshape(-1, 3)
+    label = parts(positions, indices)
+    names, counts = np.unique(label, return_counts=True)
+    left = label == names[counts.argmax()]
+    middle = positions[triangles].mean(axis=1)
+    bottom, top = positions[:, 1].min(), positions[:, 1].max()
+    leg = (
+        left
+        & (middle[:, 0] < -0.30)
+        & (middle[:, 2] > -0.09)
+        & (middle[:, 2] < 0.085)
+        & (middle[:, 1] < bottom + 0.38 * (top - bottom))
+    )
+    assert 250 < leg.sum() < 400, f"{leg.sum()} triangles of the leg"
+    kept = triangles[~leg]
+    # The edges of the hole: those of a kept triangle that were shared with
+    # the leg's, in the kept triangle's order.
+    ids = welded(positions)
+    cut = set()
+    for a, b, c in ids[triangles[leg]]:
+        cut |= {(a, b), (b, c), (c, a)}
+    edges = []
+    for triangle in kept[left[~leg]]:
+        for a, b in ((triangle[0], triangle[1]), (triangle[1], triangle[2]), (triangle[2], triangle[0])):
+            if (ids[b], ids[a]) in cut:
+                edges.append((a, b))
+    assert 15 < len(edges) < 40, f"{len(edges)} edges round the hole"
+    rim = np.unique(np.array(edges).ravel())
+    centre = positions[rim].mean(axis=0)
+    # One texture coordinate for the whole cap: that of the edge's vertex
+    # nearest its middle, in the stone's colour.
+    uv = uvs[rim[np.argmin(np.linalg.norm(positions[rim] - centre, axis=1))]]
+    normal = normals[rim].mean(axis=0)
+    normal /= np.linalg.norm(normal).clip(1e-9)
+    # New vertices for the cap, so that it takes no other colour.
+    new_positions, new_normals, new_uvs, new_triangles = [centre], [normal], [uv], []
+    start = len(positions)
+    for a, b in edges:
+        k = start + len(new_positions)
+        new_positions += [positions[b], positions[a]]
+        new_normals += [normal, normal]
+        new_uvs += [uv, uv]
+        new_triangles.append((k, k + 1, start))
+    return (
+        np.vstack([positions, new_positions]),
+        np.vstack([normals, new_normals]),
+        np.vstack([uvs, new_uvs]),
+        np.concatenate([kept.reshape(-1), np.array(new_triangles, dtype=np.uint32).reshape(-1)]),
+    )
+
+
+def without_bars(positions, indices):
+    """Bree's gate without the beams across its opening: the triangles
+    whose middle lies between its towers' inner faces (a quarter of its
+    width either side of the middle) in the lower half of it."""
+    middle = positions[indices.reshape(-1, 3)].mean(axis=1)
+    bottom, top = positions[:, 1].min(), positions[:, 1].max()
+    bars = (np.abs(middle[:, 0]) < 0.24) & (middle[:, 1] < bottom + 0.5 * (top - bottom))
+    assert 8 <= bars.sum() <= 40, f"{bars.sum()} triangles of the bars"
+    return keep_triangles(indices, ~bars)
+
+
+def without_sign(positions, indices):
+    """The house without the sign hanging off its right side (+X): its
+    board, chains and the end of its bracket."""
+    middle = positions[indices.reshape(-1, 3)].mean(axis=1)
+    sign = middle[:, 0] > 0.372
+    assert 20 < sign.sum() < 200, f"{sign.sum()} triangles of the sign"
+    return keep_triangles(indices, ~sign)
+
+
+def without_oars(positions, indices):
+    """The elven boat without its oars: the parts reaching out past its
+    hull's sides (an eighth of its length from its middle line)."""
+    triangles = indices.reshape(-1, 3)
+    label = parts(positions, indices)
+    oars = np.zeros(len(triangles), dtype=bool)
+    for name in np.unique(label):
+        mine = label == name
+        if np.abs(positions[triangles[mine]][:, :, 2]).max() > 0.12:
+            oars |= mine
+    assert 4 * 30 < oars.sum() < 400, f"{oars.sum()} triangles of the oars"
+    return keep_triangles(indices, ~oars)
+
+
+def door_leaves(positions, indices):
+    """Which triangles are the two leaves of the Doors of Durin, as they
+    came: the doors are five parts (the arch, two pillars and two leaves),
+    and the leaves are the two between the pillars (within about an eighth
+    of its height either side of its middle) and in the middle of its
+    depth."""
+    low, high = positions.min(axis=0), positions.max(axis=0)
+    height = high[1] - low[1]
+    middle = (low + high) / 2.0
+    q = (positions - np.array([middle[0], low[1], middle[2]])) / height
+    triangles = indices.reshape(-1, 3)
+    label = parts(positions, indices)
+    leaves = np.zeros(len(triangles), dtype=bool)
+    for name in np.unique(label):
+        mine = label == name
+        corners = q[triangles[mine]].reshape(-1, 3)
+        if np.abs(corners[:, 0]).max() < 0.135 and np.abs(corners[:, 2]).max() < 0.025:
+            leaves |= mine
+    assert 400 < leaves.sum() < 800, f"{leaves.sum()} triangles of the leaves"
+    return leaves
+
+
+def widened(positions, normals, factor):
+    """Stretched along X by `factor`, its normals turned to match."""
+    stretch = np.array([factor, 1.0, 1.0])
+    bent = normals / stretch
+    bent /= np.linalg.norm(bent, axis=1, keepdims=True).clip(1e-9)
+    return positions * stretch, bent
+
+
+def arch_widened(positions, normals, middle, reach, wider):
+    """The Prancing Pony with its archway made wider: within `reach` of its
+    `middle` (x) stretched along X, so that it is `wider` wider either side,
+    and the rest moved out either side by as much; its normals turned to
+    match. As the inn stretches out as much either way, it stays centred."""
+    x = positions[:, 0] - middle
+    stretch = (reach + wider) / reach
+    within = np.abs(x) <= reach
+    p = positions.copy()
+    p[:, 0] = middle + np.where(within, x * stretch, x + np.sign(x) * wider)
+    n = normals.copy()
+    n[within, 0] /= stretch
+    n /= np.linalg.norm(n, axis=1, keepdims=True).clip(1e-9)
+    return p, n
+
+
+def hinges(positions, indices, leaves):
+    """Each leaf of the Doors of Durin, as it came (in metres): which side it
+    is (-1 left, +1 right), its triangles' corners, and the hinge it swings
+    about (x, z): the back of its outer edge, against the pillar."""
+    triangles = indices.reshape(-1, 3)
+    for side in (-1.0, 1.0):
+        mine = triangles[leaves & (side * positions[triangles].mean(axis=1)[:, 0] > 0)]
+        corners = mine.reshape(-1)
+        leaf = positions[corners]
+        yield side, corners, np.array([side * np.abs(leaf[:, 0]).max(), leaf[:, 2].min()])
+
+
+def swing(points, normals, side, hinge):
+    """`points` and `normals` of a leaf swung open outwards, a quarter turn
+    about its `hinge`: the left leaf (-X) turns its free edge from +X to +Z,
+    the right one from -X to +Z."""
+    p, n = points.copy(), normals.copy()
+    dx, dz = points[:, 0] - hinge[0], points[:, 2] - hinge[1]
+    if side < 0:
+        p[:, 0], p[:, 2] = hinge[0] - dz, hinge[1] + dx
+        n[:, 0], n[:, 2] = -normals[:, 2], normals[:, 0]
+    else:
+        p[:, 0], p[:, 2] = hinge[0] + dz, hinge[1] - dx
+        n[:, 0], n[:, 2] = normals[:, 2], -normals[:, 0]
+    return p, n
+
+
+def swung_open(positions, normals, uvs, indices, leaves):
+    """The doors (in metres) with their leaves swung open outwards (see
+    [`swing`]). The leaves get vertices of their own."""
+    triangles = indices.reshape(-1, 3)
+    frame = triangles[~leaves].reshape(-1)
+    p, n, u, i = [positions], [normals], [uvs], [frame]
+    count = len(positions)
+    for side, corners, hinge in hinges(positions, indices, leaves):
+        leaf_p, leaf_n = swing(positions[corners], normals[corners], side, hinge)
+        p.append(leaf_p)
+        n.append(leaf_n)
+        u.append(uvs[corners])
+        i.append(np.arange(count, count + len(corners), dtype=np.uint32))
+        count += len(corners)
+    return np.concatenate(p), np.concatenate(n), np.concatenate(u), np.concatenate(i).astype(np.uint32)
+
+
+def frontmost(positions, indices, points):
+    """How far forward (Z) the stone is at each of `points` (x, y), seen
+    from the front: NaN where there is none."""
+    corners = positions[indices.reshape(-1, 3)]
+    a, b, c = corners[:, 0], corners[:, 1], corners[:, 2]
+    found = np.full(len(points), np.nan)
+    for k, (x, y) in enumerate(points):
+        den = (b[:, 1] - c[:, 1]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 1] - c[:, 1])
+        ok = np.abs(den) > 1e-12
+        safe = np.where(ok, den, 1.0)
+        u = ((b[:, 1] - c[:, 1]) * (x - c[:, 0]) + (c[:, 0] - b[:, 0]) * (y - c[:, 1])) / safe
+        v = ((c[:, 1] - a[:, 1]) * (x - c[:, 0]) + (a[:, 0] - c[:, 0]) * (y - c[:, 1])) / safe
+        w = 1.0 - u - v
+        inside = ok & (u >= -1e-6) & (v >= -1e-6) & (w >= -1e-6)
+        if inside.any():
+            z = u * a[:, 2] + v * b[:, 2] + w * c[:, 2]
+            found[k] = z[inside].max()
+    return found
+
+
+def drawing(lines, stars, lay, width, grow=1.0):
+    """Ribbons `width` wide along `lines` (each points x, y) and stars of so
+    many points (centre, radius, points: four is a lozenge), every point at
+    the depth `lay` gives it (z): vertices and triangles. Stars `grow` times
+    as big."""
+    vertices, triangles = [], []
+    for line in lines:
+        dense = [line[0]]
+        for a, b in zip(line[:-1], line[1:]):
+            pieces = max(1, int(np.ceil(np.linalg.norm(b - a) / ITHILDIN_STEP)))
+            dense.extend(a + (b - a) * (k / pieces) for k in range(1, pieces + 1))
+        dense = np.array(dense)
+        ahead = np.gradient(dense, axis=0)
+        ahead /= np.linalg.norm(ahead, axis=1, keepdims=True).clip(1e-9)
+        side = np.stack([-ahead[:, 1], ahead[:, 0]], axis=1) * width / 2
+        left, right = dense + side, dense - side
+        z = lay(left, right)
+        start = len(vertices)
+        for k in range(len(dense)):
+            vertices.append([left[k, 0], left[k, 1], z[k]])
+            vertices.append([right[k, 0], right[k, 1], z[k]])
+        for k in range(len(dense) - 1):
+            a = start + 2 * k
+            triangles += [[a, a + 1, a + 3], [a, a + 3, a + 2]]
+    for centre, radius, points in stars:
+        star = []
+        corners = 2 * points
+        for j in range(corners):
+            r = grow * (radius if j % 2 == 0 else radius / 2.6)
+            a = np.pi / 2 + j * np.pi / points
+            star.append(centre + r * np.array([np.cos(a), np.sin(a)]))
+        z = lay(np.array(star + [centre]), np.array(star + [centre])).max()
+        start = len(vertices)
+        vertices.append([centre[0], centre[1], z])
+        vertices += [[x, y, z] for x, y in star]
+        triangles += [[start, start + 1 + j, start + 1 + (j + 1) % corners] for j in range(corners)]
+    return np.array(vertices).reshape(-1, 3), np.array(triangles, dtype=np.uint32).reshape(-1, 3)
+
+
+def facing_out(vertices, triangles, normal):
+    """`triangles` wound counter-clockwise seen from `normal`."""
+    corners = vertices[triangles]
+    turn = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]) @ normal
+    triangles = triangles.copy()
+    triangles[turn < 0] = triangles[turn < 0][:, [0, 2, 1]]
+    return triangles
+
+
+def ithildin(positions, indices, leaves, width, off, grow=1.0):
+    """The drawing of ithildin on the Doors of Durin (in metres, the doors
+    open), a design of our own: as ribbons `width` wide laid `off` in front
+    of the stone. On the front, an arch on the pillars, a vine winding up
+    each, with lozenges for leaves, a mountain of two chevrons on the
+    keystone, and over the arch, on the rock behind (the back of the gate),
+    a crescent moon between six lozenges; on each leaf, swung open, on the
+    side it turns to the road, a tall lozenge round a rayed sun, over a
+    stem of chevrons. Its vertices, normals, texture coordinates and
+    triangles."""
+    triangles = indices.reshape(-1, 3)
+    frame = triangles[~leaves].reshape(-1)
+    low, high = positions.min(axis=0), positions.max(axis=0)
+    height = high[1] - low[1]
+    pillar = 0.172 * DURIN_WIDER * height
+    spring = 0.664 * height
+    ring = high[1] - spring - 0.09 * height
+    back = low[2]
+
+    def arc(cx, cy, rx, ry, start, end, count=48):
+        t = np.linspace(start, end, count)
+        return np.stack([cx + rx * np.cos(t), cy + ry * np.sin(t)], axis=1)
+
+    lines = [np.concatenate([
+        [[-pillar, 0.04 * height]],
+        arc(0.0, spring, pillar, ring, np.pi, 0.0),
+        [[pillar, 0.04 * height]],
+    ])]
+    stars = []
+    # A vine winding up each pillar, outside the arch's line (inside it, the
+    # leaves open hide the pillar), a lozenge at each turn.
+    for side in (-1.0, 1.0):
+        stem = side * (pillar + 0.03 * height)
+        y = np.linspace(0.06 * height, spring - 0.04 * height, 60)
+        wave = 0.012 * height * np.sin((y - y[0]) / (0.11 * height) * 2.0 * np.pi)
+        lines.append(np.stack([stem + wave, y], axis=1))
+        for k, at in enumerate(np.arange(0.06 * height + 0.0275 * height, spring - 0.06 * height, 0.055 * height)):
+            out = 1.0 if k % 2 == 0 else -1.0
+            stars.append((np.array([stem + out * 0.026 * height, at]), 0.011 * height, 4))
+    # A mountain of two chevrons on the keystone.
+    peak_y, peak = high[1] - 0.085 * height, 0.05 * height
+    for k in range(2):
+        rise = peak * (1.0 - 0.45 * k)
+        lines.append(np.array([[-rise, peak_y + 0.02 * height * k], [0.0, peak_y + rise * 0.8 + 0.02 * height * k], [rise, peak_y + 0.02 * height * k]]))
+    # Over the arch, on the rock: a crescent moon between six lozenges.
+    moon = np.array([0.0, spring + ring + 0.12 * height])
+    r = 0.04 * height
+    lines.append(np.concatenate([
+        arc(moon[0], moon[1], r, r, 0.35 * np.pi, 1.65 * np.pi, 24),
+        arc(moon[0] + 0.35 * r, moon[1], 0.75 * r, 0.75 * r, 1.55 * np.pi, 0.45 * np.pi, 20),
+    ]))
+    for k in range(3):
+        for side in (-1.0, 1.0):
+            angle = np.radians(90.0 - side * (16.0 + 14.0 * k))
+            centre = np.array([0.0, spring]) + np.array(
+                [np.cos(angle) * (pillar + 0.11 * height), np.sin(angle) * (ring + 0.11 * height)]
+            )
+            stars.append((centre, 0.017 * height, 4))
+
+    def lay_front(left, right):
+        on = lambda points: frontmost(positions, frame, points)
+        zl, zr = on(left), on(right)
+        return np.maximum(np.where(np.isnan(zl), back, zl), np.where(np.isnan(zr), back, zr)) + off
+
+    v, t = drawing(lines, stars, lay_front, width, grow)
+    t = facing_out(v, t, np.array([0.0, 0.0, 1.0]))
+    parts = [(v, np.tile([0.0, 0.0, 1.0], (len(v), 1)), t)]
+    # On each leaf, seen from behind as it stood closed (the side it turns to
+    # the road open): a tree up its middle and the star over it.
+    for side, corners, hinge in hinges(positions, indices, leaves):
+        leaf = positions[corners]
+        mirrored = leaf * np.array([1.0, 1.0, -1.0])
+        flat = np.arange(len(corners), dtype=np.uint32)
+        top = leaf[:, 1].max()
+        middle = hinge[0] / 2.0
+        span = abs(hinge[0])
+        # A stem of chevrons, pointing up, and over it a tall lozenge round
+        # a sun of six rays.
+        lines = [np.array([[middle, 0.08 * top], [middle, 0.5 * top]])]
+        for k in range(5):
+            y = (0.14 + 0.07 * k) * top
+            lines.append(np.array([
+                [middle - 0.28 * span, y], [middle, y + 0.05 * top], [middle + 0.28 * span, y],
+            ]))
+        sun = np.array([middle, 0.72 * top])
+        lines.append(np.array([
+            [middle, 0.52 * top], [middle + 0.4 * span, 0.72 * top],
+            [middle, 0.92 * top], [middle - 0.4 * span, 0.72 * top], [middle, 0.52 * top],
+        ]))
+        lines.append(arc(sun[0], sun[1], 0.12 * span, 0.12 * span, 0.0, 2.0 * np.pi, 28))
+        for k in range(6):
+            a = np.pi / 2 + k * np.pi / 3
+            d = np.array([np.cos(a), np.sin(a)])
+            lines.append(np.array([sun + d * 0.17 * span, sun + d * 0.27 * span]))
+        stars = []
+
+        def lay_leaf(left, right):
+            on = lambda points: -frontmost(mirrored, flat, points)
+            zl, zr = on(left), on(right)
+            behind = leaf[:, 2].min()
+            return np.minimum(np.where(np.isnan(zl), behind, zl), np.where(np.isnan(zr), behind, zr)) - off
+
+        v, t = drawing(lines, stars, lay_leaf, width, grow)
+        v, n = swing(v, np.tile([0.0, 0.0, -1.0], (len(v), 1)), side, hinge)
+        t = facing_out(v, t, n[0])
+        parts.append((v, n, t))
+    vertices, normals, tris, count = [], [], [], 0
+    for v, n, t in parts:
+        vertices.append(v)
+        normals.append(n)
+        tris.append(t + count)
+        count += len(v)
+    vertices = np.concatenate(vertices)
+    return (
+        vertices,
+        np.concatenate(normals),
+        np.zeros((len(vertices), 2)),
+        np.concatenate(tris).astype(np.uint32).reshape(-1),
+    )
+
+
+def turned(positions, normals):
+    """Turned a quarter about Y, so that the side that was -X faces +Z."""
+    turn = np.array([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
+    return positions @ turn.T, normals @ turn.T
+
+
+def axle_hole(positions, normals, uvs, indices, color):
+    """The middle of the dark hole for the axle in the mill's side that was
+    -X (its stone wall, low): (z, y), in its own units."""
+    triangles = indices.reshape(-1, 3)
+    middle = positions[triangles].mean(axis=1)
+    facing = normals[triangles].mean(axis=1)
+    wall = (middle[:, 0] < -0.18) & (facing[:, 0] < -0.8) & (middle[:, 1] < -0.1)
+    # The hole is painted, not modelled: the texture is looked up over the
+    # wall, a point every 2 mm (z, y), in each of its triangles.
+    dark = []
+    for triangle in triangles[wall]:
+        corners = positions[triangle][:, [2, 1]]
+        low, high = corners.min(axis=0), corners.max(axis=0)
+        z, y = np.meshgrid(np.arange(low[0], high[0], 0.002), np.arange(low[1], high[1], 0.002))
+        points = np.stack([z.ravel(), y.ravel()], axis=1)
+        a, b, c = corners
+        den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(den) < 1e-12 or len(points) == 0:
+            continue
+        u = ((b[1] - c[1]) * (points[:, 0] - c[0]) + (c[0] - b[0]) * (points[:, 1] - c[1])) / den
+        v = ((c[1] - a[1]) * (points[:, 0] - c[0]) + (a[0] - c[0]) * (points[:, 1] - c[1])) / den
+        inside = (u >= 0) & (v >= 0) & (u + v <= 1)
+        weights = np.stack([u, v, 1 - u - v], axis=1)[inside]
+        rgb = texels(weights @ uvs[triangle], color)
+        dark.append(points[inside][rgb.mean(axis=1) < 0.16])
+    hole = np.concatenate(dark)
+    assert len(hole) > 50, f"{len(hole)} points of the hole"
+    return hole[:, 0].mean(), hole[:, 1].mean()
+
+
+def main():
+    props = []
+    for argument in sys.argv[1:]:
+        name, path = argument.split("=", 1)
+        if name not in SIZES and name != "mill_wheel":
+            sys.exit(f"{name}: not one of {', '.join(SIZES)}, mill_wheel")
+        props.append((name, path))
+    if not props:
+        sys.exit(__doc__)
+    order = list(SIZES) + ["mill_wheel"]
+    props.sort(key=lambda prop: order.index(prop[0]))
+    given = {name: path for name, path in props}
+    if ("mill" in given) != ("mill_wheel" in given):
+        sys.exit("the mill and its wheel go together")
+    spots = cells([name for name, _ in props])
+    atlas = Image.new("RGB", (ATLAS, ATLAS))
+    size = np.array([ATLAS, ATLAS], dtype=np.float64)
+    pieces = []
+    mill = None
+    for name, path in props:
+        positions, normals, uvs, indices, color = read_glb(path)
+        x, y, side = spots[name]
+        inner = side - 2 * MARGIN
+        texture = color.resize((inner, inner), Image.LANCZOS)
+        if name in TONED:
+            saturation, brightness = TONED[name]
+            texture = ImageEnhance.Color(texture).enhance(saturation)
+            texture = ImageEnhance.Brightness(texture).enhance(brightness)
+        cell = texture.resize((side, side), Image.NEAREST)
+        cell.paste(texture, (MARGIN, MARGIN))
+        atlas.paste(cell, (x, y))
+        corner = np.array([x + MARGIN, y + MARGIN], dtype=np.float64)
+
+        if name == "stone_trolls":
+            positions, normals, uvs, indices = without_third_leg(positions, normals, uvs, indices, color)
+        elif name == "bree_gate":
+            indices = without_bars(positions, indices)
+        elif name == "bree_house_a":
+            indices = without_sign(positions, indices)
+        elif name == "elven_boat":
+            indices = without_oars(positions, indices)
+        moved = (corner + uvs.clip(0.0, 1.0) * inner) / size
+
+        if name == "durin_doors":
+            leaves = door_leaves(positions, indices)
+            positions, normals = widened(positions, normals, DURIN_WIDER)
+            _, _, centre, scale = place(positions[np.unique(indices)], normals[np.unique(indices)], SIZES[name])
+            placed = (positions - centre) * scale
+            bent = normals / scale
+            bent /= np.linalg.norm(bent, axis=1, keepdims=True).clip(1e-9)
+            opened = swung_open(placed, bent, moved, indices, leaves)
+            for piece, (p, n, u, i) in (
+                ("durin_doors", opened),
+                ("durin_ithildin", ithildin(placed, indices, leaves, ITHILDIN_WIDTH, ITHILDIN_OFF)),
+                ("durin_glow", ithildin(placed, indices, leaves, GLOW_WIDTH, GLOW_OFF, GLOW_GROW)),
+            ):
+                p, n, u, i = compact(p, n, u, i)
+                pieces.append((piece, p, n, u, i))
+                report(piece, p, i)
+            continue
+
+        if name == "mill":
+            hole = axle_hole(positions, normals, uvs, indices, color)
+            positions, normals = turned(positions, normals)
+            # Its wall with the hole now faces +Z, the hole at (x, y) =
+            # (its z, y) as it came.
+            p, n, centre, scale = place(positions, normals, SIZES["mill"])
+            axle = np.array([(hole[0] - centre[0]) * scale[0], (hole[1] - centre[1]) * scale[1], 0.0])
+            # Its wall's face about the hole.
+            about = (np.abs(p[:, 0] - axle[0]) < 2.0) & (np.abs(p[:, 1] - axle[1]) < 1.5)
+            axle[2] = p[about, 2].max()
+            mill = (p, n, moved, indices, axle)
+            continue
+        if name == "mill_wheel":
+            assert mill is not None
+            p_mill, n_mill, uv_mill, i_mill, axle = mill
+            low, high = positions.min(axis=0), positions.max(axis=0)
+            hub = (low + high) / 2.0
+            diameter = 2.0 * (axle[1] + WHEEL_SUNK)
+            scale = diameter / (high[1] - low[1])
+            wheel = (positions - hub) * scale
+            depth = (high[2] - low[2]) * scale
+            # Against the wall, past anything on it about the hole.
+            axle[2] += WHEEL_GAP + depth / 2.0
+            for piece, p, n, u, i in (("mill", p_mill, n_mill, uv_mill, i_mill), ("mill_wheel", wheel + axle, normals, moved, indices)):
+                p, n, u, i = compact(p - axle, n, u, i)
+                pieces.append((piece, p, n, u, i))
+                report(piece, p, i)
+            continue
+        _, _, centre, scale = place(positions[np.unique(indices)], normals[np.unique(indices)], SIZES[name])
+        placed = (positions - centre) * scale
+        bent = normals / scale
+        bent /= np.linalg.norm(bent, axis=1, keepdims=True).clip(1e-9)
+        if name == "prancing_pony":
+            placed, bent = arch_widened(placed, bent, *PONY_ARCH)
+        p, n, u, i = compact(placed, bent, moved, indices)
+        pieces.append((name, p, n, u, i))
+        report(name, p, i)
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    with open(OUT / "props.bin", "wb") as out:
+        out.write(b"MRMESH01")
+        out.write(len(pieces).to_bytes(4, "little"))
+        for name, positions, normals, uvs, indices in pieces:
+            encoded = name.encode()
+            out.write(len(encoded).to_bytes(4, "little") + encoded)
+            for count in (len(positions), len(indices), 0):
+                out.write(int(count).to_bytes(4, "little"))
+            out.write(positions.astype("<f4").tobytes())
+            out.write(normals.astype("<f4").tobytes())
+            out.write(uvs.astype("<f4").tobytes())
+            out.write(indices.astype("<u4").tobytes())
+    atlas.save(OUT / "color.jpg", quality=88, optimize=True)
+    print(f"{OUT / 'props.bin'}, {OUT / 'color.jpg'} ({atlas.size[0]}x{atlas.size[1]})")
+
+
+def report(name, positions, indices):
+    low, high = positions.min(axis=0), positions.max(axis=0)
+    print(
+        f"{name}: {len(positions)} vertices, {len(indices) // 3} triangles, "
+        f"{high[0] - low[0]:.1f} x {high[1] - low[1]:.1f} x {high[2] - low[2]:.1f} m"
+    )
+
+
+if __name__ == "__main__":
+    main()

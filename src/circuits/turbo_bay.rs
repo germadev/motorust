@@ -503,7 +503,9 @@ pub const TURBO_BAY: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        wheelie_halo: None,
         japan: None,
+        middle_earth: None,
         space: None,
     },
 };

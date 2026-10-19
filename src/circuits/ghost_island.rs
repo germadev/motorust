@@ -142,6 +142,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &TEMPLE_LEFT_RISE,
+                narrows: &[],
             },
             // On the castle ridge, to the left, over a hump.
             Branch {
@@ -151,6 +152,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &CASTLE_LEFT_RISE,
+                narrows: &[],
             },
             // On the castle ridge, to the right, through a dip.
             Branch {
@@ -160,6 +162,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                 vertical_loop: None,
                 exit: &[],
                 rise: &CASTLE_RIGHT_RISE,
+                narrows: &[],
             },
         ],
     },
@@ -436,6 +439,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         desert: None,
         mine: None,
         space: None,
+        wheelie_halo: None,
         japan: Some(Japan {
             // Up the red ridge, as at Fushimi Inari: a gate every 6 m where
             // the walls close in, and wide ones before and after.
@@ -504,6 +508,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
             ],
             flowers: &FLOWERS,
         }),
+        middle_earth: None,
     },
 };
 

@@ -55,6 +55,9 @@ pub const HORIZON: Color = Color::srgb(0.68, 0.8, 0.94);
 /// (`SkyStyle::GoldenHour`), whose mountains stand out from across the sea.
 pub const FOG: (f32, f32) = (450.0, 3800.0);
 const GOLDEN_FOG: (f32, f32) = (2000.0, 6800.0);
+/// The haze of high country: from nearer, and thicker far off, so the
+/// hills behind fade one after another.
+const HAZE: (f32, f32) = (320.0, 4200.0);
 /// The haze of a Mediterranean summer: it begins nearer than on most days
 /// and thickens slowly, so the island's far side is already veiled.
 const MEDITERRANEAN_FOG: (f32, f32) = (300.0, 4200.0);
@@ -171,6 +174,42 @@ impl Palette {
                 clouds: Color::WHITE,
                 fog: FOG,
                 grade: Grade::NONE,
+            },
+            // A summer sunset in high country: the sun low in the south-east
+            // and golden, raking across the hills so that each casts a long
+            // shadow over the next and the fronts of the hills glow, the
+            // shade cool, filled by the sky a little less than on a summer
+            // day, so that what the sun lights from behind (the halls and
+            // the rock at the head of Rivendell's valley, ahead of the
+            // riders coming south) is not dull; the sky blue
+            // overhead, golden towards the sun and the horizon, a warm haze
+            // fading the hills one behind another; and the picture graded as
+            // a film is, less saturated, with more contrast, a little warm,
+            // and lit up so that it stays bright, its highlights losing more
+            // of their colour, as film's do, so that the grass in the sun is
+            // not vivid.
+            SkyStyle::HighCountry => Self {
+                zenith: Color::srgb(0.24, 0.4, 0.72),
+                above_horizon: Color::srgb(0.64, 0.64, 0.78),
+                horizon: Color::srgb(0.98, 0.8, 0.64),
+                glow: 0.55,
+                glow_color: Color::srgb(1.0, 0.72, 0.5),
+                sun_azimuth: SUN_AZIMUTH,
+                sun_elevation: 0.26,
+                sun_disc: Color::srgb(1.0, 0.85, 0.62),
+                sunlight: Color::srgb(1.0, 0.82, 0.62),
+                sunlight_strength: 1.35,
+                ambient: Color::srgb(0.58, 0.64, 0.86),
+                ambient_brightness: 600.0,
+                clouds: Color::srgb(1.0, 0.84, 0.72),
+                fog: HAZE,
+                grade: Grade {
+                    saturation: 0.88,
+                    contrast: 1.14,
+                    exposure: 0.25,
+                    warmth: 0.008,
+                    highlight_saturation: 0.72,
+                },
             },
             // A clear Mediterranean summer afternoon, as a photograph shows
             // it rather than a cartoon: the sky a deep but not vivid blue
@@ -1760,9 +1799,11 @@ mod tests {
     fn the_sky_meets_the_fog_at_the_horizon() {
         for style in [
             SkyStyle::Day,
+            SkyStyle::Day,
             SkyStyle::Mediterranean,
             SkyStyle::GoldenHour,
             SkyStyle::Dusk,
+            SkyStyle::HighCountry,
             SkyStyle::Space,
         ] {
             let palette = Palette::of(style);
@@ -1840,6 +1881,34 @@ mod tests {
         assert!(warm.red > warm.blue);
         assert!(summer.sun_elevation < day.sun_elevation);
         assert!(summer.ambient_brightness < day.ambient_brightness);
+    }
+
+    #[test]
+    fn high_country_is_a_bright_sunset_of_long_shadows_graded_as_a_film() {
+        // A sunset's sun, low and golden, stronger than a summer day's; the
+        // shade filled less by the sky, so the hills' shadows stand out, but
+        // not so little that what the sun lights from behind is dull; a
+        // quieter sky overhead and golden at the horizon; a haze from
+        // nearer; and a picture a little less saturated than a summer day's,
+        // with more contrast, warm, and lit up.
+        let day = Palette::of(SkyStyle::Day);
+        let high = Palette::of(SkyStyle::HighCountry);
+        assert!(high.sun_elevation < 0.35 && high.sun_elevation > 0.15);
+        let sun = high.sunlight.to_srgba();
+        assert!(sun.red > sun.blue + 0.3);
+        assert!(high.sunlight_strength > day.sunlight_strength);
+        assert!(high.ambient_brightness < day.ambient_brightness * 0.9);
+        assert!(high.ambient_brightness > day.ambient_brightness * 0.8);
+        let vivid = |c: Color| {
+            let c = c.to_srgba();
+            c.blue - c.red.min(c.green)
+        };
+        assert!(vivid(high.sky_color(Vec3::Y)) < vivid(day.sky_color(Vec3::Y)));
+        let horizon = high.horizon.to_srgba();
+        assert!(horizon.red > horizon.blue + 0.2);
+        assert!(high.fog.0 < day.fog.0);
+        assert!(high.grade.saturation < 1.0 && high.grade.contrast > 1.1);
+        assert!(high.grade.exposure > 0.0 && high.grade.warmth > 0.0);
     }
 
     /// The lowest row of cloud `data` thicker than half in column `x`, if

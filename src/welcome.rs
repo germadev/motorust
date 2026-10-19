@@ -53,6 +53,13 @@ const FLYBY_FOV: f32 = 0.9;
 /// goes back up over as many past it.
 const FLYBY_TUNNEL_HEIGHT: f32 = 2.8;
 const FLYBY_TUNNEL_FADE: f32 = 25.0;
+/// How high it flies under the arches over the road, the start's and the
+/// checkpoints' (m): well under their beam, which at its own height it
+/// would fly through. It is down this far either side of an arch (m), and
+/// comes down to it and goes back up over this many metres more.
+const FLYBY_ARCH_HEIGHT: f32 = 3.2;
+const FLYBY_ARCH_UNDER: f32 = 6.0;
+const FLYBY_ARCH_FADE: f32 = 22.0;
 
 /// Size of the title of the game (px). The menu is exactly as wide.
 pub const TITLE_SIZE: f32 = 110.0;
@@ -758,8 +765,20 @@ fn flyby_start(lap: f32) -> f32 {
 
 /// How high the camera flies over the road `travelled` metres along a lap
 /// of `lap` metres: its own height, and under the rock through a tunnel,
-/// coming down to it before the mouth and up again past it.
+/// coming down to it before the mouth and up again past it, and under the
+/// arches over the road, coming down to pass under each and up again.
 fn flyby_height(scenery: &Scenery, travelled: f32, lap: f32) -> f32 {
+    let under_arch = scenery
+        .gantries
+        .iter()
+        .map(|gantry| {
+            let about = span(
+                gantry.along - FLYBY_ARCH_UNDER - FLYBY_ARCH_FADE,
+                gantry.along + FLYBY_ARCH_UNDER + FLYBY_ARCH_FADE,
+            );
+            about.weight(travelled, lap, FLYBY_ARCH_FADE)
+        })
+        .fold(0.0, f32::max);
     let under_rock = scenery
         .tunnels
         .iter()
@@ -773,7 +792,9 @@ fn flyby_height(scenery: &Scenery, travelled: f32, lap: f32) -> f32 {
             about.weight(travelled, lap, FLYBY_TUNNEL_FADE)
         })
         .fold(0.0, f32::max);
-    FLYBY_HEIGHT.lerp(FLYBY_TUNNEL_HEIGHT, under_rock)
+    FLYBY_HEIGHT
+        .lerp(FLYBY_ARCH_HEIGHT, under_arch)
+        .min(FLYBY_HEIGHT.lerp(FLYBY_TUNNEL_HEIGHT, under_rock))
 }
 
 /// La cámara recorre la pista despacio, un poco por encima de la carretera,
@@ -819,6 +840,7 @@ fn fly_over_track(
 mod tests {
     use super::*;
     use crate::circuits::CIRCUITS;
+    use crate::world::road::{GANTRY_BEAM, GANTRY_HEIGHT};
     use crate::world::structures::TUNNEL_HEIGHT;
 
     #[test]
@@ -827,6 +849,12 @@ mod tests {
             let track = Track::new(&circuit.layout);
             let lap = track.sample_count() as f32 * track.step_length();
             let height = |at: f32| flyby_height(&circuit.scenery, at, lap);
+            let by_an_arch = |at: f32| {
+                circuit.scenery.gantries.iter().any(|gantry| {
+                    let off = (at - gantry.along).rem_euclid(lap);
+                    off.min(lap - off) < FLYBY_ARCH_UNDER + FLYBY_ARCH_FADE
+                })
+            };
             for tunnel in circuit.scenery.tunnels {
                 let length = (tunnel.to - tunnel.from).rem_euclid(lap);
                 // All the way through, well under the rock.
@@ -840,13 +868,16 @@ mod tests {
                     );
                 }
                 // Already down at the mouth, and at its own height well
-                // before it and well past it.
+                // before it and well past it (but by an arch).
                 assert!(height(tunnel.from) < FLYBY_TUNNEL_HEIGHT + 1e-3);
                 assert!(height(tunnel.to) < FLYBY_TUNNEL_HEIGHT + 1e-3);
                 for away in [
                     tunnel.from - 2.0 * FLYBY_TUNNEL_FADE,
                     tunnel.to + 2.0 * FLYBY_TUNNEL_FADE,
-                ] {
+                ]
+                .into_iter()
+                .filter(|&away| !by_an_arch(away))
+                {
                     assert!(
                         (height(away) - FLYBY_HEIGHT).abs() < 1e-3,
                         "{}: {} m at {away} m",
@@ -855,11 +886,38 @@ mod tests {
                     );
                 }
             }
-            // With no tunnel it flies at its own height all the way round.
+            // With no tunnel it flies at its own height all the way round,
+            // but by the arches.
             if circuit.scenery.tunnels.is_empty() {
                 for step in 0..40 {
                     let at = lap * step as f32 / 40.0;
-                    assert!((height(at) - FLYBY_HEIGHT).abs() < 1e-3, "{}", circuit.name);
+                    if !by_an_arch(at) {
+                        assert!((height(at) - FLYBY_HEIGHT).abs() < 1e-3, "{}", circuit.name);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_camera_flies_under_the_beam_of_every_arch_over_the_road() {
+        let beam = GANTRY_HEIGHT - GANTRY_BEAM;
+        for circuit in &CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let lap = track.sample_count() as f32 * track.step_length();
+            let height = |at: f32| flyby_height(&circuit.scenery, at, lap);
+            assert!(!circuit.scenery.gantries.is_empty(), "{}", circuit.name);
+            for gantry in circuit.scenery.gantries {
+                // Well under the beam from a little before the arch to a
+                // little past it.
+                for step in -4..=4 {
+                    let at = gantry.along + FLYBY_ARCH_UNDER * step as f32 / 4.0;
+                    let flying = height(at);
+                    assert!(
+                        flying < beam - 2.0,
+                        "{}: {flying} m at {at} m, under a beam {beam} m up",
+                        circuit.name
+                    );
                 }
             }
         }

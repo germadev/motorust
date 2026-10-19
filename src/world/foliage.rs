@@ -395,14 +395,26 @@ const FLOWER_MARGIN: f32 = 6.0;
 const FLOWER_GROUND: f32 = FLOWER_CELL as f32 - 2.0;
 /// Every kind of flower, in the order of their cells in the atlas and of
 /// their meadows (see [`meadow`]).
-pub const FLOWER_KINDS: [FlowerKind; 6] = [
+pub const FLOWER_KINDS: [FlowerKind; 8] = [
     FlowerKind::SpiderLily,
     FlowerKind::White,
     FlowerKind::Yellow,
     FlowerKind::Iris,
     FlowerKind::Susuki,
     FlowerKind::Phlox,
+    FlowerKind::BareEarth,
+    FlowerKind::FallenLeaves,
 ];
+
+/// Whether `kind` hugs the ground, a carpet with no clumps standing up out
+/// of it (and no cells in the flowers' atlas): moss phlox, bare earth and
+/// fallen leaves.
+pub fn hugs_the_ground(kind: FlowerKind) -> bool {
+    matches!(
+        kind,
+        FlowerKind::Phlox | FlowerKind::BareEarth | FlowerKind::FallenLeaves
+    )
+}
 
 /// The rectangle (its top left and bottom right corners, in texture
 /// coordinates) of the cell of the flowers' atlas ([`flowers`]) where a
@@ -455,10 +467,11 @@ pub fn flowers() -> Image {
             corner + IVec2::splat(FLOWER_CELL as i32) - margin,
         )
     };
-    // Moss phlox has no clumps: it hugs the ground (see [`meadow`]).
+    // Moss phlox, bare earth and fallen leaves have no clumps: they hug the
+    // ground (see [`meadow`]).
     let standing = FLOWER_KINDS
         .into_iter()
-        .filter(|&kind| kind != FlowerKind::Phlox);
+        .filter(|&kind| !hugs_the_ground(kind));
     for (seed, kind) in standing.enumerate() {
         let seed = 40 + seed as u32 * 2;
         let side = flower_cell_origin(kind, false);
@@ -636,6 +649,77 @@ pub fn meadow(lawn: &Image, kind: FlowerKind) -> Image {
                     );
                 }
                 dot(&mut canvas, at, 1.4 * scale, eye);
+            }
+        }
+        FlowerKind::BareEarth => {
+            // The earth over most of it, in blotches of its browns, dusty
+            // and darker; pebbles in it; and tufts of grass left standing.
+            let earths = [
+                paint(0.36, 0.27, 0.19),
+                paint(0.46, 0.35, 0.24),
+                paint(0.55, 0.45, 0.33),
+                paint(0.5, 0.34, 0.23),
+            ];
+            for n in 0..count(5200.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let earth = earths[(r(2) * 4.0) as usize % 4];
+                let shade = 0.85 + 0.3 * r(3);
+                dot(
+                    &mut canvas,
+                    spot(&r),
+                    (4.0 + 9.0 * r(4)) * scale,
+                    earth * shade,
+                );
+            }
+            let stone = paint(0.62, 0.6, 0.56);
+            for n in 0..count(900.0) {
+                let r = |k: u32| rand(seed, n + 30_000, k);
+                dot(
+                    &mut canvas,
+                    spot(&r),
+                    (1.4 + 2.2 * r(2)) * scale,
+                    stone * (0.75 + 0.35 * r(3)),
+                );
+            }
+            let blade = paint(0.3, 0.44, 0.17);
+            let tip = paint(0.5, 0.6, 0.26);
+            for n in 0..count(650.0) {
+                let r = |k: u32| rand(seed, n + 60_000, k);
+                let at = spot(&r);
+                for k in 0..6 {
+                    let q = |j: u32| rand(seed, n * 8 + 90_000 + k, j);
+                    let to = at + Vec2::from_angle(q(0) * tau) * (4.0 + 7.0 * q(1)) * scale;
+                    canvas.stroke(at, to, (1.8 * scale, 0.6 * scale), blade, tip);
+                }
+            }
+        }
+        FlowerKind::FallenLeaves => {
+            // Leaves lying every way over the grass, in autumn's colours, a
+            // darker vein down each, so thick that the grass shows only
+            // here and there between them.
+            let colours = [
+                paint(0.45, 0.3, 0.16),
+                paint(0.62, 0.3, 0.12),
+                paint(0.76, 0.55, 0.2),
+                paint(0.86, 0.68, 0.26),
+                paint(0.62, 0.17, 0.1),
+                paint(0.32, 0.21, 0.12),
+            ];
+            for n in 0..count(18_000.0) {
+                let r = |k: u32| rand(seed, n, k);
+                let at = spot(&r);
+                let colour = colours[(r(2) * 6.0) as usize % 6] * (0.8 + 0.35 * r(3));
+                let half = Vec2::from_angle(r(4) * tau) * (3.5 + 3.5 * r(5)) * scale;
+                let width = (2.6 + 2.0 * r(6)) * scale;
+                canvas.stroke(at - half, at + half, (width, width * 0.4), colour, colour);
+                let vein = colour * 0.7;
+                canvas.stroke(
+                    at - half,
+                    at + half * 0.8,
+                    (0.7 * scale, 0.4 * scale),
+                    vein,
+                    vein,
+                );
             }
         }
     }
@@ -915,7 +999,7 @@ fn paint_side(canvas: &mut Canvas, kind: FlowerKind, origin: Vec2, seed: u32) {
                 }
             }
         }
-        FlowerKind::Phlox => {}
+        FlowerKind::Phlox | FlowerKind::BareEarth | FlowerKind::FallenLeaves => {}
     }
 }
 
@@ -1030,7 +1114,7 @@ fn paint_from_above(canvas: &mut Canvas, kind: FlowerKind, origin: Vec2, seed: u
                 }
             }
         }
-        FlowerKind::Phlox => {}
+        FlowerKind::Phlox | FlowerKind::BareEarth | FlowerKind::FallenLeaves => {}
     }
 }
 
