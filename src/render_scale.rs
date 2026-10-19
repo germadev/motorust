@@ -28,6 +28,7 @@ use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{Monitor, OnMonitor, PrimaryMonitor, PrimaryWindow, WindowRef};
 
 use crate::world::detail::{Detail, choose_detail};
+use crate::world::realm::PortalView;
 
 pub struct RenderScalePlugin;
 
@@ -217,7 +218,7 @@ fn scale_the_world(
     window: Query<&Window, With<PrimaryWindow>>,
     mut images: ResMut<Assets<Image>>,
     mut shown: Query<(&mut Sprite, &mut Visibility), With<ScaledWorld>>,
-    mut worlds: Query<(&mut RenderTarget, &mut Projection), With<Camera3d>>,
+    mut worlds: Query<(&mut RenderTarget, &mut Projection), (With<Camera3d>, Without<PortalView>)>,
     mut interface: Query<
         (Entity, &mut Camera, Has<ContrastAdaptiveSharpening>),
         (With<IsDefaultUiCamera>, Without<Camera3d>),

@@ -438,6 +438,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         pit: None,
         desert: None,
         mine: None,
+        space: None,
         japan: Some(Japan {
             // Up the red ridge, as at Fushimi Inari: a gate every 6 m where
             // the walls close in, and wide ones before and after.

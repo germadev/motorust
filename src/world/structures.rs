@@ -120,6 +120,7 @@ pub fn structure_pieces(
             ground: Ground::Grass,
             flowers: Some(kind),
             mesh: meadow,
+            layers: None,
         }));
         let rock = match scenery.soil {
             Soil::Rock | Soil::Mine => StandardMaterial {
@@ -134,6 +135,12 @@ pub fn structure_pieces(
                 perceptual_roughness: 0.9,
                 ..default()
             },
+            Soil::Lunar => StandardMaterial {
+                base_color: Color::srgb(0.58, 0.62, 0.70),
+                base_color_texture: Some(textures.rock.clone()),
+                perceptual_roughness: 0.88,
+                ..default()
+            },
             Soil::Checkered => StandardMaterial {
                 base_color_texture: Some(textures.soil.clone()),
                 perceptual_roughness: 0.9,
@@ -141,13 +148,22 @@ pub fn structure_pieces(
             },
         };
         // Warm and lit by the lamps, as in Moto Racer; through checkerboard
-        // earth, a cave of it.
+        // earth, a cave of it; in a lunar station, pressurized metallic hull
+        // panels lit by cool cyan-white strips.
         let lining = match scenery.soil {
             Soil::Rock | Soil::Mine | Soil::Granite => StandardMaterial {
                 base_color: Color::srgb(0.95, 0.78, 0.52),
                 base_color_texture: Some(textures.panels.clone()),
                 emissive: LinearRgba::rgb(0.12, 0.08, 0.035),
                 perceptual_roughness: 0.85,
+                ..default()
+            },
+            Soil::Lunar => StandardMaterial {
+                base_color: Color::srgb(0.72, 0.82, 0.96),
+                base_color_texture: Some(textures.panels.clone()),
+                emissive: LinearRgba::rgb(0.06, 0.12, 0.22),
+                perceptual_roughness: 0.55,
+                metallic: 0.35,
                 ..default()
             },
             Soil::Checkered => StandardMaterial {
@@ -158,15 +174,27 @@ pub fn structure_pieces(
             },
         };
         let concrete = StandardMaterial {
-            base_color: Color::srgb(0.75, 0.73, 0.7),
+            base_color: if scenery.soil == Soil::Lunar {
+                Color::srgb(0.66, 0.70, 0.78)
+            } else {
+                Color::srgb(0.75, 0.73, 0.7)
+            },
             base_color_texture: Some(textures.plaster.clone()),
             perceptual_roughness: 0.9,
             ..default()
         };
-        let lights = StandardMaterial {
-            base_color: Color::srgb(1.0, 0.9, 0.6),
-            emissive: LinearRgba::rgb(6.0, 4.6, 2.2),
-            ..default()
+        let lights = if scenery.soil == Soil::Lunar {
+            StandardMaterial {
+                base_color: Color::srgb(0.78, 0.94, 1.0),
+                emissive: LinearRgba::rgb(3.2, 5.4, 7.5),
+                ..default()
+            }
+        } else {
+            StandardMaterial {
+                base_color: Color::srgb(1.0, 0.9, 0.6),
+                emissive: LinearRgba::rgb(6.0, 4.6, 2.2),
+                ..default()
+            }
         };
         let checker = StandardMaterial {
             base_color_texture: Some(textures.checker.clone()),
@@ -181,7 +209,11 @@ pub fn structure_pieces(
         };
         // The lamps' light, added over what it falls on.
         let pools = StandardMaterial {
-            base_color: POOL_COLOR,
+            base_color: if scenery.soil == Soil::Lunar {
+                Color::srgb(0.18, 0.32, 0.46)
+            } else {
+                POOL_COLOR
+            },
             base_color_texture: Some(textures.light_pool.clone()),
             alpha_mode: AlphaMode::Add,
             unlit: true,

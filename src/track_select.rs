@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 
 use crate::bike::ROSTER;
-use crate::camera::CameraGlide;
+use crate::camera::{CameraGlide, CameraPlayer};
 use crate::circuits::{CIRCUITS, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
@@ -493,7 +493,7 @@ fn from_above(settings: Res<Settings>) -> bool {
 fn aerial_camera(
     time: Res<Time>,
     track: Res<Track>,
-    camera: Single<(&mut Transform, &mut Projection), With<Camera3d>>,
+    camera: Single<(&mut Transform, &mut Projection), With<CameraPlayer>>,
     mut glide: ResMut<CameraGlide>,
     mut angle: Local<f32>,
 ) {

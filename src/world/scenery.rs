@@ -220,12 +220,16 @@ pub enum Soil {
     /// Grey granite and schist, bare and hard, as the Argonath are carved
     /// from: the rock of the high country of *The Lord of the Rings*.
     Granite,
+    /// Grey lunar regolith and basaltic crater rock; its tunnels are
+    /// pressurized space-station corridors lit by cool white-cyan strips.
+    Lunar,
 }
 
 /// The light of a track: a summer day; a clear Mediterranean summer
 /// afternoon, graded as a photograph is; the last hours of a clear autumn
-/// afternoon, the sun low and golden; or a low sun setting in a warm, hazy
-/// sky.
+/// afternoon, the sun low and golden; a low sun setting in a warm, hazy
+/// sky; or the black sky of the Moon with the Earth hanging above the
+/// horizon.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SkyStyle {
     Day,
@@ -236,6 +240,7 @@ pub enum SkyStyle {
     /// another, graded as a film is: the light of New Zealand, where *The
     /// Lord of the Rings* was shot.
     HighCountry,
+    Space,
 }
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
@@ -519,6 +524,9 @@ pub struct Scenery {
     /// The scenery of Middle-earth, from models made with Meshy, or `None`:
     /// see [`MiddleEarth`].
     pub middle_earth: Option<MiddleEarth>,
+    /// The works of a lunar base and orbital space station, if any: see
+    /// [`Space`].
+    pub space: Option<Space>,
 }
 
 impl Scenery {
@@ -1290,6 +1298,81 @@ pub struct BrakeMarker {
     pub along: f32,
     pub side: Side,
     pub distance: u32,
+}
+
+/// The works of a lunar base and Earth space center (see
+/// [`crate::world::space`]): geodesic biodomes, lunar rovers, solar panel
+/// arrays, huge deep-space radio dishes turning slowly, astronomical
+/// observatory domes with telescopes, orbital rockets on their launchpads,
+/// illuminated station ribs over the road, interdimensional stargate portals
+/// connecting Earth and the Moon, and lunar boulders with survey beacons.
+pub struct Space {
+    pub biodomes: &'static [Biodome],
+    pub rovers: &'static [Rover],
+    pub solar_arrays: &'static [Row],
+    pub dishes: &'static [RadioDish],
+    pub observatories: &'static [Observatory],
+    pub rockets: &'static [Rocket],
+    pub arches: &'static [StationArch],
+    pub portals: &'static [Portal],
+    pub boulders: LunarBoulders,
+}
+
+/// An astronomical telescope observatory dome at `position` (x, z), its open
+/// shutter slit and giant reflector telescope aimed towards `heading`.
+pub struct Observatory {
+    pub position: Vec2,
+    pub heading: f32,
+}
+
+/// An interdimensional stargate portal spanning over the road at `along`
+/// metres from the finish line, with twin energy pylons, counter-rotating
+/// plasma rings, and a translucent glowing vortex curtain.
+pub struct Portal {
+    pub along: f32,
+}
+
+/// A geodesic habitat dome beside the road, with a metallic ring base,
+/// glass panels and an airlock facing the track.
+pub struct Biodome {
+    pub along: f32,
+    pub side: Side,
+    pub radius: f32,
+}
+
+/// A six-wheeled lunar rover beside the road, its gold-foil chassis facing
+/// `heading` (relative to the road direction).
+pub struct Rover {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub heading: f32,
+}
+
+/// A parabolic deep-space radio telescope dish at `position` (x, z), its
+/// dish pointed towards `heading` and turning slowly.
+pub struct RadioDish {
+    pub position: Vec2,
+    pub heading: f32,
+}
+
+/// An orbital rocket standing on its launchpad at `position` (x, z), with an
+/// umbilical launch tower beside it facing `heading`.
+pub struct Rocket {
+    pub position: Vec2,
+    pub heading: f32,
+}
+
+/// A sleek space-station structural rib/arch spanning over the road at
+/// `along` metres from the finish line, with glowing cyan-white beacon strips.
+pub struct StationArch {
+    pub along: f32,
+}
+
+/// Lunar boulders scattered along `spans` on both sides of the road.
+pub struct LunarBoulders {
+    pub max: usize,
+    pub spans: &'static [Span],
 }
 
 #[cfg(test)]

@@ -453,6 +453,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         desert: None,
         mine: None,
         japan: None,
+        space: None,
         middle_earth: Some(MiddleEarth {
             props: &PROPS,
             flowers: &FLOWERS,

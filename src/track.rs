@@ -1999,43 +1999,46 @@ mod tests {
     fn branches_are_rideable_and_clear_of_the_lap() {
         const MIN_RADIUS: f32 = 2.5 * WALL_DISTANCE;
         for (name, track) in tracks_with_branches() {
-            for (number, road) in track.side_roads.iter().enumerate() {
-                let n = road.sample_count();
-                for i in 0..n - 1 {
-                    let radius = 1.0 / road.curvature(i).abs();
-                    assert!(
-                        radius > MIN_RADIUS,
-                        "{name}, road {number}: {radius} m at {i}"
-                    );
-                    let grade = (road.elevation[i + 1] - road.elevation[i]) / road.step;
-                    assert!(grade.abs() < 0.13, "{name}, road {number}: {grade} at {i}");
-                    assert!(road.bank[i].abs() <= MAX_BANK);
-                }
-                // From where it leaves the lap (or joins it) the two share
-                // the road between their walls, which stay as wide as the
-                // lap's, until they part; from there on their walls stay
-                // apart.
-                let from_lap: Vec<usize> = if number % 2 == 0 {
-                    (0..n).collect()
-                } else {
-                    (0..n).rev().collect()
-                };
-                let mut parted = false;
-                for i in from_lap {
-                    let lap = track.project_on_lap(road.centerline[i]).distance;
-                    let apart = lap > WALL_DISTANCE + road.wall_at(i) + 2.0;
-                    assert!(
-                        apart || !parted,
-                        "{name}, road {number}: {lap} m from the lap at {i}"
-                    );
-                    parted |= apart;
-                    // Where they share it, their walls are as far out, so
-                    // the road between them is the same seen from either.
-                    if lap < WALL_DISTANCE + road.wall_at(i) {
-                        assert!(road.wall_at(i) > WALL_DISTANCE - 0.25, "{name}: {i}");
+            for looped in &track.loops {
+                for (leaving_lap, number) in [(true, looped.approach), (false, looped.exit)] {
+                    let road = track.road(number);
+                    let n = road.sample_count();
+                    for i in 0..n - 1 {
+                        let radius = 1.0 / road.curvature(i).abs();
+                        assert!(
+                            radius > MIN_RADIUS,
+                            "{name}, road {number}: {radius} m at {i}"
+                        );
+                        let grade = (road.elevation[i + 1] - road.elevation[i]) / road.step;
+                        assert!(grade.abs() < 0.13, "{name}, road {number}: {grade} at {i}");
+                        assert!(road.bank[i].abs() <= MAX_BANK);
                     }
+                    // From where it leaves the lap (or joins it) the two share
+                    // the road between their walls, which stay as wide as the
+                    // lap's, until they part; from there on their walls stay
+                    // apart.
+                    let from_lap: Vec<usize> = if leaving_lap {
+                        (0..n).collect()
+                    } else {
+                        (0..n).rev().collect()
+                    };
+                    let mut parted = false;
+                    for i in from_lap {
+                        let lap = track.project_on_lap(road.centerline[i]).distance;
+                        let apart = lap > WALL_DISTANCE + road.wall_at(i) + 2.0;
+                        assert!(
+                            apart || !parted,
+                            "{name}, road {number}: {lap} m from the lap at {i}"
+                        );
+                        parted |= apart;
+                        // Where they share it, their walls are as far out, so
+                        // the road between them is the same seen from either.
+                        if lap < WALL_DISTANCE + road.wall_at(i) {
+                            assert!(road.wall_at(i) > WALL_DISTANCE - 0.25, "{name}: {i}");
+                        }
+                    }
+                    assert!(parted, "{name}, road {number}");
                 }
-                assert!(parted, "{name}, road {number}");
             }
         }
     }
@@ -2045,18 +2048,21 @@ mod tests {
         // Where a road off the lap has a surface of its own, it has no ramp
         // or dip sharper than the crests of the lap.
         for (name, track) in tracks_with_branches() {
-            for number in 1..=track.side_roads.len() {
-                let road = track.road(number);
-                let height = |i: usize| track.surface_point_on(number, i, 0.0).y;
-                let span = 2.0 * road.step;
-                for i in 2..road.sample_count() - 2 {
-                    if road.apart[i] == 0.0 {
-                        continue;
+            for looped in &track.loops {
+                for number in [looped.approach, looped.exit] {
+                    let road = track.road(number);
+                    let height = |i: usize| track.surface_point_on(number, i, 0.0).y;
+                    let span = 2.0 * road.step;
+                    for i in 2..road.sample_count() - 2 {
+                        if road.apart[i] == 0.0 {
+                            continue;
+                        }
+                        let grade = (height(i + 1) - height(i)) / road.step;
+                        assert!(grade.abs() < 0.06, "{name}, road {number}: {grade} at {i}");
+                        let bend =
+                            (height(i + 2) - 2.0 * height(i) + height(i - 2)) / (span * span);
+                        assert!(bend.abs() < 0.006, "{name}, road {number}: {bend} at {i}");
                     }
-                    let grade = (height(i + 1) - height(i)) / road.step;
-                    assert!(grade.abs() < 0.06, "{name}, road {number}: {grade} at {i}");
-                    let bend = (height(i + 2) - 2.0 * height(i) + height(i - 2)) / (span * span);
-                    assert!(bend.abs() < 0.006, "{name}, road {number}: {bend} at {i}");
                 }
             }
         }

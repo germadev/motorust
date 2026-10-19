@@ -32,7 +32,7 @@ Every screen has the same legend at the bottom, with no panel behind it: each ke
 
 | Mode | Players | What it is |
 |---|---|---|
-| Arcade | 1 | The six tracks in order, five laps each, with points for each place (10, 8, 6, 5, 4, 3, 2, 1) and the standings after each race. It always starts from the first track. |
+| Arcade | 1 | The seven tracks in order, five laps each, with points for each place (10, 8, 6, 5, 4, 3, 2, 1) and the standings after each race. It always starts from the first track. |
 | Race | 1 or 2 | A race on the track chosen, of 1 to 9 laps (5 at first), chosen with up and down on the track screen. |
 | Elimination | 1 or 2 | Seven laps on the track chosen. Each lap, as soon as all but the last two still in have crossed the line, the one further back of those two is out: a rival leaves the race, a player's bike rolls to a stop. The last lap is raced by the two left, for the win. |
 | Checkpoint | 1 | Against the clock: the clock starts with the seconds to reach the first checkpoint, and each checkpoint (the track's red "CHECKPOINT" arches, also on the minimap, and the finish line) adds the seconds of the stretch to the next one. At nought it is over; the laps done are the score. |

@@ -86,6 +86,9 @@ fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
         // In a desert canyon the flat ground is dry, red-brown earth, and
         // by the river damp sand.
         (Soil::Mine, Ground::Grass | Ground::Rock) => Surface::Dirt(Dust::Desert),
+        // On the Moon all unpaved ground (classified as Sand or Rock) is grey
+        // lunar regolith dust; the Earth portal sector has Ground::Grass.
+        (Soil::Lunar, Ground::Sand | Ground::Rock) => Surface::Dirt(Dust::Slate),
         (_, Ground::Sand) => Surface::Dirt(Dust::Sand),
         (_, Ground::Grass) => Surface::Grass,
         (Soil::Rock | Soil::Granite, Ground::Rock) => Surface::Dirt(Dust::Sand),

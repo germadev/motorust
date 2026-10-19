@@ -28,6 +28,7 @@ use crate::race::RaceCue;
 use crate::race::lights::StartBeep;
 use crate::settings::{ControlsTest, DEFAULT_VOLUME, Settings, ToggleMute};
 use crate::ui::MenuSound;
+use crate::world::realm::PortalView;
 pub use synth::Sound;
 use synth::{Controls, Mix, REDLINE, VOICES, pan};
 
@@ -309,7 +310,7 @@ fn run_engines(
     time: Res<Time>,
     state: Res<State<GameState>>,
     blip: Res<Blip>,
-    cameras: Query<&GlobalTransform, With<Camera3d>>,
+    cameras: Query<&GlobalTransform, (With<Camera3d>, Without<PortalView>)>,
     mut bikes: Query<(&BikeState, &BikeInput, &GlobalTransform, &mut Engine)>,
 ) {
     let dt = time.delta_secs();
@@ -348,7 +349,7 @@ fn run_engines(
 fn place_sounds(
     time: Res<Time>,
     controls: Res<SoundControls>,
-    cameras: Query<(Entity, &GlobalTransform), With<Camera3d>>,
+    cameras: Query<(Entity, &GlobalTransform), (With<Camera3d>, Without<PortalView>)>,
     mut listener_motion: Local<bevy::platform::collections::HashMap<Entity, (Vec3, Vec3)>>,
     mut bikes: Query<(
         Entity,

@@ -71,6 +71,9 @@ pub fn spawn_props(
     } else {
         (FlowerPlan::default(), flowers)
     };
+    occupied.extend(super::space::spawn_space(
+        world, track, terrain, scenery, assets,
+    ));
     occupied.extend(super::japan::spawn_japan(
         world, track, terrain, scenery, japanese, assets,
     ));
