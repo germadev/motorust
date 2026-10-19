@@ -6,12 +6,11 @@
 //! through them, by the mines of Moria, under the pass.
 //!
 //! 1. Hobbiton: the start straight, north through the wood, over a crest,
-//!    a wide sweep to the right down to the Water and over it, a sweep to
-//!    the left, and a long one to the right round the pool, past Bag End's
-//!    hill.
-//! 2. The Shire: a straight east over a crest where the bike takes off,
-//!    and a sweep to the right and the left over the bridge on the
-//!    Brandywine.
+//!    a long sweep to the right down to the Water and low over it, a
+//!    sweep to the left round the village's hill, and one to the right
+//!    past Bag End's hill.
+//! 2. The Shire: a sweep to the right and the left over the bridge on the
+//!    Brandywine, and through its fields.
 //! 3. Bree: through its gate, right and left through the town.
 //! 4. Weathertop: up its flank at up to 12 %, round to the left and the
 //!    right, over its top on a straight with a crest where the bike takes
@@ -52,26 +51,26 @@ use crate::world::scenery::*;
 /// The wood the race starts in, by Hobbiton; Hobbiton, down to the Water
 /// and over it on an old wooden bridge, and round the pool past Bag End's
 /// hill.
-const WOOD: Span = span(5664.0, 170.0);
-const HOBBITON: Span = span(WOOD.to, 760.0);
-const HOBBITON_BRIDGE: Span = span(354.0, 406.0);
+const WOOD: Span = span(5645.1, 140.0);
+const HOBBITON: Span = span(WOOD.to, 867.0);
+const HOBBITON_BRIDGE: Span = span(375.0, 455.0);
 const SHIRE: Span = span(HOBBITON.to, BREE.from);
-const BRANDYWINE: Span = span(904.0, 964.0);
-const BREE: Span = span(1104.0, 1318.0);
-const TROLLSHAWS: Span = span(1978.0, FORD.from);
+const BRANDYWINE: Span = span(885.1, 945.1);
+const BREE: Span = span(1085.1, 1299.1);
+const TROLLSHAWS: Span = span(1959.1, FORD.from);
 /// The Ford of Bruinen: low over the river.
-const FORD: Span = span(2319.0, 2379.0);
+const FORD: Span = span(2300.1, 2360.1);
 const RIVENDELL: Span = span(FORD.to, CARADHRAS.from);
-const CARADHRAS: Span = span(2838.0, 3238.0);
+const CARADHRAS: Span = span(2819.1, 3219.1);
 /// The top of the pass, right over the mines.
-const PASS: Span = span(3174.0, 3238.0);
-const MORIA: Span = span(3809.0, 4152.0);
+const PASS: Span = span(3155.1, 3219.1);
+const MORIA: Span = span(3790.1, 4133.1);
 const LOTHLORIEN: Span = span(MORIA.to, GORGE.from);
-const GORGE: Span = span(4606.0, CAUSEWAY.from);
+const GORGE: Span = span(4587.1, CAUSEWAY.from);
 /// Down the middle of the Anduin, between the kings of the Argonath: a
 /// causeway narrower than the road, its walls this far from the middle
 /// (m).
-const CAUSEWAY: Span = span(4919.0, 5254.0);
+const CAUSEWAY: Span = span(4900.1, 5235.1);
 const CAUSEWAY_WALL: f32 = 6.5;
 /// How far from the middle the walls stand through the Doors of Durin (m),
 /// just inside their leaves.
@@ -79,15 +78,15 @@ const DURIN_WALL: f32 = 5.5;
 const AMON_HEN: Span = span(CAUSEWAY.to, WOOD.from);
 /// Where the road splits: a way through the Prancing Pony in Bree, in two in
 /// Rivendell, three ways in Lothlórien.
-const BREE_SPLIT: (f32, f32) = (1116.0, 1384.0);
-const RIVENDELL_SPLIT: (f32, f32) = (2438.0, 2788.0);
+const BREE_SPLIT: (f32, f32) = (1097.1, 1365.1);
+const RIVENDELL_SPLIT: (f32, f32) = (2419.1, 2769.1);
 /// How far along Bree's way the middle of the Prancing Pony's archway is
 /// (m), how long its passage is (m), and how far from the middle of the
 /// way its walls stand through it (m), just inside the archway.
 const PONY_ALONG: f32 = 111.5;
 const PONY_PASSAGE: f32 = 33.0;
 const PONY_WALL: f32 = 4.0;
-const LORIEN_SPLIT: (f32, f32) = (4206.0, 4556.0);
+const LORIEN_SPLIT: (f32, f32) = (4187.1, 4537.1);
 
 /// The Ring's gold, the Shire's green and cream.
 const GOLD: Color = Color::srgb(0.86, 0.68, 0.22);
@@ -219,8 +218,8 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         walls: &[
             fence(span(WOOD.from, HOBBITON.to), Side::Left),
             fence(span(WOOD.from, HOBBITON.to), Side::Right),
-            fence(span(793.0, 807.0), Side::Left),
-            fence(span(873.0, 887.0), Side::Right),
+            fence(span(968.0, 982.0), Side::Left),
+            fence(span(1013.0, 1027.0), Side::Right),
             WallRun {
                 span: SHIRE,
                 side: Side::Left,
@@ -233,14 +232,14 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             },
             fence(BREE, Side::Left),
             fence(BREE, Side::Right),
-            fence(span(1776.0, 1792.0), Side::Left),
-            fence(span(1816.0, 1832.0), Side::Right),
-            fence(span(2387.0, 2401.0), Side::Left),
-            fence(span(2387.0, 2401.0), Side::Right),
-            fence(span(2807.0, 2821.0), Side::Left),
-            fence(span(2807.0, 2821.0), Side::Right),
-            fence(span(4162.0, 4176.0), Side::Left),
-            fence(span(4162.0, 4176.0), Side::Right),
+            fence(span(1757.1, 1773.1), Side::Left),
+            fence(span(1797.1, 1813.1), Side::Right),
+            fence(span(2368.1, 2382.1), Side::Left),
+            fence(span(2368.1, 2382.1), Side::Right),
+            fence(span(2788.1, 2802.1), Side::Left),
+            fence(span(2788.1, 2802.1), Side::Right),
+            fence(span(4143.1, 4157.1), Side::Left),
+            fence(span(4143.1, 4157.1), Side::Right),
             WallRun {
                 span: LAP,
                 side: Side::Left,
@@ -291,27 +290,27 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             // Hobbiton, down from Weathertop, up Caradhras, on the
             // way round the mountain to the doors, and past Lothlórien.
             Gantry {
-                along: 790.0,
+                along: 868.0,
                 color: GREEN,
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 1924.0,
+                along: 1905.1,
                 color: GREEN,
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 2974.0,
+                along: 2955.1,
                 color: GREEN,
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 3604.0,
+                along: 3585.1,
                 color: GREEN,
                 text: Some("CHECKPOINT"),
             },
             Gantry {
-                along: 4584.0,
+                along: 4565.1,
                 color: GREEN,
                 text: Some("CHECKPOINT"),
             },
@@ -348,7 +347,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                 Color::srgb(0.86, 0.74, 0.52),
                 Color::srgb(0.95, 0.93, 0.86),
             ],
-            spans: &[span(5704.0, 300.0), BREE],
+            spans: &[span(5685.1, 300.0), BREE],
             style: HouseStyle::Cottage,
         },
         palms: &[],
@@ -375,17 +374,17 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         // the foot of the cliff is low, by the road.
         waterfalls: &[
             Waterfall {
-                along: 2438.0,
+                along: 2419.1,
                 side: Side::Right,
                 width: 8.0,
             },
             Waterfall {
-                along: 2792.0,
+                along: 2773.1,
                 side: Side::Right,
                 width: 8.0,
             },
             Waterfall {
-                along: 2830.0,
+                along: 2811.1,
                 side: Side::Right,
                 width: 12.0,
             },
@@ -432,8 +431,8 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             // Hobbiton's hillsides, whose banks and doorsteps cut into them
             // stay grass, as the Shire's.
             turf: &[Turf {
-                center: Vec2::new(180.0, -480.0),
-                radius: 230.0,
+                center: Vec2::new(285.0, -495.0),
+                radius: 250.0,
             }],
         }),
     },
@@ -445,25 +444,25 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
 /// lost high above; and a natural cave out to the east gate.
 const MORIA_HALLS: [Hall; 4] = [
     Hall {
-        span: span(MORIA.from - 20.0, 3854.0),
+        span: span(MORIA.from - 20.0, 3835.1),
         stone: Stone::Masonry,
         crown: 30.0,
         width: 0.0,
     },
     Hall {
-        span: span(3854.0, 3919.0),
+        span: span(3835.1, 3900.1),
         stone: Stone::Cave,
         crown: 22.0,
         width: 5.0,
     },
     Hall {
-        span: span(3919.0, 4074.0),
+        span: span(3900.1, 4055.1),
         stone: Stone::Masonry,
         crown: 34.0,
         width: 16.0,
     },
     Hall {
-        span: span(4074.0, MORIA.to + 20.0),
+        span: span(4055.1, MORIA.to + 20.0),
         stone: Stone::Cave,
         crown: 20.0,
         width: 4.0,
@@ -479,87 +478,82 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     // by the road among the trees, and a pile of logs.
     by_road(MiddleEarthModel::GandalfCart, 32.0, -14.5).turned(0.79),
     by_road(MiddleEarthModel::LogPile, 84.0, -13.5),
-    // Hobbiton, down the sweep to the Water and round the pool: across the
-    // water on the left, hobbit holes in their banks high at the foot of
-    // their hill, ahead down the straight and the sweep, and the mill by
-    // the water before the bridge; over it, ahead and then on the right,
-    // across the water, more holes at the foot of the other hill and the
-    // Green Dragon over the pool, its sign by the road; and on the outside
-    // of the long sweep round the pool, the party tree in its field and,
-    // up on its hill, Bag End under its oak, ahead all the way round. All
-    // of them face the riders coming.
-    by_road(MiddleEarthModel::HobbitDoorBlue, 420.0, 55.0)
+    // Hobbiton, down the long sweep to the Water and round the village's
+    // hills: the mill across the water on the left, ahead down the sweep;
+    // over the bridge, ahead on the left, hobbit holes up the flank of the
+    // hill inside the sweep to the left, low and high by turns, facing the
+    // riders coming; ahead on the right, across the field over the pool,
+    // more up the flank of the other hill, low, high and low, and the Green
+    // Dragon below them, turned south-south-west, towards the bridge and
+    // the low sun; its sign by the road; and on the outside of the last
+    // sweep, the party tree in its field and, up on its hill, Bag End
+    // under its oak, ahead all the way round.
+    by_road(MiddleEarthModel::HobbitDoorBlue, 570.0, 90.0)
         .scaled(1.4)
         .facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorRed, 400.0, 100.0)
+    by_road(MiddleEarthModel::HobbitDoorRed, 550.0, 130.0)
         .scaled(1.4)
         .facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorYellow, 380.0, 55.0)
+    by_road(MiddleEarthModel::HobbitDoorYellow, 460.0, 100.0)
         .scaled(1.4)
         .facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorGreen, 370.0, 100.0)
+    by_road(MiddleEarthModel::HobbitDoorGreen, 450.0, 140.0)
         .scaled(1.4)
         .facing_riders(),
-    by_road(MiddleEarthModel::Mill, 350.0, 70.0).facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorGreen, 610.0, -125.0)
-        .scaled(1.4)
-        .facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorRed, 580.0, -155.0)
-        .scaled(1.4)
-        .facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorYellow, 550.0, -125.0)
-        .scaled(1.4)
-        .facing_riders(),
-    by_road(MiddleEarthModel::GreenDragon, 620.0, -96.0).facing_riders(),
-    by_road(MiddleEarthModel::GreenDragonSign, 520.0, -13.5).turned(0.79),
-    by_road(MiddleEarthModel::PartyTree, 640.0, 42.0),
-    by_road(MiddleEarthModel::BagEnd, 700.0, 62.0).facing_riders(),
-    by_road(MiddleEarthModel::BagEndOak, 708.0, 76.0),
-    // The Shire: the old tree the hobbits hid under on the outside of the
-    // last of Hobbiton's sweeps, a scarecrow in the fields, and a pile of
-    // logs by the road.
-    by_road(MiddleEarthModel::RootTree, 735.0, 20.0),
-    by_road(MiddleEarthModel::Scarecrow, 800.0, 14.0).turned(-0.79),
-    by_road(MiddleEarthModel::LogPile, 880.0, -13.5),
+    by_road(MiddleEarthModel::Mill, 360.0, 108.0).facing_riders(),
+    standing(MiddleEarthModel::HobbitDoorGreen, 398.9, -421.0, 2.7499).scaled(1.4),
+    standing(MiddleEarthModel::HobbitDoorRed, 436.2, -426.2, 2.7499).scaled(1.4),
+    standing(MiddleEarthModel::HobbitDoorYellow, 466.4, -413.4, 2.7499).scaled(1.4),
+    standing(MiddleEarthModel::GreenDragon, 375.0, -385.0, 2.7499),
+    by_road(MiddleEarthModel::GreenDragonSign, 550.0, -13.5).turned(0.79),
+    by_road(MiddleEarthModel::PartyTree, 700.0, 45.0),
+    by_road(MiddleEarthModel::BagEnd, 770.0, 70.0).facing_riders(),
+    by_road(MiddleEarthModel::BagEndOak, 778.0, 84.0),
+    // The old tree the hobbits hid under, on the outside of the last of
+    // Hobbiton's sweeps; past the Brandywine, a scarecrow in the Shire's
+    // fields, and a pile of logs by the road.
+    by_road(MiddleEarthModel::RootTree, 845.0, 22.0),
+    by_road(MiddleEarthModel::Scarecrow, 975.0, 14.0).turned(-0.79),
+    by_road(MiddleEarthModel::LogPile, 1020.0, -13.5),
     standing(MiddleEarthModel::Ferry, 562.0, -626.0, -FRAC_PI_2),
     // Bree: its gate over the road; past it, ahead on the outside of the
     // first bend, the Prancing Pony, 1.4 times as big, a way of the road
     // forking off to the left through its archway (its middle on the way,
     // the inn facing the riders coming down it); and its houses either side
     // of the street, tall and narrow ones and wide ones.
-    over_road(MiddleEarthModel::BreeGate, 1110.0),
+    over_road(MiddleEarthModel::BreeGate, 1091.1),
     standing(MiddleEarthModel::PrancingPony, 846.1, -528.82, 1.2614).scaled(1.4),
-    by_road(MiddleEarthModel::BreeHouseB, 1124.0, -16.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1136.0, -16.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1179.0, -16.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1191.0, -16.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseA, 1222.0, -22.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1262.0, 16.0).turned(-0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1274.0, 16.0).turned(-0.79),
-    by_road(MiddleEarthModel::BreeHouseA, 1294.0, -22.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1240.0, -16.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1252.0, -16.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseA, 1266.0, -24.0).turned(0.79),
-    by_road(MiddleEarthModel::BreeHouseB, 1324.0, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1105.1, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1117.1, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1160.1, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1172.1, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseA, 1203.1, -22.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1243.1, 16.0).turned(-0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1255.1, 16.0).turned(-0.79),
+    by_road(MiddleEarthModel::BreeHouseA, 1275.1, -22.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1221.1, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1233.1, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseA, 1247.1, -24.0).turned(0.79),
+    by_road(MiddleEarthModel::BreeHouseB, 1305.1, -16.0).turned(0.79),
     // Weathertop: the ring of ruins of Amon Sûl beside the top straight, on
     // the side of the summit, and broken arches either side of the road.
-    by_road(MiddleEarthModel::WeathertopRuin, 1832.0, -38.0).turned(0.79),
-    by_road(MiddleEarthModel::RuinArch, 1784.0, 16.0).turned(-0.79),
-    by_road(MiddleEarthModel::RuinArch, 1824.0, -16.0).turned(0.79),
+    by_road(MiddleEarthModel::WeathertopRuin, 1813.1, -38.0).turned(0.79),
+    by_road(MiddleEarthModel::RuinArch, 1765.1, 16.0).turned(-0.79),
+    by_road(MiddleEarthModel::RuinArch, 1805.1, -16.0).turned(0.79),
     // The Trollshaws: the trolls turned to stone on the outside of the
     // esses.
-    by_road(MiddleEarthModel::StoneTrolls, 2114.0, 21.0).turned(-0.79),
+    by_road(MiddleEarthModel::StoneTrolls, 2095.1, 21.0).turned(-0.79),
     // Rivendell: lamps along its paths, and at the head of the valley,
     // ahead down it on the outside of the bend, its halls together one over
     // another up the rock: the domed pavilion by the road, the Last Homely
     // House on a ledge over it, and a tower on a crag over both.
-    by_road(MiddleEarthModel::ElvenLamp, 2394.0, 13.5),
-    by_road(MiddleEarthModel::ElvenLamp, 2394.0, -13.5),
-    by_road(MiddleEarthModel::ElvenLamp, 2814.0, 13.5),
-    by_road(MiddleEarthModel::ElvenLamp, 2814.0, -13.5),
-    by_road(MiddleEarthModel::Gazebo, 2850.0, 26.0).facing_riders(),
-    by_road(MiddleEarthModel::LastHomelyHouse, 2876.0, 58.0).facing_riders(),
-    by_road(MiddleEarthModel::ElvenTower, 2904.0, 70.0)
+    by_road(MiddleEarthModel::ElvenLamp, 2375.1, 13.5),
+    by_road(MiddleEarthModel::ElvenLamp, 2375.1, -13.5),
+    by_road(MiddleEarthModel::ElvenLamp, 2795.1, 13.5),
+    by_road(MiddleEarthModel::ElvenLamp, 2795.1, -13.5),
+    by_road(MiddleEarthModel::Gazebo, 2831.1, 26.0).facing_riders(),
+    by_road(MiddleEarthModel::LastHomelyHouse, 2857.1, 58.0).facing_riders(),
+    by_road(MiddleEarthModel::ElvenTower, 2885.1, 70.0)
         .scaled(1.25)
         .facing_riders(),
     // The Doors of Durin, open, in the sheer Walls of Moria: the road goes
@@ -568,9 +562,9 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     over_road(MiddleEarthModel::DurinDoors, MORIA.from).turned(PI),
     // Lothlórien, out of Moria's east gate: elven lamps and a mallorn with
     // its flet.
-    by_road(MiddleEarthModel::ElvenLamp, 4169.0, 13.5),
-    by_road(MiddleEarthModel::ElvenLamp, 4169.0, -13.5),
-    by_road(MiddleEarthModel::MallornFlet, 4176.0, 40.0),
+    by_road(MiddleEarthModel::ElvenLamp, 4150.1, 13.5),
+    by_road(MiddleEarthModel::ElvenLamp, 4150.1, -13.5),
+    by_road(MiddleEarthModel::MallornFlet, 4157.1, 40.0),
     // The Anduin: Galadriel's swan ship going down the river beside the
     // causeway, ahead out of the gorge; the two kings of the Argonath in the
     // river either side of the causeway, facing the riders coming down it,
@@ -589,12 +583,12 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
         KINGS[1].y,
         KINGS_FACING,
     ),
-    by_road(MiddleEarthModel::ElvenShip, 5169.0, 24.0).turned(PI),
+    by_road(MiddleEarthModel::ElvenShip, 5150.1, 24.0).turned(PI),
     // Amon Hen: the elven boats drawn up on the shore of Parth Galen, and
     // the seat of seeing on the hill on the outside of the last bend.
     standing(MiddleEarthModel::ElvenBoat, 238.0, 393.0, 2.20),
     standing(MiddleEarthModel::ElvenBoat, 226.0, 404.0, 2.00),
-    by_road(MiddleEarthModel::AmonHenSeat, 5424.0, 32.0).turned(-0.79),
+    by_road(MiddleEarthModel::AmonHenSeat, 5405.1, 32.0).turned(-0.79),
 ];
 
 /// The level ground the buildings stand on: knolls under the buildings by
@@ -603,25 +597,25 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
 /// their doors: their middles, radii and heights (m).
 const KNOLLS: [Terrace; 17] = [
     // A hobbit hole's doorstep, cut into the hill.
-    garden(98.4, -409.7, 3.0, 11.3),
+    garden(247.8, -433.3, 3.0, 7.0),
     // A hobbit hole's doorstep, cut into the hill.
-    garden(56.4, -433.4, 3.0, 29.2),
+    garden(214.0, -454.9, 3.0, 25.0),
     // A hobbit hole's doorstep, cut into the hill.
-    garden(68.6, -385.8, 3.0, 4.4),
+    garden(204.7, -418.7, 3.0, 8.2),
     // A hobbit hole's doorstep, cut into the hill.
-    garden(33.1, -414.8, 3.0, 22.0),
+    garden(186.7, -455.3, 3.0, 25.8),
+    // A hobbit hole's doorstep, cut into the hill.
+    garden(398.5, -420.0, 3.0, 9.1),
+    // A hobbit hole's doorstep, cut into the hill.
+    garden(435.8, -425.2, 3.0, 18.0),
+    // A hobbit hole's doorstep, cut into the hill.
+    garden(466.0, -412.5, 3.0, 10.0),
     // The mill, by the water.
-    shelf(35.6, -379.4, 5.5, 1.7),
-    // A hobbit hole's doorstep, cut into the hill.
-    garden(328.1, -422.9, 3.0, 10.1),
-    // A hobbit hole's doorstep, cut into the hill.
-    garden(340.9, -393.7, 3.0, 22.3),
-    // A hobbit hole's doorstep, cut into the hill.
-    garden(310.5, -403.3, 3.0, 8.8),
+    shelf(103.4, -402.7, 5.5, 1.7),
     // The Green Dragon, by the pool.
-    knoll(314.9, -448.6, 14.0, 4.9),
+    knoll(375.0, -385.0, 14.0, 2.8),
     // Bag End's doorstep, cut into its hill.
-    garden(308.5, -619.2, 3.5, 22.6),
+    garden(382.5, -607.3, 3.5, 20.6),
     // A house of Bree.
     knoll(870.3, -448.9, 9.0, 9.1),
     // A house of Bree.
@@ -733,7 +727,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(97.2, -407.0),
+            center: Vec2::new(247.4, -430.3),
             inner: 0.0,
             outer: 4.0,
         },
@@ -742,7 +736,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(56.1, -430.9),
+            center: Vec2::new(213.9, -452.4),
             inner: 0.0,
             outer: 4.0,
         },
@@ -751,7 +745,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(67.4, -382.4),
+            center: Vec2::new(202.7, -415.7),
             inner: 0.0,
             outer: 4.0,
         },
@@ -760,7 +754,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(32.9, -412.4),
+            center: Vec2::new(185.8, -453.2),
             inner: 0.0,
             outer: 4.0,
         },
@@ -769,7 +763,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(325.7, -423.0),
+            center: Vec2::new(397.6, -417.9),
             inner: 0.0,
             outer: 4.0,
         },
@@ -778,7 +772,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(338.4, -393.8),
+            center: Vec2::new(434.8, -422.9),
             inner: 0.0,
             outer: 4.0,
         },
@@ -787,7 +781,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(307.0, -402.8),
+            center: Vec2::new(464.6, -409.3),
             inner: 0.0,
             outer: 4.0,
         },
@@ -796,7 +790,7 @@ const FLOWERS: [FlowerField; 17] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(305.9, -615.3),
+            center: Vec2::new(381.6, -602.7),
             inner: 0.0,
             outer: 4.0,
         },
@@ -844,69 +838,77 @@ const FLOWERS: [FlowerField; 17] = [
     },
 ];
 
-const CONTROL_POINTS: [Vec2; 189] = [
+const CONTROL_POINTS: [Vec2; 197] = [
     // 1. The wood by Hobbiton: the start straight, north (-Z), over a crest.
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -50.0),
     Vec2::new(0.0, -100.0),
-    Vec2::new(0.0, -150.0),
-    // Hobbiton: a wide sweep to the right down to the Water, over it on
-    // an old wooden bridge, a sweep to the left, and a long sweep to the
-    // right round the pool and past Bag End's hill, each eased in and out
-    // (drawn by `tools/fellowship_dev/hobbiton_v3.py`, as dense as that,
+    Vec2::new(0.0, -110.0),
+    // Hobbiton: a long sweep to the right down to the Water, over it on
+    // an old wooden bridge, a sweep to the left round the village's hill,
+    // and one to the right past Bag End's hill, each eased in and out
+    // (drawn by `tools/fellowship_dev/hobbiton_v4.py`, as dense as that,
     // so that the spline through them keeps their curvature).
-    Vec2::new(0.06, -163.25),
-    Vec2::new(0.50, -176.24),
-    Vec2::new(1.67, -189.44),
-    Vec2::new(3.67, -202.28),
-    Vec2::new(6.56, -215.21),
-    Vec2::new(10.22, -227.68),
-    Vec2::new(14.78, -240.12),
-    Vec2::new(20.04, -252.00),
-    Vec2::new(26.19, -263.74),
-    Vec2::new(32.96, -274.83),
-    Vec2::new(40.59, -285.66),
-    Vec2::new(48.76, -295.77),
-    Vec2::new(57.74, -305.51),
-    Vec2::new(67.16, -314.47),
-    Vec2::new(77.25, -323.05),
-    Vec2::new(87.40, -331.18),
-    Vec2::new(97.78, -339.42),
-    Vec2::new(107.96, -347.50),
-    Vec2::new(118.34, -355.73),
-    Vec2::new(128.49, -363.85),
-    Vec2::new(138.61, -372.41),
-    Vec2::new(148.06, -381.33),
-    Vec2::new(157.08, -391.04),
-    Vec2::new(165.28, -401.12),
-    Vec2::new(172.95, -411.92),
-    Vec2::new(179.89, -423.21),
-    Vec2::new(186.06, -434.65),
-    Vec2::new(192.09, -446.44),
-    Vec2::new(198.24, -457.90),
-    Vec2::new(205.11, -469.22),
-    Vec2::new(212.50, -479.92),
-    Vec2::new(220.66, -490.35),
-    Vec2::new(229.25, -500.11),
-    Vec2::new(238.58, -509.51),
-    Vec2::new(248.27, -518.18),
-    Vec2::new(258.64, -526.43),
-    Vec2::new(269.27, -533.90),
-    Vec2::new(280.54, -540.86),
-    Vec2::new(291.98, -547.03),
-    Vec2::new(303.99, -552.62),
-    Vec2::new(316.08, -557.41),
-    Vec2::new(328.67, -561.54),
-    Vec2::new(341.23, -564.87),
-    Vec2::new(354.22, -567.50),
-    Vec2::new(367.09, -569.32),
-    Vec2::new(380.29, -570.41),
-    Vec2::new(393.28, -570.81),
-    Vec2::new(406.53, -570.88),
-    // 2. The Shire: a straight over a crest, and a sweep to the right and
-    // the left over the Brandywine bridge.
-    Vec2::new(445.4, -571.0),
-    Vec2::new(520.4, -571.0),
+    Vec2::new(0.07, -123.00),
+    Vec2::new(0.53, -135.99),
+    Vec2::new(1.82, -149.17),
+    Vec2::new(4.02, -161.98),
+    Vec2::new(7.14, -174.60),
+    Vec2::new(11.16, -186.96),
+    Vec2::new(16.07, -199.00),
+    Vec2::new(21.94, -210.87),
+    Vec2::new(28.54, -222.07),
+    Vec2::new(35.94, -232.76),
+    Vec2::new(44.08, -242.89),
+    Vec2::new(52.93, -252.40),
+    Vec2::new(62.64, -261.42),
+    Vec2::new(72.78, -269.55),
+    Vec2::new(83.48, -276.92),
+    Vec2::new(94.69, -283.51),
+    Vec2::new(106.57, -289.37),
+    Vec2::new(118.61, -294.25),
+    Vec2::new(130.97, -298.27),
+    Vec2::new(143.53, -301.63),
+    Vec2::new(156.16, -304.71),
+    Vec2::new(169.04, -307.83),
+    Vec2::new(181.67, -310.89),
+    Vec2::new(194.31, -313.95),
+    Vec2::new(206.94, -317.00),
+    Vec2::new(219.58, -320.06),
+    Vec2::new(232.44, -323.25),
+    Vec2::new(244.94, -326.82),
+    Vec2::new(257.14, -331.28),
+    Vec2::new(268.92, -336.78),
+    Vec2::new(280.18, -343.27),
+    Vec2::new(291.03, -350.87),
+    Vec2::new(300.98, -359.22),
+    Vec2::new(310.17, -368.41),
+    Vec2::new(318.54, -378.36),
+    Vec2::new(326.01, -388.99),
+    Vec2::new(332.65, -400.45),
+    Vec2::new(338.16, -412.22),
+    Vec2::new(342.62, -424.43),
+    Vec2::new(346.10, -436.95),
+    Vec2::new(349.14, -449.59),
+    Vec2::new(352.51, -462.40),
+    Vec2::new(356.72, -474.70),
+    Vec2::new(361.97, -486.59),
+    Vec2::new(368.22, -497.98),
+    Vec2::new(375.58, -509.00),
+    Vec2::new(383.70, -519.14),
+    Vec2::new(392.67, -528.54),
+    Vec2::new(402.41, -537.14),
+    Vec2::new(412.86, -544.87),
+    Vec2::new(424.15, -551.80),
+    Vec2::new(435.78, -557.61),
+    Vec2::new(447.86, -562.39),
+    Vec2::new(460.31, -566.12),
+    Vec2::new(473.03, -568.77),
+    Vec2::new(486.19, -570.34),
+    Vec2::new(499.17, -570.91),
+    Vec2::new(512.17, -571.00),
+    // 2. The Shire: a sweep to the right and the left over the Brandywine
+    // bridge.
     Vec2::new(555.2, -569.0),
     Vec2::new(589.5, -562.9),
     Vec2::new(623.0, -552.9),
@@ -1065,84 +1067,81 @@ const CONTROL_POINTS: [Vec2; 189] = [
 /// round it to the mines, 38 m under the pass; up through Moria and down
 /// through Lothlórien to the Anduin, at the water's level between the kings;
 /// over Amon Hen and down to the line. Up and down at up to 12 %.
-const ELEVATION: [(f32, f32); 60] = [
-    // The start straight through the wood, over a crest where the bike
-    // flies; down the sweep into Hobbiton, 6 m, to the bridge low over the
-    // Water, and up round the pool past Bag End's hill.
+const ELEVATION: [(f32, f32); 58] = [
+    // The start straight through the wood, over a lower crest where the
+    // bike flies; down the long sweep into Hobbiton to the bridge low over
+    // the wide Water, low round the sweep the other way, and up round the
+    // last past Bag End's hill to the Brandywine.
     (0.0, 1.5),
-    (60.0, 2.0),
-    (125.0, 6.8),
-    (160.0, 5.6),
-    (200.0, 4.8),
-    (260.0, 3.3),
-    (320.0, 1.6),
-    (358.0, 0.6),
-    (402.0, 0.6),
-    (440.0, 1.2),
-    (500.0, 2.4),
-    (580.0, 3.6),
-    (680.0, 4.8),
-    (745.0, 5.6),
-    // Over the crest of the Shire's straight, where the bike flies (as at
-    // Ghost Island's castle street, sharper), to the Brandywine.
-    (764.0, 6.0),
-    (834.0, 11.0),
-    (869.0, 9.2),
-    (944.0, 6.0),
+    (50.0, 2.2),
+    (95.0, 5.2),
+    (140.0, 4.2),
+    (200.0, 2.6),
+    (260.0, 1.3),
+    (320.0, 0.5),
+    (370.0, 0.0),
+    (460.0, 0.0),
+    (520.0, 0.3),
+    (580.0, 0.8),
+    (640.0, 1.6),
+    (720.0, 3.0),
+    (800.0, 4.4),
+    (860.0, 5.4),
+    (925.1, 6.0),
     // Bree, and up Weathertop at up to 12 %.
-    (1164.0, 6.5),
-    (1318.0, 7.0),
-    (1378.0, 12.0),
-    (1510.0, 27.5),
-    (1620.0, 40.0),
-    (1702.0, 45.5),
+    (1145.1, 6.5),
+    (1299.1, 7.0),
+    (1359.1, 12.0),
+    (1491.1, 27.5),
+    (1601.1, 40.0),
+    (1683.1, 45.5),
     // Over its top: a crest where the bike flies.
-    (1722.0, 46.5),
-    (1792.0, 51.5),
-    (1827.0, 49.6),
-    (1882.0, 46.5),
+    (1703.1, 46.5),
+    (1773.1, 51.5),
+    (1808.1, 49.6),
+    (1863.1, 46.5),
     // Down through the Trollshaws at up to 12 %, to the ford, low over the
     // water.
-    (1978.0, 38.0),
-    (2068.0, 27.5),
-    (2158.0, 17.0),
-    (2248.0, 7.0),
-    (2318.0, 3.0),
-    (2358.0, 0.5),
+    (1959.1, 38.0),
+    (2049.1, 27.5),
+    (2139.1, 17.0),
+    (2229.1, 7.0),
+    (2299.1, 3.0),
+    (2339.1, 0.5),
     // Climbing steadily through Rivendell's split (as Ghost Island's
     // temple's).
-    (2438.0, 3.0),
-    (2788.0, 15.0),
+    (2419.1, 3.0),
+    (2769.1, 15.0),
     // Up Caradhras at up to 12 %, to the pass right over the mines.
-    (2918.0, 21.0),
-    (3018.0, 30.0),
-    (3118.0, 39.0),
-    (3178.0, 45.5),
-    (3218.0, 47.5),
+    (2899.1, 21.0),
+    (2999.1, 30.0),
+    (3099.1, 39.0),
+    (3159.1, 45.5),
+    (3199.1, 47.5),
     // Down round the mountain to the Doors of Durin; through Moria, down
     // into it and up again.
-    (3278.0, 45.5),
-    (3438.0, 36.0),
-    (3598.0, 24.0),
-    (3780.0, 15.0),
-    (3840.0, 12.0),
-    (3900.0, 9.0),
-    (4072.0, 20.0),
-    (4152.0, 24.0),
+    (3259.1, 45.5),
+    (3419.1, 36.0),
+    (3579.1, 24.0),
+    (3761.1, 15.0),
+    (3821.1, 12.0),
+    (3881.1, 9.0),
+    (4053.1, 20.0),
+    (4133.1, 24.0),
     // Down steadily through Lothlórien's split (as Ghost Island's castle's).
-    (4206.0, 23.5),
-    (4556.0, 11.5),
+    (4187.1, 23.5),
+    (4537.1, 11.5),
     // Down the Anduin's gorge to the water, and the causeway, low over it.
-    (4636.0, 9.5),
-    (4906.0, 1.5),
-    (4976.0, -1.4),
-    (5230.0, -1.4),
+    (4617.1, 9.5),
+    (4887.1, 1.5),
+    (4957.1, -1.4),
+    (5211.1, -1.4),
     // Up over the shoulder of Amon Hen, and down to the line.
-    (5290.0, 1.0),
-    (5390.0, 6.5),
-    (5480.0, 10.5),
-    (5550.0, 9.5),
-    (5708.0, 1.0),
+    (5271.1, 1.0),
+    (5371.1, 6.5),
+    (5461.1, 10.5),
+    (5531.1, 9.5),
+    (5689.1, 1.0),
 ];
 
 /// The ways off the lap, each through points to one side of it (m along
@@ -1154,126 +1153,126 @@ const ELEVATION: [(f32, f32); 60] = [
 /// last 20 m (drawn by integrating its curvature, R 45 and R 40, as
 /// Hobbiton's line).
 const BREE_WAY: [Vec2; 20] = [
-    // 1128 m, 1 m.
+    // 1109 m, 1 m.
     Vec2::new(750.01, -531.87),
-    // 1140 m, 4 m.
+    // 1121 m, 4 m.
     Vec2::new(762.24, -531.54),
-    // 1148 m, 12 m.
+    // 1129 m, 12 m.
     Vec2::new(773.95, -534.02),
-    // 1154 m, 21 m.
+    // 1135 m, 21 m.
     Vec2::new(785.39, -538.39),
-    // 1162 m, 30 m.
+    // 1143 m, 30 m.
     Vec2::new(797.04, -541.12),
-    // 1170 m, 37 m.
+    // 1151 m, 37 m.
     Vec2::new(809.25, -540.67),
-    // 1178 m, 42 m.
+    // 1159 m, 42 m.
     Vec2::new(820.88, -537.75),
-    // 1192 m, 47 m.
+    // 1173 m, 47 m.
     Vec2::new(832.55, -534.04),
-    // 1208 m, 51 m.
+    // 1189 m, 51 m.
     Vec2::new(843.98, -530.38),
-    // 1240 m, 52 m.
+    // 1221 m, 52 m.
     Vec2::new(855.65, -526.65),
-    // 1258 m, 50 m.
+    // 1239 m, 50 m.
     Vec2::new(867.08, -522.99),
-    // 1272 m, 46 m.
+    // 1253 m, 46 m.
     Vec2::new(878.64, -518.95),
-    // 1284 m, 41 m.
+    // 1265 m, 41 m.
     Vec2::new(889.06, -513.12),
-    // 1292 m, 32 m.
+    // 1273 m, 32 m.
     Vec2::new(897.51, -504.40),
-    // 1298 m, 22 m.
+    // 1279 m, 22 m.
     Vec2::new(904.03, -494.33),
-    // 1306 m, 12 m.
+    // 1287 m, 12 m.
     Vec2::new(911.96, -485.03),
-    // 1316 m, 5 m.
+    // 1297 m, 5 m.
     Vec2::new(922.05, -478.61),
-    // 1328 m, 1 m.
+    // 1309 m, 1 m.
     Vec2::new(933.83, -475.43),
-    // 1340 m, 0 m.
+    // 1321 m, 0 m.
     Vec2::new(945.79, -475.91),
-    // 1352 m, 1 m.
+    // 1333 m, 1 m.
     Vec2::new(957.45, -479.58),
 ];
 
 /// In Rivendell, to the left (east): it swings out to the left before the
 /// lap does, and back to it late.
 const RIVENDELL_LEFT: [Vec2; 11] = [
-    // 2448 m, 0 m.
+    // 2429 m, 0 m.
     Vec2::new(1578.2, -322.0),
-    // 2478 m, 4 m.
+    // 2459 m, 4 m.
     Vec2::new(1589.0, -293.4),
-    // 2516 m, 13 m.
+    // 2497 m, 13 m.
     Vec2::new(1611.6, -260.5),
-    // 2546 m, 32 m.
+    // 2527 m, 32 m.
     Vec2::new(1633.5, -226.3),
-    // 2566 m, 48 m.
+    // 2547 m, 48 m.
     Vec2::new(1644.7, -193.3),
-    // 2586 m, 60 m.
+    // 2567 m, 60 m.
     Vec2::new(1642.1, -160.3),
-    // 2620 m, 65 m.
+    // 2601 m, 65 m.
     Vec2::new(1628.1, -127.3),
-    // 2698 m, 57 m.
+    // 2679 m, 57 m.
     Vec2::new(1608.7, -94.4),
-    // 2732 m, 29 m.
+    // 2713 m, 29 m.
     Vec2::new(1589.4, -66.7),
-    // 2752 m, 11 m.
+    // 2733 m, 11 m.
     Vec2::new(1579.4, -39.7),
-    // 2774 m, 2 m.
+    // 2755 m, 2 m.
     Vec2::new(1575.9, -15.3),
 ];
 
 /// In Lothlórien, to the left (south): it runs straight on where the lap
 /// swings right, and out round a wide curve back to it.
 const LORIEN_LEFT: [Vec2; 11] = [
-    // 4218 m, 1 m.
+    // 4199 m, 1 m.
     Vec2::new(1246.2, 397.9),
-    // 4246 m, 15 m.
+    // 4227 m, 15 m.
     Vec2::new(1215.0, 404.0),
-    // 4268 m, 40 m.
+    // 4249 m, 40 m.
     Vec2::new(1183.0, 418.9),
-    // 4330 m, 65 m.
+    // 4311 m, 65 m.
     Vec2::new(1152.3, 438.9),
-    // 4390 m, 64 m.
+    // 4371 m, 64 m.
     Vec2::new(1119.3, 457.3),
-    // 4418 m, 57 m.
+    // 4399 m, 57 m.
     Vec2::new(1086.3, 467.5),
-    // 4434 m, 44 m.
+    // 4415 m, 44 m.
     Vec2::new(1053.3, 464.5),
-    // 4458 m, 25 m.
+    // 4439 m, 25 m.
     Vec2::new(1020.3, 448.1),
-    // 4490 m, 9 m.
+    // 4471 m, 9 m.
     Vec2::new(986.6, 424.2),
-    // 4520 m, 3 m.
+    // 4501 m, 3 m.
     Vec2::new(961.8, 408.1),
-    // 4542 m, 0 m.
+    // 4523 m, 0 m.
     Vec2::new(941.5, 400.6),
 ];
 
 /// In Lothlórien, to the right (north): it swings out to the right before
 /// the lap does, and back to it late.
 const LORIEN_RIGHT: [Vec2; 11] = [
-    // 4218 m, -0 m.
+    // 4199 m, -0 m.
     Vec2::new(1246.6, 396.1),
-    // 4248 m, -4 m.
+    // 4229 m, -4 m.
     Vec2::new(1218.5, 385.2),
-    // 4286 m, -14 m.
+    // 4267 m, -14 m.
     Vec2::new(1186.2, 362.8),
-    // 4314 m, -32 m.
+    // 4295 m, -32 m.
     Vec2::new(1152.3, 341.0),
-    // 4336 m, -48 m.
+    // 4317 m, -48 m.
     Vec2::new(1119.3, 329.8),
-    // 4354 m, -60 m.
+    // 4335 m, -60 m.
     Vec2::new(1086.3, 332.4),
-    // 4388 m, -65 m.
+    // 4369 m, -65 m.
     Vec2::new(1053.3, 346.4),
-    // 4466 m, -57 m.
+    // 4447 m, -57 m.
     Vec2::new(1020.4, 365.8),
-    // 4500 m, -29 m.
+    // 4481 m, -29 m.
     Vec2::new(992.2, 384.9),
-    // 4522 m, -11 m.
+    // 4503 m, -11 m.
     Vec2::new(964.6, 394.8),
-    // 4542 m, -2 m.
+    // 4523 m, -2 m.
     Vec2::new(941.8, 398.7),
 ];
 
@@ -1393,131 +1392,189 @@ const LORIEN_RIGHT_RISE: [(f32, f32); 33] = [
 ];
 
 /// The footpaths of Hobbiton, of bare earth: from the road past the bridge
-/// up the hill, zigzagging past the gates of the first holes, and from
-/// half way up along the water to the mill; from the road up to the Green Dragon and past the gates of the
-/// other holes; and from Bag End's gate down past the party tree to the
-/// road.
-const HOBBITON_PATH_A: [Vec2; 29] = [
-    Vec2::new(118.9, -377.9),
-    Vec2::new(116.3, -380.9),
-    Vec2::new(113.8, -383.8),
-    Vec2::new(111.3, -386.8),
-    Vec2::new(108.8, -389.7),
-    Vec2::new(106.2, -392.7),
-    Vec2::new(103.7, -395.6),
-    Vec2::new(101.2, -398.6),
-    Vec2::new(98.5, -401.4),
-    Vec2::new(95.7, -404.0),
-    Vec2::new(92.7, -406.3),
-    Vec2::new(89.4, -408.4),
-    Vec2::new(86.0, -410.4),
-    Vec2::new(82.7, -412.4),
-    Vec2::new(79.3, -414.3),
-    Vec2::new(75.9, -416.3),
-    Vec2::new(72.6, -418.3),
-    Vec2::new(69.2, -420.2),
-    Vec2::new(65.9, -422.2),
-    Vec2::new(62.5, -424.1),
-    Vec2::new(59.1, -425.6),
-    Vec2::new(55.8, -426.0),
-    Vec2::new(52.5, -424.9),
-    Vec2::new(49.2, -422.8),
-    Vec2::new(45.9, -420.2),
-    Vec2::new(42.6, -417.6),
-    Vec2::new(39.3, -415.0),
-    Vec2::new(36.0, -412.3),
-    Vec2::new(32.7, -409.7),
+/// up the hill on the left, past the gates of its holes, low and high,
+/// and down to the road again, and from the low one along the water to
+/// the mill; from the road by the sign past the Green Dragon and up past
+/// the gates of the holes on the right; and from Bag End's gate down past
+/// the party tree to the road.
+const HOBBITON_PATH_A: [Vec2; 71] = [
+    Vec2::new(236.7, -342.1),
+    Vec2::new(234.9, -345.6),
+    Vec2::new(233.2, -349.2),
+    Vec2::new(231.4, -352.8),
+    Vec2::new(229.6, -356.3),
+    Vec2::new(227.8, -359.9),
+    Vec2::new(226.1, -363.5),
+    Vec2::new(224.3, -367.0),
+    Vec2::new(222.5, -370.6),
+    Vec2::new(220.7, -374.2),
+    Vec2::new(219.0, -377.8),
+    Vec2::new(217.2, -381.3),
+    Vec2::new(215.4, -384.9),
+    Vec2::new(213.6, -388.5),
+    Vec2::new(211.9, -392.0),
+    Vec2::new(210.1, -395.6),
+    Vec2::new(208.3, -399.2),
+    Vec2::new(206.5, -402.7),
+    Vec2::new(204.8, -406.3),
+    Vec2::new(203.0, -409.9),
+    Vec2::new(201.3, -413.5),
+    Vec2::new(199.6, -417.2),
+    Vec2::new(197.9, -420.9),
+    Vec2::new(196.2, -424.6),
+    Vec2::new(194.6, -428.3),
+    Vec2::new(192.9, -432.1),
+    Vec2::new(191.3, -435.8),
+    Vec2::new(189.6, -439.5),
+    Vec2::new(188.0, -443.2),
+    Vec2::new(186.8, -446.9),
+    Vec2::new(186.6, -450.4),
+    Vec2::new(187.7, -453.8),
+    Vec2::new(189.7, -457.1),
+    Vec2::new(192.2, -460.3),
+    Vec2::new(194.7, -463.3),
+    Vec2::new(197.1, -465.8),
+    Vec2::new(199.6, -466.8),
+    Vec2::new(202.0, -465.6),
+    Vec2::new(204.4, -463.0),
+    Vec2::new(206.8, -459.7),
+    Vec2::new(209.1, -456.4),
+    Vec2::new(211.6, -453.1),
+    Vec2::new(214.3, -450.2),
+    Vec2::new(217.3, -447.6),
+    Vec2::new(220.5, -445.2),
+    Vec2::new(223.8, -443.0),
+    Vec2::new(227.1, -440.8),
+    Vec2::new(230.4, -438.6),
+    Vec2::new(233.7, -436.4),
+    Vec2::new(237.0, -434.2),
+    Vec2::new(240.3, -432.0),
+    Vec2::new(243.7, -430.0),
+    Vec2::new(247.2, -428.1),
+    Vec2::new(250.8, -426.6),
+    Vec2::new(254.6, -425.2),
+    Vec2::new(258.5, -424.0),
+    Vec2::new(262.3, -422.8),
+    Vec2::new(266.2, -421.6),
+    Vec2::new(270.0, -420.4),
+    Vec2::new(273.9, -419.2),
+    Vec2::new(277.8, -418.0),
+    Vec2::new(281.6, -416.8),
+    Vec2::new(285.5, -415.6),
+    Vec2::new(289.3, -414.4),
+    Vec2::new(293.2, -413.2),
+    Vec2::new(297.0, -412.0),
+    Vec2::new(300.9, -410.8),
+    Vec2::new(304.7, -409.6),
+    Vec2::new(308.6, -408.3),
+    Vec2::new(312.5, -407.1),
+    Vec2::new(316.3, -405.9),
 ];
-const HOBBITON_PATH_MILL: [Vec2; 18] = [
-    Vec2::new(96.1, -404.5),
-    Vec2::new(93.2, -402.0),
-    Vec2::new(90.2, -399.5),
-    Vec2::new(87.2, -397.1),
-    Vec2::new(84.3, -394.6),
-    Vec2::new(81.3, -392.2),
-    Vec2::new(78.4, -389.7),
-    Vec2::new(75.4, -387.2),
-    Vec2::new(72.4, -384.8),
-    Vec2::new(69.4, -382.8),
-    Vec2::new(66.3, -381.8),
-    Vec2::new(63.1, -382.0),
-    Vec2::new(59.9, -383.3),
-    Vec2::new(56.5, -384.8),
-    Vec2::new(53.1, -386.2),
-    Vec2::new(49.4, -387.0),
-    Vec2::new(45.3, -386.9),
-    Vec2::new(41.1, -386.3),
+const HOBBITON_PATH_MILL: [Vec2; 31] = [
+    Vec2::new(201.2, -413.4),
+    Vec2::new(197.7, -415.1),
+    Vec2::new(194.2, -416.8),
+    Vec2::new(190.6, -418.4),
+    Vec2::new(187.1, -420.1),
+    Vec2::new(183.6, -421.8),
+    Vec2::new(180.0, -423.4),
+    Vec2::new(176.5, -425.1),
+    Vec2::new(173.0, -426.8),
+    Vec2::new(169.5, -428.4),
+    Vec2::new(165.9, -429.7),
+    Vec2::new(162.4, -430.4),
+    Vec2::new(158.8, -430.1),
+    Vec2::new(155.3, -429.1),
+    Vec2::new(151.7, -427.8),
+    Vec2::new(148.1, -426.5),
+    Vec2::new(144.5, -425.1),
+    Vec2::new(141.0, -423.8),
+    Vec2::new(137.4, -422.5),
+    Vec2::new(133.9, -421.0),
+    Vec2::new(130.5, -419.3),
+    Vec2::new(127.3, -417.1),
+    Vec2::new(124.2, -414.7),
+    Vec2::new(121.2, -412.2),
+    Vec2::new(118.2, -409.6),
+    Vec2::new(115.2, -407.1),
+    Vec2::new(112.2, -404.5),
+    Vec2::new(109.2, -402.0),
+    Vec2::new(106.2, -399.4),
+    Vec2::new(103.2, -396.9),
+    Vec2::new(100.2, -394.3),
 ];
 const HOBBITON_PATH_B: [Vec2; 43] = [
-    Vec2::new(261.0, -506.7),
-    Vec2::new(263.8, -503.6),
-    Vec2::new(266.6, -500.6),
-    Vec2::new(269.4, -497.5),
-    Vec2::new(272.2, -494.5),
-    Vec2::new(274.9, -491.4),
-    Vec2::new(277.7, -488.4),
-    Vec2::new(280.4, -485.3),
-    Vec2::new(283.0, -482.3),
-    Vec2::new(285.4, -479.2),
-    Vec2::new(287.7, -476.2),
-    Vec2::new(290.0, -473.2),
-    Vec2::new(292.2, -470.2),
-    Vec2::new(294.4, -467.2),
-    Vec2::new(296.7, -464.1),
-    Vec2::new(298.9, -461.1),
-    Vec2::new(301.1, -457.9),
-    Vec2::new(303.3, -454.6),
-    Vec2::new(305.5, -451.1),
-    Vec2::new(307.7, -447.6),
-    Vec2::new(309.9, -444.1),
-    Vec2::new(312.1, -440.6),
-    Vec2::new(314.2, -437.1),
-    Vec2::new(316.4, -433.6),
-    Vec2::new(318.6, -430.1),
-    Vec2::new(320.7, -426.6),
-    Vec2::new(322.7, -423.1),
-    Vec2::new(324.5, -419.5),
-    Vec2::new(326.1, -415.9),
-    Vec2::new(327.7, -412.2),
-    Vec2::new(329.3, -408.6),
-    Vec2::new(330.9, -404.9),
-    Vec2::new(332.4, -401.4),
-    Vec2::new(333.4, -398.3),
-    Vec2::new(333.1, -396.2),
-    Vec2::new(331.0, -395.7),
-    Vec2::new(327.7, -396.2),
-    Vec2::new(323.9, -397.2),
-    Vec2::new(319.9, -398.3),
-    Vec2::new(316.0, -399.3),
-    Vec2::new(312.1, -400.4),
-    Vec2::new(308.2, -401.4),
-    Vec2::new(304.3, -402.5),
+    Vec2::new(324.3, -358.7),
+    Vec2::new(328.1, -358.6),
+    Vec2::new(331.9, -358.5),
+    Vec2::new(335.7, -358.4),
+    Vec2::new(339.5, -358.5),
+    Vec2::new(343.1, -359.1),
+    Vec2::new(346.6, -360.3),
+    Vec2::new(350.1, -362.1),
+    Vec2::new(353.5, -364.0),
+    Vec2::new(356.9, -366.0),
+    Vec2::new(360.2, -368.0),
+    Vec2::new(363.6, -370.0),
+    Vec2::new(366.9, -372.1),
+    Vec2::new(369.8, -374.6),
+    Vec2::new(372.4, -377.5),
+    Vec2::new(374.8, -380.8),
+    Vec2::new(376.9, -384.3),
+    Vec2::new(379.1, -387.7),
+    Vec2::new(381.3, -391.2),
+    Vec2::new(383.5, -394.6),
+    Vec2::new(385.7, -398.1),
+    Vec2::new(387.8, -401.5),
+    Vec2::new(390.0, -405.0),
+    Vec2::new(392.2, -408.4),
+    Vec2::new(394.6, -411.5),
+    Vec2::new(397.5, -414.0),
+    Vec2::new(400.9, -415.5),
+    Vec2::new(404.8, -416.4),
+    Vec2::new(408.9, -417.0),
+    Vec2::new(413.1, -417.6),
+    Vec2::new(417.2, -418.1),
+    Vec2::new(421.4, -418.7),
+    Vec2::new(425.5, -419.2),
+    Vec2::new(429.6, -419.5),
+    Vec2::new(433.6, -419.3),
+    Vec2::new(437.4, -418.4),
+    Vec2::new(441.2, -416.9),
+    Vec2::new(445.0, -415.3),
+    Vec2::new(448.7, -413.6),
+    Vec2::new(452.4, -411.8),
+    Vec2::new(456.1, -410.1),
+    Vec2::new(459.9, -408.4),
+    Vec2::new(463.6, -406.7),
 ];
-const BAG_END_PATH: [Vec2; 24] = [
-    Vec2::new(304.4, -613.0),
-    Vec2::new(301.0, -611.2),
-    Vec2::new(297.5, -609.3),
-    Vec2::new(294.1, -607.4),
-    Vec2::new(290.7, -605.5),
-    Vec2::new(287.2, -603.7),
-    Vec2::new(283.8, -601.8),
-    Vec2::new(280.3, -599.9),
-    Vec2::new(276.9, -598.0),
-    Vec2::new(273.4, -596.1),
-    Vec2::new(270.2, -594.1),
-    Vec2::new(267.6, -591.6),
-    Vec2::new(265.7, -588.6),
-    Vec2::new(264.3, -585.2),
-    Vec2::new(263.1, -581.7),
-    Vec2::new(262.0, -578.1),
-    Vec2::new(260.9, -574.6),
-    Vec2::new(260.3, -571.1),
-    Vec2::new(260.5, -568.0),
-    Vec2::new(262.0, -565.3),
-    Vec2::new(264.4, -562.9),
-    Vec2::new(267.3, -560.6),
-    Vec2::new(270.1, -558.4),
-    Vec2::new(273.0, -556.1),
+const BAG_END_PATH: [Vec2; 26] = [
+    Vec2::new(381.0, -600.0),
+    Vec2::new(378.1, -597.6),
+    Vec2::new(375.2, -595.1),
+    Vec2::new(372.3, -592.6),
+    Vec2::new(369.4, -590.1),
+    Vec2::new(366.5, -587.6),
+    Vec2::new(363.6, -585.1),
+    Vec2::new(360.7, -582.6),
+    Vec2::new(357.8, -580.1),
+    Vec2::new(355.0, -577.6),
+    Vec2::new(352.4, -575.0),
+    Vec2::new(350.7, -572.0),
+    Vec2::new(350.0, -568.5),
+    Vec2::new(350.1, -564.7),
+    Vec2::new(350.5, -560.8),
+    Vec2::new(351.0, -556.9),
+    Vec2::new(351.4, -552.9),
+    Vec2::new(351.9, -549.0),
+    Vec2::new(352.4, -545.0),
+    Vec2::new(352.9, -541.1),
+    Vec2::new(353.7, -537.5),
+    Vec2::new(355.4, -534.5),
+    Vec2::new(358.2, -532.5),
+    Vec2::new(361.8, -531.1),
+    Vec2::new(365.8, -530.1),
+    Vec2::new(369.8, -529.0),
 ];
 const PATHS: [&[Vec2]; 4] = [
     &HOBBITON_PATH_A,
@@ -1526,36 +1583,45 @@ const PATHS: [&[Vec2]; 4] = [
     &BAG_END_PATH,
 ];
 
-/// The pool of Bywater, inside the long sweep round past Bag End's hill,
-/// at the end of the Water: its middle and radius (m).
-const POND: Vec2 = Vec2::new(273.3, -437.7);
-const POND_RADIUS: f32 = 24.0;
-/// The middles of the hills of Hobbiton, either side of the Water, their
-/// feet on its far banks: the hobbit holes are dug into them high over
-/// the water, the hills rising on behind them.
-const HOBBITON_HILLS: [Vec2; 2] = [Vec2::new(36.9, -516.3), Vec2::new(405.6, -337.5)];
-/// The Water, the stream through Hobbiton: out of the wood, wide along
-/// the left of the sweep down into the village, between the road and the
-/// hobbit holes high across it; square under the bridge, and along the
-/// right of the sweep on, between the road and the rest of the village,
-/// into the pool.
-const THE_WATER: [(Vec2, f32); 16] = [
+/// The pool of Bywater, below the right of the village, where the Water
+/// widens before it runs on into the Brandywine: its middle and radius
+/// (m).
+const POND: Vec2 = Vec2::new(470.0, -330.0);
+const POND_RADIUS: f32 = 30.0;
+/// The middles of the hills of Hobbiton, either side of the road past the
+/// bridge: inside the sweep to the left, and inside the one to the right,
+/// over the pool; the hobbit holes are dug into their flanks at heights
+/// that alternate, the hills rising on behind them.
+const HOBBITON_HILLS: [Vec2; 2] = [Vec2::new(184.7, -517.5), Vec2::new(440.0, -470.0)];
+/// The Water, the stream through Hobbiton, 64 m wide: out of the wood,
+/// along the left of the long sweep down into the village, between the
+/// road and the mill; square under the bridge, along the right of the
+/// sweep on, and away from the road into the pool, and on out of it into
+/// the Brandywine.
+const THE_WATER: [(Vec2, f32); 23] = [
     (Vec2::new(-150.0, 40.0), 8.0),
     (Vec2::new(-115.0, -60.0), 9.0),
-    (Vec2::new(-75.0, -120.0), 11.0),
-    (Vec2::new(-46.0, -160.4), 13.0),
-    (Vec2::new(-42.1, -207.8), 15.0),
-    (Vec2::new(-28.8, -255.1), 16.0),
-    (Vec2::new(-6.3, -298.8), 16.0),
-    (Vec2::new(19.3, -331.8), 16.0),
-    (Vec2::new(47.6, -354.1), 16.0),
-    (Vec2::new(76.5, -351.3), 16.0),
-    (Vec2::new(103.1, -343.6), 16.0),
-    (Vec2::new(128.1, -334.7), 16.0),
-    (Vec2::new(156.9, -331.8), 16.0),
-    (Vec2::new(185.2, -353.6), 15.0),
-    (Vec2::new(212.5, -388.4), 14.0),
-    (Vec2::new(229.6, -418.8), 13.0),
+    (Vec2::new(-75.0, -110.0), 12.0),
+    (Vec2::new(-59.7, -132.0), 16.0),
+    (Vec2::new(-53.6, -179.1), 22.0),
+    (Vec2::new(-39.3, -222.1), 28.0),
+    (Vec2::new(-12.6, -268.1), 32.0),
+    (Vec2::new(23.7, -307.0), 32.0),
+    (Vec2::new(67.6, -337.1), 32.0),
+    (Vec2::new(111.6, -355.1), 32.0),
+    (Vec2::new(138.2, -362.1), 32.0),
+    (Vec2::new(154.0, -364.6), 32.0),
+    (Vec2::new(168.6, -346.7), 32.0),
+    (Vec2::new(187.2, -312.2), 32.0),
+    (Vec2::new(205.8, -277.8), 32.0),
+    (Vec2::new(220.5, -259.8), 32.0),
+    (Vec2::new(234.5, -261.9), 32.0),
+    (Vec2::new(256.1, -267.5), 32.0),
+    (Vec2::new(289.7, -280.1), 32.0),
+    (Vec2::new(440.0, -345.0), 32.0),
+    (Vec2::new(470.0, -330.0), 30.0),
+    (Vec2::new(505.0, -332.0), 16.0),
+    (Vec2::new(548.0, -330.0), 18.0),
 ];
 /// Rivers, as points (x, z) along them with how far their banks are from
 /// the middle there (m): the Brandywine, north to south under its bridge
@@ -1644,14 +1710,14 @@ const CARADHRAS_PEAK: Massif = climbed_massif(1595.0, 385.0, 280.0, 44.0);
 const MASSIFS: [Massif; 32] = [
     WEATHERTOP_HILL,
     CARADHRAS_PEAK,
-    // Bag End's hill, on the outside of the long sweep round the pool, and
+    // Bag End's hill, on the outside of the last of Hobbiton's sweeps, and
     // Amon Hen, on the outside of the last bend.
-    climbed_massif(273.6, -738.2, 170.0, 32.0),
+    climbed_massif(320.6, -711.3, 170.0, 32.0),
     climbed_massif(40.0, 400.0, 150.0, 20.0),
-    // The hills of Hobbiton, either side of the Water, rising behind the
-    // hobbit holes dug into their feet across it from the road.
-    climbed_massif(HOBBITON_HILLS[0].x, HOBBITON_HILLS[0].y, 160.0, 24.0),
-    climbed_massif(HOBBITON_HILLS[1].x, HOBBITON_HILLS[1].y, 150.0, 24.0),
+    // The hills of Hobbiton, either side of the road past the bridge, rising
+    // behind the hobbit holes dug into their flanks.
+    climbed_massif(HOBBITON_HILLS[0].x, HOBBITON_HILLS[0].y, 120.0, 28.0),
+    climbed_massif(HOBBITON_HILLS[1].x, HOBBITON_HILLS[1].y, 80.0, 20.0),
     // Rolling hills: beside the Shire's lanes; west of Hobbiton; in the
     // middle of the lap, beyond the Brandywine and towards the Misty
     // Mountains; and south of the Anduin.
@@ -1696,7 +1762,7 @@ const CUTTINGS: [Cutting; 6] = [
     // The cliffs on the right of Rivendell's valley, down which its
     // waterfalls pour.
     Cutting {
-        span: span(FORD.to, 2854.0),
+        span: span(FORD.to, 2835.1),
         side: Side::Right,
         height: 32.0,
     },
@@ -1754,8 +1820,8 @@ mod tests {
     use crate::track::Track;
 
     /// Weathertop, from its foot, and its top: a straight over a crest.
-    const WEATHERTOP: Span = span(1318.0, TROLLSHAWS.from);
-    const SUMMIT: Span = span(1702.0, 1882.0);
+    const WEATHERTOP: Span = span(1299.1, TROLLSHAWS.from);
+    const SUMMIT: Span = span(1683.1, 1863.1);
 
     #[test]
     fn the_lap_goes_over_caradhras_and_then_through_moria_beneath() {
