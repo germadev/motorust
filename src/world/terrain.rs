@@ -13,7 +13,7 @@ use bevy::{
 use super::cavern::excavation_width;
 use super::dam::DamGround;
 use super::flowers::{FlowerMap, phlox_color};
-use super::scenery::{Coast, FlowerKind, Greens, Pit, Scenery, Side, Soil, Turf, span};
+use super::scenery::{Coast, FlowerKind, Greens, Pit, RockTint, Scenery, Side, Soil, Turf, span};
 use super::sky::MEDITERRANEAN_SUN;
 use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
@@ -113,6 +113,8 @@ pub struct Terrain {
     flowers: Option<FlowerMap>,
     /// Where the ground stays grass however steep it is.
     turf: &'static [Turf],
+    /// Where the granite is of another colour.
+    rock_tints: &'static [RockTint],
     /// The corners of the fine part of the grid, round the roads: past it
     /// the land is wild (see [`grass_tint`]).
     fine: (Vec2, Vec2),
@@ -241,6 +243,7 @@ impl Terrain {
             soil: scenery.soil,
             flowers,
             turf,
+            rock_tints: scenery.rock_tints(),
             fine,
             mountain,
             hollow,
@@ -645,7 +648,8 @@ impl Terrain {
                                             Vec3::splat(self.sites[index].turf.map_or(0.0, |_| 1.0))
                                         }))
                                         .x;
-                                        granite_vertex_color(p, normal, turf)
+                                        let color = granite_vertex_color(p, normal, turf);
+                                        tinted(color, p, self.rock_tints)
                                     }
                                     (_, Ground::Grass, _) => {
                                         let outside = (self.fine.0 - Vec2::new(p.x, p.z))
@@ -1410,6 +1414,26 @@ fn granite_vertex_color(p: Vec3, normal: Vec3, turf: f32) -> [f32; 4] {
     let lum = 0.299 * r + 0.587 * g + 0.114 * b;
     let grey = Vec3::new(lum * 0.98, lum, lum * 1.03);
     let [r, g, b] = grey.lerp(lum * MOSS, turf * mossy(p, normal)).to_array();
+    [r, g, b, a]
+}
+
+/// Granite's `color` at `p`, of the colour of the tints it is in (see
+/// [`RockTint`]): as light, of their colour, fading back into it over their
+/// outer quarter.
+fn tinted(color: [f32; 4], p: Vec3, tints: &[RockTint]) -> [f32; 4] {
+    let lightness = |[r, g, b]: [f32; 3]| 0.299 * r + 0.587 * g + 0.114 * b;
+    let [r, g, b, a] = color;
+    let mut tinted = Vec3::new(r, g, b);
+    let here = Vec2::new(p.x, p.z);
+    for tint in tints {
+        let inside = 1.0 - smoothstep(0.75, 1.0, here.distance(tint.center) / tint.radius);
+        if inside > 0.0 {
+            let hue = tint.color.to_linear().to_f32_array_no_alpha();
+            let colored = Vec3::from(hue) * (lightness(tinted.to_array()) / lightness(hue));
+            tinted = tinted.lerp(colored, inside);
+        }
+    }
+    let [r, g, b] = tinted.to_array();
     [r, g, b, a]
 }
 

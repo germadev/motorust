@@ -1,12 +1,14 @@
 //! What the ground between the asphalt and the walls of each road is made
 //! of (see [`Track::set_shoulders`]): the concrete walkways of the tunnels,
 //! the decks of the bridges, the planks and gravel of a mine's excavation,
-//! and elsewhere the terrain drawn there: grass, sand or bare earth.
+//! and elsewhere the terrain drawn there: grass, sand or bare earth, or, on
+//! grass, the earth worn bare or the leaves fallen on it (see
+//! [`super::scenery::FlowerArea::Shoulders`]).
 
 use bevy::prelude::*;
 
 use super::cavern::stone_at;
-use super::scenery::{Scenery, Soil, Stone};
+use super::scenery::{FlowerKind, Scenery, Soil, Stone};
 use super::terrain::{Ground, Terrain};
 use crate::track::{CURB_WIDTH, Dust, Surface, Track};
 
@@ -63,7 +65,12 @@ fn road_shoulders(
                     if excavation {
                         stone_surface(stone_at(halls, lap, point, along))
                     } else {
-                        terrain_surface(terrain.ground_drawn(point), terrain.soil())
+                        match terrain.flowers_drawn(point) {
+                            Some(FlowerKind::BareEarth | FlowerKind::FallenLeaves) => {
+                                Surface::Dirt(Dust::Earth)
+                            }
+                            _ => terrain_surface(terrain.ground_drawn(point), terrain.soil()),
+                        }
                     }
                 });
                 if seen[1] == seen[2] { seen[1] } else { seen[0] }
@@ -197,6 +204,30 @@ mod tests {
                 .iter()
                 .any(|surface| matches!(surface, Surface::Dirt(_)))
         );
+    }
+
+    #[test]
+    fn fellowship_road_s_shoulders_are_grass_and_bare_earth_in_patches() {
+        let (_, _, shoulders) = shoulders_of("Fellowship Road");
+        let lap = &shoulders[0];
+        let count = |wanted: Surface| lap.iter().flatten().filter(|&&s| s == wanted).count();
+        let (grass, earth) = (count(Surface::Grass), count(Surface::Dirt(Dust::Earth)));
+        let all = 2 * lap.len();
+        // Neither all grass nor all earth: each a good share of the lap.
+        assert!(
+            grass > all / 5 && earth > all / 5,
+            "{grass} grass, {earth} earth of {all}"
+        );
+        // In patches, not in specks: each side changes from one to the
+        // other only now and then.
+        for side in 0..2 {
+            let changes = lap.windows(2).filter(|w| w[0][side] != w[1][side]).count();
+            assert!(
+                changes < lap.len() / 10,
+                "{changes} changes of {}",
+                lap.len()
+            );
+        }
     }
 
     #[test]

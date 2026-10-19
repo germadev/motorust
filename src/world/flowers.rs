@@ -61,8 +61,11 @@ const ISLAND: f32 = 200.0;
 /// everywhere has several (m).
 const KIND_PATCH: f32 = 90.0;
 /// How far the flowers keep from the walls of the roads (m): the shoulders
-/// stay grass.
+/// stay grass, but for the fields on them (see [`FlowerArea::Shoulders`]),
+/// which reach as far, in patches with this share of grass between them (as
+/// a threshold of the noise of the gaps).
 const CLEAR_OF_WALL: f32 = 2.0;
+const SHOULDER_GAPS: f32 = 0.5;
 /// The colours of moss phlox: magenta, and drifts of pink, lavender and
 /// white over it, each drift of its own size (m) and found where its own
 /// noise passes a threshold (rarer the higher), blending into what is
@@ -181,24 +184,31 @@ impl FlowerMap {
     /// What is in flower at `point`, if anything (whether the ground there
     /// is grass, dry and so on is the terrain's to say).
     pub fn at(&self, point: Vec2) -> Option<FlowerKind> {
-        if self
+        let shoulder = self
             .roads
             .nearest(point, ROAD_CELL)
-            .is_some_and(|(road, distance)| distance < road.wall + CLEAR_OF_WALL)
-        {
-            return None;
-        }
-        self.field_at(point)
+            .is_some_and(|(road, distance)| distance < road.wall + CLEAR_OF_WALL);
+        self.field_where(point, shoulder)
     }
 
     /// What the field at `point` is in flower with, if anything, whatever
     /// road runs there: over a tunnel, say, where the road is under the
     /// ground.
     pub fn field_at(&self, point: Vec2) -> Option<FlowerKind> {
+        self.field_where(point, false)
+    }
+
+    /// What the field at `point` is in flower with, if anything: of the
+    /// fields on the shoulders of the roads, if it is on one (`shoulder`),
+    /// or else of the others.
+    fn field_where(&self, point: Vec2, shoulder: bool) -> Option<FlowerKind> {
         if point.cmplt(self.bounds.0).any() || point.cmpgt(self.bounds.1).any() {
             return None;
         }
         for (f, field) in self.fields.iter().enumerate() {
+            if matches!(field.area, FlowerArea::Shoulders { .. }) != shoulder {
+                continue;
+            }
             // Past the middle of its ragged edge, the next field.
             let full = fullness(&field.area, point, &self.roads, self.lap);
             if full.is_none_or(|full| full < 0.5) {
@@ -226,8 +236,14 @@ impl FlowerMap {
             {
                 return None;
             }
-            // Gaps of grass, in drifts, more where the fields mingle.
-            if noise(GAPS_SIZE, 17.0) < GAPS + GAPS_AT_BORDER * near {
+            // Gaps of grass, in drifts, more where the fields mingle; on
+            // the shoulders, as much grass as not.
+            let gaps = if shoulder {
+                SHOULDER_GAPS
+            } else {
+                GAPS + GAPS_AT_BORDER * near
+            };
+            if noise(GAPS_SIZE, 17.0) < gaps {
                 return None;
             }
             let pick = random01(plot) * kinds;
@@ -314,6 +330,11 @@ fn fullness(area: &FlowerArea, point: Vec2, roads: &Roads, lap: f32) -> Option<f
             // Thinning out at both ends of the stretch too.
             let ends = span.weight(along, lap, EDGE * 2.0);
             Some(ends * smoothstep(far, far - EDGE, distance + ragged))
+        }
+        FlowerArea::Shoulders { span } => {
+            let (road, distance) = roads.nearest(point, ROAD_CELL)?;
+            (distance < road.wall + CLEAR_OF_WALL && span.contains(road.along, lap))
+                .then(|| span.weight(road.along, lap, EDGE * 2.0))
         }
     }
 }

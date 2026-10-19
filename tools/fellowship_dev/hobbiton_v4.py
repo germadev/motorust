@@ -18,13 +18,12 @@ left) or where it stands: the Water, 64 m wide, along the left of the
 first sweep, square under the bridge and along the right of the second,
 into the pool and on into the Brandywine; the hills of the village, each
 checked to rise no more than 6 m at the road and 1.2 m at the water, and
-to be no steeper than 35 degrees; the hobbit holes on the left up the
-flank of the first hill, low and high by turns, facing the riders coming;
-those on the right on the south flank of the second, low, high and low,
-turned south-south-west, towards the bridge and the low sun in the
-south-east (`sun`, how much their fronts face it); the Green Dragon on
-the other side of the road, on the outside of the last bend, raised over
-the road and facing the riders, with Bag End and the party tree past it,
+to be no steeper than 35 degrees; the hobbit holes on the left low and
+spread round the foot of the first hill; those on the right on the south
+flank of the second, low, high and low; all facing the riders coming; the
+Green Dragon on the other side of the road, on the outside of the last
+bend, near it, raised over it and facing the riders, with Bag End and the
+party tree past it,
 none of them hiding another seen from the road (`clear`); and the other
 buildings, each checked to be seen ahead from the road as the game clears
 the view to its landmarks (`ahead`: 220 m, 0.6 rad).
@@ -188,22 +187,23 @@ def on_hill(hill, angle, reach):
     a = math.radians(angle)
     return c + r * reach * np.array([math.sin(a - math.pi), math.cos(a - math.pi)])
 
-# The low sun (`sky.rs`: azimuth 0.75 pi), seen from the ground.
-SUN = np.array([math.sin(0.75 * math.pi), -math.cos(0.75 * math.pi)])
-# Which way the holes on the right face: south-south-west.
-B_FACING = np.array([-0.38, 0.92]) / np.linalg.norm([-0.38, 0.92])
-B_HEADING = math.atan2(-B_FACING[0], -B_FACING[1])
-
-HOLES_A = [("HobbitDoorBlue", 570.0, 90.0), ("HobbitDoorRed", 550.0, 130.0),
-           ("HobbitDoorYellow", 460.0, 100.0), ("HobbitDoorGreen", 450.0, 140.0)]
+# The holes on the left, low round the foot of their hill, from the east
+# (228 degrees from north, at 0.86 of its radius) round to the south-west
+# (152 degrees), spread across the left of the riders' view as they come
+# down to the bridge; those on the right on the south flank of the other
+# (as `on_hill(HILL_B, 155, 0.8)`, `190, 0.55`, `220, 0.78`). All by the
+# road, facing the riders coming (as `facing_riders`, the road 110 m back).
+HOLES_A = [("HobbitDoorBlue", 613.9, 84.7), ("HobbitDoorRed", 503.9, 103.5),
+           ("HobbitDoorYellow", 434.0, 101.9), ("HobbitDoorGreen", 398.0, 128.3)]
 MILL = ("Mill", 360.0, 108.0)
-HOLES_B = [("HobbitDoorGreen", on_hill(HILL_B, 155, 0.8)),
-           ("HobbitDoorRed", on_hill(HILL_B, 190, 0.55)),
-           ("HobbitDoorYellow", on_hill(HILL_B, 220, 0.78))]
-# On the left of the last bend, on a terrace 2 m over the road, facing the
-# riders coming (as `facing_riders`, the road 110 m back); the party tree
-# past Bag End, so that none of them hides another (`clear`).
-GREEN_DRAGON = ("GreenDragon", 700.0, 52.0)
+HOLES_B = [("HobbitDoorGreen", 625.9, -71.0), ("HobbitDoorRed", 645.9, -101.1),
+           ("HobbitDoorYellow", 651.9, -133.7)]
+# On the left of the last bend, 34 m out, on a terrace 2 m over the road,
+# facing the riders coming; the party tree past Bag End, so that none of
+# them hides another (`clear`; with the Green Dragon this near the road,
+# its roof crosses the foot of Bag End and its oak by under a degree from
+# some of the bend).
+GREEN_DRAGON = ("GreenDragon", 700.0, 34.0)
 SIGN = ("GreenDragonSign", 668.0, 13.5)
 PARTY_TREE = ("PartyTree", 800.0, 50.0)
 BAG_END = ("BagEnd", 770.0, 70.0)
@@ -254,8 +254,7 @@ if __name__ == "__main__":
         wet = max(h * shape(max(0.0, np.linalg.norm(q - c) - w) / rad) for q, w in water_points())
         print(f"{name:15s} at {np.round(c, 1)} R {rad:.0f} {h:.0f} m: {h * shape(road_d(c) / rad):.1f} m at the road,"
               f" {wet:.1f} m at the water, steepest {math.degrees(math.atan(h * 1.5 / (0.55 * rad))):.0f} deg")
-    print("the right's fronts face the sun by", round(float(B_FACING @ SUN), 2), "heading", round(B_HEADING, 4))
-    placed = [(n, pos(a, l)) for n, a, l in HOLES_A + [MILL]] + HOLES_B \
+    placed = [(n, pos(a, l)) for n, a, l in HOLES_A + [MILL] + HOLES_B] \
         + [(n, pos(a, l)) for n, a, l in [GREEN_DRAGON, SIGN, PARTY_TREE, BAG_END, OAK, ROOT_TREE]]
     gd = pos(*GREEN_DRAGON[1:])
     behind = [(pos(*BAG_END[1:]), 20.6, 6.0, 12.0), (pos(*OAK[1:]), 22.0, 7.0, 16.0), (pos(*PARTY_TREE[1:]), 5.0, 10.0, 24.0)]

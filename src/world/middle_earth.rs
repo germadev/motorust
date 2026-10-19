@@ -7,9 +7,9 @@
 //! Rivendell, the Doors of Durin open over the road into Moria, the drawing
 //! of ithildin glowing on them, outside and on their leaves within, a
 //! mallorn, boats on the river and the kings of the Argonath standing in
-//! it; and, as in feudal Japan (see
-//! [`super::japan`], whose props are placed alike), fields of flowers and
-//! leaves drifting down.
+//! it; low bushes about the hobbit holes' gardens and along the footpaths;
+//! and, as in feudal Japan (see [`super::japan`], whose props are placed
+//! alike), fields of flowers and leaves drifting down.
 //!
 //! Every prop's colours are in one texture, so they all share one material,
 //! and every kind of prop is one mesh (but the ithildin on the Doors of
@@ -24,9 +24,9 @@ use super::flowers::{FlowerPlan, spawn_flowers};
 use super::japan::{PropPack, Turning, in_view, spawn_petals, spot};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
-use super::scenery::{Glow, MiddleEarthModel, Prop, Scenery, Spot};
-use super::terrain::{GRASS_TILE, SEA_LEVEL, Terrain};
-use crate::geometry::{fbm, smoothstep};
+use super::scenery::{Glow, MiddleEarthModel, Prop, Scenery, Shaft, Spot};
+use super::terrain::{GRASS_TILE, SEA_LEVEL, Terrain, shaded};
+use crate::geometry::{fbm, random01, smoothstep};
 use crate::track::Track;
 
 /// The mill's wheel and the chimney over a hobbit hole, by their names in
@@ -62,13 +62,11 @@ const GLOW_REACH: f32 = 2.5;
 /// How much of a [`Glow`]'s cone it lights fully, the rest fading out to
 /// its edge.
 const GLOW_CORE: f32 = 0.6;
-/// The shaft of a [`Glow`] coming down from the sky, seen in the air: how
-/// many planes crossed round its axis make it, how far up from what it
-/// lights it shows (m), and how bright it is down its middle and at its
-/// foot (linear, added over what is behind it, as light is).
-const SHAFT_PLANES: usize = 4;
+/// The shaft of a [`Glow`] coming down from the sky, seen in the air (see
+/// [`Shaft`]): how many planes crossed round its axis make it, and how far
+/// up from what it lights it shows (m).
+const SHAFT_PLANES: usize = 6;
 const SHAFT_LENGTH: f32 = 110.0;
-const SHAFT_LIGHT: f32 = 0.05;
 
 /// The hill a hobbit hole is dug into, a dome over its rooms behind its
 /// front: so many times as high as the hole and as wide as its front,
@@ -126,6 +124,33 @@ const FLAGS: [Color; 5] = [
     Color::srgb(0.95, 0.94, 0.9),
 ];
 const POST_WOOD: Color = Color::srgb(0.42, 0.32, 0.22);
+/// Low bushes about the village (see [`bush`]): their leaves, tints over the
+/// grass's photo, as a hedge's (a deeper or a fresher green, shaded as the
+/// grass round them, see `Scenery::grass_shade`), and the flowers some of
+/// them are in; how wide they are,
+/// from the least to the most (m), how high their lumps for how wide, and
+/// how far into the ground they stand (m). About each hole's garden, where
+/// round its fence (rad either side of its gate) and how far out of it (m);
+/// along the footpaths, one every so many metres, to either side by turns,
+/// so far from the middle of the path (m), but none near its ends.
+const BUSH_LEAVES: [Color; 3] = [
+    Color::srgb(0.55, 0.85, 0.4),
+    Color::srgb(0.45, 0.72, 0.34),
+    Color::srgb(0.62, 0.92, 0.5),
+];
+const BUSH_FLOWERS: [Color; 3] = [
+    Color::srgb(0.95, 0.55, 0.7),
+    Color::srgb(0.96, 0.95, 0.9),
+    Color::srgb(0.98, 0.82, 0.3),
+];
+const BUSH_WIDTH: (f32, f32) = (1.1, 2.0);
+const BUSH_TALL: f32 = 1.1;
+const BUSH_SINK: f32 = 0.15;
+const BUSH_ROUND_GARDEN: [f32; 4] = [1.15, 1.5, -1.15, -1.5];
+const BUSH_OUT: f32 = 1.1;
+const BUSH_EVERY: f32 = 8.0;
+const BUSH_BESIDE: f32 = PATH_WIDTH / 2.0 + 1.3;
+const BUSH_PATH_ENDS: f32 = 8.0;
 
 /// Every prop's name in `props.bin`.
 fn name(model: MiddleEarthModel) -> &'static str {
@@ -324,8 +349,31 @@ pub fn spawn_middle_earth(
         .iter()
         .map(|prop| spawn_prop(world, track, terrain, prop, props, &gate, &mut banks))
         .collect();
+    // Low bushes along the footpaths, out of the props' way, as round the
+    // holes' gardens (see `BankMesh::garden`).
+    for (at, seed) in path_bush_spots(middle_earth.paths, &taken) {
+        let ground = terrain.height(at);
+        if ground > terrain.water_level(at) + 0.3 {
+            let width = BUSH_WIDTH.0.lerp(BUSH_WIDTH.1, random01(seed * 7 + 1));
+            let foot = Vec3::new(at.x, ground, at.y);
+            bush(&mut banks.bushes, &mut banks.dressing, foot, width, seed);
+        }
+    }
+    if !banks.bushes.is_empty() {
+        // Leaves, as a hedge's: the grass's photo, as dark as the grass.
+        let [red, green, blue, _] = shaded(Color::WHITE, scenery.grass_shade);
+        let material = assets.materials.add(StandardMaterial {
+            base_color: Color::linear_rgb(red, green, blue),
+            base_color_texture: Some(assets.textures.grass.clone()),
+            perceptual_roughness: 0.95,
+            reflectance: 0.15,
+            ..default()
+        });
+        let bushes = std::mem::take(&mut banks.bushes).build();
+        world.spawn((Mesh3d(assets.meshes.add(bushes)), MeshMaterial3d(material)));
+    }
     if !banks.dressing.is_empty() {
-        // Cloth and flags, seen from either side.
+        // Cloth, flags and flowers, seen from either side.
         let material = assets.materials.add(StandardMaterial {
             perceptual_roughness: 0.9,
             cull_mode: None,
@@ -368,7 +416,10 @@ pub fn spawn_middle_earth(
             Transform::from_translation(glow.from).looking_at(glow.to, Vec3::Y),
         ));
     }
-    let shafts = middle_earth.glows.iter().filter(|glow| glow.shaft);
+    let shafts = middle_earth
+        .glows
+        .iter()
+        .filter_map(|glow| glow.shaft.map(|shaft| (glow, shaft)));
     if shafts.clone().next().is_some() {
         // Light in the air: added over what is behind it, seen from either
         // side, not fogged.
@@ -380,9 +431,9 @@ pub fn spawn_middle_earth(
             fog_enabled: false,
             ..default()
         });
-        for glow in shafts {
+        for (glow, shaft) in shafts {
             world.spawn((
-                Mesh3d(assets.meshes.add(shaft_mesh(glow))),
+                Mesh3d(assets.meshes.add(shaft_mesh(glow, shaft))),
                 MeshMaterial3d(material.clone()),
             ));
         }
@@ -425,15 +476,18 @@ fn glow_light(glow: &Glow) -> SpotLight {
 
 /// The shaft of light a [`Glow`] comes down from the sky in, as it shows in
 /// the air: planes crossed round its axis, from what it lights up towards
-/// where it comes from, as wide as its full light, brightest down their
-/// middle and at their foot, fading out to their edges and up into the sky.
-fn shaft_mesh(glow: &Glow) -> Mesh {
+/// where it comes from, as wide at their foot as its light, its soft edge
+/// and all, and spreading wider up into the sky, as light diffused through
+/// the haze and the clouds, as much as its `shaft` says; brightest down
+/// their middle and at their foot, fading out softly to their edges and up
+/// into the sky.
+fn shaft_mesh(glow: &Glow, shaft: Shaft) -> Mesh {
     const ROWS: usize = 8;
-    const ACROSS: [f32; 5] = [-1.0, -0.5, 0.0, 0.5, 1.0];
+    const ACROSS: [f32; 9] = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0];
     let distance = glow.from.distance(glow.to);
     let up = (glow.from - glow.to) / distance;
     let length = SHAFT_LENGTH.min(distance);
-    let radius = distance * (glow.angle * GLOW_CORE).tan();
+    let foot = distance * glow.angle.tan();
     let light = glow.color.to_linear();
     let mut builder = MeshBuilder::default();
     for plane in 0..SHAFT_PLANES {
@@ -441,12 +495,13 @@ fn shaft_mesh(glow: &Glow) -> Mesh {
         let across = Quat::from_axis_angle(up, turn) * up.any_orthonormal_vector();
         let corner = |row: usize, column: usize| {
             let t = row as f32 / ROWS as f32;
-            let fade = (1.0 - t).powi(2) * (1.0 - ACROSS[column].abs());
+            let radius = foot * (1.0 + (shaft.spread - 1.0) * t);
+            let fade = (1.0 - t).powi(2) * (1.0 - ACROSS[column].powi(2)).powi(2);
             (
                 glow.to + up * length * t + across * radius * ACROSS[column],
                 Vec2::new(column as f32, row as f32),
                 // Added as light is, by its colour alone: opaque.
-                Color::from((light * (SHAFT_LIGHT * fade)).with_alpha(1.0)),
+                Color::from((light * (shaft.light * fade)).with_alpha(1.0)),
             )
         };
         let facing = across.cross(up);
@@ -643,6 +698,127 @@ fn path_mesh(paths: &[&[Vec2]], terrain: &Terrain) -> Option<Mesh> {
     (!mesh.is_empty()).then(|| mesh.build())
 }
 
+/// Where low bushes stand along the footpaths, with a number each to pick
+/// its shape: one every [`BUSH_EVERY`] metres or so, to either side by
+/// turns, [`BUSH_BESIDE`] from the middle of the path, none within
+/// [`BUSH_PATH_ENDS`] of its ends (a hole's gate, the road), nor on another
+/// path, nor in `taken` ground (the props').
+fn path_bush_spots(paths: &[&[Vec2]], taken: &[Footprint]) -> Vec<(Vec2, u32)> {
+    let lines: Vec<Vec<Vec2>> = paths.iter().map(|path| path_samples(path)).collect();
+    let mut spots = Vec::new();
+    for (number, samples) in lines.iter().enumerate() {
+        let length: f32 = samples.windows(2).map(|w| w[0].distance(w[1])).sum();
+        let (mut along, mut next, mut side) = (0.0, BUSH_PATH_ENDS, 1.0);
+        for k in 1..samples.len() - 1 {
+            along += samples[k - 1].distance(samples[k]);
+            if along < next || along > length - BUSH_PATH_ENDS {
+                continue;
+            }
+            let seed = (number * 1000 + k) as u32;
+            next = along + BUSH_EVERY * (0.75 + 0.5 * random01(seed * 5 + 2));
+            side = -side;
+            let across = (samples[k + 1] - samples[k - 1]).normalize_or_zero().perp();
+            let at = samples[k] + across * BUSH_BESIDE * side;
+            let on_a_path = lines
+                .iter()
+                .flatten()
+                .any(|p| p.distance(at) < BUSH_BESIDE - 0.1);
+            let on_taken = taken
+                .iter()
+                .any(|(center, radius)| center.distance(at) < radius + 1.0);
+            if !on_a_path && !on_taken {
+                spots.push((at, seed));
+            }
+        }
+    }
+    spots
+}
+
+/// A low bush standing on the ground at `foot`, about `width` across: three
+/// round lumps of leaves together (into `leaves`, the grass's photo laid
+/// over them), a little uneven, flat-shaded, a deeper or a fresher green,
+/// darker low down; `seed` picks its shape and its green, and whether it is
+/// in flower, specks of colour over its top (into `flowers`).
+fn bush(leaves: &mut MeshBuilder, flowers: &mut MeshBuilder, foot: Vec3, width: f32, seed: u32) {
+    const AROUND: usize = 7;
+    const UP: [f32; 4] = [-0.2, 0.45, 0.95, 1.35];
+    let random = |k: u32| random01(seed * 31 + k);
+    let green = BUSH_LEAVES[seed as usize % BUSH_LEAVES.len()];
+    let flower = (random(0) < 0.35).then(|| BUSH_FLOWERS[(random(1) * 3.0) as usize % 3]);
+    // The photo laid over the leaves as over the banks' slopes.
+    let uv = |p: Vec3| Vec2::new(p.x + p.z, p.y * 2.0) / (GRASS_TILE * 0.25);
+    for lump in 0..3u32 {
+        let (offset, radius) = if lump == 0 {
+            (Vec2::ZERO, width * 0.5)
+        } else {
+            let turn = std::f32::consts::TAU * random(lump * 2);
+            (
+                Vec2::from_angle(turn) * width * 0.25,
+                width * (0.3 + 0.08 * random(lump * 2 + 1)),
+            )
+        };
+        let middle = foot + Vec3::new(offset.x, -BUSH_SINK, offset.y);
+        let point = |ring: usize, around: usize| {
+            let (lat, lon) = (
+                UP[ring],
+                std::f32::consts::TAU * around as f32 / AROUND as f32,
+            );
+            let uneven = 0.85 + 0.3 * random(10 + lump * 40 + (ring * AROUND + around) as u32);
+            middle
+                + Vec3::new(
+                    radius * uneven * lat.cos() * lon.cos(),
+                    radius * BUSH_TALL * lat.sin().max(0.0),
+                    radius * uneven * lat.cos() * lon.sin(),
+                )
+        };
+        let top = middle + Vec3::Y * radius * BUSH_TALL;
+        let shade = |ring: usize, k: u32| {
+            let dark = 0.72 + 0.12 * ring as f32 + 0.12 * random(200 + lump * 40 + k);
+            Color::LinearRgba(green.to_linear() * dark)
+        };
+        for around in 0..AROUND {
+            let next = (around + 1) % AROUND;
+            for ring in 0..UP.len() - 1 {
+                let [a, b, c, d] = [
+                    point(ring, around),
+                    point(ring, next),
+                    point(ring + 1, next),
+                    point(ring + 1, around),
+                ];
+                let out = (a + c) / 2.0 - middle;
+                let color = shade(ring, (ring * AROUND + around) as u32);
+                leaves.triangle([(a, uv(a)), (b, uv(b)), (c, uv(c))], out, color);
+                leaves.triangle([(a, uv(a)), (c, uv(c)), (d, uv(d))], out, color);
+            }
+            let (a, b) = (point(UP.len() - 1, around), point(UP.len() - 1, next));
+            let out = (a + b + top) / 3.0 - middle;
+            leaves.triangle(
+                [(a, uv(a)), (b, uv(b)), (top, uv(top))],
+                out,
+                shade(UP.len() - 1, 99 + around as u32),
+            );
+            // A flower or two over its top.
+            if let Some(flower) = flower {
+                let at =
+                    point(2, around).lerp(top, 0.3 + 0.4 * random(300 + lump * 9 + around as u32));
+                let out = (at - middle).normalize_or_zero();
+                let across = out.cross(Vec3::Y).normalize_or_zero() * 0.09;
+                let up = across.cross(out).normalize_or_zero() * 0.09;
+                let at = at + out * 0.04;
+                flowers.triangle(
+                    [
+                        (at - across - up, Vec2::ZERO),
+                        (at + across - up, Vec2::ZERO),
+                        (at + up * 1.4, Vec2::ZERO),
+                    ],
+                    out,
+                    flower,
+                );
+            }
+        }
+    }
+}
+
 /// The ground the footpaths take, for the trees and the flowers to keep
 /// off: circles along them.
 fn path_footprints(paths: &[&[Vec2]]) -> Vec<Footprint> {
@@ -775,6 +951,9 @@ struct BankMesh {
     /// there are so far.
     dressing: MeshBuilder,
     count: usize,
+    /// The leaves of the low bushes about the gardens and along the paths
+    /// (their flowers are with the dressing).
+    bushes: MeshBuilder,
 }
 
 impl BankMesh {
@@ -925,6 +1104,21 @@ impl BankMesh {
                 self.dressing
                     .beam(at(pair[0], up), at(pair[1], up), 0.04, 0.05, PICKET_WOOD);
             }
+        }
+        // Low bushes outside it, on either side, away from its gate and the
+        // path to it: on the ground, or on the bank where it comes down
+        // round the front.
+        for (k, angle) in BUSH_ROUND_GARDEN.into_iter().enumerate() {
+            let (x, z) = (
+                (wide + BUSH_OUT) * angle.sin(),
+                bank.front + (deep + BUSH_OUT) * angle.cos(),
+            );
+            let p = base + rotation * Vec3::new(x, bank.height(Vec2::new(x, z)), z);
+            let ground = terrain.height(Vec2::new(p.x, p.z));
+            let foot = Vec3::new(p.x, p.y.max(ground), p.z);
+            let seed = (self.count * BUSH_ROUND_GARDEN.len() + k) as u32;
+            let width = BUSH_WIDTH.0.lerp(BUSH_WIDTH.1, random01(seed * 7 + 1));
+            bush(&mut self.bushes, &mut self.dressing, foot, width, seed);
         }
     }
 
@@ -1324,7 +1518,7 @@ mod tests {
     }
 
     #[test]
-    fn glows_light_rivendell_s_halls_on_the_side_the_riders_see() {
+    fn glows_light_rivendell_s_halls_and_amon_hen_s_seat_on_the_side_the_riders_see() {
         for (circuit, track, terrain) in &in_middle_earth() {
             let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
             assert!(!middle_earth.glows.is_empty(), "{}", circuit.name);
@@ -1339,13 +1533,15 @@ mod tests {
                 assert!(!light.shadow_maps_enabled);
             }
             // The halls at the head of Rivendell's valley, which the low sun
-            // lights from behind as the riders come down it: each in the
-            // full light of a glow, which falls on its front, and in a
-            // sunbeam's, down from the sky onto it.
+            // lights from behind as the riders come down it, and the seat of
+            // seeing on Amon Hen: each in the full light of a glow, which
+            // falls on its front, and in a sunbeam's, down from the sky onto
+            // it.
             let halls = [
                 MiddleEarthModel::Gazebo,
                 MiddleEarthModel::LastHomelyHouse,
                 MiddleEarthModel::ElvenTower,
+                MiddleEarthModel::AmonHenSeat,
             ];
             for prop in middle_earth
                 .props
@@ -1370,7 +1566,7 @@ mod tests {
                     middle_earth
                         .glows
                         .iter()
-                        .filter(|glow| glow.shaft)
+                        .filter(|glow| glow.shaft.is_some())
                         .any(|glow| {
                             let down = glow.from - glow.to;
                             lit(&glow) && down.y > 0.8 * down.length()
@@ -1384,6 +1580,68 @@ mod tests {
     }
 
     #[test]
+    fn a_bush_is_low_and_round_on_the_ground() {
+        let foot = Vec3::new(10.0, 3.0, -4.0);
+        for seed in 0..40 {
+            let width = BUSH_WIDTH.0.lerp(BUSH_WIDTH.1, random01(seed * 7 + 1));
+            let (mut mesh, mut flowers) = (MeshBuilder::default(), MeshBuilder::default());
+            bush(&mut mesh, &mut flowers, foot, width, seed);
+            let mesh = mesh.build();
+            let points = positions(&mesh);
+            let top = points.iter().map(|p| p[1]).fold(f32::MIN, f32::max) - foot.y;
+            // Low: about half as high as it is wide, under a man's waist.
+            assert!(
+                top > 0.35 * width && top < 0.75 * width && top < 1.3,
+                "{top} {width}"
+            );
+            for p in points {
+                // Round its foot, and into the ground no deeper than it sinks.
+                let out = Vec2::new(p[0] - foot.x, p[2] - foot.z).length();
+                assert!(out < 0.75 * width, "{out} {width}");
+                assert!(p[1] > foot.y - BUSH_SINK - 0.25, "{p:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn bushes_line_the_footpaths_beside_them_out_of_the_props_way() {
+        for (circuit, _, _) in &in_middle_earth() {
+            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let taken = [(middle_earth.paths[0][10], 6.0)];
+            let spots = path_bush_spots(middle_earth.paths, &taken);
+            let length: f32 = middle_earth
+                .paths
+                .iter()
+                .flat_map(|path| path.windows(2).map(|w| w[0].distance(w[1])))
+                .sum();
+            // Many: one every few paces along them.
+            assert!(
+                spots.len() as f32 > 0.6 * length / BUSH_EVERY,
+                "{} bushes along {length} m",
+                spots.len()
+            );
+            for (at, _) in &spots {
+                for path in middle_earth.paths {
+                    for p in path_samples(path) {
+                        assert!(
+                            p.distance(*at) > BUSH_BESIDE - 0.2,
+                            "a bush on a path at {at}"
+                        );
+                    }
+                    // None at its ends: by a gate or the road.
+                    for end in [path[0], path[path.len() - 1]] {
+                        assert!(
+                            end.distance(*at) > PATH_WIDTH,
+                            "a bush at a path's end, {at}"
+                        );
+                    }
+                }
+                assert!(taken.iter().all(|(c, r)| c.distance(*at) > *r));
+            }
+        }
+    }
+
+    #[test]
     fn a_sunbeam_s_shaft_fades_out_to_its_edges_and_up_into_the_sky() {
         let glow = Glow {
             from: Vec3::new(0.0, 150.0, 0.0),
@@ -1391,19 +1649,29 @@ mod tests {
             illuminance: 6000.0,
             color: Color::WHITE,
             angle: 0.1,
-            shaft: true,
+            shaft: None,
         };
-        let mesh = shaft_mesh(&glow);
+        let shaft = Shaft {
+            spread: 2.5,
+            light: 0.04,
+        };
+        let mesh = shaft_mesh(&glow, shaft);
         let colors = match mesh.attribute(Mesh::ATTRIBUTE_COLOR) {
             Some(VertexAttributeValues::Float32x4(colors)) => colors.clone(),
             _ => panic!("no colours"),
         };
-        let radius = 150.0 * (0.1 * GLOW_CORE).tan();
+        let foot = 150.0 * 0.1f32.tan();
         let mut brightest = 0.0f32;
+        let mut widest_at_top = 0.0f32;
         for (p, c) in positions(&mesh).iter().zip(&colors) {
             let (out, up) = (Vec2::new(p[0], p[2]).length(), p[1]);
-            // As wide as the glow's full light, as high as it shows.
+            // As wide at its foot as the glow's light, spreading wider up to
+            // as high as it shows.
+            let radius = foot * (1.0 + (shaft.spread - 1.0) * up / SHAFT_LENGTH);
             assert!(out < radius + 1e-3 && (-1e-3..=SHAFT_LENGTH + 1e-3).contains(&up));
+            if up > SHAFT_LENGTH - 1e-3 {
+                widest_at_top = widest_at_top.max(out);
+            }
             // Dark (adding nothing) at its edges and at its top.
             if out > radius - 1e-3 || up > SHAFT_LENGTH - 1e-3 {
                 assert!(c[0].max(c[1]).max(c[2]) < 1e-6, "{c:?} at {p:?}");
@@ -1411,8 +1679,12 @@ mod tests {
             assert_eq!(c[3], 1.0);
             brightest = brightest.max(c[0]);
         }
+        assert!(
+            (widest_at_top - shaft.spread * foot).abs() < 1e-2,
+            "{widest_at_top}"
+        );
         // Brightest down its middle at its foot, faint even there.
-        assert!((brightest - SHAFT_LIGHT).abs() < 1e-4, "{brightest}");
+        assert!((brightest - shaft.light).abs() < 1e-4, "{brightest}");
     }
 
     #[test]

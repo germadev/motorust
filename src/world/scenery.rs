@@ -542,6 +542,14 @@ impl Scenery {
             .map_or(&[], |middle_earth| middle_earth.turf)
     }
 
+    /// Where the granite is of another colour (see
+    /// [`MiddleEarth::rock_tints`]).
+    pub fn rock_tints(&self) -> &'static [RockTint] {
+        self.middle_earth
+            .as_ref()
+            .map_or(&[], |middle_earth| middle_earth.rock_tints)
+    }
+
     /// The fields of flowers, of feudal Japan or of Middle-earth.
     pub fn flower_fields(&self) -> &'static [FlowerField] {
         match (&self.japan, &self.middle_earth) {
@@ -575,14 +583,21 @@ pub struct FlowerField {
 }
 
 /// Where a field of flowers grows: beside a stretch of the lap, on both
-/// sides, from `near` to `far` metres from its centre line; round a point,
-/// from `inner` to `outer` metres from it (a ring round a lake, or, from 0,
-/// a round meadow, which nothing else is put in); or everywhere else.
+/// sides, from `near` to `far` metres from its centre line; on the
+/// shoulders of the roads along a stretch of the lap, between the asphalt
+/// and the walls (in patches, with as much grass between them: bare earth
+/// worn by the wheels, or fallen leaves), which the other fields keep off;
+/// round a point, from `inner` to `outer` metres from it (a ring round a
+/// lake, or, from 0, a round meadow, which nothing else is put in); or
+/// everywhere else.
 pub enum FlowerArea {
     Road {
         span: Span,
         near: f32,
         far: f32,
+    },
+    Shoulders {
+        span: Span,
     },
     Round {
         center: Vec2,
@@ -906,6 +921,9 @@ pub struct MiddleEarth {
     /// the cut doorsteps of Hobbiton's hillsides are (but sheer), or the
     /// ledges of Rivendell's rock, its faces mossy.
     pub turf: &'static [Turf],
+    /// Where the granite is of another colour, as the browner rock of the
+    /// Anduin's gorge.
+    pub rock_tints: &'static [RockTint],
     /// Lights that fill a stretch of land the low sun lights only from
     /// behind, as Rivendell's halls are, seen by the riders coming at them.
     pub glows: &'static [Glow],
@@ -914,16 +932,26 @@ pub struct MiddleEarth {
 /// A light that fills what the low sun lights only from behind (see
 /// [`MiddleEarth::glows`]): shining from `from` at `to`, `illuminance` lux
 /// there, in `color`, in a cone `angle` radians round its axis, casting no
-/// shadow, as the evening sky's light does. With `shaft`, it comes down from
-/// the sky onto one building, a sunbeam through the clouds, and its shaft
-/// shows in the air.
+/// shadow, as the evening sky's light does. With a `shaft`, it comes down
+/// from the sky onto one building, a sunbeam through the clouds, and its
+/// shaft shows in the air.
 pub struct Glow {
     pub from: Vec3,
     pub to: Vec3,
     pub illuminance: f32,
     pub color: Color,
     pub angle: f32,
-    pub shaft: bool,
+    pub shaft: Option<Shaft>,
+}
+
+/// How a sunbeam's shaft shows in the air (see [`Glow::shaft`]): how many
+/// times wider than at its foot it spreads at its top, and how bright it is
+/// down its middle at its foot (linear, added over what is behind it, as
+/// light is); the more it spreads and the fainter, the more diffused.
+#[derive(Clone, Copy)]
+pub struct Shaft {
+    pub spread: f32,
+    pub light: f32,
 }
 
 /// A round stretch of land whose steep slopes are grass, not rock (see
@@ -935,6 +963,15 @@ pub struct Turf {
     pub center: Vec2,
     pub radius: f32,
     pub steepest: f32,
+}
+
+/// A round stretch of land whose granite is of another colour (see
+/// [`MiddleEarth::rock_tints`]): `color`, as light as the grey it stands
+/// for, fading back into the grey over the outer quarter of `radius`.
+pub struct RockTint {
+    pub center: Vec2,
+    pub radius: f32,
+    pub color: Color,
 }
 
 /// One of the props of Middle-earth, made with Meshy (see
