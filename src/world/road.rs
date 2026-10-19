@@ -51,8 +51,10 @@ const WALL_TILE: f32 = 2.4;
 /// Donde el terreno detrás del muro sube más que esto, la roca hace de muro.
 const CLIFF_RISE: f32 = 3.0;
 
-const GANTRY_HEIGHT: f32 = 7.5;
-const GANTRY_BEAM: f32 = 1.6;
+/// How high the arches over the road stand (m, to the top of their beam),
+/// and how deep their beam is (m).
+pub(crate) const GANTRY_HEIGHT: f32 = 7.5;
+pub(crate) const GANTRY_BEAM: f32 = 1.6;
 /// Tamaño de cada casilla del tablero del arco y de la línea de meta (m).
 const CHECKER_TILE: f32 = 1.0;
 

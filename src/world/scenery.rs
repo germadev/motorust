@@ -518,6 +518,10 @@ pub struct Scenery {
     /// The roadside of a desert of the American West, if the road runs
     /// through one.
     pub desert: Option<Desert>,
+    /// The colour of the halo the rear wheel leaves behind it on the road
+    /// while the bike rides a wheelie, as Sonic's spin (Loop Island's), or
+    /// `None` for none (see `crate::bike::wheelie_halo`).
+    pub wheelie_halo: Option<Color>,
     /// The scenery of feudal Japan, from models made with Meshy, or `None`:
     /// see [`Japan`].
     pub japan: Option<Japan>,

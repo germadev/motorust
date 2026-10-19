@@ -314,6 +314,7 @@ pub const GOLD_MINE: Circuit = Circuit {
         loops: &[],
         rings: &[],
         waterfalls: &[],
+        wheelie_halo: None,
         japan: None,
         middle_earth: None,
         space: None,

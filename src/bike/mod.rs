@@ -10,6 +10,7 @@ mod crash;
 mod grass_kickup;
 mod loop_ride;
 pub(crate) mod model;
+mod wheelie_halo;
 
 #[cfg(test)]
 use crash::{Body, carry, collide};
@@ -102,32 +103,36 @@ pub struct BikePlugin;
 
 impl Plugin for BikePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((BikeModelPlugin, GrassKickupPlugin))
-            .init_resource::<BikeTuning>()
-            .init_resource::<Race>()
-            .add_message::<RecallToGrid>()
-            .init_resource::<SplitChoices>()
-            .add_systems(OnEnter(GameState::Race), spawn_grid)
-            .add_systems(
-                FixedUpdate,
-                (
-                    ai::drive_rivals,
-                    simulate_bikes,
-                    separate_bikes,
-                    rumble_controllers,
-                )
-                    .chain(),
+        app.add_plugins((
+            BikeModelPlugin,
+            GrassKickupPlugin,
+            wheelie_halo::WheelieHaloPlugin,
+        ))
+        .init_resource::<BikeTuning>()
+        .init_resource::<Race>()
+        .add_message::<RecallToGrid>()
+        .init_resource::<SplitChoices>()
+        .add_systems(OnEnter(GameState::Race), spawn_grid)
+        .add_systems(
+            FixedUpdate,
+            (
+                ai::drive_rivals,
+                simulate_bikes,
+                separate_bikes,
+                rumble_controllers,
             )
-            .add_systems(
-                RunFixedMainLoop,
-                (
-                    (restart_race, read_player_input)
-                        .run_if(in_state(GameState::Race).and_then(pause::running))
-                        .in_set(RaceControls)
-                        .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
-                    interpolate_bikes.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
-                ),
-            );
+                .chain(),
+        )
+        .add_systems(
+            RunFixedMainLoop,
+            (
+                (restart_race, read_player_input)
+                    .run_if(in_state(GameState::Race).and_then(pause::running))
+                    .in_set(RaceControls)
+                    .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+                interpolate_bikes.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+            ),
+        );
     }
 }
 

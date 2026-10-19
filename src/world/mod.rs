@@ -20,7 +20,7 @@ mod preview;
 mod props;
 mod quads;
 pub mod realm;
-mod road;
+pub(crate) mod road;
 pub mod scenery;
 mod sea;
 mod shadow_fade;

@@ -107,22 +107,29 @@ const RIVENDELL_TURF: f32 = 0.6;
 /// Anduin's gorge (see `MiddleEarth::rock_tints`).
 const GORGE_STONE: Color = Color::srgb(0.62, 0.53, 0.44);
 /// The sunbeams down from the sky onto Rivendell's halls: how bright on
-/// them (lx), and their light, golden.
-const SUNBEAM: f32 = 6000.0;
+/// them (lx), spread wide over them and round them, and their light,
+/// golden.
+const SUNBEAM: f32 = 4500.0;
 /// How bright the diffused sunbeams are on what they light (lx): less, so
-/// that the seat of seeing and the ruins on Weathertop keep their detail.
+/// that the seat of seeing and the ruins on Weathertop keep their detail;
+/// and Amon Hen's, the most diffused, still less.
 const DIFFUSED_SUNBEAM: f32 = 3500.0;
+const AMON_HEN_SUNBEAM: f32 = 2500.0;
 const SUNBEAM_LIGHT: Color = Color::srgb(1.0, 0.84, 0.58);
-/// How their shafts show in the air (see `Shaft`): Rivendell's spreading
-/// to two and a half times as wide up into the sky; Amon Hen's and Amon
-/// Sûl's far more diffused, spreading to six times as wide, and fainter.
+/// How their shafts show in the air (see `Shaft`): Rivendell's diffused,
+/// spreading to four and a half times as wide up into the sky; Amon Sûl's
+/// more, to six times as wide, and fainter; Amon Hen's most, to nine.
 const SUNBEAM_SHAFT: Shaft = Shaft {
-    spread: 2.5,
-    light: 0.04,
+    spread: 4.5,
+    light: 0.032,
 };
 const DIFFUSED_SHAFT: Shaft = Shaft {
     spread: 6.0,
     light: 0.03,
+};
+const AMON_HEN_SHAFT: Shaft = Shaft {
+    spread: 9.0,
+    light: 0.024,
 };
 
 pub const FELLOWSHIP_ROAD: Circuit = Circuit {
@@ -452,6 +459,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         pit: None,
         desert: None,
         mine: None,
+        wheelie_halo: None,
         japan: None,
         space: None,
         middle_earth: Some(MiddleEarth {
@@ -601,7 +609,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1624.5, 27.3, 49.0),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.067,
+                    angle: 0.12,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 Glow {
@@ -609,7 +617,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1619.1, 40.0, 112.5),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.166,
+                    angle: 0.25,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 Glow {
@@ -617,7 +625,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1577.1, 53.2, 151.9),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.067,
+                    angle: 0.12,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 // And, wider and far more diffused, one on the seat of seeing
@@ -626,10 +634,10 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                 Glow {
                     from: Vec3::new(159.8, 152.2, 331.9),
                     to: Vec3::new(96.8, 16.3, 324.2),
-                    illuminance: DIFFUSED_SUNBEAM,
+                    illuminance: AMON_HEN_SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.12,
-                    shaft: Some(DIFFUSED_SHAFT),
+                    angle: 0.2,
+                    shaft: Some(AMON_HEN_SHAFT),
                 },
                 Glow {
                     from: Vec3::new(1213.3, 195.2, -718.3),

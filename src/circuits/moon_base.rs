@@ -455,6 +455,7 @@ pub const MOON_BASE: Circuit = Circuit {
         pit: None,
         mine: None,
         desert: None,
+        wheelie_halo: None,
         japan: None,
         middle_earth: None,
         space: Some(SPACE),
