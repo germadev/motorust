@@ -95,6 +95,9 @@ const CREAM: Color = Color::srgb(0.93, 0.88, 0.72);
 /// The warm light that fills Rivendell's valley (see `MiddleEarth::glows`),
 /// as of the evening sky over it.
 const RIVENDELL_LIGHT: Color = Color::srgb(1.0, 0.86, 0.68);
+/// How steep Rivendell's rock is grass (the upward part of the ground's
+/// normal under which it is rock, see `Turf::steepest`): up to 53°.
+const RIVENDELL_TURF: f32 = 0.6;
 /// The sunbeams down from the sky onto Rivendell's halls: how bright on
 /// them (lx), and their light, golden.
 const SUNBEAM: f32 = 6000.0;
@@ -437,11 +440,42 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             halls: &MORIA_HALLS,
             paths: &PATHS,
             // Hobbiton's hillsides, whose banks and doorsteps cut into them
-            // stay grass, as the Shire's.
-            turf: &[Turf {
-                center: Vec2::new(285.0, -495.0),
-                radius: 250.0,
-            }],
+            // stay grass, as the Shire's, but for sheer faces. And Rivendell's
+            // rock, as the film's green crags: at the head of its valley, on
+            // its far side and down its cliffs on the right, grass on its
+            // ledges and gentler slopes, and moss on its faces.
+            turf: &[
+                Turf {
+                    center: Vec2::new(285.0, -495.0),
+                    radius: 250.0,
+                    steepest: 0.45,
+                },
+                Turf {
+                    center: Vec2::new(1650.0, 180.0),
+                    radius: 115.0,
+                    steepest: RIVENDELL_TURF,
+                },
+                Turf {
+                    center: Vec2::new(1740.0, -145.0),
+                    radius: 130.0,
+                    steepest: RIVENDELL_TURF,
+                },
+                Turf {
+                    center: Vec2::new(1555.0, -320.0),
+                    radius: 100.0,
+                    steepest: RIVENDELL_TURF,
+                },
+                Turf {
+                    center: Vec2::new(1545.0, -170.0),
+                    radius: 100.0,
+                    steepest: RIVENDELL_TURF,
+                },
+                Turf {
+                    center: Vec2::new(1550.0, -20.0),
+                    radius: 100.0,
+                    steepest: RIVENDELL_TURF,
+                },
+            ],
             // Rivendell's halls and the rock at the head of its valley, which
             // the low sun in the south-east lights only from behind as the
             // riders come down the valley at them: a warm light, as of the

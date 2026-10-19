@@ -902,8 +902,9 @@ pub struct MiddleEarth {
     /// Footpaths of bare earth, as between the hobbit holes: each a line of
     /// points (x, z) over the ground.
     pub paths: &'static [&'static [Vec2]],
-    /// Where the ground stays grass however steep it is (but sheer), as the
-    /// banks and the cut doorsteps of Hobbiton's hillsides are.
+    /// Where the ground stays grass steeper than elsewhere, as the banks and
+    /// the cut doorsteps of Hobbiton's hillsides are (but sheer), or the
+    /// ledges of Rivendell's rock, its faces mossy.
     pub turf: &'static [Turf],
     /// Lights that fill a stretch of land the low sun lights only from
     /// behind, as Rivendell's halls are, seen by the riders coming at them.
@@ -926,10 +927,14 @@ pub struct Glow {
 }
 
 /// A round stretch of land whose steep slopes are grass, not rock (see
-/// [`MiddleEarth::turf`]).
+/// [`MiddleEarth::turf`]): grass up to `steepest`, the upward part of the
+/// ground's normal under which it is rock (0.45: all but sheer faces; more,
+/// grass on the ledges and gentler slopes of a rock face, rock between); and
+/// its granite green with moss over much of it.
 pub struct Turf {
     pub center: Vec2,
     pub radius: f32,
+    pub steepest: f32,
 }
 
 /// One of the props of Middle-earth, made with Meshy (see

@@ -641,7 +641,11 @@ impl Terrain {
                                     }
                                     (Soil::Mine, ..) => canyon_vertex_color(ground_type, p, normal),
                                     (Soil::Granite, Ground::Rock, _) => {
-                                        granite_vertex_color(p, normal)
+                                        let turf = blend(indices.map(|index| {
+                                            Vec3::splat(self.sites[index].turf.map_or(0.0, |_| 1.0))
+                                        }))
+                                        .x;
+                                        granite_vertex_color(p, normal, turf)
                                     }
                                     (_, Ground::Grass, _) => {
                                         let outside = (self.fine.0 - Vec2::new(p.x, p.z))
@@ -808,7 +812,7 @@ pub fn spawn_terrain(
 /// The ground at `point` (x, height, z), where it faces `normal`.
 fn classify(point: Vec3, normal: Vec3) -> Ground {
     let (snow_line, tree_line) = lines(point, 0.0);
-    ground_of(point.y, snow_line, tree_line, normal, 0.0, false)
+    ground_of(point.y, snow_line, tree_line, normal, 0.0, None)
 }
 
 /// The snow line and the tree line over `point` (m), reaching up and down
@@ -904,8 +908,9 @@ struct Site {
     flowers: Option<FlowerKind>,
     /// How much of it is mountain across the sea.
     mountain: f32,
-    /// Whether it is turf, grass however steep (but sheer).
-    turf: bool,
+    /// Whether it is turf, grass steeper than elsewhere: how steep (see
+    /// [`Turf::steepest`]).
+    turf: Option<f32>,
     /// How much its ground faces up (the upward part of its normal,
     /// smoothed over the grid), a little more or less here and there, so
     /// the rock of the steep faces does not end along a contour.
@@ -933,7 +938,8 @@ fn site(
         mountain,
         turf: turf
             .iter()
-            .any(|turf| ground.distance(turf.center) < turf.radius),
+            .find(|turf| ground.distance(turf.center) < turf.radius)
+            .map(|turf| turf.steepest),
         up: up + CLIFF_RAGGED * 2.0 * (fbm(ground / 13.0 + Vec2::splat(5.0), 2) - 0.5),
     }
 }
@@ -996,19 +1002,20 @@ fn inside(point: Vec2, [p, q, r]: [Vec2; 3]) -> f32 {
 /// The ground `height` m up, under the snow line and the tree line there,
 /// where it faces `normal`; on a mountain across the sea (`mountain` over
 /// a half), by the lines alone, but for sheer faces: snow however steep,
-/// and forest up to the tree line; on `turf`, grass but on sheer faces.
+/// and forest up to the tree line; on `turf`, grass up to as steep as it
+/// says (see [`Turf::steepest`]).
 fn ground_of(
     height: f32,
     snow_line: f32,
     tree_line: f32,
     normal: Vec3,
     mountain: f32,
-    turf: bool,
+    turf: Option<f32>,
 ) -> Ground {
     let (snow_normal, cliff_normal) = if mountain > 0.5 {
         (0.0, MOUNTAIN_CLIFF_NORMAL_Y)
-    } else if turf {
-        (SNOW_NORMAL_Y, MOUNTAIN_CLIFF_NORMAL_Y)
+    } else if let Some(steepest) = turf {
+        (SNOW_NORMAL_Y, steepest)
     } else {
         (SNOW_NORMAL_Y, CLIFF_NORMAL_Y)
     };
@@ -1394,12 +1401,31 @@ fn rock_projection(point: Vec3, face: Vec3) -> Vec2 {
 }
 
 /// Grey granite's colour at `p`: the rock's strata and patches, without
-/// their ochre and gold.
-fn granite_vertex_color(p: Vec3, normal: Vec3) -> [f32; 4] {
+/// their ochre and gold; on turf (`turf`, from 0 to 1, see [`Turf`]), green
+/// with moss over much of it (see [`mossy`]).
+fn granite_vertex_color(p: Vec3, normal: Vec3, turf: f32) -> [f32; 4] {
+    // Moss over the grey, as a tint: a deep olive green.
+    const MOSS: Vec3 = Vec3::new(0.4, 0.62, 0.18);
     let [r, g, b, a] = ground_vertex_color(Ground::Rock, p, normal);
     let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    [lum * 0.98, lum, lum * 1.03, a]
+    let grey = Vec3::new(lum * 0.98, lum, lum * 1.03);
+    let [r, g, b] = grey.lerp(lum * MOSS, turf * mossy(p, normal)).to_array();
+    [r, g, b, a]
 }
+
+/// How much moss there is on rock at `p`, facing `normal`, where it grows
+/// (see [`granite_vertex_color`]): in patches some metres across, the same
+/// all the way down a face, so in streaks down it as where water runs down
+/// wet rock, and more over its ledges.
+fn mossy(p: Vec3, normal: Vec3) -> f32 {
+    let patches = fbm(Vec2::new(p.x, p.z) / MOSS_PATCH + Vec2::splat(31.0), 3);
+    smoothstep(0.38, 0.6, patches + MOSS_ON_LEDGES * normal.y.max(0.0))
+}
+
+/// How wide the patches of moss on the rock are (m, see [`mossy`]), and
+/// how much more there is of it on ledges, facing up, than on sheer faces.
+const MOSS_PATCH: f32 = 9.0;
+const MOSS_ON_LEDGES: f32 = 0.25;
 
 pub fn ground_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
     let color = match ground {
@@ -2422,6 +2448,50 @@ mod tests {
                 Ground::Rock
             );
         }
+    }
+
+    #[test]
+    fn turf_is_grass_up_to_as_steep_as_it_says() {
+        let facing = |up: f32| Vec3::new((1.0 - up * up).sqrt(), up, 0.0);
+        let ground = |up: f32, turf: Option<f32>| {
+            ground_of(20.0, SNOW_LINE, TREE_LINE, facing(up), 0.0, turf)
+        };
+        // Elsewhere, rock wherever it is steeper than a cliff.
+        assert_eq!(ground(0.9, None), Ground::Grass);
+        assert_eq!(ground(0.7, None), Ground::Rock);
+        // On turf, grass steeper than that, up to its own steepest.
+        assert_eq!(ground(0.7, Some(0.6)), Ground::Grass);
+        assert_eq!(ground(0.5, Some(0.6)), Ground::Rock);
+        assert_eq!(ground(0.5, Some(0.45)), Ground::Grass);
+        assert_eq!(ground(0.3, Some(0.45)), Ground::Rock);
+    }
+
+    #[test]
+    fn granite_on_turf_is_green_with_moss_in_patches_and_more_on_ledges() {
+        let sheer = Vec3::X;
+        let ledge = Vec3::new(0.6, 0.8, 0.0);
+        let greener = |[r, g, b, _]: [f32; 4]| g / (0.5 * (r + b));
+        let mut mossy_faces = 0;
+        let mut bare_faces = 0;
+        for k in 0..400 {
+            let p = Vec3::new(k as f32 * 3.7, 30.0, k as f32 * -2.3);
+            assert!(mossy(p, ledge) >= mossy(p, sheer));
+            // Grey off turf.
+            let grey = granite_vertex_color(p, sheer, 0.0);
+            assert!(greener(grey) < 1.05, "{grey:?}");
+            let moss = mossy(p, sheer);
+            if moss > 0.8 {
+                mossy_faces += 1;
+                assert!(greener(granite_vertex_color(p, sheer, 1.0)) > 1.4);
+            } else if moss < 0.2 {
+                bare_faces += 1;
+            }
+        }
+        // In patches: much of it, not all.
+        assert!(
+            mossy_faces > 100 && bare_faces > 40,
+            "{mossy_faces} {bare_faces}"
+        );
     }
 
     #[test]
