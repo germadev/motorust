@@ -19,8 +19,9 @@ first sweep, square under the bridge and along the right of the second,
 into the pool and on into the Brandywine; the hills of the village, each
 checked to rise no more than 6 m at the road and 1.2 m at the water, and
 to be no steeper than 35 degrees; the hobbit holes on the left low and
-spread round the foot of the first hill; those on the right on the south
-flank of the second, low, high and low; all facing the riders coming; the
+spread round the foot of the first hill, facing the riders coming; those
+on the right spread over the flank of the second that faces the road,
+facing it; the
 Green Dragon on the other side of the road, on the outside of the last
 bend, near it, raised over it and facing the riders, with Bag End and the
 party tree past it,
@@ -190,14 +191,16 @@ def on_hill(hill, angle, reach):
 # The holes on the left, low round the foot of their hill, from the east
 # (228 degrees from north, at 0.86 of its radius) round to the south-west
 # (152 degrees), spread across the left of the riders' view as they come
-# down to the bridge; those on the right on the south flank of the other
-# (as `on_hill(HILL_B, 155, 0.8)`, `190, 0.55`, `220, 0.78`). All by the
-# road, facing the riders coming (as `facing_riders`, the road 110 m back).
+# down to the bridge, by the road, facing the riders coming (as
+# `facing_riders`, the road 110 m back); those on the right spread over the
+# whole flank of the other that faces the road (`on_hill(HILL_B, 76, 0.63)`,
+# `108, 0.6`, `148, 0.7`: 90 degrees is west, towards the road), standing
+# where they are, facing the road 40 m back from where it is nearest them.
 HOLES_A = [("HobbitDoorBlue", 613.9, 84.7), ("HobbitDoorRed", 503.9, 103.5),
            ("HobbitDoorYellow", 434.0, 101.9), ("HobbitDoorGreen", 398.0, 128.3)]
 MILL = ("Mill", 360.0, 108.0)
-HOLES_B = [("HobbitDoorGreen", 625.9, -71.0), ("HobbitDoorRed", 645.9, -101.1),
-           ("HobbitDoorYellow", 651.9, -133.7)]
+HOLES_B = [("HobbitDoorGreen", on_hill(HILL_B, 76, 0.63)), ("HobbitDoorRed", on_hill(HILL_B, 108, 0.6)),
+           ("HobbitDoorYellow", on_hill(HILL_B, 148, 0.7))]
 # On the left of the last bend, 34 m out, on a terrace 2 m over the road,
 # facing the riders coming; the party tree past Bag End, so that none of
 # them hides another (`clear`; with the Green Dragon this near the road,
@@ -254,7 +257,7 @@ if __name__ == "__main__":
         wet = max(h * shape(max(0.0, np.linalg.norm(q - c) - w) / rad) for q, w in water_points())
         print(f"{name:15s} at {np.round(c, 1)} R {rad:.0f} {h:.0f} m: {h * shape(road_d(c) / rad):.1f} m at the road,"
               f" {wet:.1f} m at the water, steepest {math.degrees(math.atan(h * 1.5 / (0.55 * rad))):.0f} deg")
-    placed = [(n, pos(a, l)) for n, a, l in HOLES_A + [MILL] + HOLES_B] \
+    placed = [(n, pos(a, l)) for n, a, l in HOLES_A + [MILL]] + HOLES_B \
         + [(n, pos(a, l)) for n, a, l in [GREEN_DRAGON, SIGN, PARTY_TREE, BAG_END, OAK, ROOT_TREE]]
     gd = pos(*GREEN_DRAGON[1:])
     behind = [(pos(*BAG_END[1:]), 20.6, 6.0, 12.0), (pos(*OAK[1:]), 22.0, 7.0, 16.0), (pos(*PARTY_TREE[1:]), 5.0, 10.0, 24.0)]

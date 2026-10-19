@@ -109,15 +109,18 @@ const GORGE_STONE: Color = Color::srgb(0.62, 0.53, 0.44);
 /// The sunbeams down from the sky onto Rivendell's halls: how bright on
 /// them (lx), and their light, golden.
 const SUNBEAM: f32 = 6000.0;
+/// How bright the diffused sunbeams are on what they light (lx): less, so
+/// that the seat of seeing and the ruins on Weathertop keep their detail.
+const DIFFUSED_SUNBEAM: f32 = 3500.0;
 const SUNBEAM_LIGHT: Color = Color::srgb(1.0, 0.84, 0.58);
 /// How their shafts show in the air (see `Shaft`): Rivendell's spreading
-/// to two and a half times as wide up into the sky; Amon Hen's far more
-/// diffused, spreading to six times as wide, and fainter.
+/// to two and a half times as wide up into the sky; Amon Hen's and Amon
+/// Sûl's far more diffused, spreading to six times as wide, and fainter.
 const SUNBEAM_SHAFT: Shaft = Shaft {
     spread: 2.5,
     light: 0.04,
 };
-const AMON_HEN_SHAFT: Shaft = Shaft {
+const DIFFUSED_SHAFT: Shaft = Shaft {
     spread: 6.0,
     light: 0.03,
 };
@@ -565,7 +568,8 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             // halls, the pavilion, the Last Homely House and the tower, a
             // sunbeam down from the sky through the clouds, leaning towards
             // the riders, its shaft showing in the air, spreading up into the
-            // sky; and one on the seat of seeing on Amon Hen.
+            // sky; and diffused ones on the seat of seeing on Amon Hen and on
+            // the ruins of Amon Sûl.
             glows: &[
                 Glow {
                     from: Vec3::new(1549.2, 133.2, -93.5),
@@ -615,15 +619,24 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     angle: 0.067,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
-                // And one on the seat of seeing on Amon Hen, wider and far
-                // more diffused.
+                // And, wider and far more diffused, one on the seat of seeing
+                // on Amon Hen, and one on the ruins of Amon Sûl on
+                // Weathertop.
                 Glow {
                     from: Vec3::new(159.8, 152.2, 331.9),
                     to: Vec3::new(96.8, 16.3, 324.2),
-                    illuminance: SUNBEAM,
+                    illuminance: DIFFUSED_SUNBEAM,
                     color: SUNBEAM_LIGHT,
                     angle: 0.12,
-                    shaft: Some(AMON_HEN_SHAFT),
+                    shaft: Some(DIFFUSED_SHAFT),
+                },
+                Glow {
+                    from: Vec3::new(1213.3, 195.2, -718.3),
+                    to: Vec3::new(1271.7, 59.2, -693.7),
+                    illuminance: DIFFUSED_SUNBEAM,
+                    color: SUNBEAM_LIGHT,
+                    angle: 0.12,
+                    shaft: Some(DIFFUSED_SHAFT),
                 },
             ],
         }),
@@ -672,16 +685,16 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     by_road(MiddleEarthModel::LogPile, 84.0, -13.5),
     // Hobbiton, down the long sweep to the Water and round the village's
     // hills: the mill across the water on the left, ahead down the sweep;
-    // over the bridge, ahead on the left, hobbit holes up the flank of the
-    // hill inside the sweep to the left, low and high by turns, facing the
-    // riders coming; ahead on the right, across the field over the pool,
-    // more up the south flank of the other hill, low, high and low, turned
-    // south-south-west, towards the bridge and the low sun; and on the
-    // outside of the last sweep, on the other side of the road from them,
-    // the Green Dragon raised over the road and its fence, facing the
-    // riders coming, its sign by the road, and, up on its hill, Bag End
-    // under its oak, and the party tree in its field past it, ahead all the
-    // way round, none of them hiding another.
+    // ahead on the left, past the bridge, hobbit holes spread low round the
+    // foot of the hill inside the sweep to the left, facing the riders
+    // coming; ahead on the right, across the field over the pool, more
+    // spread over the whole flank of the other hill that faces the road,
+    // from the south to the north, facing the road, a little towards the
+    // riders coming; and on the outside of the last sweep, on the other
+    // side of the road from them, the Green Dragon raised over the road and
+    // its fence, facing the riders coming, its sign by the road, and, up on
+    // its hill, Bag End under its oak, and the party tree in its field past
+    // it, ahead all the way round.
     by_road(MiddleEarthModel::HobbitDoorBlue, 613.9, 84.7)
         .scaled(1.4)
         .facing_riders(),
@@ -695,15 +708,9 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
         .scaled(1.4)
         .facing_riders(),
     by_road(MiddleEarthModel::Mill, 360.0, 108.0).facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorGreen, 625.9, -71.0)
-        .scaled(1.4)
-        .facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorRed, 645.9, -101.1)
-        .scaled(1.4)
-        .facing_riders(),
-    by_road(MiddleEarthModel::HobbitDoorYellow, 651.9, -133.7)
-        .scaled(1.4)
-        .facing_riders(),
+    standing(MiddleEarthModel::HobbitDoorGreen, 391.1, -482.2, 2.0816).scaled(1.4),
+    standing(MiddleEarthModel::HobbitDoorRed, 394.3, -455.2, 2.0208).scaled(1.4),
+    standing(MiddleEarthModel::HobbitDoorYellow, 410.3, -422.5, 1.8387).scaled(1.4),
     by_road(MiddleEarthModel::GreenDragonSign, 668.0, 13.5).turned(-0.79),
     by_road(MiddleEarthModel::GreenDragon, 700.0, 34.0).facing_riders(),
     by_road(MiddleEarthModel::BagEnd, 770.0, 70.0).facing_riders(),
@@ -787,12 +794,13 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     by_road(MiddleEarthModel::ElvenShip, 5150.1, 24.0).turned(PI),
     // Amon Hen: the elven boats drawn up on the shore of Parth Galen, and
     // the seat of seeing up the hill on the outside of the last bend, by the
-    // road, facing the riders coming, a sunbeam on it (see `glows`).
+    // road, its lions looking out over it (its throne along the road, the
+    // way the riders go), a sunbeam on it (see `glows`).
     standing(MiddleEarthModel::ElvenBoat, 238.0, 393.0, 2.20),
     standing(MiddleEarthModel::ElvenBoat, 226.0, 404.0, 2.00),
     by_road(MiddleEarthModel::AmonHenSeat, AMON_HEN_SEAT, 21.0)
         .scaled(1.3)
-        .facing_riders(),
+        .turned(FRAC_PI_2),
 ];
 
 /// The level ground the buildings stand on: knolls under the buildings by
@@ -809,15 +817,15 @@ const KNOLLS: [Terrace; 17] = [
     // A hobbit hole's doorstep, cut into the hill.
     garden(139.1, -431.8, 3.0, 9.5),
     // A hobbit hole's doorstep, cut into the hill.
-    garden(412.3, -412.4, 3.0, 9.4),
+    garden(390.2, -481.7, 3.0, 13.5),
     // A hobbit hole's doorstep, cut into the hill.
-    garden(446.6, -425.7, 3.0, 18.3),
+    garden(393.4, -454.7, 3.0, 16.1),
     // A hobbit hole's doorstep, cut into the hill.
-    garden(479.2, -422.1, 3.0, 11.2),
+    garden(409.4, -422.2, 3.0, 12.8),
     // The mill, by the water.
     shelf(103.4, -402.7, 5.5, 1.7),
-    // The Green Dragon, by the road, raised over its fence.
-    knoll(341.0, -518.6, 15.0, 6.8),
+    // The Green Dragon, by the road, raised well over its fence.
+    knoll(341.0, -518.6, 15.0, 8.3),
     // Bag End's doorstep, cut into its hill.
     garden(382.5, -607.3, 3.5, 20.6),
     // A house of Bree.
@@ -969,7 +977,7 @@ const FLOWERS: [FlowerField; 21] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(410.2, -411.3),
+            center: Vec2::new(388.2, -480.6),
             inner: 0.0,
             outer: 4.0,
         },
@@ -978,7 +986,7 @@ const FLOWERS: [FlowerField; 21] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(444.3, -424.6),
+            center: Vec2::new(391.2, -453.6),
             inner: 0.0,
             outer: 4.0,
         },
@@ -987,7 +995,7 @@ const FLOWERS: [FlowerField; 21] = [
     // A hobbit hole's garden.
     FlowerField {
         area: FlowerArea::Round {
-            center: Vec2::new(475.9, -420.9),
+            center: Vec2::new(406.0, -421.3),
             inner: 0.0,
             outer: 4.0,
         },
@@ -1751,48 +1759,38 @@ const HOBBITON_PATH_MILL: [Vec2; 13] = [
     Vec2::new(103.7, -397.1),
     Vec2::new(100.7, -394.5),
 ];
-const HOBBITON_PATH_B: [Vec2; 41] = [
-    Vec2::new(327.3, -362.2),
-    Vec2::new(330.8, -364.3),
-    Vec2::new(334.3, -366.3),
-    Vec2::new(337.7, -368.4),
-    Vec2::new(341.2, -370.4),
-    Vec2::new(344.6, -372.5),
-    Vec2::new(348.1, -374.6),
-    Vec2::new(351.5, -376.6),
-    Vec2::new(355.0, -378.7),
-    Vec2::new(358.5, -380.7),
-    Vec2::new(361.9, -382.8),
-    Vec2::new(365.4, -384.9),
-    Vec2::new(368.8, -386.9),
-    Vec2::new(372.3, -389.0),
-    Vec2::new(375.8, -391.0),
-    Vec2::new(379.2, -393.1),
-    Vec2::new(382.7, -395.2),
-    Vec2::new(386.1, -397.2),
-    Vec2::new(389.6, -399.3),
-    Vec2::new(393.1, -401.3),
-    Vec2::new(396.5, -403.4),
-    Vec2::new(400.0, -405.4),
-    Vec2::new(403.5, -407.4),
-    Vec2::new(407.0, -409.3),
-    Vec2::new(410.7, -411.0),
-    Vec2::new(414.4, -412.5),
-    Vec2::new(418.2, -414.1),
-    Vec2::new(422.0, -415.5),
-    Vec2::new(425.8, -417.0),
-    Vec2::new(429.6, -418.5),
-    Vec2::new(433.3, -420.0),
-    Vec2::new(437.1, -421.3),
-    Vec2::new(441.0, -422.1),
-    Vec2::new(444.8, -422.4),
-    Vec2::new(448.8, -422.2),
-    Vec2::new(452.7, -421.8),
-    Vec2::new(456.6, -421.4),
-    Vec2::new(460.6, -420.9),
-    Vec2::new(464.5, -420.5),
-    Vec2::new(468.4, -420.1),
-    Vec2::new(472.4, -419.7),
+const HOBBITON_PATH_B: [Vec2; 31] = [
+    Vec2::new(351.2, -399.6),
+    Vec2::new(354.9, -401.1),
+    Vec2::new(358.5, -402.6),
+    Vec2::new(362.2, -404.1),
+    Vec2::new(365.8, -405.6),
+    Vec2::new(369.5, -407.0),
+    Vec2::new(373.1, -408.5),
+    Vec2::new(376.8, -410.0),
+    Vec2::new(380.4, -411.5),
+    Vec2::new(384.1, -412.9),
+    Vec2::new(387.7, -414.4),
+    Vec2::new(391.4, -415.9),
+    Vec2::new(395.0, -417.4),
+    Vec2::new(398.0, -419.1),
+    Vec2::new(399.9, -421.3),
+    Vec2::new(400.1, -424.1),
+    Vec2::new(399.0, -427.4),
+    Vec2::new(397.5, -430.9),
+    Vec2::new(395.9, -434.4),
+    Vec2::new(394.3, -437.9),
+    Vec2::new(392.7, -441.4),
+    Vec2::new(391.1, -445.0),
+    Vec2::new(389.6, -448.5),
+    Vec2::new(388.4, -452.1),
+    Vec2::new(387.5, -455.9),
+    Vec2::new(387.0, -459.6),
+    Vec2::new(386.6, -463.5),
+    Vec2::new(386.1, -467.3),
+    Vec2::new(385.7, -471.1),
+    Vec2::new(385.3, -474.9),
+    Vec2::new(384.9, -478.7),
 ];
 const BAG_END_PATH: [Vec2; 62] = [
     Vec2::new(442.4, -594.3),

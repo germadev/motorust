@@ -63,10 +63,12 @@ const GLOW_REACH: f32 = 2.5;
 /// its edge.
 const GLOW_CORE: f32 = 0.6;
 /// The shaft of a [`Glow`] coming down from the sky, seen in the air (see
-/// [`Shaft`]): how many planes crossed round its axis make it, and how far
-/// up from what it lights it shows (m).
+/// [`Shaft`]): how many planes crossed round its axis make it, how far up
+/// from what it lights it shows (m), and over how much of its foot it fades
+/// in (m), dark where it reaches what it lights, so as not to veil it.
 const SHAFT_PLANES: usize = 6;
 const SHAFT_LENGTH: f32 = 110.0;
+const SHAFT_CLEAR: f32 = 30.0;
 
 /// The hill a hobbit hole is dug into, a dome over its rooms behind its
 /// front: so many times as high as the hole and as wide as its front,
@@ -479,16 +481,23 @@ fn glow_light(glow: &Glow) -> SpotLight {
 /// where it comes from, as wide at their foot as its light, its soft edge
 /// and all, and spreading wider up into the sky, as light diffused through
 /// the haze and the clouds, as much as its `shaft` says; brightest down
-/// their middle and at their foot, fading out softly to their edges and up
-/// into the sky.
+/// their middle a little way over what it lights (as bright as `shaft`
+/// says there), fading in from dark over [`SHAFT_CLEAR`] above it, and
+/// fading out softly to their edges and up into the sky.
 fn shaft_mesh(glow: &Glow, shaft: Shaft) -> Mesh {
-    const ROWS: usize = 8;
+    const ROWS: usize = 16;
     const ACROSS: [f32; 9] = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0];
     let distance = glow.from.distance(glow.to);
     let up = (glow.from - glow.to) / distance;
     let length = SHAFT_LENGTH.min(distance);
     let foot = distance * glow.angle.tan();
     let light = glow.color.to_linear();
+    // How bright it is up its middle, from 0 at its foot to 1 at its top:
+    // fading in over its foot, out up into the sky, at most 1.
+    let along = |t: f32| smoothstep(0.0, SHAFT_CLEAR / length, t) * (1.0 - t).powi(2);
+    let brightest = (0..=ROWS)
+        .map(|row| along(row as f32 / ROWS as f32))
+        .fold(0.0, f32::max);
     let mut builder = MeshBuilder::default();
     for plane in 0..SHAFT_PLANES {
         let turn = plane as f32 * std::f32::consts::PI / SHAFT_PLANES as f32;
@@ -496,7 +505,7 @@ fn shaft_mesh(glow: &Glow, shaft: Shaft) -> Mesh {
         let corner = |row: usize, column: usize| {
             let t = row as f32 / ROWS as f32;
             let radius = foot * (1.0 + (shaft.spread - 1.0) * t);
-            let fade = (1.0 - t).powi(2) * (1.0 - ACROSS[column].powi(2)).powi(2);
+            let fade = along(t) / brightest * (1.0 - ACROSS[column].powi(2)).powi(2);
             (
                 glow.to + up * length * t + across * radius * ACROSS[column],
                 Vec2::new(column as f32, row as f32),
@@ -1518,7 +1527,7 @@ mod tests {
     }
 
     #[test]
-    fn glows_light_rivendell_s_halls_and_amon_hen_s_seat_on_the_side_the_riders_see() {
+    fn glows_light_rivendell_s_halls_on_their_fronts_and_sunbeams_fall_on_the_landmarks() {
         for (circuit, track, terrain) in &in_middle_earth() {
             let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
             assert!(!middle_earth.glows.is_empty(), "{}", circuit.name);
@@ -1533,16 +1542,18 @@ mod tests {
                 assert!(!light.shadow_maps_enabled);
             }
             // The halls at the head of Rivendell's valley, which the low sun
-            // lights from behind as the riders come down it, and the seat of
-            // seeing on Amon Hen: each in the full light of a glow, which
-            // falls on its front, and in a sunbeam's, down from the sky onto
-            // it.
+            // lights from behind as the riders come down it: each in the
+            // full light of a glow, which falls on its front, and in a
+            // sunbeam's, down from the sky onto it; and in a sunbeam's, the
+            // seat of seeing on Amon Hen and the ruins on Weathertop.
             let halls = [
                 MiddleEarthModel::Gazebo,
                 MiddleEarthModel::LastHomelyHouse,
                 MiddleEarthModel::ElvenTower,
                 MiddleEarthModel::AmonHenSeat,
+                MiddleEarthModel::WeathertopRuin,
             ];
+            let fronts = &halls[..3];
             for prop in middle_earth
                 .props
                 .iter()
@@ -1551,10 +1562,11 @@ mod tests {
                 let (position, rotation) = spot(track, prop);
                 let at = Vec3::new(position.x, terrain.height(position) + 8.0, position.y);
                 let front = rotation * Vec3::Z;
+                let on_front = fronts.contains(&prop.model);
                 let lit = |glow: &&Glow| {
                     let axis = glow.to - glow.from;
                     axis.angle_between(at - glow.from) < glow.angle * GLOW_CORE
-                        && (at - glow.from).dot(front) < 0.0
+                        && (!on_front || (at - glow.from).dot(front) < 0.0)
                 };
                 assert!(
                     middle_earth.glows.iter().any(|glow| lit(&glow)),
@@ -1672,8 +1684,9 @@ mod tests {
             if up > SHAFT_LENGTH - 1e-3 {
                 widest_at_top = widest_at_top.max(out);
             }
-            // Dark (adding nothing) at its edges and at its top.
-            if out > radius - 1e-3 || up > SHAFT_LENGTH - 1e-3 {
+            // Dark (adding nothing) at its edges, at its top, and at its
+            // foot, so as not to veil what it lights.
+            if out > radius - 1e-3 || !(1e-3..=SHAFT_LENGTH - 1e-3).contains(&up) {
                 assert!(c[0].max(c[1]).max(c[2]) < 1e-6, "{c:?} at {p:?}");
             }
             assert_eq!(c[3], 1.0);
@@ -1683,7 +1696,8 @@ mod tests {
             (widest_at_top - shaft.spread * foot).abs() < 1e-2,
             "{widest_at_top}"
         );
-        // Brightest down its middle at its foot, faint even there.
+        // Brightest down its middle, a little over what it lights, faint
+        // even there.
         assert!((brightest - shaft.light).abs() < 1e-4, "{brightest}");
     }
 
