@@ -409,6 +409,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         desert: None,
         japan: None,
         space: None,
+        toys: None,
     },
 };
 

@@ -20,6 +20,7 @@ mod props;
 mod quads;
 pub mod realm;
 mod road;
+mod room;
 pub mod scenery;
 mod sea;
 mod shadow_fade;
@@ -29,6 +30,7 @@ mod space;
 pub(crate) mod structures;
 mod terrain;
 mod textures;
+mod toys;
 mod trees;
 mod tufts;
 
@@ -108,6 +110,7 @@ impl Plugin for WorldPlugin {
                     space::spin_portals,
                     japan::turn_wheels,
                     japan::drift_petals,
+                    toys::roll_trains,
                     spawn_prepared_circuit,
                 ),
             )
@@ -1040,6 +1043,13 @@ fn build(
                     .with_children(|scenery| put_up(scenery));
             } else {
                 put_up(world);
+            }
+            // A look at a shop's start needs the room round it; in a race
+            // the toys spawn it with the rest of the scenery.
+            if stretch.is_some()
+                && let Some(toys) = &scenery.toys
+            {
+                room::spawn_room(world, &toys.room, &mut assets);
             }
             // The sea: the cartoon one at first, mirroring, if it should,
             // before it is first drawn (see `sea::dress_the_sea`).

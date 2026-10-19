@@ -38,6 +38,8 @@ pub struct WorldTextures {
     pub falls: Handle<Image>,
     /// Wooden planks laid across, for the wooden bridges.
     pub planks: Handle<Image>,
+    /// Pale floorboards, for a shop's floor and wainscot.
+    pub shop_planks: Handle<Image>,
     /// Layers of sandstone, cream, salmon, rust and ochre, one over another
     /// down the texture.
     pub strata: Handle<Image>,
@@ -106,6 +108,7 @@ impl FromWorld for WorldTextures {
         let soil = images.add(soil());
         let falls = images.add(falls());
         let planks = images.add(planks());
+        let shop_planks = images.add(shop_planks());
         let strata = images.add(strata());
         let tuft = images.add(super::foliage::tuft());
         let grass_edge = images.add(super::foliage::grass_edge());
@@ -124,6 +127,7 @@ impl FromWorld for WorldTextures {
             soil,
             falls,
             planks,
+            shop_planks,
             strata,
             tuft,
             grass_edge,
@@ -678,6 +682,25 @@ fn planks() -> Image {
         let tone = 0.82 + 0.3 * random01(board + 17);
         let point = Vec2::new(x as f32 / 14.0, y as f32 * 1.6 + board as f32 * 31.0);
         let grain = 0.85 + 0.3 * value_noise(point);
+        Color::LinearRgba(wood * (tone * grain))
+    })
+}
+
+/// Pale oak floorboards for a shop: eight boards, each of its own tone,
+/// with narrow gaps and grain along them.
+fn shop_planks() -> Image {
+    const SIZE: u32 = 128;
+    const BOARDS: u32 = 8;
+    let wood = Color::srgb(0.84, 0.71, 0.55).to_linear();
+    tiling(SIZE, SIZE, |x, y| {
+        let board = y * BOARDS / SIZE;
+        let within = (y * BOARDS) % SIZE;
+        if within < BOARDS * 2 {
+            return Color::srgb(0.56, 0.44, 0.31);
+        }
+        let tone = 0.88 + 0.2 * random01(board + 23);
+        let point = Vec2::new(x as f32 / 14.0, y as f32 * 1.6 + board as f32 * 31.0);
+        let grain = 0.9 + 0.18 * value_noise(point);
         Color::LinearRgba(wood * (tone * grain))
     })
 }

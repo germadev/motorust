@@ -1,6 +1,6 @@
 # Tracks
 
-Motorust has six tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All six are closed roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners: three on the coast under a summer sky, a desert mountain at dusk, an island of feudal Japan and an Earth space center & lunar base under the starry sky of space connected by an interdimensional portal. Loop Island has a branch with a vertical loop the bikes ride upside down; Gold Mine has four branches without loops through its excavation, Ghost Island has three out in the open, and Base Lunar has a two-way crater split on its Moon sector.
+Motorust has seven tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All seven are closed roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners: three on the coast under a summer sky, a desert mountain at dusk, an island of feudal Japan, an Earth space center & lunar base under the starry sky of space connected by an interdimensional portal, and a toy store at the scale of its toys. Loop Island has a branch with a vertical loop the bikes ride upside down; Gold Mine has four branches without loops through its excavation, Ghost Island has three out in the open, and Base Lunar has a two-way crater split on its Moon sector.
 
 | Track | Length | In the game's words |
 |---|---|---|
@@ -10,6 +10,7 @@ Motorust has six tracks, picked on the track select screen (see [gameplay.md](ga
 | [Gold Mine](#gold-mine) ("Mina Dorada") | 5.95 km | "Inspirada en las minas de Mario Kart y Crash: vagonetas, una montaña cruzada por dentro y por encima, y una corta inundada" (inspired by the mines of *Mario Kart* and *Crash*: ore carts, a mountain crossed through and over, and a flooded open pit) |
 | [Ghost Island](#ghost-island) | 5.97 km | "Inspirada en Ghost of Tsushima: un castillo cruzado por debajo y por encima, cuestas, un lago entre flores y dos bifurcaciones" (inspired by *Ghost of Tsushima*: a castle crossed under and over, steep hills, a lake among flowers and two splits) |
 | [Base Lunar](#base-lunar) ("Moon Base") | 4.6 km | "Centro espacial y observatorio en la Tierra con portal a la Luna: lanzadera, antenas gigantes, cúpulas de telescopio y base lunar" (Earth space center and observatory with portal to the Moon: launchpad, giant radio dishes, telescope domes and lunar base) |
+| [La Juguetería](#la-juguetería) ("The Toy Store") | 3.5 km | "Scalextric, Hot Wheels, un tren eléctrico, un tobogán y bloques a tamaño de juguete" (Scalextric, Hot Wheels, an electric train, a slide and toys at toy scale) |
 
 Distances below are in metres from the finish line, as in the track data.
 
@@ -143,11 +144,25 @@ Base Lunar ("Moon Base") starts at an Earth Space Launch & Deep-Space Observator
   5. **The High Earth Summit, Valley Plunge and Western Mountain Ridge** (`2895–4600 m`). Back on Earth at the `45.5 m` summit, the road crosses 45 m above the Launch Complex Tunnel (`3056 m`), plunges −40 m down into the deep northern forested valley (`5.5 m` at `3555 m`) past a third "CHECKPOINT" arch (`3450 m`), climbs +30.1 m back up the Western Earth Mountain Ridge (`35.6 m`), launches over a high-altitude straightaway jump crest (`4095 m`), and plunges −35.6 m down to the finish line.
 
 
+## La Juguetería
+
+La Juguetería ("The Toy Store") is a lap through a toy store at the scale of its toys: the bikes keep their usual size and physics, while the shelves, the slot-racing track, the electric train, the building blocks, the dice and the balls stand over them as giant playthings. Its data is in `src/circuits/toy_store.rs`, and its toys are drawn by `src/world/toys.rs`. The whole lap runs inside the shop (`Soil::Shop`, `SkyStyle::Interior`): a pale plank floor, cream plaster walls with a wooden wainscot, and a beamed ceiling hung with glowing globe lamps instead of a sky. The curbs are orange and blue; concrete barriers line the Scalextric, timber fences the train table and railings the slide. Its song is "Plastic Velocity Rush".
+
+- **Scenery.** The shop is one big room (`Room`), drawn by `src/world/room.rs`: shelves of coloured toy boxes and toy cars along every wall, painted signs ("TOY STORE", "PLAY TIME", "PLUSH", "TRAINS"), and sixteen globe lamps under the beams, eight of them point lights. On the floor stand tables with toy railways and chairs on rugs, a model water table beside the sweeper (its water mirrors the floor round it), one low papier-mâché mountain for the train tunnel, and rock faces cut beside the road. A toy train runs round its rails, a locomotive and carriages moving every frame; giant building blocks are heaped and stacked, dice stand with their pips up, and giant balls rest by the road. The overhead lamps stand all the way round.
+- **A lap, in order** (3.5 km):
+  1. **The start straight and take-off ramps** (`0–440 m`), north from the checkout. Two toy ramps just past the line make the bike take off and land well before the first bend, between shelves of plush toys and the start grandstand.
+  2. **The Scalextric sweeper** (`about 440–1740 m`), east over the shop floor, with slot rails, bright curbs, a narrow lane (`800–1200 m`, walls 6.5 m from the middle) and a red "CHECKPOINT" arch (`880 m`).
+  3. **The train table and tunnel** (`about 1750–2400 m`), south down the east side. The road climbs onto the tabletop, crosses a "CHECKPOINT" arch (`1760 m`) and runs through the papier-mâché mountain (`1660–1820 m`), with the toy train and its rails beside it.
+  4. **Hot Wheels** (`about 2400–2700 m`), west along the tabletop on orange plastic track with a giant loop standing beside the road, and a third "CHECKPOINT" arch (`2640 m`).
+  5. **The building blocks** (`about 2700–2980 m`), past heaps of giant blocks, dice and a checkered wall.
+  6. **The slide** (`about 2980–3420 m`), a narrow, banked descent from the tabletop back to the shop floor, the walls opened to the drop and balls resting at its foot.
+  7. **The plush aisle and the checkout** (`about 3420–3525 m`) back to the line.
+
 ## Editing or adding a track
 
 ### Where tracks live
 
-Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs`, `gold_mine.rs`, `ghost_island.rs` and `moon_base.rs`). A `Circuit` has six fields:
+Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs` and `toy_store.rs`). A `Circuit` has six fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.

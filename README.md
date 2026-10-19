@@ -7,7 +7,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Three tracks** with steep slopes, crests and banked curves (see
+- **Seven tracks** with steep slopes, crests and banked curves (see
   [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
@@ -74,6 +74,16 @@ a temple and the castle ridge where the road splits three ways, a red ridge
 and a bamboo hill it winds down in tight esses, under a volcano across the
 strait.
 
+**La Juguetería** ("The Toy Store") is a lap through a toy store at the scale
+of its toys: the bikes keep their size while the shelves, the Scalextric, the
+electric train, the building blocks, the dice and the balls stand over them as
+giant playthings. It all happens inside the shop, on pale plank boards under a
+beamed ceiling of glowing globe lamps, with toy-filled tables and a model water
+table on the floor. On the way: two take-off ramps on the start straight, a
+narrow slot-racing sweeper, a train tunnel through a papier-mâché mountain, Hot
+Wheels on a lit tabletop, a building-block corner and a banked slide back down
+to the shop floor.
+
 More about each one in [docs/tracks.md](docs/tracks.md).
 
 ## Quick start
@@ -109,7 +119,7 @@ or English: the system's language at first, changed in Options.
 ## Documentation
 
 - [Playing](docs/gameplay.md): handling, bikes, menus, options and sound.
-- [Tracks](docs/tracks.md): the five tracks, and how to edit one or add a new one.
+- [Tracks](docs/tracks.md): the seven tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions.

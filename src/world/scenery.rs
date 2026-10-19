@@ -208,13 +208,16 @@ pub enum Soil {
     /// Grey lunar regolith and basaltic crater rock; its tunnels are
     /// pressurized space-station corridors lit by cool white-cyan strips.
     Lunar,
+    /// The inside of a toy shop: a light wooden floor and cream plaster
+    /// walls, with a ceiling and lights of its own (see [`Room`]).
+    Shop,
 }
 
 /// The light of a track: a summer day; a clear Mediterranean summer
 /// afternoon, graded as a photograph is; the last hours of a clear autumn
 /// afternoon, the sun low and golden; a low sun setting in a warm, hazy
-/// sky; or the black sky of the Moon with the Earth hanging above the
-/// horizon.
+/// sky; the black sky of the Moon with the Earth hanging above the horizon;
+/// or the warm, even light of a shop floor with no sky at all.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SkyStyle {
     Day,
@@ -222,6 +225,9 @@ pub enum SkyStyle {
     GoldenHour,
     Dusk,
     Space,
+    /// The inside of a building: the sky is hidden and the light comes from
+    /// its ceiling and lamps (see [`Room`]).
+    Interior,
 }
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
@@ -492,6 +498,107 @@ pub struct Scenery {
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
     pub space: Option<Space>,
+    /// The toys of a toy store around the road, if any: see [`Toys`].
+    pub toys: Option<Toys>,
+}
+
+/// The works of a toy store around the road: the shop itself, shelves of toy
+/// boxes, toy trains running round their rails, tables with toys and chairs,
+/// piles of building blocks, giant dice and balls. The world is built at toy
+/// scale around the bikes, which keep their usual size and physics.
+pub struct Toys {
+    /// The room the track runs through: its walls, ceiling and lights.
+    pub room: Room,
+    /// A toy water table sunk into the shop floor, if there is one.
+    pub water_table: Option<WaterTable>,
+    pub shelves: &'static [Shelf],
+    pub trains: &'static [ToyTrain],
+    pub tables: &'static [ToyTable],
+    pub block_piles: &'static [ToyBlockPile],
+    pub dice: &'static [GiantDice],
+    pub balls: &'static [GiantBall],
+}
+
+/// The inside of a shop: a rectangular room with no sky, centred on
+/// `center`, `half` metres either way along x and z, and `height` metres
+/// tall from the floor.
+pub struct Room {
+    pub center: Vec2,
+    pub half: Vec2,
+    pub height: f32,
+}
+
+/// A round water table sunk into the shop floor, with a wooden rim.
+pub struct WaterTable {
+    pub center: Vec2,
+    pub radius: f32,
+}
+
+/// A table in the shop, with a toy railway on it and chairs round it, `along`
+/// the lap, `lateral` metres from the centre line on `side`; `length` and
+/// `width` metres across, standing `height` metres high, with `chairs`
+/// seats.
+pub struct ToyTable {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub length: f32,
+    pub width: f32,
+    pub height: f32,
+    pub chairs: u32,
+    /// The colour of the rug under it.
+    pub rug: Color,
+}
+
+/// A row of tall shop shelves beside the road, full of toy boxes: one every
+/// `every` metres of `span`, `lateral` metres from the centre line on
+/// `side`, with its face towards the road.
+pub struct Shelf {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+    pub every: f32,
+    pub height: f32,
+    pub depth: f32,
+    pub colors: &'static [Color],
+}
+
+/// A toy train running round a circular track beside the road, `radius`
+/// metres round, with `cars` carriages going at `speed` metres a second.
+pub struct ToyTrain {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub radius: f32,
+    pub cars: u32,
+    pub speed: f32,
+}
+
+/// A pile of `count` giant building blocks beside the road, scattered in a
+/// little heap.
+pub struct ToyBlockPile {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub count: u32,
+    pub seed: u32,
+}
+
+/// A giant die beside the road.
+pub struct GiantDice {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub size: f32,
+}
+
+/// A giant ball beside the road.
+pub struct GiantBall {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub radius: f32,
+    pub color: Color,
 }
 
 /// The scenery of feudal Japan, as at Ghost Island (see

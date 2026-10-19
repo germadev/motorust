@@ -76,6 +76,8 @@ fn road_shoulders(
 /// `soil` (see [`super::terrain::spawn_terrain`]).
 fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
     match (soil, ground) {
+        // A shop floor is as firm as the road, and it throws nothing up.
+        (Soil::Shop, _) => Surface::Paved,
         // In a desert canyon the flat ground is dry, red-brown earth, and
         // by the river damp sand.
         (Soil::Mine, Ground::Grass | Ground::Rock) => Surface::Dirt(Dust::Desert),

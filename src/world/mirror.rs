@@ -614,6 +614,7 @@ fn texel(
         // earth, not grass.
         let texture = match (kind, terrain.soil()) {
             (Ground::Grass, Soil::Mine) | (Ground::Sand, _) => SAND_AVERAGE,
+            (Ground::Grass, Soil::Shop) => [0.72, 0.57, 0.4],
             (Ground::Grass, _) => [grass_average.red, grass_average.green, grass_average.blue],
             (Ground::Rock, Soil::Checkered) => SOIL_AVERAGE,
             (Ground::Rock, _) => ROCK_AVERAGE,

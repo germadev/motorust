@@ -255,6 +255,32 @@ impl Palette {
                     highlight_saturation: 0.85,
                 },
             },
+            // The inside of a shop: no sky at all (the dome is hidden), warm
+            // cream walls and ceiling, an even light from above and from the
+            // ceiling lamps, and a faint warm haze far across the floor.
+            SkyStyle::Interior => Self {
+                zenith: Color::srgb(0.88, 0.84, 0.77),
+                above_horizon: Color::srgb(0.88, 0.84, 0.77),
+                horizon: Color::srgb(0.88, 0.84, 0.77),
+                glow: 0.0,
+                glow_color: Color::WHITE,
+                sun_azimuth: 0.0,
+                sun_elevation: 1.35,
+                sun_disc: Color::WHITE,
+                sunlight: Color::srgb(1.0, 0.94, 0.84),
+                sunlight_strength: 0.55,
+                ambient: Color::srgb(1.0, 0.9, 0.78),
+                ambient_brightness: 900.0,
+                clouds: Color::srgba(1.0, 1.0, 1.0, 0.0),
+                fog: (1800.0, 6200.0),
+                grade: Grade {
+                    saturation: 1.04,
+                    contrast: 1.03,
+                    exposure: 0.08,
+                    warmth: 0.003,
+                    highlight_saturation: 0.95,
+                },
+            },
         }
     }
 
@@ -633,6 +659,7 @@ pub fn light_the_sky(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut transforms: Query<&mut Transform>,
     mut visibilities: Query<&mut Visibility>,
+    sky_roots: Query<Entity, With<Sky>>,
     clouds: Query<(Entity, &CloudQuad)>,
     mut sunlight: Query<(Entity, &mut DirectionalLight), With<Sunlight>>,
     ambient: Option<ResMut<GlobalAmbientLight>>,
@@ -660,6 +687,17 @@ pub fn light_the_sky(
     }
     if !changed {
         return;
+    }
+    // Inside a shop there is no sky: the room's ceiling is what is seen.
+    let interior = style == SkyStyle::Interior;
+    for root in &sky_roots {
+        if let Ok(mut visibility) = visibilities.get_mut(root) {
+            *visibility = if interior {
+                Visibility::Hidden
+            } else {
+                Visibility::Inherited
+            };
+        }
     }
     if let Some(mut clear) = clear {
         clear.0 = palette.horizon;

@@ -43,6 +43,9 @@ const SAND_TILE: f32 = 8.5;
 const ROCK_TILE: f32 = 20.0;
 /// Size (m) of each repetition of the checkerboard earth: two by two squares.
 const SOIL_TILE: f32 = 7.0;
+/// Size (m) of each repetition of a shop's floorboards and wall plaster.
+const SHOP_FLOOR_TILE: f32 = 9.0;
+const SHOP_WALL_TILE: f32 = 14.0;
 /// Las caras más inclinadas que esto son roca.
 pub const CLIFF_NORMAL_Y: f32 = 0.8;
 /// Por debajo de esta altura, cerca del mar, hay arena.
@@ -506,6 +509,8 @@ impl Terrain {
         match (self.soil, ground) {
             (Soil::Mine, _) => canyon_vertex_color(ground, p, normal),
             (Soil::Lunar, _) if !earth => lunar_vertex_color(ground, p, normal),
+            (Soil::Shop, Ground::Rock) => shop_wall_vertex_color(p, normal),
+            (Soil::Shop, _) => shop_floor_vertex_color(p, normal),
             (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
             (_, Ground::Grass) => self.grass_color(p, normal),
             _ => ground_vertex_color(ground, p, normal),
@@ -604,9 +609,10 @@ impl Terrain {
                                         ) * 2.2;
                                         Vec2::new(p.x + warp.x, p.z + warp.y)
                                     }
-                                    // Checkerboard earth: straight rows at the same
-                                    // heights on every cliff, as in Loop Island.
-                                    false if self.soil == Soil::Checkered => {
+                                    // Checkerboard earth and shop plaster:
+                                    // straight rows at the same heights on
+                                    // every face, as in Loop Island.
+                                    false if matches!(self.soil, Soil::Checkered | Soil::Shop) => {
                                         rock_projection(p, face)
                                     }
                                     false => {
@@ -657,6 +663,10 @@ impl Terrain {
                                     (Soil::Checkered, Ground::Rock, _) => {
                                         soil_vertex_color(p, normal)
                                     }
+                                    (Soil::Shop, Ground::Rock, _) => {
+                                        shop_wall_vertex_color(p, normal)
+                                    }
+                                    (Soil::Shop, ..) => shop_floor_vertex_color(p, normal),
                                     (Soil::Mine, ..) => canyon_vertex_color(ground_type, p, normal),
                                     (Soil::Lunar, ..) if !earth => {
                                         lunar_vertex_color(ground_type, p, normal)
@@ -763,9 +773,10 @@ impl Terrain {
             snow,
             meadows,
         } = joined;
-        let rock_tile = match self.soil {
-            Soil::Rock | Soil::Mine | Soil::Lunar => ROCK_TILE,
-            Soil::Checkered => SOIL_TILE,
+        let (grass_tile, rock_tile) = match self.soil {
+            Soil::Rock | Soil::Mine | Soil::Lunar => (GRASS_TILE, ROCK_TILE),
+            Soil::Checkered => (GRASS_TILE, SOIL_TILE),
+            Soil::Shop => (SHOP_FLOOR_TILE, SHOP_WALL_TILE),
         };
         let layers = style.map(|style| match side {
             Some(side) if side != style => style.beyond_layers(),
@@ -778,15 +789,15 @@ impl Terrain {
             layers: layers.clone(),
         };
         let mut meshes = vec![
-            ground(Ground::Grass, None, grass.build(GRASS_TILE)),
+            ground(Ground::Grass, None, grass.build(grass_tile)),
             ground(Ground::Sand, None, sand.build(SAND_TILE)),
             ground(Ground::Rock, None, rock.build(rock_tile)),
-            ground(Ground::Snow, None, snow.build(GRASS_TILE)),
+            ground(Ground::Snow, None, snow.build(grass_tile)),
         ];
         meshes.extend(
             meadows
                 .into_iter()
-                .map(|(kind, meadow)| ground(Ground::Grass, Some(kind), meadow.build(GRASS_TILE))),
+                .map(|(kind, meadow)| ground(Ground::Grass, Some(kind), meadow.build(grass_tile))),
         );
         meshes
     }
@@ -825,8 +836,12 @@ pub fn spawn_terrain(
             }
             // In a desert canyon the flat ground is dry dust.
             (Ground::Grass, Soil::Mine) => (Some(&textures.sand), 0.95, 0.15),
+            // A shop floor of pale planks, and its walls of plaster. The
+            // planks reach the water table too, low as its shore is.
+            (Ground::Grass | Ground::Sand, Soil::Shop) => (Some(&textures.shop_planks), 0.82, 0.22),
             (Ground::Grass, _) => (Some(&textures.grass), 0.90, 0.18),
             (Ground::Sand, _) => (Some(&textures.sand), 0.88, 0.28),
+            (Ground::Rock, Soil::Shop) => (Some(&textures.plaster), 0.92, 0.18),
             (Ground::Rock, Soil::Rock | Soil::Mine | Soil::Lunar) => {
                 (Some(&textures.rock), 0.78, 0.42)
             }
@@ -1824,6 +1839,27 @@ fn soil_vertex_color(p: Vec3, normal: Vec3) -> [f32; 4] {
     let patch = fbm(Vec2::new(p.x, p.z) * 0.02, 2);
     let shade = 0.78 + 0.32 * lit + 0.1 * (patch - 0.5);
     Color::srgb(shade * 1.04, shade, shade * 0.96)
+        .to_linear()
+        .to_f32_array()
+}
+
+/// A shop floor's pale boards: warm and light, a little darker in the shade
+/// and with broad, faint variations of tone.
+fn shop_floor_vertex_color(p: Vec3, normal: Vec3) -> [f32; 4] {
+    let sun = Vec3::new(0.2, 0.95, 0.1).normalize();
+    let lit = (normal.dot(sun) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let patch = fbm(Vec2::new(p.x, p.z) * 0.015, 2);
+    let shade = 0.86 + 0.2 * lit + 0.06 * (patch - 0.5);
+    Color::srgb(shade * 1.16, shade * 1.05, shade * 0.9)
+        .to_linear()
+        .to_f32_array()
+}
+
+/// A shop's cream plaster: almost white, lit evenly from above.
+fn shop_wall_vertex_color(_p: Vec3, normal: Vec3) -> [f32; 4] {
+    let lit = (normal.dot(Vec3::new(0.2, 0.95, 0.1).normalize()) * 0.5 + 0.5).clamp(0.0, 1.0);
+    let shade = 0.92 + 0.08 * lit;
+    Color::srgb(shade, shade * 0.97, shade * 0.91)
         .to_linear()
         .to_f32_array()
 }

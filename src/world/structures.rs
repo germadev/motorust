@@ -137,6 +137,13 @@ pub fn structure_pieces(
                 perceptual_roughness: 0.9,
                 ..default()
             },
+            // A papier-mâché mountain in a toy shop, painted cream.
+            Soil::Shop => StandardMaterial {
+                base_color: Color::srgb(0.96, 0.9, 0.8),
+                base_color_texture: Some(textures.plaster.clone()),
+                perceptual_roughness: 0.92,
+                ..default()
+            },
         };
         // Warm and lit by the lamps, as in Moto Racer; through checkerboard
         // earth, a cave of it; in a lunar station, pressurized metallic hull
@@ -160,6 +167,13 @@ pub fn structure_pieces(
             Soil::Checkered => StandardMaterial {
                 base_color_texture: Some(textures.soil.clone()),
                 emissive: LinearRgba::rgb(0.1, 0.06, 0.02),
+                perceptual_roughness: 0.9,
+                ..default()
+            },
+            Soil::Shop => StandardMaterial {
+                base_color: Color::srgb(0.98, 0.93, 0.84),
+                base_color_texture: Some(textures.panels.clone()),
+                emissive: LinearRgba::rgb(0.08, 0.06, 0.03),
                 perceptual_roughness: 0.9,
                 ..default()
             },

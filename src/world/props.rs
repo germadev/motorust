@@ -71,6 +71,9 @@ pub fn spawn_props(
     occupied.extend(super::japan::spawn_japan(
         world, track, terrain, scenery, flowers, assets,
     ));
+    occupied.extend(super::toys::spawn_toys(
+        world, track, terrain, scenery, assets,
+    ));
     let houses = place_houses(track, terrain, &scenery.houses, &occupied);
     for house in &houses {
         spawn_house(

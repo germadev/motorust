@@ -523,6 +523,7 @@ pub const GOLD_MINE: Circuit = Circuit {
                 },
             ],
         }),
+        toys: None,
     },
 };
 
