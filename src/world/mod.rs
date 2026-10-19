@@ -608,33 +608,11 @@ fn spawn_prepared_circuit(
         indices.sort_by_key(|&index| index != current.0);
         indices
     };
-    let ready = chosen_first(preparing.0.keys().copied().collect())
-        .into_iter()
-        .find_map(|index| {
-            let work = preparing.0.get_mut(&index)?;
-            block_on(poll_once(&mut work.task)).map(|prepared| (index, prepared))
-        });
-    if let Some((index, prepared)) = ready {
-        preparing.0.remove(&index);
-        let chosen = index == current.0;
-        let visibility = if chosen {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        previewing.0.remove(&index);
-        let shown = build(&mut commands, prepared, &mut builder, visibility, None);
-        if chosen {
-            shown.basis.roadside.apply(&mut track);
-            loading.set_if_neq(CircuitLoading(false));
-        }
-        roadsides.0.insert(index, shown.basis.roadside.clone());
-        let work = chosen.then(|| start_finishing(&shown.basis, &builder.textures, Urgency::Now));
-        finishing.0.insert(index, (shown, work));
-        return;
-    }
     // A look at the start of a circuit: shown if it is the one chosen,
     // unless its first part has come; hidden otherwise, kept for later.
+    // Put in before a first part that is ready too (a slow frame can find
+    // both ready at once), which then hides it, so that a finished look is
+    // never thrown away.
     let ready = chosen_first(previewing.0.keys().copied().collect())
         .into_iter()
         .find_map(|index| {
@@ -659,6 +637,31 @@ fn spawn_prepared_circuit(
                 Some(stretch),
             );
         }
+        return;
+    }
+    let ready = chosen_first(preparing.0.keys().copied().collect())
+        .into_iter()
+        .find_map(|index| {
+            let work = preparing.0.get_mut(&index)?;
+            block_on(poll_once(&mut work.task)).map(|prepared| (index, prepared))
+        });
+    if let Some((index, prepared)) = ready {
+        preparing.0.remove(&index);
+        let chosen = index == current.0;
+        let visibility = if chosen {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        previewing.0.remove(&index);
+        let shown = build(&mut commands, prepared, &mut builder, visibility, None);
+        if chosen {
+            shown.basis.roadside.apply(&mut track);
+            loading.set_if_neq(CircuitLoading(false));
+        }
+        roadsides.0.insert(index, shown.basis.roadside.clone());
+        let work = chosen.then(|| start_finishing(&shown.basis, &builder.textures, Urgency::Now));
+        finishing.0.insert(index, (shown, work));
         return;
     }
     let ready = chosen_first(finishing.0.keys().copied().collect())
