@@ -19,7 +19,8 @@
 //! (`Settings::road_relief`); and, unless it says not to
 //! (`Settings::flat_at_speed`), the rest loses it while the players go fast
 //! ([`ReliefShown`]), where it is not seen, and gets it back as they slow
-//! down.
+//! down. The performance forced takes the parallax away first, if it falls
+//! short (see [`super::detail`]).
 //!
 //! A normal map changes the pipeline its materials are drawn with, so a
 //! change of relief makes some again, and what they draw vanishes for a
@@ -36,6 +37,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
+use super::detail::Detail;
 use super::textures::{WorldTextures, generate_mipmaps, sampler};
 use crate::bike::{BikeState, LocalPlayer, Player};
 use crate::settings::{Relief, Settings};
@@ -426,10 +428,12 @@ pub fn relieve(material: &mut StandardMaterial, map: &ReliefMap, look: Look) -> 
     true
 }
 
-/// The relief to show, as the settings say and the players go.
+/// The relief to show, as the settings say, the players go and the
+/// performance forced lets it (its parallax, see [`Detail::parallax`]).
 #[allow(clippy::type_complexity)]
 pub(super) fn show_relief(
     settings: Option<Res<Settings>>,
+    detail: Option<Res<Detail>>,
     players: Query<&BikeState, Or<(With<Player>, With<LocalPlayer>)>>,
     mut shown: ResMut<ReliefShown>,
 ) {
@@ -440,10 +444,21 @@ pub(super) fn show_relief(
             settings.flat_at_speed,
         )
     });
+    let relief = capped(relief, detail.is_none_or(|detail| detail.parallax));
     let flat = at_speed && fast(players.iter().map(|bike| bike.speed), shown.flat);
     let now = ReliefShown { relief, road, flat };
     if *shown != now {
         *shown = now;
+    }
+}
+
+/// The relief `chosen`, without its parallax unless it may be drawn
+/// (`parallax`).
+pub fn capped(chosen: Relief, parallax: bool) -> Relief {
+    if chosen == Relief::Parallax && !parallax {
+        Relief::Normal
+    } else {
+        chosen
     }
 }
 
@@ -826,6 +841,15 @@ mod tests {
         assert!(!fast(kmh(&[50.0]), true));
         // Backwards counts as fast as forwards.
         assert!(fast(kmh(&[-90.0]), false));
+    }
+
+    #[test]
+    fn the_performance_forced_takes_only_the_parallax_away() {
+        assert_eq!(capped(Relief::Parallax, false), Relief::Normal);
+        assert_eq!(capped(Relief::Parallax, true), Relief::Parallax);
+        for relief in [Relief::Off, Relief::Normal] {
+            assert_eq!(capped(relief, false), relief);
+        }
     }
 
     #[test]

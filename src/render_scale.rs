@@ -17,7 +17,11 @@
 //! in HiDPI, a laptop's "more space") give the window more pixels than the
 //! panel, and macOS shrinks the whole picture to fit it: what is drawn past
 //! the panel's own is never seen. So the share is of the window as the
-//! panel would show it ([`NativeShare`]), at most the window.
+//! panel would show it ([`NativeShare`]), at most the window. In a
+//! fullscreen over the desktop, which covers the screen as it is, a fixed
+//! resolution draws the world at that many pixels at most, the screen's
+//! shape kept (see [`Settings::desktop_resolution`]): it changes at once,
+//! as the render scale does.
 
 use bevy::anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening;
 use bevy::camera::{CameraUpdateSystems, ImageRenderTarget, RenderTarget};
@@ -27,6 +31,7 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{Monitor, OnMonitor, PrimaryMonitor, PrimaryWindow, WindowRef};
 
+use crate::settings::Settings;
 use crate::world::detail::{Detail, choose_detail};
 use crate::world::realm::PortalView;
 
@@ -72,7 +77,8 @@ pub fn render_size(window: UVec2, percent: u32) -> UVec2 {
 /// How much of each side of the window the screen's own pixels cover (0 to
 /// 1): 1 unless the display mode gives the window more pixels than the
 /// panel has (see the module's notes), as 0.625 for a 1440p panel drawn at
-/// 4096 × 2304. The world is drawn at most at that share.
+/// 4096 × 2304; less in a fullscreen over the desktop at a fixed
+/// resolution ([`capped`]). The world is drawn at most at that share.
 #[derive(Resource, Clone, Copy, Debug, PartialEq)]
 pub struct NativeShare(pub f32);
 
@@ -147,13 +153,15 @@ fn native_size(_monitor: &Monitor) -> Option<UVec2> {
 mod native;
 
 /// The share of the window the screen's own pixels cover (see
-/// [`NativeShare`]): of the monitor it is on, or else the main one.
+/// [`NativeShare`]): of the monitor it is on, or else the main one; no more
+/// than a fixed resolution lets through in a fullscreen over the desktop.
 fn follow_native_share(
-    window: Query<Option<&OnMonitor>, With<PrimaryWindow>>,
+    settings: Option<Res<Settings>>,
+    window: Query<(&Window, Option<&OnMonitor>), With<PrimaryWindow>>,
     monitors: Query<(&Monitor, Option<&NativeSize>, Has<PrimaryMonitor>)>,
     mut share: ResMut<NativeShare>,
 ) {
-    let Ok(on) = window.single() else {
+    let Ok((window, on)) = window.single() else {
         return;
     };
     let monitor = on
@@ -165,7 +173,22 @@ fn follow_native_share(
             native.map(|native| native.0),
         )
     });
-    share.set_if_neq(now);
+    let chosen = settings.and_then(|settings| settings.desktop_resolution());
+    share.set_if_neq(capped(now, window.physical_size(), chosen));
+}
+
+/// `share` (see [`NativeShare`]) no more than a fixed resolution of
+/// `chosen` pixels lets through in a window of `window` pixels: the smaller
+/// share of the two sides, so the world keeps the window's shape.
+pub fn capped(share: NativeShare, window: UVec2, chosen: Option<UVec2>) -> NativeShare {
+    let Some(chosen) = chosen.filter(|chosen| chosen.min_element() > 0) else {
+        return share;
+    };
+    if window.min_element() == 0 {
+        return share;
+    }
+    let fits = (chosen.as_vec2() / window.as_vec2()).min_element();
+    NativeShare(share.0.min(fits).clamp(0.0, 1.0))
 }
 
 /// How much of each side of a display mode of `mode` pixels a panel of
@@ -344,6 +367,33 @@ mod tests {
         assert_eq!(
             native_share(UVec2::ZERO, Some(retina)),
             NativeShare::default()
+        );
+    }
+
+    #[test]
+    fn over_the_desktop_a_fixed_resolution_draws_the_world_at_that_many_pixels_at_most() {
+        // A 16 : 10 laptop panel covered by the window, 1920 × 1080 chosen:
+        // the world 1080 pixels high, the panel's shape kept, scaled up.
+        let laptop = UVec2::new(3456, 2234);
+        let chosen = Some(UVec2::new(1920, 1080));
+        let share = capped(NativeShare::default(), laptop, chosen);
+        assert_eq!(drawn_size(laptop, 100, share), UVec2::new(1671, 1080));
+        // And the render scale on top of it.
+        assert_eq!(drawn_size(laptop, 50, share), UVec2::new(836, 540));
+        // Bigger than the window, or none chosen: as before.
+        let large = Some(UVec2::new(5120, 2880));
+        assert_eq!(
+            capped(NativeShare::default(), laptop, large),
+            NativeShare::default()
+        );
+        assert_eq!(capped(NativeShare(0.625), laptop, None), NativeShare(0.625));
+        // With the panel's own share smaller still, the smaller.
+        let hidpi = UVec2::new(4096, 2304);
+        let share = capped(NativeShare(0.625), hidpi, Some(UVec2::new(2560, 1440)));
+        assert_eq!(drawn_size(hidpi, 100, share), UVec2::new(2560, 1440));
+        assert_eq!(
+            capped(NativeShare(0.625), UVec2::ZERO, chosen),
+            NativeShare(0.625)
         );
     }
 

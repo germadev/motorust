@@ -1326,6 +1326,27 @@ impl Settings {
         self.fullscreen && self.fullscreen_kind() == FullscreenKind::Exclusive
     }
 
+    /// The pixels a fixed resolution draws the world at, at most, in a
+    /// fullscreen over the desktop, where the screen is not switched to it
+    /// and the window covers it as it is (see
+    /// [`crate::render_scale::NativeShare`]): there it changed nothing
+    /// before. `None` otherwise: in a window it is the window's size, in a
+    /// dedicated fullscreen the screen's display mode.
+    pub fn desktop_resolution(&self) -> Option<UVec2> {
+        self.desktop_resolution_as(self.fullscreen_kind())
+    }
+
+    fn desktop_resolution_as(&self, kind: FullscreenKind) -> Option<UVec2> {
+        match self.resolution {
+            Resolution::Window(width, height)
+                if !WEB && self.fullscreen && kind == FullscreenKind::Desktop =>
+            {
+                Some(UVec2::new(width, height))
+            }
+            _ => None,
+        }
+    }
+
     /// Sets `window` as these settings ask. In a dedicated fullscreen, the
     /// screen is switched to the display mode of `monitor` that comes
     /// closest to the resolution chosen (in pixels), or with a dynamic one
@@ -2110,6 +2131,25 @@ mod tests {
         };
         assert_eq!(desktop.kind_of_fullscreen(false), FullscreenKind::Exclusive);
         assert_eq!(desktop.kind_of_fullscreen(true), FullscreenKind::Desktop);
+        // Over the desktop, a fixed resolution draws the world at that
+        // many pixels at most; switching the screen, or in a window, not.
+        assert_eq!(
+            desktop.desktop_resolution_as(FullscreenKind::Desktop),
+            Some(UVec2::new(1280, 720))
+        );
+        assert_eq!(
+            desktop.desktop_resolution_as(FullscreenKind::Exclusive),
+            None
+        );
+        let windowed = Settings {
+            fullscreen: false,
+            ..desktop.clone()
+        };
+        assert_eq!(
+            windowed.desktop_resolution_as(FullscreenKind::Desktop),
+            None
+        );
+        assert_eq!(dynamic.desktop_resolution_as(FullscreenKind::Desktop), None);
         let monitor = Monitor {
             name: None,
             physical_height: 1600,
