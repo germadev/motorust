@@ -115,11 +115,12 @@ pub struct Scenario {
     pub grass_tiling: GrassTiling,
 }
 
-/// Every scenario on each of `tracks`: one player as the game starts
-/// (shadows high, multisampled, whole trees, the world at the window's
+/// Every scenario on each of `tracks`: one player at a fixed reference,
+/// not as the game starts (shadows high, not automatic, so that runs
+/// compare; multisampled, whole trees, the world at the window's
 /// resolution, normal maps but on the road and not at speed, the wide
-/// lawn), then one thing changed at a time (parallax, kept at speed too);
-/// then two
+/// lawn; the game starts with FXAA, no relief and the shadows automatic),
+/// then one thing changed at a time (parallax, kept at speed too); then two
 /// players, with less detail, with all of it, with less detail drawn
 /// smaller and without relief.
 pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
@@ -1122,7 +1123,7 @@ mod tests {
         assert_eq!(all.len(), 18 * CIRCUITS.len());
         let first = &all[..18];
         assert!(first.iter().all(|scenario| scenario.track == 0));
-        // The first as the game starts; the others one change from it.
+        // The first the reference; the others one change from it.
         let base = &first[0];
         assert_eq!(
             (
@@ -1288,10 +1289,11 @@ mod tests {
         };
         assert_eq!(
             settings_said(&settings, 1),
-            "shadows medium · FXAA · far trees lighter · normal maps · grass wide"
+            "shadows medium · FXAA · far trees lighter · no relief · grass wide"
         );
         settings.lighter_split_screen = false;
         assert!(settings_said(&settings, 2).ends_with(" · all the detail"));
+        settings.relief = Relief::Normal;
         settings.road_relief = true;
         settings.flat_at_speed = false;
         assert!(settings_said(&settings, 1).contains("normal maps (road too) at speed too"));

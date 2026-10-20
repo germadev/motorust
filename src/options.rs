@@ -1144,7 +1144,7 @@ fn use_options_menu(
                     }
                 }
                 // While the performance forced chooses them, they stay.
-                GraphicsItem::RenderScale if change != 0 && !settings.force_performance.is_on() => {
+                GraphicsItem::RenderScale if change != 0 => {
                     settings.render_scale = cycle(&RENDER_SCALES, settings.render_scale, change);
                     sounds.write(MenuSound::Move);
                 }
@@ -1157,7 +1157,7 @@ fn use_options_menu(
                         cycle(&FORCE_PERFORMANCES, settings.force_performance, change);
                     sounds.write(MenuSound::Move);
                 }
-                GraphicsItem::Shadows if change != 0 && !settings.force_performance.is_on() => {
+                GraphicsItem::Shadows if change != 0 => {
                     settings.shadows = cycle(&SHADOW_QUALITIES, settings.shadows, change);
                     sounds.write(MenuSound::Move);
                 }
@@ -1264,19 +1264,6 @@ fn shadows_name(quality: ShadowQuality, auto: Level, lang: Language) -> String {
     }
 }
 
-/// What a value chosen by the performance forced reads: automatic.
-const FORCED: &str = "Auto";
-
-/// An option's value, and "Auto" after it while the performance forced may
-/// lower it (`forced`).
-fn auto_name(name: &str, forced: bool) -> String {
-    if forced {
-        format!("{name} · {FORCED}")
-    } else {
-        name.to_string()
-    }
-}
-
 /// The frame rate cap as Options > Graphics names it: at the screen's rate,
 /// with the rate it runs at once known (`screen`, Hz: "Screen (60 Hz)").
 fn fps_limit_name(fps: FpsLimit, screen: Option<f32>, lang: Language) -> String {
@@ -1349,6 +1336,9 @@ fn spawn_tab(
 
 /// The ink of an option chosen, on the colour of its section.
 const INK: Color = Color::srgb(0.06, 0.05, 0.04);
+/// The words of an option the performance forced may lower by itself: the
+/// amber of the performance HUD's values it has lowered.
+const AUTOMATIC: Color = Color::srgb(1.0, 0.72, 0.2);
 
 /// A button at the foot of a section (see [`FOOTER`]): filled in the
 /// section's colour when chosen; its words faint if it has nothing to do.
@@ -1682,81 +1672,81 @@ fn show_options_menu(
                 ),
             })
             .collect(),
-        OptionsTab::Graphics => graphics_items(options_menu.page)
-            .into_iter()
-            .map(|item| match item {
-                GraphicsItem::PerformanceHud => Row::with_value(
-                    match lang {
-                        Language::Spanish => "HUD de rendimiento",
-                        Language::English => "Performance HUD",
-                    },
-                    ">",
-                ),
-                GraphicsItem::ShowFps => Row::check(
-                    match lang {
-                        Language::Spanish => "Mostrar FPS",
-                        Language::English => "Show FPS",
-                    },
-                    settings.show_fps,
-                ),
-                GraphicsItem::ShowResolution => Row::check(
-                    match lang {
-                        Language::Spanish => "Mostrar resolución activa",
-                        Language::English => "Show active resolution",
-                    },
-                    settings.show_resolution,
-                ),
-                GraphicsItem::ShowAntialiasing => Row::check(
-                    match lang {
-                        Language::Spanish => "Mostrar antialiasing activo",
-                        Language::English => "Show active antialiasing",
-                    },
-                    settings.show_antialiasing,
-                ),
-                GraphicsItem::ShowTextures => Row::check(
-                    match lang {
-                        Language::Spanish => "Mostrar texturas activas",
-                        Language::English => "Show active textures",
-                    },
-                    settings.show_textures,
-                ),
-                GraphicsItem::ShowCoordinates => Row::check(
-                    match lang {
-                        Language::Spanish => "Mostrar coordenadas en el mapa",
-                        Language::English => "Show coordinates on the map",
-                    },
-                    settings.show_coordinates,
-                ),
-                GraphicsItem::Advanced => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Avanzado",
-                        Language::English => "Advanced",
-                    },
-                    ">",
-                ),
-                GraphicsItem::Fullscreen => Row::check(lang.fullscreen(), settings.fullscreen),
-                GraphicsItem::FullscreenKind => Row::with_value(
-                    lang.fullscreen_kind(),
-                    format!("<  {}  >", settings.fullscreen_kind.name(lang)),
-                ),
-                GraphicsItem::Resolution => {
-                    let name = settings.resolution.name(window_inner, lang);
-                    if WEB {
-                        Row::disabled(lang.resolution(), name)
-                    } else {
-                        Row::with_value(lang.resolution(), format!("<  {name}  >"))
+        OptionsTab::Graphics => {
+            // What the performance forced may lower by itself, in amber.
+            let lowered = crate::world::detail::lowered(&settings);
+            graphics_items(options_menu.page)
+                .into_iter()
+                .map(|item| match item {
+                    GraphicsItem::PerformanceHud => Row::with_value(
+                        match lang {
+                            Language::Spanish => "HUD de rendimiento",
+                            Language::English => "Performance HUD",
+                        },
+                        ">",
+                    ),
+                    GraphicsItem::ShowFps => Row::check(
+                        match lang {
+                            Language::Spanish => "Mostrar FPS",
+                            Language::English => "Show FPS",
+                        },
+                        settings.show_fps,
+                    ),
+                    GraphicsItem::ShowResolution => Row::check(
+                        match lang {
+                            Language::Spanish => "Mostrar resolución activa",
+                            Language::English => "Show active resolution",
+                        },
+                        settings.show_resolution,
+                    ),
+                    GraphicsItem::ShowAntialiasing => Row::check(
+                        match lang {
+                            Language::Spanish => "Mostrar antialiasing activo",
+                            Language::English => "Show active antialiasing",
+                        },
+                        settings.show_antialiasing,
+                    ),
+                    GraphicsItem::ShowTextures => Row::check(
+                        match lang {
+                            Language::Spanish => "Mostrar texturas activas",
+                            Language::English => "Show active textures",
+                        },
+                        settings.show_textures,
+                    ),
+                    GraphicsItem::ShowCoordinates => Row::check(
+                        match lang {
+                            Language::Spanish => "Mostrar coordenadas en el mapa",
+                            Language::English => "Show coordinates on the map",
+                        },
+                        settings.show_coordinates,
+                    ),
+                    GraphicsItem::Advanced => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Avanzado",
+                            Language::English => "Advanced",
+                        },
+                        ">",
+                    ),
+                    GraphicsItem::Fullscreen => Row::check(lang.fullscreen(), settings.fullscreen),
+                    GraphicsItem::FullscreenKind => Row::with_value(
+                        lang.fullscreen_kind(),
+                        format!("<  {}  >", settings.fullscreen_kind.name(lang)),
+                    ),
+                    GraphicsItem::Resolution => {
+                        let name = settings.resolution.name(window_inner, lang);
+                        if WEB {
+                            Row::disabled(lang.resolution(), name)
+                        } else {
+                            Row::with_value(lang.resolution(), format!("<  {name}  >"))
+                        }
                     }
-                }
-                GraphicsItem::RenderScale => {
-                    let label = match lang {
-                        Language::Spanish => "Escala de resolución",
-                        Language::English => "Resolution scale",
-                    };
-                    // Faint, automatic, while the performance forced
-                    // chooses it.
-                    if settings.force_performance.is_on() {
-                        Row::disabled(label, FORCED)
-                    } else {
+                    GraphicsItem::RenderScale => {
+                        let label = match lang {
+                            Language::Spanish => "Escala de resolución",
+                            Language::English => "Resolution scale",
+                        };
+                        // With the performance forced, in amber: the most it is,
+                        // lowered from there by itself.
                         Row::with_value(
                             label,
                             format!(
@@ -1764,181 +1754,169 @@ fn show_options_menu(
                                 render_scale_name(settings.render_scale, window_inner, native)
                             ),
                         )
+                        .automatic(lowered.scale)
                     }
-                }
-                GraphicsItem::Fps => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Límite FPS",
-                        Language::English => "FPS limit",
-                    },
-                    format!(
-                        "<  {}  >",
-                        fps_limit_name(settings.fps, screen.as_deref().and_then(|s| s.0), lang)
+                    GraphicsItem::Fps => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Límite FPS",
+                            Language::English => "FPS limit",
+                        },
+                        format!(
+                            "<  {}  >",
+                            fps_limit_name(settings.fps, screen.as_deref().and_then(|s| s.0), lang)
+                        ),
                     ),
-                ),
-                GraphicsItem::Shadows => {
-                    let label = match lang {
-                        Language::Spanish => "Sombras",
-                        Language::English => "Shadows",
-                    };
-                    let now = detail.as_deref().map_or(Level::High, |detail| detail.level);
-                    if settings.force_performance.is_on() {
-                        Row::disabled(label, FORCED)
-                    } else {
+                    GraphicsItem::Shadows => {
+                        let label = match lang {
+                            Language::Spanish => "Sombras",
+                            Language::English => "Shadows",
+                        };
+                        let now = detail.as_deref().map_or(Level::High, |detail| detail.level);
+                        // With the performance forced, in amber: the most they
+                        // are, lowered from there by themselves.
                         Row::with_value(
                             label,
                             format!("<  {}  >", shadows_name(settings.shadows, now, lang)),
                         )
+                        .automatic(lowered.shadows)
                     }
-                }
-                GraphicsItem::ForcePerformance => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Forzar rendimiento",
-                        Language::English => "Force performance",
-                    },
-                    format!("<  {}  >", settings.force_performance.name(lang)),
-                ),
-                GraphicsItem::Water => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Agua",
-                        Language::English => "Water",
-                    },
-                    format!(
-                        "<  {}  >",
-                        match (settings.cartoon_water, lang) {
-                            (true, Language::Spanish) => "Estilo Cartoon",
-                            (true, Language::English) => "Cartoon style",
-                            (false, Language::Spanish) => "Con reflejo",
-                            (false, Language::English) => "Mirroring",
-                        }
-                    ),
-                ),
-                // With the performance forced, the multisampling chosen may
-                // be given up for FXAA: the one drawn now, and "Auto".
-                GraphicsItem::Antialiasing => {
-                    let forced = settings.force_performance.is_on()
-                        && settings.antialiasing == Antialiasing::Msaa;
-                    let now = crate::world::detail::in_use(
-                        settings.antialiasing,
-                        detail.as_deref().is_none_or(|detail| detail.msaa),
-                    );
-                    let name = match (now, lang) {
-                        (Antialiasing::Msaa, _) => "MSAA 4×",
-                        (Antialiasing::Fxaa, _) => "FXAA",
-                        (Antialiasing::Off, Language::Spanish) => "No",
-                        (Antialiasing::Off, Language::English) => "Off",
-                    };
-                    Row::with_value("Antialiasing", format!("<  {}  >", auto_name(name, forced)))
-                }
-                GraphicsItem::Relief => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Relieve",
-                        Language::English => "Relief",
-                    },
-                    {
-                        // With the performance forced, the parallax chosen
-                        // may be given up: the relief drawn now, and "Auto".
-                        let forced = settings.force_performance.is_on()
-                            && settings.relief == crate::settings::Relief::Parallax;
-                        let now = crate::world::relief::capped(
-                            settings.relief,
-                            detail.as_deref().is_none_or(|detail| detail.parallax),
-                        );
-                        format!("<  {}  >", auto_name(now.name(lang), forced))
-                    },
-                ),
-                GraphicsItem::RoadRelief => Row::check(
-                    match lang {
-                        Language::Spanish => "Relieve en la carretera",
-                        Language::English => "Relief on the road",
-                    },
-                    settings.road_relief,
-                ),
-                GraphicsItem::FlatAtSpeed => Row::check(
-                    match lang {
-                        Language::Spanish => "Sin relieve a alta velocidad",
-                        Language::English => "No relief at high speed",
-                    },
-                    settings.flat_at_speed,
-                ),
-                GraphicsItem::GrassTiling => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Repetición de la hierba",
-                        Language::English => "Grass tiling",
-                    },
-                    format!("<  {}  >", settings.grass_tiling.name(lang)),
-                ),
-                GraphicsItem::Trees => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Árboles",
-                        Language::English => "Trees",
-                    },
-                    format!(
-                        "<  {}  >",
-                        match (settings.modelled_trees, lang) {
-                            (true, Language::Spanish) => "Nuevos",
-                            (true, Language::English) => "New",
-                            (false, Language::Spanish) => "Clásicos",
-                            (false, Language::English) => "Classic",
-                        }
-                    ),
-                ),
-                GraphicsItem::FarTrees => Row::check(
-                    match lang {
-                        Language::Spanish => "Árboles lejanos más ligeros",
-                        Language::English => "Lighter far trees",
-                    },
-                    settings.lighter_far_trees,
-                ),
-                GraphicsItem::SplitDetail => Row::check(
-                    match lang {
-                        Language::Spanish => "Menos detalle a dos jugadores",
-                        Language::English => "Less detail for two players",
-                    },
-                    settings.lighter_split_screen,
-                ),
-                GraphicsItem::PerformanceLog => Row::check(
-                    match lang {
-                        Language::Spanish => "Registro de rendimiento",
-                        Language::English => "Performance log",
-                    },
-                    settings.performance_log,
-                ),
-                // These two take effect when the game starts again.
-                GraphicsItem::PipelinedRendering => Row {
-                    value: started
-                        .is_some_and(|s| s.pipelined_rendering != settings.pipelined_rendering)
-                        .then(|| restart.trim_end().to_string()),
-                    ..Row::check(
+                    GraphicsItem::ForcePerformance => Row::with_value(
                         match lang {
-                            Language::Spanish => "Renderizado en paralelo",
-                            Language::English => "Pipelined rendering",
+                            Language::Spanish => "Forzar rendimiento",
+                            Language::English => "Force performance",
                         },
-                        settings.pipelined_rendering,
-                    )
-                },
-                GraphicsItem::FrameLatency => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Fotogramas en cola",
-                        Language::English => "Frame latency",
-                    },
-                    format!(
-                        "{}<  {}{}  >",
-                        if started.is_some_and(|s| s.frame_latency != settings.frame_latency) {
-                            restart
-                        } else {
-                            ""
-                        },
-                        settings.frame_latency,
-                        if settings.frame_latency == DEFAULT_FRAME_LATENCY {
-                            " (Bevy)"
-                        } else {
-                            ""
-                        }
+                        format!("<  {}  >", settings.force_performance.name(lang)),
                     ),
-                ),
-            })
-            .collect(),
+                    GraphicsItem::Water => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Agua",
+                            Language::English => "Water",
+                        },
+                        format!(
+                            "<  {}  >",
+                            match (settings.cartoon_water, lang) {
+                                (true, Language::Spanish) => "Estilo Cartoon",
+                                (true, Language::English) => "Cartoon style",
+                                (false, Language::Spanish) => "Con reflejo",
+                                (false, Language::English) => "Mirroring",
+                            }
+                        ),
+                    ),
+                    // With the performance forced and the multisampling chosen,
+                    // in amber: it may be given up for FXAA by itself.
+                    GraphicsItem::Antialiasing => {
+                        let name = match (settings.antialiasing, lang) {
+                            (Antialiasing::Msaa, _) => "MSAA 4×",
+                            (Antialiasing::Fxaa, _) => "FXAA",
+                            (Antialiasing::Off, Language::Spanish) => "No",
+                            (Antialiasing::Off, Language::English) => "Off",
+                        };
+                        Row::with_value("Antialiasing", format!("<  {name}  >"))
+                            .automatic(lowered.antialiasing)
+                    }
+                    GraphicsItem::Relief => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Relieve",
+                            Language::English => "Relief",
+                        },
+                        // With the performance forced and the parallax chosen,
+                        // in amber: it may be given up by itself.
+                        format!("<  {}  >", settings.relief.name(lang)),
+                    )
+                    .automatic(lowered.relief),
+                    GraphicsItem::RoadRelief => Row::check(
+                        match lang {
+                            Language::Spanish => "Relieve en la carretera",
+                            Language::English => "Relief on the road",
+                        },
+                        settings.road_relief,
+                    ),
+                    GraphicsItem::FlatAtSpeed => Row::check(
+                        match lang {
+                            Language::Spanish => "Sin relieve a alta velocidad",
+                            Language::English => "No relief at high speed",
+                        },
+                        settings.flat_at_speed,
+                    ),
+                    GraphicsItem::GrassTiling => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Repetición de la hierba",
+                            Language::English => "Grass tiling",
+                        },
+                        format!("<  {}  >", settings.grass_tiling.name(lang)),
+                    ),
+                    GraphicsItem::Trees => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Árboles",
+                            Language::English => "Trees",
+                        },
+                        format!(
+                            "<  {}  >",
+                            match (settings.modelled_trees, lang) {
+                                (true, Language::Spanish) => "Nuevos",
+                                (true, Language::English) => "New",
+                                (false, Language::Spanish) => "Clásicos",
+                                (false, Language::English) => "Classic",
+                            }
+                        ),
+                    ),
+                    GraphicsItem::FarTrees => Row::check(
+                        match lang {
+                            Language::Spanish => "Árboles lejanos más ligeros",
+                            Language::English => "Lighter far trees",
+                        },
+                        settings.lighter_far_trees,
+                    ),
+                    GraphicsItem::SplitDetail => Row::check(
+                        match lang {
+                            Language::Spanish => "Menos detalle a dos jugadores",
+                            Language::English => "Less detail for two players",
+                        },
+                        settings.lighter_split_screen,
+                    ),
+                    GraphicsItem::PerformanceLog => Row::check(
+                        match lang {
+                            Language::Spanish => "Registro de rendimiento",
+                            Language::English => "Performance log",
+                        },
+                        settings.performance_log,
+                    ),
+                    // These two take effect when the game starts again.
+                    GraphicsItem::PipelinedRendering => Row {
+                        value: started
+                            .is_some_and(|s| s.pipelined_rendering != settings.pipelined_rendering)
+                            .then(|| restart.trim_end().to_string()),
+                        ..Row::check(
+                            match lang {
+                                Language::Spanish => "Renderizado en paralelo",
+                                Language::English => "Pipelined rendering",
+                            },
+                            settings.pipelined_rendering,
+                        )
+                    },
+                    GraphicsItem::FrameLatency => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Fotogramas en cola",
+                            Language::English => "Frame latency",
+                        },
+                        format!(
+                            "{}<  {}{}  >",
+                            if started.is_some_and(|s| s.frame_latency != settings.frame_latency) {
+                                restart
+                            } else {
+                                ""
+                            },
+                            settings.frame_latency,
+                            if settings.frame_latency == DEFAULT_FRAME_LATENCY {
+                                " (Bevy)"
+                            } else {
+                                ""
+                            }
+                        ),
+                    ),
+                })
+                .collect()
+        }
     };
 
     // The foot of the section: Reset, faint when there is nothing to put
@@ -2016,8 +1994,8 @@ fn show_options_menu(
         rows.iter()
             .chain(&footer)
             .map(|row| format!(
-                "{}={:?}{:?}{}",
-                row.label, row.value, row.check, row.disabled
+                "{}={:?}{:?}{}{}",
+                row.label, row.value, row.check, row.disabled, row.automatic
             ))
             .collect::<Vec<_>>()
             .join("|"),
@@ -2246,6 +2224,8 @@ fn show_options_menu(
                                             chosen_text
                                         } else if row.disabled {
                                             Color::srgba(1.0, 1.0, 1.0, 0.4)
+                                        } else if row.automatic {
+                                            AUTOMATIC
                                         } else {
                                             Color::WHITE
                                         });
@@ -2562,14 +2542,14 @@ mod tests {
         let at = |item| main.iter().position(|&i| i == item).unwrap();
         assert_eq!(at(GraphicsItem::Relief), at(GraphicsItem::Antialiasing) + 1);
         let mut settings = Settings {
-            relief: Relief::Off,
+            relief: Relief::Normal,
             ..default()
         };
         let mut debug = DebugOptions::default();
         let graphics = OptionsTab::Graphics;
         assert!(!section_is_default(graphics, None, &settings, &debug));
         reset_section(graphics, None, &mut settings, &mut debug);
-        assert_eq!(settings.relief, Relief::Normal);
+        assert_eq!(settings.relief, Relief::Off);
         assert!(section_is_default(graphics, None, &settings, &debug));
     }
 

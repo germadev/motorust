@@ -520,12 +520,12 @@ pub const SHADOW_QUALITIES: [ShadowQuality; 4] = [
     ShadowQuality::Low,
 ];
 
-/// How the edges are smoothed: four samples a pixel (as always), FXAA over
-/// the frame (cheaper), or not at all.
+/// How the edges are smoothed: four samples a pixel, FXAA over the frame
+/// (cheaper; as the game starts), or not at all.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Antialiasing {
-    #[default]
     Msaa,
+    #[default]
     Fxaa,
     Off,
 }
@@ -543,8 +543,9 @@ pub const ANTIALIASINGS: [Antialiasing; 3] =
 /// readings of a texture for each of their pixels.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Relief {
-    Off,
+    /// As the game starts.
     #[default]
+    Off,
     Normal,
     Parallax,
 }
@@ -1907,11 +1908,25 @@ mod tests {
     }
 
     #[test]
-    fn the_relief_starts_with_normal_maps_and_is_kept() {
-        assert_eq!(Settings::default().relief, Relief::Normal);
-        // Saved before it was an option: normal maps.
+    fn the_game_starts_with_fxaa_and_no_relief_and_keeps_what_is_chosen() {
+        // As the game starts: no relief, FXAA, the shadows automatic.
+        let first = Settings::default();
+        assert_eq!(
+            (first.relief, first.antialiasing, first.shadows),
+            (Relief::Off, Antialiasing::Fxaa, ShadowQuality::Auto)
+        );
+        // Saved without them: as the game starts.
         let older: Settings = ron::from_str("(fps: Unlimited)").unwrap();
-        assert_eq!(older.relief, Relief::Normal);
+        assert_eq!(
+            (older.relief, older.antialiasing),
+            (Relief::Off, Antialiasing::Fxaa)
+        );
+        // Saved with them: as saved.
+        let saved: Settings = ron::from_str("(relief: Normal, antialiasing: Msaa)").unwrap();
+        assert_eq!(
+            (saved.relief, saved.antialiasing),
+            (Relief::Normal, Antialiasing::Msaa)
+        );
         for relief in RELIEFS {
             let text = ron::ser::to_string(&Settings {
                 relief,

@@ -297,6 +297,10 @@ pub struct Row {
     /// Whether it is something on or off, a box ticked or not after its
     /// value (if any). Drawn by the options menu.
     pub check: Option<bool>,
+    /// Whether it is lowered by itself as the game needs (the options the
+    /// performance forced may lower): drawn in amber, as the performance
+    /// HUD's values it has lowered. Drawn by the options menu.
+    pub automatic: bool,
 }
 
 impl Row {
@@ -308,7 +312,13 @@ impl Row {
             danger: false,
             primary: false,
             check: None,
+            automatic: false,
         }
+    }
+
+    /// The same option, lowered by itself as the game needs or not.
+    pub fn automatic(self, automatic: bool) -> Self {
+        Self { automatic, ..self }
     }
 
     /// Something on or off, with a box ticked or not.
