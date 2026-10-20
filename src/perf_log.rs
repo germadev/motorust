@@ -61,6 +61,14 @@ pub struct Context {
     pub split_detail: bool,
     pub shadows: String,
     pub antialiasing: String,
+    /// The relief of the scenery's textures.
+    pub relief: String,
+    /// Whether the road has relief too, and whether the relief is dropped
+    /// at speed.
+    pub road_relief: bool,
+    pub flat_at_speed: bool,
+    /// How the lawn's repetition is broken up.
+    pub grass_tiling: String,
     /// The performance forced: off, or the frame rate it keeps.
     pub performance: String,
     /// The sea: mirroring or the cartoon one.
@@ -81,7 +89,7 @@ impl Context {
     fn pairs(&self) -> String {
         format!(
             "state={} mode={} players={} paused={} track={:?} trees={} lighter_far_trees={} \
-             lighter_split_screen={} force_performance={} water={} shadows={} antialiasing={} render_scale={} render={} fps_limit={} \
+             lighter_split_screen={} force_performance={} water={} shadows={} antialiasing={} relief={} road_relief={} flat_at_speed={} grass_tiling={} render_scale={} render={} fps_limit={} \
              resolution={} fullscreen={} pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
             self.state,
             self.mode,
@@ -95,6 +103,10 @@ impl Context {
             self.water,
             self.shadows,
             self.antialiasing,
+            self.relief,
+            self.road_relief,
+            self.flat_at_speed,
+            self.grass_tiling,
             self.render_scale,
             self.render,
             self.fps_limit,
@@ -587,7 +599,27 @@ fn log_performance(
             settings.shadows,
             detail.as_deref().map(|detail| detail.level)
         ),
-        antialiasing: format!("{:?}", settings.antialiasing),
+        // As chosen, and as drawn now (the performance forced may have
+        // given up the multisampling, or the parallax).
+        antialiasing: format!(
+            "{:?}/{:?}",
+            settings.antialiasing,
+            crate::world::detail::in_use(
+                settings.antialiasing,
+                detail.as_deref().is_none_or(|detail| detail.msaa)
+            )
+        ),
+        relief: format!(
+            "{:?}/{:?}",
+            settings.relief,
+            crate::world::relief::capped(
+                settings.relief,
+                detail.as_deref().is_none_or(|detail| detail.parallax)
+            )
+        ),
+        road_relief: settings.road_relief,
+        flat_at_speed: settings.flat_at_speed,
+        grass_tiling: format!("{:?}", settings.grass_tiling),
         // As the options say, or as far as the performance forced has come.
         render_scale: render_percent(detail.as_deref()),
         render: window.map_or_else(

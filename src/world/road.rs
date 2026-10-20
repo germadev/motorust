@@ -1180,7 +1180,20 @@ fn spawn_gantry(
     ));
 }
 
-/// Marcas en la parrilla de salida: cajones para las motos alineadas antes de la meta.
+/// A grid box's front line, along the road: from just ahead of the front
+/// tyre of the bike standing in it (m ahead of where the bike stands)...
+const GRID_LINE_BACK: f32 = crate::bike::model::NOSE + 0.06;
+/// ...to this far ahead.
+const GRID_LINE_FRONT: f32 = GRID_LINE_BACK + 0.18;
+/// How far behind where the bike stands the box's sides end: a little past
+/// its rear tyre (m).
+const GRID_BOX_BACK: f32 = crate::bike::model::TAIL + 0.1;
+/// Half the width of a grid box, to the middle of its sides (m).
+const GRID_BOX_HALF_WIDTH: f32 = 0.85;
+
+/// The starting grid's marks: a box for each bike lined up before the
+/// finish line, drawn round the bike standing in it, its front line just
+/// ahead of the front tyre and its sides back to just behind the rear one.
 fn starting_grid(track: &Track) -> Mesh {
     let mut mesh = MeshBuilder::default();
     let lift = SURFACE_Y + 1.5 * PAINT_LIFT;
@@ -1193,13 +1206,14 @@ fn starting_grid(track: &Track) -> Mesh {
             Vec3::new(p.x, track.road_height(p) + lift, p.y)
         };
         // Línea frontal transversal de salida
-        let (w, d) = (0.85, 0.09);
+        let w = GRID_BOX_HALF_WIDTH;
+        let (back, front) = (GRID_LINE_BACK, GRID_LINE_FRONT);
         mesh.quad(
             [
-                (at(-w, 0.4 - d), Vec2::ZERO),
-                (at(w, 0.4 - d), Vec2::X),
-                (at(w, 0.4 + d), Vec2::ONE),
-                (at(-w, 0.4 + d), Vec2::Y),
+                (at(-w, back), Vec2::ZERO),
+                (at(w, back), Vec2::X),
+                (at(w, front), Vec2::ONE),
+                (at(-w, front), Vec2::Y),
             ],
             Vec3::Y,
             Color::WHITE,
@@ -1209,10 +1223,10 @@ fn starting_grid(track: &Track) -> Mesh {
             let sw = 0.06;
             mesh.quad(
                 [
-                    (at(side - sw, -0.9), Vec2::ZERO),
-                    (at(side + sw, -0.9), Vec2::X),
-                    (at(side + sw, 0.4), Vec2::ONE),
-                    (at(side - sw, 0.4), Vec2::Y),
+                    (at(side - sw, -GRID_BOX_BACK), Vec2::ZERO),
+                    (at(side + sw, -GRID_BOX_BACK), Vec2::X),
+                    (at(side + sw, back), Vec2::ONE),
+                    (at(side - sw, back), Vec2::Y),
                 ],
                 Vec3::Y,
                 Color::WHITE,
@@ -1275,6 +1289,39 @@ mod tests {
         assert!(dull_srgb.red < painted.red && dull_srgb.green < painted.green);
         assert!(Hsla::from(dull).saturation < painted_hsl.saturation - 0.1);
         assert!(Hsla::from(dull).lightness < painted_hsl.lightness - 0.15);
+    }
+
+    #[test]
+    fn a_bike_on_the_grid_stands_inside_its_box() {
+        use crate::bike::model::{NOSE, TAIL};
+        let track = Track::default();
+        let mesh = starting_grid(&track);
+        let positions = mesh
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .and_then(|p| p.as_float3())
+            .unwrap();
+        for slot in 0..8 {
+            let (point, heading) = track.grid_slot(slot);
+            let fwd = crate::geometry::forward(heading);
+            let left = Vec2::new(-fwd.y, fwd.x);
+            // The box's corners round this slot, along the road and across.
+            let corners: Vec<_> = positions
+                .iter()
+                .map(|p| Vec2::new(p[0], p[2]) - point)
+                .map(|d| (d.dot(fwd), d.dot(left)))
+                .filter(|&(along, across)| along.abs() < 3.0 && across.abs() < 1.5)
+                .collect();
+            assert!(!corners.is_empty(), "slot {slot} has its box");
+            // Only the front line crosses the middle: all of it ahead of the
+            // front tyre, though not far ahead.
+            let middle = corners.iter().filter(|(_, across)| across.abs() < 0.5);
+            for &(along, _) in middle {
+                assert!(along > NOSE && along < NOSE + 0.4, "slot {slot}: {along} m");
+            }
+            // The sides reach back past the rear tyre.
+            let back = corners.iter().map(|&(along, _)| along).fold(0.0, f32::min);
+            assert!(back < -TAIL && back > -TAIL - 0.4, "slot {slot}: {back} m");
+        }
     }
 
     #[test]

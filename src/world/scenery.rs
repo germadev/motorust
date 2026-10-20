@@ -411,10 +411,27 @@ pub enum Species {
 pub struct Forest {
     pub span: Span,
     pub species: &'static [Species],
+    /// A tree every so many metres along the road, in each of its rows
+    /// either side ([`FOREST_EVERY`], or more where it is more open).
+    pub every: f32,
 }
 
+/// How far apart along the road a forest's trees are, in each row (m).
+pub const FOREST_EVERY: f32 = 5.0;
+
 pub const fn forest(span: Span, species: &'static [Species]) -> Forest {
-    Forest { span, species }
+    Forest {
+        span,
+        species,
+        every: FOREST_EVERY,
+    }
+}
+
+impl Forest {
+    /// The forest more open: a tree every `every` metres in each row.
+    pub const fn open(self, every: f32) -> Self {
+        Forest { every, ..self }
+    }
 }
 
 /// Las casas: cuántas como mucho, de qué colores y, si hace falta, solo en
@@ -939,6 +956,22 @@ pub struct MiddleEarth {
     /// Lights that fill a stretch of land the low sun lights only from
     /// behind, as Rivendell's halls are, seen by the riders coming at them.
     pub glows: &'static [Glow],
+    /// Arches of layered rock over the road, out of the rock beside it, as
+    /// the sea's arches on a beach of cliffs.
+    pub arches: &'static [RockArch],
+}
+
+/// An arch of rock over the road (see [`MiddleEarth::arches`]): its middle
+/// `along` the lap, turned `turn` radians from square across it, its
+/// opening `width` wide across the road at its foot and `height` high over
+/// its middle, and `depth` thick along the road.
+#[derive(Clone, Copy, Debug)]
+pub struct RockArch {
+    pub along: f32,
+    pub turn: f32,
+    pub width: f32,
+    pub height: f32,
+    pub depth: f32,
 }
 
 /// A light that fills what the low sun lights only from behind (see

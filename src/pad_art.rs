@@ -447,6 +447,11 @@ pub fn finish_pad_arts(mut arts: ResMut<PadArts>, mut images: ResMut<Assets<Imag
     }
 }
 
+/// Whether `node` is a group with nothing in it.
+fn is_empty_group(node: &usvg::Node) -> bool {
+    matches!(node, usvg::Node::Group(group) if !group.has_children())
+}
+
 /// Draws `art` `pixels` tall, at `scale_factor` pixels a logical one.
 fn draw(art: PadArt, unlabelled: bool, pixels: u32, scale_factor: f32) -> Drawing {
     let document =
@@ -476,7 +481,10 @@ fn draw(art: PadArt, unlabelled: bool, pixels: u32, scale_factor: f32) -> Drawin
         .into_iter()
         .filter_map(|(button, name)| {
             let id = button_id(&name);
-            let nodes = [shapes.node_by_id(&id), marks.node_by_id(&id)];
+            // A group left empty (its marks, without the letters) has a
+            // box at the corner of the drawing: none.
+            let nodes = [shapes.node_by_id(&id), marks.node_by_id(&id)]
+                .map(|node| node.filter(|node| !is_empty_group(node)));
             // The box of the button on the controller (px), both parts in.
             let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
             for bounds in nodes
@@ -667,6 +675,39 @@ mod tests {
             let size = art.size(100.0);
             assert_eq!(size.y, 100.0);
             assert!((size.x - view[2] / view[3] * 100.0).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn the_face_buttons_are_where_they_are_with_their_letters_or_without() {
+        // Without the letters (a Switch pad's are put on it apart), the
+        // buttons' marks are none: their boxes are the buttons' alone, not
+        // stretched to the corner of the drawing.
+        let rects = |unlabelled| {
+            let drawn = draw(PadArt::Xbox, unlabelled, 270, 1.0);
+            drawn
+                .buttons
+                .into_iter()
+                .filter(|(button, ..)| {
+                    matches!(
+                        button,
+                        GamepadButton::South
+                            | GamepadButton::East
+                            | GamepadButton::West
+                            | GamepadButton::North
+                    )
+                })
+                .map(|(button, _, rect)| (button, rect))
+                .collect::<Vec<_>>()
+        };
+        let (labelled, unlabelled) = (rects(false), rects(true));
+        assert_eq!(labelled.len(), 4);
+        for ((button, with), (_, without)) in labelled.iter().zip(&unlabelled) {
+            assert!(
+                with.center().distance(without.center()) < 2.0
+                    && (with.width() - without.width()).abs() < 3.0,
+                "{button:?}: {with:?} and {without:?}"
+            );
         }
     }
 

@@ -11,6 +11,7 @@ mod foliage;
 mod japan;
 mod lamps;
 mod landmarks;
+mod lawn;
 mod lettering;
 mod lod;
 mod middle_earth;
@@ -20,6 +21,7 @@ mod preview;
 mod props;
 mod quads;
 pub mod realm;
+pub mod relief;
 pub(crate) mod road;
 pub mod scenery;
 mod sea;
@@ -80,6 +82,8 @@ impl Plugin for WorldPlugin {
             detail::DetailPlugin,
             shadow_fade::ShadowFadePlugin,
             realm::RealmPlugin,
+            relief::ReliefPlugin,
+            lawn::LawnPlugin,
         ));
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))
@@ -267,6 +271,27 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         structures::structure_pieces(&track, &terrain, scenery, textures, None);
     pieces.extend(structures);
     ground.extend(tops);
+    // The tangents of what is drawn with relief, here rather than on the
+    // main thread as it is put in the world.
+    for piece in &mut ground {
+        // The grass in flower has the lawn's.
+        let texture = match piece.flowers {
+            Some(_) => Some(&textures.grass),
+            None => terrain::ground_look(piece.ground, terrain.soil(), textures).0,
+        };
+        if texture.is_some_and(|texture| textures.relief.of(texture).is_some()) {
+            relief::add_tangents(&mut piece.mesh);
+        }
+    }
+    for (mesh, material) in &mut pieces {
+        if material
+            .base_color_texture
+            .as_ref()
+            .is_some_and(|texture| textures.relief.of(texture).is_some())
+        {
+            relief::add_tangents(mesh);
+        }
+    }
     let lakes = dam::prepare_lakes(&track, &terrain, scenery, textures, urgency.threads());
     let sea_mirror = (!scenery.cartoon_water).then(|| {
         mirror::sky_mirror(
@@ -910,6 +935,7 @@ struct Builder<'w> {
     materials: ResMut<'w, Assets<StandardMaterial>>,
     images: ResMut<'w, Assets<Image>>,
     previews: ResMut<'w, PreviewRoots>,
+    relief: ResMut<'w, relief::SharedRelief>,
 }
 
 /// A circuit whose first part is in the world: where it is, the sea's
@@ -945,6 +971,10 @@ fn build(
         .into_iter()
         .map(|(kind, meadow)| (kind, builder.images.add(meadow)))
         .collect();
+    // The lawn in flower with the lawn's relief.
+    for (_, meadow) in &meadows {
+        builder.relief.share(meadow, &builder.textures.grass);
+    }
     let shore_image = builder.images.add(shore_image);
     let scenery = &CIRCUITS[basis.index].scenery;
     let cartoon_sea = builder

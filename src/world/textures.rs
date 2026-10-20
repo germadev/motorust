@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use super::relief::{Bumps, ReliefMaps};
 use crate::geometry::{fbm, random01, smoothstep, value_noise};
 use bevy::{
     asset::RenderAssetUsages,
@@ -20,6 +21,9 @@ use bevy::{
 #[derive(Resource, Clone)]
 pub struct WorldTextures {
     pub grass: Handle<Image>,
+    /// The lawn four times as wide each way, put together from pieces of
+    /// it, for the grass tiled wide (see [`super::lawn`]).
+    pub grass_wide: Handle<Image>,
     pub rock: Handle<Image>,
     /// The rock without its warm tint: grey granite (see [`Soil::Granite`]).
     ///
@@ -61,6 +65,8 @@ pub struct WorldTextures {
     /// fields of flowers, as they are prepared (see
     /// [`super::foliage::meadow`]).
     pub lawn: Arc<Image>,
+    /// The relief of the textures that have one (see [`super::relief`]).
+    pub relief: ReliefMaps,
 }
 
 impl FromWorld for WorldTextures {
@@ -75,6 +81,12 @@ impl FromWorld for WorldTextures {
         let grass_color = average_color(&lawn);
         let grass = images.add(lawn.clone());
         let lawn = Arc::new(lawn);
+        // The wide lawn, the longest to make, on a thread of its own while
+        // the rest are (but on the web, where there is only one).
+        let widening = (!cfg!(target_arch = "wasm32")).then(|| {
+            let lawn = lawn.clone();
+            std::thread::spawn(move || super::lawn::widen(&lawn))
+        });
         // The stones of the walls, with the photo's grain.
         let wall = images.add(stone_wall(&embedded(
             include_bytes!("../../assets/textures/wall.jpg"),
@@ -118,8 +130,31 @@ impl FromWorld for WorldTextures {
         let tuft = images.add(super::foliage::tuft());
         let grass_edge = images.add(super::foliage::grass_edge());
         let light_pool = images.add(light_pool());
+        let grass_wide = images.add(match widening {
+            Some(thread) => thread.join().expect("the wide lawn is made"),
+            None => super::lawn::widen(&lawn),
+        });
+        let relief = ReliefMaps::new(
+            &mut images,
+            &[
+                (&grass, GRASS_BUMPS),
+                (&grass_wide, GRASS_BUMPS),
+                (&soil, SOIL_BUMPS),
+                (&rock, ROCK_BUMPS),
+                (&granite, ROCK_BUMPS),
+                (&sand, SAND_BUMPS),
+                (&asphalt, ASPHALT_BUMPS),
+                (&wall, WALL_BUMPS),
+                (&roof, ROOF_BUMPS),
+                (&plaster, PLASTER_BUMPS),
+                (&panels, PANEL_BUMPS),
+                (&planks, PLANK_BUMPS),
+                (&strata, STRATA_BUMPS),
+            ],
+        );
         Self {
             grass,
+            grass_wide,
             rock,
             granite,
             sand,
@@ -139,9 +174,79 @@ impl FromWorld for WorldTextures {
             light_pool,
             grass_color,
             lawn,
+            relief,
         }
     }
 }
+
+/// How the bumps of each texture with relief are cut out of it (see
+/// [`super::relief`]): about as wide as the bumps (px), how high they stand
+/// (px of the texture), and whether parallax shifts them too, on the
+/// surfaces seen close. The rocks' are cracks and ledges over cliffs 20 m a
+/// repetition (25 px a metre); the asphalt's and the sand's, grains and
+/// ripples of a few millimetres, a little more than true; the stone walls'
+/// (160 px a metre), stones some 3 cm proud of their gaps; the roofs', the
+/// rows of clay tiles; the plaster's, its trowelling; the tunnels' panels,
+/// their joints; the planks', the gaps between them; the strata's, their
+/// seams; the grass's, its blades, a few centimetres, and the checkerboard
+/// earth's, the bevels of its squares. Parallax on the surfaces seen close,
+/// and on the grass, seen close at the roadside (the most of it there is on
+/// the screen, the most it costs).
+const GRASS_BUMPS: Bumps = Bumps {
+    broad: 8,
+    height: 2.5,
+    parallax: true,
+};
+const SOIL_BUMPS: Bumps = Bumps {
+    broad: 16,
+    height: 3.0,
+    parallax: true,
+};
+const ROCK_BUMPS: Bumps = Bumps {
+    broad: 24,
+    height: 3.0,
+    parallax: false,
+};
+const SAND_BUMPS: Bumps = Bumps {
+    broad: 12,
+    height: 1.2,
+    parallax: false,
+};
+const ASPHALT_BUMPS: Bumps = Bumps {
+    broad: 8,
+    height: 1.0,
+    parallax: false,
+};
+const WALL_BUMPS: Bumps = Bumps {
+    broad: 20,
+    height: 5.0,
+    parallax: true,
+};
+const ROOF_BUMPS: Bumps = Bumps {
+    broad: 24,
+    height: 4.0,
+    parallax: true,
+};
+const PLASTER_BUMPS: Bumps = Bumps {
+    broad: 8,
+    height: 1.0,
+    parallax: false,
+};
+const PANEL_BUMPS: Bumps = Bumps {
+    broad: 16,
+    height: 2.0,
+    parallax: true,
+};
+const PLANK_BUMPS: Bumps = Bumps {
+    broad: 8,
+    height: 1.5,
+    parallax: true,
+};
+const STRATA_BUMPS: Bumps = Bumps {
+    broad: 12,
+    height: 2.0,
+    parallax: false,
+};
 
 /// The average colour of the full-size level of an sRGB image, averaged in
 /// linear space.
@@ -158,7 +263,7 @@ fn average_color(image: &Image) -> Color {
     Color::linear_rgb(mean.x, mean.y, mean.z)
 }
 
-fn sampler(vertical: ImageAddressMode) -> ImageSampler {
+pub(super) fn sampler(vertical: ImageAddressMode) -> ImageSampler {
     ImageSampler::Descriptor(ImageSamplerDescriptor {
         address_mode_u: ImageAddressMode::Repeat,
         address_mode_v: vertical,
@@ -613,6 +718,13 @@ fn checker() -> Image {
 /// An sRGB texture of `width` × `height` pixels that repeats both ways, with
 /// its mipmaps, from the colour of each pixel.
 fn tiling(width: u32, height: u32, pixel: impl Fn(u32, u32) -> Color) -> Image {
+    let mut image = tiling_level(width, height, pixel);
+    generate_mipmaps(&mut image);
+    image
+}
+
+/// [`tiling`]'s first level alone, opaque, without its mipmaps.
+fn tiling_level(width: u32, height: u32, pixel: impl Fn(u32, u32) -> Color) -> Image {
     let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
     let data = (0..width * height)
         .flat_map(|i| {
@@ -632,7 +744,6 @@ fn tiling(width: u32, height: u32, pixel: impl Fn(u32, u32) -> Color) -> Image {
         RenderAssetUsages::RENDER_WORLD,
     );
     image.sampler = sampler(ImageAddressMode::Repeat);
-    generate_mipmaps(&mut image);
     image
 }
 
@@ -686,23 +797,39 @@ fn falls() -> Image {
     })
 }
 
+/// How much of the planks' texture down it each board takes (with the gap
+/// before it), and the gap (see [`planks`]).
+pub const PLANK_BOARD: f32 = 1.0 / 8.0;
+pub const PLANK_GAP: f32 = 2.0 / 128.0;
+
 /// Wooden planks laid across: eight boards, each of its own tone, with
-/// dark gaps and grain along them.
+/// grain along them and gaps between them, dark and see-through (alpha 0):
+/// a material that cuts its texture out (`AlphaMode::Mask`), as the wooden
+/// bridges' decks, shows what is under them through the gaps; the rest
+/// draw them dark.
 fn planks() -> Image {
     const SIZE: u32 = 128;
-    const BOARDS: u32 = 8;
+    const BOARDS: u32 = (1.0 / PLANK_BOARD) as u32;
     let wood = Color::srgb(0.58, 0.36, 0.18).to_linear();
-    tiling(SIZE, SIZE, |x, y| {
+    let gap = |y: u32| (y as f32 / SIZE as f32).rem_euclid(PLANK_BOARD) < PLANK_GAP;
+    let mut image = tiling_level(SIZE, SIZE, |x, y| {
         let board = y * BOARDS / SIZE;
-        let within = (y * BOARDS) % SIZE;
-        if within < BOARDS * 2 {
+        if gap(y) {
             return Color::srgb(0.16, 0.09, 0.04);
         }
         let tone = 0.82 + 0.3 * random01(board + 17);
         let point = Vec2::new(x as f32 / 14.0, y as f32 * 1.6 + board as f32 * 31.0);
         let grain = 0.85 + 0.3 * value_noise(point);
         Color::LinearRgba(wood * (tone * grain))
-    })
+    });
+    let data = image.data.as_mut().expect("its pixels");
+    for (i, pixel) in data.chunks_exact_mut(4).enumerate() {
+        if gap(i as u32 / SIZE) {
+            pixel[3] = 0;
+        }
+    }
+    generate_mipmaps(&mut image);
+    image
 }
 
 /// Layers of sandstone down the texture: bands of cream, salmon, rust and
@@ -809,12 +936,15 @@ fn crowd() -> Image {
 /// Añade a una imagen RGBA de 8 bits todos sus niveles de mipmap, cada uno la
 /// mitad de grande que el anterior, promediando en espacio lineal: las de
 /// color (sRGB) se pasan a lineal para promediar; las de datos (normales,
-/// rugosidad) ya lo están.
+/// rugosidad) ya lo están. Also to those of data of two channels or one, 8
+/// bits each (the normal maps of [`super::relief`]).
 pub fn generate_mipmaps(image: &mut Image) {
-    let srgb = match image.texture_descriptor.format {
-        TextureFormat::Rgba8UnormSrgb => true,
-        TextureFormat::Rgba8Unorm => false,
-        other => panic!("solo se generan mipmaps de imágenes RGBA de 8 bits, no {other:?}"),
+    let (srgb, channels) = match image.texture_descriptor.format {
+        TextureFormat::Rgba8UnormSrgb => (true, 4),
+        TextureFormat::Rgba8Unorm => (false, 4),
+        TextureFormat::Rg8Unorm => (false, 2),
+        TextureFormat::R8Unorm => (false, 1),
+        other => panic!("solo se generan mipmaps de imágenes de 8 bits, no {other:?}"),
     };
     let to_linear: Vec<f32> = (0..=255u8)
         .map(|v| {
@@ -840,14 +970,14 @@ pub fn generate_mipmaps(image: &mut Image) {
     let mut levels = 1;
     while width > 1 || height > 1 {
         let (next_width, next_height) = ((width / 2).max(1), (height / 2).max(1));
-        let mut next = Vec::with_capacity((next_width * next_height * 4) as usize);
+        let mut next = Vec::with_capacity((next_width * next_height * channels) as usize);
         for y in 0..next_height {
             for x in 0..next_width {
-                for channel in 0..4 {
+                for channel in 0..channels {
                     let mut sum = 0.0;
                     for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
                         let (sx, sy) = ((2 * x + dx).min(width - 1), (2 * y + dy).min(height - 1));
-                        let value = level[((sy * width + sx) * 4 + channel) as usize];
+                        let value = level[((sy * width + sx) * channels + channel) as usize];
                         sum += if channel < 3 {
                             to_linear[value as usize]
                         } else {
@@ -894,6 +1024,21 @@ mod tests {
         let at = ((y * width + x) * 4) as usize;
         let data = image.data.as_ref().expect("the texture has its pixels");
         [data[at], data[at + 1], data[at + 2], data[at + 3]]
+    }
+
+    #[test]
+    fn the_planks_are_solid_with_see_through_gaps_between_them() {
+        let image = planks();
+        // Eight boards down the texture, each 16 px: its first two rows the
+        // gap before it.
+        for y in 0..128 {
+            let alpha = pixel(&image, 40, y)[3];
+            if y % 16 < 2 {
+                assert_eq!(alpha, 0, "a gap at {y}");
+            } else {
+                assert_eq!(alpha, 255, "a board at {y}");
+            }
+        }
     }
 
     #[test]
