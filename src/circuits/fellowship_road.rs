@@ -76,6 +76,10 @@ const CAUSEWAY_WALL: f32 = 6.5;
 /// just inside their leaves.
 const DURIN_WALL: f32 = 5.5;
 const AMON_HEN: Span = span(CAUSEWAY.to, WOOD.from);
+/// How far apart along the road the trees of the woods from Amon Hen to
+/// Hobbiton are, in each row (m): more open than a forest's, so that they
+/// are not dark.
+const OPEN_WOOD: f32 = 9.0;
 /// Where the seat of seeing stands by the road up Amon Hen (m).
 const AMON_HEN_SEAT: f32 = 5405.1;
 /// How far from the middle the walls stand over the bridge on the Water in
@@ -392,13 +396,23 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         lamps: &[],
         // Oaks and birches, as in the Shire.
         trees: &[Species::Broadleaf, Species::Poplar],
-        // The wood the race starts in, of oaks and dark trees, on from Amon
-        // Hen's of broadleaves, as the beech forests where the film was made;
+        // The wood the race starts in, of oaks and a few dark trees, on from
+        // Amon Hen's of broadleaves, as the beech forests where the film was
+        // made, both open, the low sun reaching in between their trees;
         // dark conifers through the Trollshaws and up Caradhras' foothills;
         // Rivendell's woods in autumn, red and gold, as the film has them;
         // and Lothlórien's in gold.
         forests: &[
-            forest(WOOD, &[Species::Broadleaf, Species::Tall]),
+            forest(
+                WOOD,
+                &[
+                    Species::Broadleaf,
+                    Species::Broadleaf,
+                    Species::Poplar,
+                    Species::Tall,
+                ],
+            )
+            .open(OPEN_WOOD),
             forest(TROLLSHAWS, &[Species::Sugi]),
             forest(RIVENDELL, &[Species::Ginkgo, Species::Momiji]),
             forest(span(CARADHRAS.from, PASS.from), &[Species::Sugi]),
@@ -406,7 +420,8 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             forest(
                 span(AMON_HEN_SEAT + 20.0, AMON_HEN.to),
                 &[Species::Broadleaf, Species::Poplar],
-            ),
+            )
+            .open(OPEN_WOOD),
         ],
         // No houses of the other tracks: Hobbiton has its hobbit holes and
         // Bree its own houses (see `PROPS`).
@@ -510,6 +525,13 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     center: Vec2::new(285.0, -495.0),
                     radius: 250.0,
                     steepest: 0.45,
+                },
+                // Weathertop's flanks, risen over the road climbing them:
+                // grass up its slopes, the rock out between.
+                Turf {
+                    center: Vec2::new(WEATHERTOP_HILL.center.x, WEATHERTOP_HILL.center.y),
+                    radius: 260.0,
+                    steepest: RIVENDELL_TURF,
                 },
                 Turf {
                     center: Vec2::new(1650.0, 180.0),
@@ -648,12 +670,31 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     shaft: Some(AMON_HEN_SHAFT),
                 },
                 Glow {
-                    from: Vec3::new(1213.3, 195.2, -718.3),
-                    to: Vec3::new(1271.7, 59.2, -693.7),
+                    from: Vec3::new(1213.3, 218.6, -718.3),
+                    to: Vec3::new(1271.7, 82.6, -693.7),
                     illuminance: DIFFUSED_SUNBEAM,
                     color: SUNBEAM_LIGHT,
                     angle: 0.12,
                     shaft: Some(DIFFUSED_SHAFT),
+                },
+            ],
+            // At the top of the pass, two arches of layered rock out of the
+            // cliff on the left, one after the other, the second seen
+            // through the first, each a little askew.
+            arches: &[
+                RockArch {
+                    along: PASS.from + 3.0,
+                    turn: 0.12,
+                    width: 29.0,
+                    height: 17.0,
+                    depth: 10.0,
+                },
+                RockArch {
+                    along: PASS.from + 36.0,
+                    turn: -0.1,
+                    width: 30.0,
+                    height: 19.0,
+                    depth: 8.0,
                 },
             ],
         }),
@@ -2001,7 +2042,7 @@ fn river_banks(points: &[(Vec2, f32)], point: Vec2) -> f32 {
 
 /// Weathertop, Caradhras over the mines, and Amon Hen: their middles,
 /// radii and heights (m).
-const WEATHERTOP_HILL: Massif = climbed_massif(1225.0, -665.0, 280.0, 46.0);
+const WEATHERTOP_HILL: Massif = climbed_massif(1225.0, -665.0, 280.0, 68.0);
 const CARADHRAS_PEAK: Massif = climbed_massif(1595.0, 385.0, 280.0, 44.0);
 
 const MASSIFS: [Massif; 32] = [

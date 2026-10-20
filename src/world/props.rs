@@ -30,9 +30,8 @@ const TREE_CANDIDATES: u32 = 32_000;
 const MAX_TREES: usize = 2_200;
 const HOUSE_SPACING: f32 = 40.0;
 const FLOOR_HEIGHT: f32 = 3.1;
-/// En los bosques, un árbol cada tantos metros a lo largo de la carretera y
-/// cuántos en fondo a cada lado.
-const FOREST_EVERY: f32 = 5.0;
+/// En los bosques, cuántos árboles en fondo a cada lado (one every
+/// `Forest::every` metres along the road in each row).
 const FOREST_DEPTH: usize = 4;
 
 /// Un sitio ocupado por un edificio: su centro y su radio.
@@ -999,13 +998,13 @@ pub fn plan_trees(track: &Track, terrain: &Terrain, scenery: &Scenery) -> TreePl
     let mut forests = Vec::new();
     let mut seed = 50_000;
     for forest in scenery.forests {
-        let count = (forest.span.length(lap) / FOREST_EVERY) as usize;
+        let count = (forest.span.length(lap) / forest.every) as usize;
         for k in 0..count {
             for side in [1.0, -1.0] {
                 for depth in 0..FOREST_DEPTH {
                     seed += 1;
                     let random = |n: u32| random01(seed * 8 + n);
-                    let along = forest.span.from + (k as f32 + random(0)) * FOREST_EVERY;
+                    let along = forest.span.from + (k as f32 + random(0)) * forest.every;
                     let lateral = side * (WALL_DISTANCE + 4.0 + 9.0 * (depth as f32 + random(1)));
                     let position = track.offset_point(track.index_at(along), lateral);
                     let distance = track.distance_to_centerline(position);

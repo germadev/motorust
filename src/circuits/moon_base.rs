@@ -393,6 +393,7 @@ pub const MOON_BASE: Circuit = Circuit {
                     Species::Momiji,
                     Species::Ginkgo,
                 ],
+                every: FOREST_EVERY,
             },
             Forest {
                 span: span(3140.0, 3840.0),
@@ -402,6 +403,7 @@ pub const MOON_BASE: Circuit = Circuit {
                     Species::Almond,
                     Species::Momiji,
                 ],
+                every: FOREST_EVERY,
             },
             Forest {
                 span: span(3860.0, 4480.0),
@@ -411,6 +413,7 @@ pub const MOON_BASE: Circuit = Circuit {
                     Species::Ginkgo,
                     Species::Sakura,
                 ],
+                every: FOREST_EVERY,
             },
         ],
         houses: Houses {
