@@ -192,6 +192,11 @@ fn spawn_camera(mut commands: Commands) {
 }
 
 /// En modo pantalla dividida, crea la segunda cámara para el Jugador 2 (abajo).
+/// It draws after the first on the same picture, without clearing it:
+/// clearing, it cleared the whole picture, not only its half, and with one
+/// sample a pixel (FXAA, or no smoothing) the top half was left the colour
+/// of the sky. Its own half is drawn over whole, the sky first; multisampled,
+/// Bevy copies the picture into its samples first.
 fn setup_split_cameras(
     mut commands: Commands,
     game_mode: Res<GameMode>,
@@ -202,6 +207,7 @@ fn setup_split_cameras(
             Camera3d::default(),
             Camera {
                 order: 1,
+                clear_color: ClearColorConfig::None,
                 ..default()
             },
             Projection::Perspective(PerspectiveProjection {
@@ -616,6 +622,36 @@ mod tests {
                 assert_eq!(glide.from.unwrap().0.translation, Vec3::new(1.0, 2.0, 3.0));
             }
         }
+    }
+
+    #[test]
+    fn the_second_player_s_camera_draws_over_the_first_s_without_clearing_it() {
+        let mut app = App::new();
+        app.insert_resource(GameMode::SplitScreen)
+            .add_systems(Update, setup_split_cameras);
+        app.world_mut()
+            .spawn((Camera3d::default(), Camera::default(), CameraPlayer(0)));
+        app.update();
+        let mut cameras = app
+            .world_mut()
+            .query::<(&CameraPlayer, &Camera)>()
+            .iter(app.world())
+            .map(|(player, camera)| (player.0, camera.order, camera.clear_color))
+            .collect::<Vec<_>>();
+        cameras.sort_by_key(|(player, ..)| *player);
+        assert_eq!(cameras.len(), 2);
+        assert!(matches!(cameras[0].2, ClearColorConfig::Default));
+        assert_eq!(cameras[1].1, 1, "after the first");
+        assert!(matches!(cameras[1].2, ClearColorConfig::None));
+        // Only one more, however often it is asked for.
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&CameraPlayer>()
+                .iter(app.world())
+                .count(),
+            2
+        );
     }
 
     #[test]
