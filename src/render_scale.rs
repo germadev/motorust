@@ -224,8 +224,10 @@ fn spawn_scaled_world(mut commands: Commands) {
 /// when it is stretched over the window.
 fn target_image(size: UVec2) -> Image {
     let mut image = Image::new_target_texture(size.x, size.y, TextureFormat::Rgba8UnormSrgb, None);
-    // Drawn into, never filled from here.
+    // Drawn into, never filled from here; each size a new image, nothing
+    // of an old one to copy into it (Bevy would warn it found none).
     image.data = None;
+    image.copy_on_resize = false;
     image.sampler = ImageSampler::linear();
     image
 }

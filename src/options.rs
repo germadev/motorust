@@ -466,6 +466,8 @@ enum GraphicsItem {
     PerformanceHud,
     ShowFps,
     ShowResolution,
+    ShowAntialiasing,
+    ShowTextures,
     ShowCoordinates,
     /// The page of the advanced options, those below.
     Advanced,
@@ -572,6 +574,8 @@ fn graphics_items(page: Option<Page>) -> Vec<GraphicsItem> {
             return vec![
                 GraphicsItem::ShowFps,
                 GraphicsItem::ShowResolution,
+                GraphicsItem::ShowAntialiasing,
+                GraphicsItem::ShowTextures,
                 GraphicsItem::ShowCoordinates,
             ];
         }
@@ -676,10 +680,12 @@ fn advanced(settings: &Settings) -> (bool, bool, bool, bool, bool, u32) {
 }
 
 /// What the performance HUD shows: the options of its page of Graphics'.
-fn performance_hud(settings: &Settings) -> (bool, bool, bool) {
+fn performance_hud(settings: &Settings) -> (bool, bool, bool, bool, bool) {
     (
         settings.show_fps,
         settings.show_resolution,
+        settings.show_antialiasing,
+        settings.show_textures,
         settings.show_coordinates,
     )
 }
@@ -885,6 +891,8 @@ fn reset_advanced(settings: &mut Settings, first: &Settings) {
 fn reset_performance_hud(settings: &mut Settings, first: &Settings) {
     settings.show_fps = first.show_fps;
     settings.show_resolution = first.show_resolution;
+    settings.show_antialiasing = first.show_antialiasing;
+    settings.show_textures = first.show_textures;
     settings.show_coordinates = first.show_coordinates;
 }
 
@@ -1185,6 +1193,14 @@ fn use_options_menu(
                     settings.show_resolution = !settings.show_resolution;
                     sounds.write(MenuSound::Move);
                 }
+                GraphicsItem::ShowAntialiasing if change != 0 => {
+                    settings.show_antialiasing = !settings.show_antialiasing;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::ShowTextures if change != 0 => {
+                    settings.show_textures = !settings.show_textures;
+                    sounds.write(MenuSound::Move);
+                }
                 GraphicsItem::ShowCoordinates if change != 0 => {
                     settings.show_coordinates = !settings.show_coordinates;
                     sounds.write(MenuSound::Move);
@@ -1250,6 +1266,16 @@ fn shadows_name(quality: ShadowQuality, auto: Level, lang: Language) -> String {
 
 /// What a value chosen by the performance forced reads: automatic.
 const FORCED: &str = "Auto";
+
+/// An option's value, and "Auto" after it while the performance forced may
+/// lower it (`forced`).
+fn auto_name(name: &str, forced: bool) -> String {
+    if forced {
+        format!("{name} · {FORCED}")
+    } else {
+        name.to_string()
+    }
+}
 
 /// The frame rate cap as Options > Graphics names it: at the screen's rate,
 /// with the rate it runs at once known (`screen`, Hz: "Screen (60 Hz)").
@@ -1680,6 +1706,20 @@ fn show_options_menu(
                     },
                     settings.show_resolution,
                 ),
+                GraphicsItem::ShowAntialiasing => Row::check(
+                    match lang {
+                        Language::Spanish => "Mostrar antialiasing activo",
+                        Language::English => "Show active antialiasing",
+                    },
+                    settings.show_antialiasing,
+                ),
+                GraphicsItem::ShowTextures => Row::check(
+                    match lang {
+                        Language::Spanish => "Mostrar texturas activas",
+                        Language::English => "Show active textures",
+                    },
+                    settings.show_textures,
+                ),
                 GraphicsItem::ShowCoordinates => Row::check(
                     match lang {
                         Language::Spanish => "Mostrar coordenadas en el mapa",
@@ -1773,24 +1813,39 @@ fn show_options_menu(
                         }
                     ),
                 ),
-                GraphicsItem::Antialiasing => Row::with_value(
-                    "Antialiasing",
-                    format!(
-                        "<  {}  >",
-                        match (settings.antialiasing, lang) {
-                            (Antialiasing::Msaa, _) => "MSAA 4×",
-                            (Antialiasing::Fxaa, _) => "FXAA",
-                            (Antialiasing::Off, Language::Spanish) => "No",
-                            (Antialiasing::Off, Language::English) => "Off",
-                        }
-                    ),
-                ),
+                // With the performance forced, the multisampling chosen may
+                // be given up for FXAA: the one drawn now, and "Auto".
+                GraphicsItem::Antialiasing => {
+                    let forced = settings.force_performance.is_on()
+                        && settings.antialiasing == Antialiasing::Msaa;
+                    let now = crate::world::detail::in_use(
+                        settings.antialiasing,
+                        detail.as_deref().is_none_or(|detail| detail.msaa),
+                    );
+                    let name = match (now, lang) {
+                        (Antialiasing::Msaa, _) => "MSAA 4×",
+                        (Antialiasing::Fxaa, _) => "FXAA",
+                        (Antialiasing::Off, Language::Spanish) => "No",
+                        (Antialiasing::Off, Language::English) => "Off",
+                    };
+                    Row::with_value("Antialiasing", format!("<  {}  >", auto_name(name, forced)))
+                }
                 GraphicsItem::Relief => Row::with_value(
                     match lang {
                         Language::Spanish => "Relieve",
                         Language::English => "Relief",
                     },
-                    format!("<  {}  >", settings.relief.name(lang)),
+                    {
+                        // With the performance forced, the parallax chosen
+                        // may be given up: the relief drawn now, and "Auto".
+                        let forced = settings.force_performance.is_on()
+                            && settings.relief == crate::settings::Relief::Parallax;
+                        let now = crate::world::relief::capped(
+                            settings.relief,
+                            detail.as_deref().is_none_or(|detail| detail.parallax),
+                        );
+                        format!("<  {}  >", auto_name(now.name(lang), forced))
+                    },
                 ),
                 GraphicsItem::RoadRelief => Row::check(
                     match lang {
@@ -2566,6 +2621,8 @@ mod tests {
             [
                 GraphicsItem::ShowFps,
                 GraphicsItem::ShowResolution,
+                GraphicsItem::ShowAntialiasing,
+                GraphicsItem::ShowTextures,
                 GraphicsItem::ShowCoordinates
             ]
         );
@@ -2580,6 +2637,8 @@ mod tests {
         let mut settings = Settings {
             show_fps: false,
             show_resolution: true,
+            show_antialiasing: true,
+            show_textures: true,
             cartoon_water: true,
             ..default()
         };
@@ -2589,6 +2648,7 @@ mod tests {
         reset_section(graphics, page, &mut settings, &mut debug);
         assert!(section_is_default(graphics, page, &settings, &debug));
         assert!(settings.show_fps && !settings.show_resolution);
+        assert!(!settings.show_antialiasing && !settings.show_textures);
         // The water is on Graphics' own list: its Reset puts it back.
         assert!(!section_is_default(graphics, None, &settings, &debug));
         reset_section(graphics, None, &mut settings, &mut debug);

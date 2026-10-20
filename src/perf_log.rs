@@ -599,8 +599,24 @@ fn log_performance(
             settings.shadows,
             detail.as_deref().map(|detail| detail.level)
         ),
-        antialiasing: format!("{:?}", settings.antialiasing),
-        relief: format!("{:?}", settings.relief),
+        // As chosen, and as drawn now (the performance forced may have
+        // given up the multisampling, or the parallax).
+        antialiasing: format!(
+            "{:?}/{:?}",
+            settings.antialiasing,
+            crate::world::detail::in_use(
+                settings.antialiasing,
+                detail.as_deref().is_none_or(|detail| detail.msaa)
+            )
+        ),
+        relief: format!(
+            "{:?}/{:?}",
+            settings.relief,
+            crate::world::relief::capped(
+                settings.relief,
+                detail.as_deref().is_none_or(|detail| detail.parallax)
+            )
+        ),
         road_relief: settings.road_relief,
         flat_at_speed: settings.flat_at_speed,
         grass_tiling: format!("{:?}", settings.grass_tiling),

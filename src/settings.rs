@@ -139,10 +139,13 @@ pub struct Settings {
     /// [`crate::world::detail`]), instead of as chosen.
     pub force_performance: ForcePerformance,
     /// What the performance HUD shows at the top right: the frame rate, the
-    /// pixels the world is drawn at, and, on the race's map, where the
-    /// player is (see [`crate::hud`] and [`crate::minimap`]).
+    /// pixels the world is drawn at, the smoothing of the edges and the
+    /// textures (their relief, the lawn's tiling) in use, and, on the race's
+    /// map, where the player is (see [`crate::hud`] and [`crate::minimap`]).
     pub show_fps: bool,
     pub show_resolution: bool,
+    pub show_antialiasing: bool,
+    pub show_textures: bool,
     pub show_coordinates: bool,
     /// Whether the sea is drawn as in *The Wind Waker* (flat cartoon blues
     /// with waves rolling in), as it always is on Loop Island; otherwise it
@@ -385,6 +388,8 @@ impl Default for Settings {
             force_performance: ForcePerformance::Off,
             show_fps: true,
             show_resolution: false,
+            show_antialiasing: false,
+            show_textures: false,
             show_coordinates: false,
             cartoon_water: false,
             frame_latency: DEFAULT_FRAME_LATENCY,
@@ -1929,6 +1934,7 @@ mod tests {
         // the sea mirroring, not the cartoon one.
         assert_eq!(fresh.force_performance, ForcePerformance::Off);
         assert!(fresh.show_fps && !fresh.show_resolution && !fresh.show_coordinates);
+        assert!(!fresh.show_antialiasing && !fresh.show_textures);
         assert!(!fresh.cartoon_water);
         // The performance mode on, as saved before: forced to 60 fps; off,
         // nothing forced; and once saved again, as chosen.
