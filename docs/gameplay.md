@@ -177,7 +177,7 @@ Options that are on or off (fullscreen, the controls legend, pipelined rendering
   | Page | Option | Values | Default |
   |---|---|---|---|
   | Stick | "Turn limit with speed" | off, low, medium, high | medium |
-  | Stick | "Stick response" ("Respuesta del stick") | normal, linear, quadratic, square root | normal |
+  | Stick | "Stick response" ("Respuesta del stick") | normal, linear, quadratic, cubic, square root | normal |
   | Keyboard | "Turn limit with speed" | off, low, medium, high | medium |
   | Keyboard | "Sustained turn rate" | slow, medium, fast | medium |
   | Keyboard | "Return rate released" | slow, medium, fast | medium |
@@ -185,7 +185,7 @@ Options that are on or off (fullscreen, the controls legend, pipelined rendering
 
   The turn-limit levels apply a share of the speed-dependent limit described under [Steering](#steering): off is no limit, low a third, medium two thirds and high the whole limit (at top speed, holding the input gives 80 % of full lock). The rates scale how fast keyboard and D-pad steering builds up while a key is held (slow is half as fast as fast, medium three quarters), how fast it returns to centre once released (medium is half as fast as fast, slow a third), and how fast the bike and the rider swing over to the other side when the other key is pressed while turning: fast as always; medium at 60 % of that speed and slow at 35 %, both the bike's lean and the rider's body hanging off. The turn itself changes sides at once whatever the rate, so the bike's course is the same: only the swing is slower. With the stick nothing changes.
 
-  The stick response is the curve from how far the stick is pushed to how much the bike turns and leans. Past the stick's dead zone (8 % of its travel) the travel is raised to a power: normal, the curve the game always had, to 1.35; linear to 1, so the bike turns as far as the stick is pushed; quadratic to 2; and square root to 0.5. Every curve turns fully with the stick all the way over: they differ near the middle. With the stick a third of the way over (30 %), normal turns 15 % of what it can, linear 24 %, quadratic 6 % (the finest, for lively sticks) and square root 49 % (the liveliest). How quickly the steering follows the stick does not change.
+  The stick response is the curve from how far the stick is pushed to how much the bike turns and leans. Past the stick's dead zone (8 % of its travel) the travel is raised to a power: normal, the curve the game always had, to 1.35; linear to 1, so the bike turns as far as the stick is pushed; quadratic to 2; cubic to 3; and square root to 0.5. Every curve turns fully with the stick all the way over: they differ near the middle. With the stick a third of the way over (30 %), normal turns 15 % of what it can, linear 24 %, quadratic 6 %, cubic 1.4 % (the finest, for the liveliest sticks) and square root 49 % (the liveliest). How quickly the steering follows the stick does not change.
 - **Sound.** "FX Volume" and "Music Volume", from 0 to 100 % in steps of 10 (80 % by default), and the music on or off. 80 % is the balance found by ear: the effects at a fifth and the music at nine tenths of the scale the game used before. Volumes saved with that older scale are not carried over: they start again at 80 %.
 - **Graphics.**
   - **Fullscreen.** At any time, Cmd+Enter on macOS or Alt+Enter on Windows and Linux switches to fullscreen and back. The change is saved as if you had picked it here.

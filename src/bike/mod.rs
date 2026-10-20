@@ -2515,6 +2515,7 @@ mod tests {
             StickCurve::Linear,
             StickCurve::Normal,
             StickCurve::Quadratic,
+            StickCurve::Cubic,
         ];
         for curve in curves {
             assert_eq!(stick_steer(0.05, curve), 0.0, "{curve:?}: its dead zone");

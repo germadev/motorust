@@ -85,16 +85,19 @@ pub enum StickCurve {
     Normal,
     /// As far as the stick is pushed.
     Linear,
-    /// The square of it: finest near the middle, for lively sticks.
+    /// The square of it: finer near the middle, for lively sticks.
     Quadratic,
+    /// The cube of it: finest near the middle, for the liveliest sticks.
+    Cubic,
     /// The square root of it: liveliest near the middle.
     SquareRoot,
 }
 
-const STICK_CURVES: [StickCurve; 4] = [
+const STICK_CURVES: [StickCurve; 5] = [
     StickCurve::Normal,
     StickCurve::Linear,
     StickCurve::Quadratic,
+    StickCurve::Cubic,
     StickCurve::SquareRoot,
 ];
 
@@ -106,6 +109,7 @@ impl StickCurve {
             StickCurve::Normal => 1.35,
             StickCurve::Linear => 1.0,
             StickCurve::Quadratic => 2.0,
+            StickCurve::Cubic => 3.0,
             StickCurve::SquareRoot => 0.5,
         }
     }
@@ -116,12 +120,14 @@ impl StickCurve {
                 StickCurve::Normal => "normal",
                 StickCurve::Linear => "lineal",
                 StickCurve::Quadratic => "cuadrática",
+                StickCurve::Cubic => "cúbica",
                 StickCurve::SquareRoot => "raíz cuadrada",
             },
             Language::English => match self {
                 StickCurve::Normal => "normal",
                 StickCurve::Linear => "linear",
                 StickCurve::Quadratic => "quadratic",
+                StickCurve::Cubic => "cubic",
                 StickCurve::SquareRoot => "square root",
             },
         }
