@@ -1372,6 +1372,50 @@ mod tests {
     }
 
     #[test]
+    fn the_buildings_stand_on_their_ground_not_buried_in_it() {
+        // The ground round a building, as far out as most of its walls,
+        // rises over its foot by no more than a fifth of its height: the
+        // ruins on Weathertop's summit, not in the bank under it. (The seat
+        // of seeing is set into the slope of Amon Hen behind it.)
+        let pack = pack();
+        let buildings = [
+            MiddleEarthModel::WeathertopRuin,
+            MiddleEarthModel::StoneTrolls,
+            MiddleEarthModel::PrancingPony,
+            MiddleEarthModel::GreenDragon,
+            MiddleEarthModel::LastHomelyHouse,
+            MiddleEarthModel::ElvenTower,
+            MiddleEarthModel::Gazebo,
+        ];
+        for (circuit, track, terrain) in &in_middle_earth() {
+            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            for prop in middle_earth
+                .props
+                .iter()
+                .filter(|p| buildings.contains(&p.model))
+            {
+                let (low, high) = bounds(piece(&pack, name(prop.model)));
+                let reach = (high.x - low.x).max(high.z - low.z) / 2.0;
+                let (position, _) = spot(track, prop);
+                let foot = foot(track, terrain, prop, reach);
+                let over = (0..16)
+                    .map(|k| {
+                        let turn = k as f32 * std::f32::consts::TAU / 16.0;
+                        let at = position + Vec2::from_angle(turn) * 0.8 * reach;
+                        terrain.height(at) - foot
+                    })
+                    .fold(f32::MIN, f32::max);
+                assert!(
+                    over < 0.2 * (high.y - low.y),
+                    "{}: {:?} buried {over:.1} m",
+                    circuit.name,
+                    prop.model
+                );
+            }
+        }
+    }
+
+    #[test]
     fn every_prop_is_in_the_pack_on_the_ground_and_light() {
         let pack = pack();
         for name in MODELS
@@ -1727,13 +1771,15 @@ mod tests {
             // lights from behind as the riders come down it: each in the
             // full light of a glow, which falls on its front, and in a
             // sunbeam's, down from the sky onto it; and in a sunbeam's, the
-            // seat of seeing on Amon Hen and the ruins on Weathertop.
+            // seat of seeing on Amon Hen, the ruins on Weathertop and the
+            // stone trolls.
             let halls = [
                 MiddleEarthModel::Gazebo,
                 MiddleEarthModel::LastHomelyHouse,
                 MiddleEarthModel::ElvenTower,
                 MiddleEarthModel::AmonHenSeat,
                 MiddleEarthModel::WeathertopRuin,
+                MiddleEarthModel::StoneTrolls,
             ];
             let fronts = &halls[..3];
             for prop in middle_earth

@@ -30,7 +30,7 @@
 //!    again.
 //! 10. Lothlórien: where the road splits three ways, the lap snaking
 //!     between a way to the left over a hump and one to the right through a
-//!     dip.
+//!     dip, all of them up and down, high over the land.
 //! 11. The Anduin: down to the river, along its gorge in esses, and west
 //!     down its middle on a causeway, narrower than the road, in a sweep to
 //!     the right and the left between the two kings of the Argonath.
@@ -607,8 +607,8 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             // halls, the pavilion, the Last Homely House and the tower, a
             // sunbeam down from the sky through the clouds, leaning towards
             // the riders, its shaft showing in the air, spreading up into the
-            // sky; and diffused ones on the seat of seeing on Amon Hen and on
-            // the ruins of Amon Sûl.
+            // sky; diffused ones on the seat of seeing on Amon Hen and on
+            // the ruins of Amon Sûl; and one on the stone trolls.
             glows: &[
                 Glow {
                     from: Vec3::new(1549.2, 133.2, -93.5),
@@ -670,12 +670,23 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     shaft: Some(AMON_HEN_SHAFT),
                 },
                 Glow {
-                    from: Vec3::new(1213.3, 218.6, -718.3),
-                    to: Vec3::new(1271.7, 82.6, -693.7),
+                    from: Vec3::new(1213.3, 218.6, -694.3),
+                    to: Vec3::new(1271.7, 82.6, -669.7),
                     illuminance: DIFFUSED_SUNBEAM,
                     color: SUNBEAM_LIGHT,
                     angle: 0.12,
                     shaft: Some(DIFFUSED_SHAFT),
+                },
+                // And one down through the dark trees of the Trollshaws onto
+                // the trolls turned to stone, leaning over the road towards
+                // the riders coming down at them.
+                Glow {
+                    from: Vec3::new(1494.5, 166.0, -691.1),
+                    to: Vec3::new(1545.3, 30.0, -653.7),
+                    illuminance: SUNBEAM,
+                    color: SUNBEAM_LIGHT,
+                    angle: 0.095,
+                    shaft: Some(SUNBEAM_SHAFT),
                 },
             ],
             // At the top of the pass, two arches of rock out of the cliff
@@ -801,9 +812,10 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     by_road(MiddleEarthModel::BreeHouseB, 1233.1, -16.0).turned(0.79),
     by_road(MiddleEarthModel::BreeHouseA, 1247.1, -24.0).turned(0.79),
     by_road(MiddleEarthModel::BreeHouseB, 1305.1, -16.0).turned(0.79),
-    // Weathertop: the ring of ruins of Amon Sûl beside the top straight, on
-    // the side of the summit, and broken arches either side of the road.
-    by_road(MiddleEarthModel::WeathertopRuin, 1813.1, -38.0).turned(0.79),
+    // Weathertop: the ring of ruins of Amon Sûl up on the summit, over the
+    // bank beside the top straight (on its own level ground, see
+    // `KNOLLS`), and broken arches either side of the road.
+    by_road(MiddleEarthModel::WeathertopRuin, 1813.1, -62.0).turned(0.79),
     by_road(MiddleEarthModel::RuinArch, 1765.1, 16.0).turned(-0.79),
     by_road(MiddleEarthModel::RuinArch, 1805.1, -16.0).turned(0.79),
     // The Trollshaws: the trolls turned to stone on the outside of the
@@ -866,7 +878,7 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
 /// the road, raised 1.3 m over the ground there, so that the walls do not
 /// hide their feet, and the gardens before the hobbit holes, level with
 /// their doors: their middles, radii and heights (m).
-const KNOLLS: [Terrace; 17] = [
+const KNOLLS: [Terrace; 18] = [
     // A hobbit hole's doorstep, cut into the hill.
     garden(261.1, -446.4, 3.0, 8.9),
     // A hobbit hole's doorstep, cut into the hill.
@@ -895,6 +907,9 @@ const KNOLLS: [Terrace; 17] = [
     knoll(899.8, -450.4, 9.0, 9.9),
     // The stone trolls.
     knoll(1545.1, -654.1, 8.0, 25.9),
+    // The ruins of Amon Sûl, on Weathertop's summit, 25 m over the road:
+    // the summit levelled under them, so they stand on it whole.
+    knoll(1271.7, -669.7, 18.0, 75.0),
     // Rivendell's halls, one over another: the pavilion to the left of the
     // others, 4 m over the road, the Last Homely House on a ledge 10 m over
     // it, and the tower on a ledge at the edge of the rock behind, 16 m
@@ -1357,10 +1372,11 @@ const CONTROL_POINTS: [Vec2; 197] = [
 ];
 
 /// Up Weathertop, 42.7 m, and down to the ford; up Caradhras, 32 m, and down
-/// round it to the mines, 38 m under the pass; up through Moria and down
-/// through Lothlórien to the Anduin, at the water's level between the kings;
+/// round it to the mines, 38 m under the pass; up through Moria, up and
+/// down through Lothlórien, and down to the Anduin, at the water's level
+/// between the kings;
 /// over Amon Hen and down to the line. Up and down at up to 12 %.
-const ELEVATION: [(f32, f32); 85] = [
+const ELEVATION: [(f32, f32); 89] = [
     // The start straight through the wood, high over Hobbiton, over a
     // lower crest where the bike flies; down the long sweep into Hobbiton
     // at up to 9.4 % (drawn as a grade, its changes long and gentle) to the
@@ -1452,11 +1468,19 @@ const ELEVATION: [(f32, f32); 85] = [
     (3881.1, 9.0),
     (4053.1, 20.0),
     (4133.1, 24.0),
-    // Down steadily through Lothlórien's split (as Ghost Island's castle's).
+    // Up through Lothlórien's split, high over the land, to its top 5 m
+    // over where it came out of Moria, and down again: gently (at most
+    // 4.5 %), its top over the dip of the way to the right, so that the
+    // ways' humps and dips do not add up into a climb too steep or a crest
+    // that throws the bikes in the bends. Then down the Anduin's gorge to
+    // the water, and the causeway, low over it.
     (4187.1, 23.5),
-    (4537.1, 11.5),
-    // Down the Anduin's gorge to the water, and the causeway, low over it.
-    (4617.1, 9.5),
+    (4280.0, 24.5),
+    (4400.0, 28.5),
+    (4480.0, 26.5),
+    (4560.0, 22.5),
+    (4640.0, 14.0),
+    (4760.0, 5.4),
     (4887.1, 1.5),
     (4957.1, -1.4),
     (5211.1, -1.4),
