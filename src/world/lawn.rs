@@ -26,14 +26,16 @@
 //! Every material drawn with the lawn has it (the ground, the banks, the
 //! hedges): the wide lawn in place of the lawn in the material itself
 //! ([`tile`]), the stochastic one in a material of its own
-//! ([`LawnMaterial`]) in place of the material of each thing drawn with
-//! it, given back when the tiling changes ([`Lawn`]).
+//! ([`LawnMaterial`]) on a twin of each thing drawn with it, drawn in its
+//! place while it is hidden, gone when the tiling changes ([`Lawn`]).
 
 use std::collections::HashMap;
 
 use bevy::{
     asset::RenderAssetUsages,
+    camera::visibility::RenderLayers,
     image::ImageAddressMode,
+    light::{NotShadowCaster, NotShadowReceiver},
     pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
     render::render_resource::{AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat},
@@ -120,10 +122,18 @@ impl MaterialExtension for StochasticLawn {
     }
 }
 
-/// On a thing drawn with the stochastic lawn: the material it had, given
-/// back when the tiling changes.
+/// On a thing drawn with the lawn, hidden while its twin is drawn with the
+/// stochastic lawn in its place (see [`draw_stochastic`]): the twin, and
+/// how it was seen, to be seen so again when the tiling changes.
 #[derive(Component, Clone, Debug)]
-pub struct Lawn(pub Handle<StandardMaterial>);
+pub struct Lawn {
+    pub twin: Entity,
+    pub visibility: Visibility,
+}
+
+/// The twin of a thing drawn with the lawn, drawn with the stochastic lawn.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LawnTwin;
 
 /// The lawn `lawn` (8-bit sRGB, square, its first level read) [`WIDE`]
 /// times as wide each way, put together from pieces of it (see the
@@ -420,12 +430,33 @@ fn look(textures: &WorldTextures, normals: bool) -> LawnLook {
     }
 }
 
+/// What a thing drawn with the lawn is drawn as, to be drawn again the
+/// same with the stochastic lawn.
+type Drawn<'a> = (
+    Entity,
+    &'a MeshMaterial3d<StandardMaterial>,
+    &'a Mesh3d,
+    &'a Transform,
+    Option<&'a Visibility>,
+    Option<&'a ChildOf>,
+    Option<&'a RenderLayers>,
+    Has<NotShadowCaster>,
+    Has<NotShadowReceiver>,
+);
+
 /// The things drawn with the lawn drawn with the stochastic one when the
 /// tiling says so (those put in the world this frame, or all of them when
-/// it changes to it), and given their own material back when it changes
-/// from it; the stochastic lawn's materials with the relief shown (its
-/// normal map, or none: dropped at speed, or none chosen).
-#[allow(clippy::too_many_arguments)]
+/// it changes to it), and as they were when it changes from it; the
+/// stochastic lawn's materials with the relief shown (its normal map, or
+/// none: dropped at speed, or none chosen).
+///
+/// Each is not given the other material itself: Bevy (0.19) draws a thing
+/// whose material changes kind for a frame with the new material's
+/// bindings in the old one's pipeline, and the GPU stops the game. A twin
+/// is drawn in its place instead ([`LawnTwin`]: the same mesh where it is,
+/// beside it under the same parent), and it is hidden; when the tiling
+/// changes back, the twin goes and it shows again ([`Lawn`]).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn draw_stochastic(
     mut commands: Commands,
     settings: Option<Res<Settings>>,
@@ -434,11 +465,15 @@ fn draw_stochastic(
     standard: Res<Assets<StandardMaterial>>,
     mut lawns: ResMut<Assets<LawnMaterial>>,
     new: Query<
-        (Entity, &MeshMaterial3d<StandardMaterial>),
-        Changed<MeshMaterial3d<StandardMaterial>>,
+        Drawn,
+        (
+            Changed<MeshMaterial3d<StandardMaterial>>,
+            Without<Lawn>,
+            Without<LawnTwin>,
+        ),
     >,
-    all: Query<(Entity, &MeshMaterial3d<StandardMaterial>)>,
-    drawn: Query<(Entity, &Lawn)>,
+    all: Query<Drawn, (Without<Lawn>, Without<LawnTwin>)>,
+    twinned: Query<(Entity, &Lawn)>,
     mut given: Local<Option<(GrassTiling, ReliefShown)>>,
     mut made: Local<HashMap<AssetId<StandardMaterial>, Handle<LawnMaterial>>>,
 ) {
@@ -452,11 +487,14 @@ fn draw_stochastic(
     if tiling != GrassTiling::Stochastic {
         made.clear();
         if was == Some(GrassTiling::Stochastic) {
-            for (entity, Lawn(material)) in &drawn {
+            for (entity, lawn) in &twinned {
+                if let Ok(mut twin) = commands.get_entity(lawn.twin) {
+                    twin.despawn();
+                }
                 commands
                     .entity(entity)
-                    .remove::<(MeshMaterial3d<LawnMaterial>, Lawn)>()
-                    .insert(MeshMaterial3d(material.clone()));
+                    .remove::<Lawn>()
+                    .insert(lawn.visibility);
             }
         }
         return;
@@ -473,31 +511,48 @@ fn draw_stochastic(
     }
     // Those of materials gone are forgotten.
     made.retain(|id, _| standard.contains(*id));
-    let candidates: Vec<(Entity, Handle<StandardMaterial>)> =
-        if was != Some(GrassTiling::Stochastic) {
-            all.iter()
-                .map(|(entity, material)| (entity, material.0.clone()))
-                .collect()
-        } else {
-            new.iter()
-                .map(|(entity, material)| (entity, material.0.clone()))
-                .collect()
-        };
-    for (entity, handle) in candidates {
-        let Some(material) = standard.get(&handle) else {
+    let candidates = if was != Some(GrassTiling::Stochastic) {
+        all.iter().collect::<Vec<_>>()
+    } else {
+        new.iter().collect::<Vec<_>>()
+    };
+    for (entity, material, mesh, transform, visibility, parent, layers, casts_none, takes_none) in
+        candidates
+    {
+        let Some(own) = standard.get(&material.0) else {
             continue;
         };
-        if material.base_color_texture.as_ref() != Some(&textures.grass) {
+        let visibility = visibility.copied().unwrap_or_default();
+        if own.base_color_texture.as_ref() != Some(&textures.grass) {
             continue;
         }
         let lawn = made
-            .entry(handle.id())
-            .or_insert_with(|| lawns.add(stochastic(material, &textures, map, relieved)))
+            .entry(material.0.id())
+            .or_insert_with(|| lawns.add(stochastic(own, &textures, map, relieved)))
             .clone();
+        let mut twin = commands.spawn((
+            Mesh3d(mesh.0.clone()),
+            MeshMaterial3d(lawn),
+            *transform,
+            visibility,
+            LawnTwin,
+        ));
+        if let Some(parent) = parent {
+            twin.insert(ChildOf(parent.parent()));
+        }
+        if let Some(layers) = layers {
+            twin.insert(layers.clone());
+        }
+        if casts_none {
+            twin.insert(NotShadowCaster);
+        }
+        if takes_none {
+            twin.insert(NotShadowReceiver);
+        }
+        let twin = twin.id();
         commands
             .entity(entity)
-            .remove::<MeshMaterial3d<StandardMaterial>>()
-            .insert((MeshMaterial3d(lawn), Lawn(handle)));
+            .insert((Lawn { twin, visibility }, Visibility::Hidden));
     }
 }
 
@@ -642,5 +697,95 @@ mod tests {
             &wide,
             GrassTiling::Wide
         ));
+    }
+
+    #[test]
+    fn the_stochastic_lawn_is_drawn_on_twins_that_go_when_the_tiling_changes() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<LawnMaterial>>()
+            .init_resource::<ReliefShown>()
+            .insert_resource(Settings {
+                grass_tiling: GrassTiling::Stochastic,
+                ..default()
+            })
+            .add_systems(Update, draw_stochastic);
+        let textures = WorldTextures::from_world(app.world_mut());
+        let grass = textures.grass.clone();
+        let rock = textures.rock.clone();
+        app.insert_resource(textures);
+        let mut material = |texture: Handle<Image>| {
+            app.world_mut()
+                .resource_mut::<Assets<StandardMaterial>>()
+                .add(StandardMaterial {
+                    base_color_texture: Some(texture),
+                    ..default()
+                })
+        };
+        let (lawn, stone) = (material(grass), material(rock));
+        let parent = app.world_mut().spawn(Transform::default()).id();
+        let at = Transform::from_xyz(1.0, 2.0, 3.0);
+        let ground = app
+            .world_mut()
+            .spawn((
+                Mesh3d(Handle::default()),
+                MeshMaterial3d(lawn.clone()),
+                at,
+                ChildOf(parent),
+            ))
+            .id();
+        let cliff = app
+            .world_mut()
+            .spawn((Mesh3d(Handle::default()), MeshMaterial3d(stone)))
+            .id();
+        let twins = |app: &mut App| {
+            app.world_mut()
+                .query_filtered::<(Entity, &ChildOf, &Transform, &Visibility), With<LawnTwin>>()
+                .iter(app.world())
+                .map(|(twin, parent, at, seen)| (twin, parent.parent(), *at, *seen))
+                .collect::<Vec<_>>()
+        };
+        app.update();
+        // A twin drawn with the stochastic lawn where the ground is, under
+        // the same parent; the ground hidden, its material as it was.
+        let made = twins(&mut app);
+        assert_eq!(made.len(), 1);
+        let (twin, under, place, seen) = made[0];
+        assert_eq!((under, place, seen), (parent, at, Visibility::Inherited));
+        assert!(
+            app.world()
+                .get::<MeshMaterial3d<LawnMaterial>>(twin)
+                .is_some()
+        );
+        assert_eq!(
+            app.world().get::<Visibility>(ground),
+            Some(&Visibility::Hidden)
+        );
+        assert_eq!(
+            app.world()
+                .get::<MeshMaterial3d<StandardMaterial>>(ground)
+                .map(|m| m.0.clone()),
+            Some(lawn)
+        );
+        // Not the rock.
+        assert!(app.world().get::<Lawn>(cliff).is_none());
+        // Once more: no second twin.
+        app.update();
+        assert_eq!(twins(&mut app).len(), 1);
+        // Back to the lawn tiled: the twin gone, the ground seen again.
+        app.world_mut().resource_mut::<Settings>().grass_tiling = GrassTiling::Plain;
+        app.update();
+        assert!(twins(&mut app).is_empty());
+        assert!(app.world().get_entity(twin).is_err());
+        assert_eq!(
+            app.world().get::<Visibility>(ground),
+            Some(&Visibility::Inherited)
+        );
+        assert!(app.world().get::<Lawn>(ground).is_none());
+        // And stochastic again.
+        app.world_mut().resource_mut::<Settings>().grass_tiling = GrassTiling::Stochastic;
+        app.update();
+        assert_eq!(twins(&mut app).len(), 1);
     }
 }
