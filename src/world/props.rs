@@ -80,6 +80,9 @@ pub fn spawn_props(
     occupied.extend(super::middle_earth::spawn_middle_earth(
         world, track, terrain, scenery, middle, assets,
     ));
+    occupied.extend(super::toy_store::spawn_toy_store(
+        world, track, terrain, scenery, assets,
+    ));
     let houses = place_houses(track, terrain, &scenery.houses, &occupied);
     for house in &houses {
         spawn_house(

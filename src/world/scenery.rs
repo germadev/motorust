@@ -223,6 +223,8 @@ pub enum Soil {
     /// Grey lunar regolith and basaltic crater rock; its tunnels are
     /// pressurized space-station corridors lit by cool white-cyan strips.
     Lunar,
+    /// Parquet wood showroom floor of Toy Store GP.
+    ToyStore,
 }
 
 /// The light of a track: a summer day; a clear Mediterranean summer
@@ -241,6 +243,8 @@ pub enum SkyStyle {
     /// Lord of the Rings* was shot.
     HighCountry,
     Space,
+    /// Warm, spotlight-lit interior of a toy store with no open sky.
+    ToyStore,
 }
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
@@ -531,6 +535,9 @@ pub struct Scenery {
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
     pub space: Option<Space>,
+    /// The interior setting and giant toys of a toy store, if any: see
+    /// [`ToyStore`].
+    pub toy_store: Option<ToyStore>,
 }
 
 impl Scenery {
@@ -1377,6 +1384,181 @@ pub struct StationArch {
 pub struct LunarBoulders {
     pub max: usize,
     pub spans: &'static [Span],
+}
+
+/// The setting of a giant toy store around the track, seen from the perspective
+/// of miniature toy motorbikes racing on shop displays, counters, and floors.
+pub struct ToyStore {
+    /// Finish line gantry built from giant AA batteries with brass terminals.
+    pub battery_gantries: &'static [BatteryGantry],
+    /// Cash register with oversized keys and backlit display on the counter.
+    pub cash_registers: &'static [CashRegister],
+    /// Barcode scanner projecting a crimson laser beam line over the track.
+    pub barcode_scanners: &'static [BarcodeScanner],
+    /// Open comic book ramps with folded pages forming jump crests.
+    pub comic_ramps: &'static [ComicRamp],
+    /// Giant cuddly plush teddy bears seated beside the road.
+    pub teddy_bears: &'static [TeddyBear],
+    /// Wooden / electric toy train railway loop with steam engine and wagons.
+    pub toy_trains: &'static [ToyTrain],
+    /// Skyscraper towers built from primary-coloured interlocking toy blocks.
+    pub block_towers: &'static [BlockTower],
+    /// Giant game dice with recessed pips.
+    pub dice: &'static [Die],
+    /// House of cards standing beside the circuit.
+    pub card_houses: &'static [CardHouse],
+    /// Overhead indoor ceiling light fixtures, fluorescent tubes and spotlights.
+    pub ceiling_lights: &'static [CeilingLight],
+    /// Perimeter toy store shelves with stacked toy boxes.
+    pub shelves: &'static [ToyShelf],
+    /// Royal guard nutcracker soldiers standing at attention along the track.
+    pub nutcrackers: &'static [Nutcracker],
+    /// Russian nesting dolls (matryoshka) in tiered family groupings.
+    pub matryoshkas: &'static [Matryoshka],
+    /// Wooden toy sailboats with tall masts and crisp white sails.
+    pub sailboats: &'static [ToySailboat],
+    /// Rainbow wooden toy xylophones with colored tone bars and mallets.
+    pub xylophones: &'static [Xylophone],
+    /// Wooden stacking ring pyramids with graduated colorful donut rings.
+    pub stacking_pyramids: &'static [StackingPyramid],
+    /// Vintage wind-up tin toy robots with chest dials and wind-up keys.
+    pub tin_robots: &'static [TinRobot],
+    /// Medieval toy castle fortresses with crenellated turrets and flags.
+    pub toy_castles: &'static [ToyCastle],
+    /// Giant green toy dinosaur suspended from the ceiling by wire.
+    pub suspended_dinos: &'static [SuspendedDino],
+    /// Wooden toy cars parked beside the track and on furniture.
+    pub toy_cars: &'static [ToyCar],
+    /// Multi-tiered round display tables showcasing toys.
+    pub display_tables: &'static [DisplayTable],
+}
+
+pub struct BatteryGantry {
+    pub along: f32,
+    pub height: f32,
+}
+
+pub struct CashRegister {
+    pub position: Vec2,
+    pub heading: f32,
+}
+
+pub struct BarcodeScanner {
+    pub along: f32,
+    pub side: Side,
+}
+
+pub struct ComicRamp {
+    pub along: f32,
+    pub width: f32,
+}
+
+pub struct TeddyBear {
+    pub position: Vec2,
+    pub heading: f32,
+    pub scale: f32,
+}
+
+pub struct ToyTrain {
+    pub center: Vec2,
+    pub radius: f32,
+}
+
+pub struct BlockTower {
+    pub position: Vec2,
+    pub height: f32,
+    pub color_primary: Color,
+    pub color_secondary: Color,
+}
+
+pub struct Die {
+    pub position: Vec2,
+    pub heading: f32,
+    pub size: f32,
+    pub roll: u8,
+}
+
+pub struct CardHouse {
+    pub position: Vec2,
+    pub heading: f32,
+    pub stories: u32,
+}
+
+pub struct CeilingLight {
+    pub position: Vec2,
+    pub height: f32,
+    pub warm: bool,
+}
+
+pub struct ToyShelf {
+    pub center: Vec2,
+    pub heading: f32,
+    pub length: f32,
+    pub height: f32,
+}
+
+pub struct Nutcracker {
+    pub position: Vec2,
+    pub heading: f32,
+    pub height: f32,
+}
+
+pub struct Matryoshka {
+    pub position: Vec2,
+    pub heading: f32,
+    pub scale: f32,
+}
+
+pub struct ToySailboat {
+    pub position: Vec2,
+    pub heading: f32,
+    pub length: f32,
+    pub hull_color: Color,
+}
+
+pub struct Xylophone {
+    pub position: Vec2,
+    pub heading: f32,
+    pub length: f32,
+}
+
+pub struct StackingPyramid {
+    pub position: Vec2,
+    pub height: f32,
+}
+
+pub struct TinRobot {
+    pub position: Vec2,
+    pub heading: f32,
+    pub height: f32,
+    pub color: Color,
+}
+
+pub struct ToyCastle {
+    pub position: Vec2,
+    pub heading: f32,
+    pub scale: f32,
+}
+
+pub struct SuspendedDino {
+    pub position: Vec2,
+    pub height: f32,
+    pub heading: f32,
+    pub scale: f32,
+}
+
+pub struct ToyCar {
+    pub position: Vec2,
+    pub heading: f32,
+    pub length: f32,
+    pub color: Color,
+}
+
+pub struct DisplayTable {
+    pub position: Vec2,
+    pub radius: f32,
+    pub height: f32,
+    pub tiers: usize,
 }
 
 #[cfg(test)]

@@ -146,6 +146,11 @@ pub fn structure_pieces(
                 perceptual_roughness: 0.9,
                 ..default()
             },
+            Soil::ToyStore => StandardMaterial {
+                base_color_texture: Some(textures.planks.clone()),
+                perceptual_roughness: 0.6,
+                ..default()
+            },
         };
         // Warm and lit by the lamps, as in Moto Racer; through checkerboard
         // earth, a cave of it; in a lunar station, pressurized metallic hull
@@ -170,6 +175,11 @@ pub fn structure_pieces(
                 base_color_texture: Some(textures.soil.clone()),
                 emissive: LinearRgba::rgb(0.1, 0.06, 0.02),
                 perceptual_roughness: 0.9,
+                ..default()
+            },
+            Soil::ToyStore => StandardMaterial {
+                base_color_texture: Some(textures.planks.clone()),
+                perceptual_roughness: 0.6,
                 ..default()
             },
         };

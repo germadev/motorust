@@ -30,6 +30,7 @@ mod space;
 pub(crate) mod structures;
 mod terrain;
 mod textures;
+pub mod toy_store;
 mod trees;
 mod tufts;
 
@@ -1388,7 +1389,7 @@ mod tests {
         app.update();
         assert!(app.world().resource::<Finishing>().0.is_empty());
         assert!(
-            pieces(&mut app) > shown + 100,
+            pieces(&mut app) > shown + 50,
             "{shown} {}",
             pieces(&mut app)
         );

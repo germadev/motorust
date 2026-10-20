@@ -294,6 +294,33 @@ impl Palette {
                     highlight_saturation: 0.85,
                 },
             },
+            // The indoor ceiling of a toy store: deep charcoal-indigo overhead
+            // between the lighting tracks, subtle warm wall/shelf tone at the
+            // horizon; bright warm-white spotlight illumination with rich
+            // saturated ambient lighting; zero clouds and crisp toy grading.
+            SkyStyle::ToyStore => Self {
+                zenith: Color::srgb(0.04, 0.05, 0.16),
+                above_horizon: Color::srgb(0.16, 0.16, 0.22),
+                horizon: Color::srgb(0.24, 0.21, 0.20),
+                glow: 0.2,
+                glow_color: Color::srgb(1.0, 0.95, 0.8),
+                sun_azimuth: 0.5 * std::f32::consts::PI,
+                sun_elevation: 0.85,
+                sun_disc: Color::srgb(1.0, 0.98, 0.92),
+                sunlight: Color::srgb(1.0, 0.96, 0.90),
+                sunlight_strength: 1.2,
+                ambient: Color::srgb(0.68, 0.66, 0.65),
+                ambient_brightness: 540.0,
+                clouds: Color::srgba(0.8, 0.8, 0.8, 0.0),
+                fog: (1200.0, 4800.0),
+                grade: Grade {
+                    saturation: 1.15,
+                    contrast: 1.12,
+                    exposure: 0.12,
+                    warmth: 0.008,
+                    highlight_saturation: 1.05,
+                },
+            },
         }
     }
 
@@ -1805,6 +1832,7 @@ mod tests {
             SkyStyle::Dusk,
             SkyStyle::HighCountry,
             SkyStyle::Space,
+            SkyStyle::ToyStore,
         ] {
             let palette = Palette::of(style);
             // Away from the sun, the horizon is the colour of the fog.

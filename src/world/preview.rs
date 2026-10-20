@@ -228,7 +228,10 @@ mod tests {
         // Ghost Island, the longest to prepare: its grid of heights under half
         // the whole circuit's (fine round the start, and across the grid in
         // its rows and columns there), its roads only near the start.
-        let index = CIRCUITS.len() - 1;
+        let index = CIRCUITS
+            .iter()
+            .position(|c| c.name == "Ghost Island")
+            .unwrap_or(0);
         let look = prepare_preview(index, &textures, Urgency::Now);
         let whole = Terrain::on_threads(
             &Track::new(&CIRCUITS[index].layout),

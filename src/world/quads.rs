@@ -85,7 +85,11 @@ impl MeshBuilder {
     /// `width` de ancho y `height` de alto (de canto, hacia arriba si la viga
     /// no es vertical), con sus dos extremos cerrados.
     pub fn beam(&mut self, a: Vec3, b: Vec3, width: f32, height: f32, color: Color) {
-        let along = (b - a).normalize_or_zero();
+        let delta = b - a;
+        if delta.length_squared() < 1e-6 {
+            return;
+        }
+        let along = delta.normalize();
         let side = if along.y.abs() > 0.99 {
             Vec3::X
         } else {
@@ -146,6 +150,13 @@ impl MeshBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn degenerate_beams_are_safely_ignored() {
+        let mut builder = MeshBuilder::default();
+        builder.beam(Vec3::ONE, Vec3::ONE, 1.0, 1.0, Color::WHITE);
+        assert!(builder.is_empty());
+    }
 
     #[test]
     fn beams_are_closed_boxes_facing_out() {

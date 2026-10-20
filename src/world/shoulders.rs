@@ -53,7 +53,8 @@ fn road_shoulders(
             let excavation = tunnel && scenery.excavation().is_some();
             let paved = road == 0
                 && ((tunnel && !excavation)
-                    || scenery.bridges.iter().any(|bridge| in_span(&bridge.span)));
+                    || scenery.bridges.iter().any(|bridge| in_span(&bridge.span))
+                    || scenery.toy_store.is_some());
             [1.0, -1.0].map(|side| {
                 if paved {
                     return Surface::Paved;
@@ -83,6 +84,7 @@ fn road_shoulders(
 /// `soil` (see [`super::terrain::spawn_terrain`]).
 fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
     match (soil, ground) {
+        (Soil::ToyStore, _) => Surface::Paved,
         // In a desert canyon the flat ground is dry, red-brown earth, and
         // by the river damp sand.
         (Soil::Mine, Ground::Grass | Ground::Rock) => Surface::Dirt(Dust::Desert),

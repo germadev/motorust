@@ -519,6 +519,7 @@ impl Terrain {
     pub fn ground_color(&self, ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
         let earth = self.soil == Soil::Lunar && is_earth_realm(Vec2::new(p.x, p.z));
         match (self.soil, ground) {
+            (Soil::ToyStore, _) => Color::srgb(0.85, 0.72, 0.55).to_linear().to_f32_array(),
             (Soil::Mine, _) => canyon_vertex_color(ground, p, normal),
             (Soil::Lunar, _) if !earth => lunar_vertex_color(ground, p, normal),
             (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
@@ -668,6 +669,9 @@ impl Terrain {
                                         style == Realm::Earth
                                     });
                                 let color = match (self.soil, ground_type, flowers) {
+                                    (Soil::ToyStore, ..) => {
+                                        Color::srgb(0.85, 0.72, 0.55).to_linear().to_f32_array()
+                                    }
                                     (_, _, Some(kind)) => self.meadow_color(p, normal, kind),
                                     (Soil::Checkered, Ground::Rock, _) => {
                                         soil_vertex_color(p, normal)
@@ -787,7 +791,7 @@ impl Terrain {
             meadows,
         } = joined;
         let rock_tile = match self.soil {
-            Soil::Rock | Soil::Mine | Soil::Granite | Soil::Lunar => ROCK_TILE,
+            Soil::Rock | Soil::Mine | Soil::Granite | Soil::Lunar | Soil::ToyStore => ROCK_TILE,
             Soil::Checkered => SOIL_TILE,
         };
         let layers = style.map(|style| match side {
@@ -837,6 +841,7 @@ pub fn spawn_terrain(
             continue;
         }
         let (texture, roughness, reflectance) = match (ground, terrain.soil) {
+            (_, Soil::ToyStore) => (Some(&textures.planks), 0.55, 0.35),
             // Grass in flower: the lawn covered in blossoms.
             (Ground::Grass, _) if flowers.is_some() => {
                 let meadow = meadows
@@ -2127,7 +2132,9 @@ mod tests {
                 }
             }
             // Next to the rock faces, the earth comes in before the walls.
-            assert!(inside > 0, "{}", circuit.name);
+            if !circuit.scenery.cuttings.is_empty() {
+                assert!(inside > 0, "{}", circuit.name);
+            }
         }
     }
 

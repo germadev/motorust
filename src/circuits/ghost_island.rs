@@ -509,6 +509,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
             flowers: &FLOWERS,
         }),
         middle_earth: None,
+        toy_store: None,
     },
 };
 
