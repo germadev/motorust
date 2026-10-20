@@ -41,6 +41,13 @@ const FRONT_AXLE: Vec3 = Vec3::new(0.0, WHEEL_RADIUS, -0.70);
 const REAR_AXLE: Vec3 = Vec3::new(0.0, WHEEL_RADIUS, 0.68);
 /// Pivote de la dirección, arriba de la horquilla.
 const STEERING_HEAD: Vec3 = Vec3::new(0.0, 0.84, -0.50);
+/// How far a bike reaches ahead of where it stands, to the front of its
+/// front tyre (m). Every bike is built round the same wheelbase (a test
+/// holds them to it); the starting grid's boxes are drawn round it.
+pub const NOSE: f32 = -FRONT_AXLE.z + WHEEL_RADIUS;
+/// How far a bike reaches behind where it stands, to the back of its rear
+/// tyre (m).
+pub const TAIL: f32 = REAR_AXLE.z + WHEEL_RADIUS;
 
 /// Medidas de una moto que usan las animaciones: dónde están los ejes y la
 /// pipa de la dirección, cuánto miden las ruedas y dónde apoya el piloto.
@@ -1067,6 +1074,19 @@ fn steer_front(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_bike_reaches_no_further_than_its_nose_and_tail() {
+        for design in Design::ALL {
+            let geometry = design.model().map_or(STANDARD, |model| model.geometry);
+            let front = -geometry.front_axle.z + geometry.front_radius;
+            let back = geometry.rear_axle.z + geometry.rear_radius;
+            // The imported models were measured to within a few centimetres.
+            assert!(front <= NOSE + 0.03, "{design:?}: {front} m ahead");
+            assert!(back <= TAIL + 0.03, "{design:?}: {back} m behind");
+        }
+        assert!((1.9..2.1).contains(&(NOSE + TAIL)), "a bike's length");
+    }
 
     #[test]
     fn number_eight_lights_every_segment() {
