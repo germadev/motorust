@@ -25,7 +25,7 @@ use crate::geometry::{approach, forward, heading_of, smoothstep, to_world, wrap_
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
 use crate::locale::Language;
 use crate::menu::{Choice, GameState, SplitChoices};
-use crate::pause::{self, DebugOptions, TurnLimit};
+use crate::pause::{self, DebugOptions, StickCurve, TurnLimit};
 use crate::settings::{Action, Settings};
 use crate::track::{SURFACE_Y, Surface, Track};
 use crate::welcome::GameMode;
@@ -1276,9 +1276,10 @@ fn read_controller_binding(
                 let throttle = arming.filter(entity, THROTTLE, squeezed(trigger_r.max(south)));
                 let brake = arming.filter(entity, BRAKE, squeezed(trigger_l.max(west)));
 
-                let raw_steer = -stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0))
+                let stick = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0);
+                let raw_steer = -stick_steer(stick, options.stick_curve)
                     * reach_with(options.stick_limit, speed);
-                let steer = analog.update(raw_steer, options.stick_response.factor(), dt);
+                let steer = analog.update(raw_steer, dt);
 
                 let dpad_left = if gamepad.pressed(GamepadButton::DPadLeft) {
                     1.0f32
@@ -1404,7 +1405,8 @@ fn read_player_input(
             let button = |action| controls.button_value(action, gamepad);
             let p_throttle = arming.filter(entity, THROTTLE, squeezed(button(Action::Throttle)));
             let p_brake = arming.filter(entity, BRAKE, squeezed(button(Action::Brake)));
-            let p_steer = stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0));
+            let stick = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0);
+            let p_steer = stick_steer(stick, options.stick_curve);
             let digital = |action| if button(action) > 0.5 { 1.0f32 } else { 0.0f32 };
             let p_pressed: f32 = digital(Action::Left) - digital(Action::Right);
             let trigger_r = gamepad
@@ -1462,7 +1464,7 @@ fn read_player_input(
         }
 
         let raw_steer = steer * reach_with(options.stick_limit, state.speed);
-        let steer = analog_p1.update(raw_steer, options.stick_response.factor(), dt);
+        let steer = analog_p1.update(raw_steer, dt);
         let steer_direct = digital_p1.update(
             pressed.clamp(-1.0, 1.0),
             reach_with(options.keyboard_limit, state.speed),
@@ -1566,16 +1568,14 @@ impl DigitalSteer {
 
 /// Dirección suavizada del stick: al tumbar hacia la curva (`leaning_in`), avanza
 /// a un ritmo progresivo parecido a la cruceta o el teclado; al soltar o enderezar
-/// hacia el centro, recupera de inmediato para mantener toda la agilidad. Both
-/// as quickly as the stick's response chosen says (`response`, see
-/// [`pause::StickResponse`]).
+/// hacia el centro, recupera de inmediato para mantener toda la agilidad.
 #[derive(Default)]
 struct AnalogSteer {
     value: f32,
 }
 
 impl AnalogSteer {
-    fn update(&mut self, target: f32, response: f32, dt: f32) -> f32 {
+    fn update(&mut self, target: f32, dt: f32) -> f32 {
         // Al girar hacia el otro lado, aborta el giro anterior de inmediato
         // (igual que hace DigitalSteer en teclado/cruceta) para que la respuesta
         // sea instantánea.
@@ -1583,7 +1583,7 @@ impl AnalogSteer {
             self.value = 0.0;
         }
         let leaning_in = target.abs() > self.value.abs();
-        let rate = if leaning_in { 3.8 } else { 12.0 } * response;
+        let rate = if leaning_in { 3.8 } else { 12.0 };
         self.value = move_toward(self.value, target, rate * dt);
         self.value
     }
@@ -1602,13 +1602,14 @@ fn squeezed(value: f32) -> f32 {
     ((value - TRIGGER_REST) / (1.0 - TRIGGER_REST)).clamp(0.0, 1.0)
 }
 
-/// Curva de respuesta del stick: cerca del centro gira poco, para corregir
-/// la trazada con precisión, y a fondo gira todo.
-fn stick_steer(x: f32) -> f32 {
+/// Curva de respuesta del stick: nada en su zona muerta, y a fondo gira
+/// todo. In between, as the curve chosen in Options has it: normal turns
+/// a little less than the stick near the middle, to correct the line
+/// finely (see [`StickCurve`]).
+fn stick_steer(x: f32, curve: StickCurve) -> f32 {
     const DEAD_ZONE: f32 = 0.08;
-    const EXPONENT: f32 = 1.35;
     let pushed = ((x.abs() - DEAD_ZONE) / (1.0 - DEAD_ZONE)).clamp(0.0, 1.0);
-    pushed.powf(EXPONENT).copysign(x)
+    pushed.powf(curve.exponent()).copysign(x)
 }
 
 /// Con la tecla de reiniciar (R o Select en el mando, si no se han cambiado)
@@ -2138,7 +2139,7 @@ mod tests {
         let dt = 1.0 / 120.0;
         let mut frames_in = 0;
         while analog.value < 0.99 {
-            analog.update(1.0, 1.0, dt);
+            analog.update(1.0, dt);
             frames_in += 1;
         }
         let time_in = frames_in as f32 * dt;
@@ -2146,7 +2147,7 @@ mod tests {
 
         let mut frames_out = 0;
         while analog.value > 0.01 {
-            analog.update(0.0, 1.0, dt);
+            analog.update(0.0, dt);
             frames_out += 1;
         }
         let time_out = frames_out as f32 * dt;
@@ -2160,44 +2161,13 @@ mod tests {
         );
 
         // Al cambiar de lado, aborta el lado anterior y empieza de inmediato
-        analog.update(1.0, 1.0, dt);
+        analog.update(1.0, dt);
         assert!(analog.value > 0.0);
-        analog.update(-1.0, 1.0, dt);
+        analog.update(-1.0, dt);
         assert!(
             analog.value < 0.0,
             "empieza de inmediato hacia el otro lado"
         );
-    }
-
-    #[test]
-    fn a_slower_stick_response_follows_the_stick_more_slowly_never_past_it() {
-        use crate::pause::StickResponse;
-        let dt = 1.0 / 120.0;
-        // How long it takes all the way over with each response.
-        let over = |response: StickResponse| {
-            let mut analog = AnalogSteer::default();
-            let mut frames = 0;
-            while analog.value < 0.99 {
-                let value = analog.update(1.0, response.factor(), dt);
-                assert!(value <= 1.0, "never past the stick");
-                frames += 1;
-            }
-            frames as f32 * dt
-        };
-        let (fast, medium, slow) = (
-            over(StickResponse::Fast),
-            over(StickResponse::Medium),
-            over(StickResponse::Slow),
-        );
-        // Fast as it always was; the others slower, slow slowest.
-        assert!((0.2..0.4).contains(&fast), "{fast} s");
-        assert!(
-            medium > fast * 1.3 && slow > medium * 1.3,
-            "{fast} {medium} {slow}"
-        );
-        assert!(slow < 1.0, "{slow} s");
-        assert_eq!(StickResponse::Fast.next(1), StickResponse::Medium);
-        assert_eq!(StickResponse::Fast.next(-1), StickResponse::Slow);
     }
 
     #[test]
@@ -2524,6 +2494,7 @@ mod tests {
 
     #[test]
     fn stick_turns_little_near_the_center_and_fully_at_the_edge() {
+        let stick_steer = |x| stick_steer(x, StickCurve::Normal);
         assert_eq!(stick_steer(0.05), 0.0);
         assert!(stick_steer(0.3) < 0.2);
         assert!(stick_steer(-0.3) > -0.2 && stick_steer(-0.3) < 0.0);
@@ -2535,6 +2506,36 @@ mod tests {
             assert!(value >= last, "crece sin saltos");
             last = value;
         }
+    }
+
+    #[test]
+    fn every_stick_curve_turns_fully_at_the_edge_and_they_differ_near_the_middle() {
+        let curves = [
+            StickCurve::SquareRoot,
+            StickCurve::Linear,
+            StickCurve::Normal,
+            StickCurve::Quadratic,
+        ];
+        for curve in curves {
+            assert_eq!(stick_steer(0.05, curve), 0.0, "{curve:?}: its dead zone");
+            assert_eq!(stick_steer(1.0, curve), 1.0, "{curve:?}");
+            assert_eq!(stick_steer(-1.0, curve), -1.0, "{curve:?}");
+            assert_eq!(stick_steer(-0.5, curve), -stick_steer(0.5, curve));
+            let mut last = 0.0;
+            for i in 0..=20 {
+                let value = stick_steer(i as f32 / 20.0, curve);
+                assert!(value >= last, "{curve:?}: grows without jumps");
+                last = value;
+            }
+        }
+        // A third of the way over, from liveliest to finest.
+        let at_a_third = curves.map(|curve| stick_steer(0.3, curve));
+        assert!(at_a_third.windows(2).all(|w| w[0] > w[1]), "{at_a_third:?}");
+        // Linear: as far as the stick, past its dead zone.
+        let linear = stick_steer(0.54, StickCurve::Linear);
+        assert!((linear - 0.5).abs() < 1e-5, "{linear}");
+        // Normal at first: as always.
+        assert_eq!(DebugOptions::default().stick_curve, StickCurve::Normal);
     }
 
     #[test]
