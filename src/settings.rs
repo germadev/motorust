@@ -122,6 +122,14 @@ pub struct Settings {
     /// The relief of the scenery's textures: none, normal maps, or normal
     /// maps and parallax (see [`crate::world::relief`]).
     pub relief: Relief,
+    /// Whether the road has relief too (see [`crate::world::relief`]).
+    pub road_relief: bool,
+    /// Whether the relief is dropped while the players go fast, but the
+    /// road's (see [`crate::world::relief::ReliefShown`]).
+    pub flat_at_speed: bool,
+    /// How the grass's repetition is broken up: not at all, with a wide
+    /// texture, or stochastically (see [`crate::world::lawn`]).
+    pub grass_tiling: GrassTiling,
     /// How much of the window's resolution the world is drawn at (%), scaled
     /// up to it (see [`crate::render_scale`]); the interface is always drawn
     /// at the window's own.
@@ -370,6 +378,9 @@ impl Default for Settings {
             shadows: ShadowQuality::default(),
             antialiasing: Antialiasing::default(),
             relief: Relief::default(),
+            road_relief: false,
+            flat_at_speed: true,
+            grass_tiling: GrassTiling::default(),
             render_scale: DEFAULT_RENDER_SCALE,
             force_performance: ForcePerformance::Off,
             show_fps: true,
@@ -535,6 +546,41 @@ pub enum Relief {
 
 /// The reliefs that can be chosen, in order.
 pub const RELIEFS: [Relief; 3] = [Relief::Off, Relief::Normal, Relief::Parallax];
+
+/// How the grass's repetition is broken up (see [`crate::world::lawn`]):
+/// not at all, its lawn repeating every 11 m as it always did; with a
+/// texture four times as wide each way worked out at startup from pieces
+/// of it, drawn as the lawn is (more memory, nothing more to draw); or
+/// stochastically as it is drawn, pieces of it at random over a grid of
+/// triangles (three readings of the texture for each pixel of the grass,
+/// and no parallax on it).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum GrassTiling {
+    Plain,
+    #[default]
+    Wide,
+    Stochastic,
+}
+
+/// The grass tilings that can be chosen, in order.
+pub const GRASS_TILINGS: [GrassTiling; 3] = [
+    GrassTiling::Plain,
+    GrassTiling::Wide,
+    GrassTiling::Stochastic,
+];
+
+impl GrassTiling {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (GrassTiling::Plain, Language::Spanish) => "Ninguna",
+            (GrassTiling::Plain, Language::English) => "None",
+            (GrassTiling::Wide, Language::Spanish) => "Textura amplia",
+            (GrassTiling::Wide, Language::English) => "Wide texture",
+            (GrassTiling::Stochastic, Language::Spanish) => "Estocástica",
+            (GrassTiling::Stochastic, Language::English) => "Stochastic",
+        }
+    }
+}
 
 impl Relief {
     pub fn name(self, lang: Language) -> &'static str {
@@ -1796,6 +1842,42 @@ mod tests {
         )
         .unwrap();
         assert_eq!(older.records.best_lap("Bahía GP"), Some(71.25));
+    }
+
+    #[test]
+    fn the_road_starts_without_relief_and_the_rest_drops_it_at_speed() {
+        let first = Settings::default();
+        assert!(!first.road_relief && first.flat_at_speed);
+        // Saved before they were options: as at first.
+        let older: Settings = ron::from_str("(relief: Parallax)").unwrap();
+        assert!(!older.road_relief && older.flat_at_speed);
+        let text = ron::ser::to_string(&Settings {
+            road_relief: true,
+            flat_at_speed: false,
+            ..default()
+        })
+        .unwrap();
+        let read: Settings = ron::from_str(&text).unwrap();
+        assert!(read.road_relief && !read.flat_at_speed);
+    }
+
+    #[test]
+    fn the_grass_starts_with_the_wide_texture_and_is_kept() {
+        assert_eq!(Settings::default().grass_tiling, GrassTiling::Wide);
+        let older: Settings = ron::from_str("(fps: Unlimited)").unwrap();
+        assert_eq!(older.grass_tiling, GrassTiling::Wide);
+        for tiling in GRASS_TILINGS {
+            let text = ron::ser::to_string(&Settings {
+                grass_tiling: tiling,
+                ..default()
+            })
+            .unwrap();
+            assert_eq!(
+                ron::from_str::<Settings>(&text).unwrap().grass_tiling,
+                tiling
+            );
+        }
+        assert_eq!(GrassTiling::Plain.name(Language::Spanish), "Ninguna");
     }
 
     #[test]

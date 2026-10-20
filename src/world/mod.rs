@@ -11,6 +11,7 @@ mod foliage;
 mod japan;
 mod lamps;
 mod landmarks;
+mod lawn;
 mod lettering;
 mod lod;
 mod middle_earth;
@@ -82,6 +83,7 @@ impl Plugin for WorldPlugin {
             shadow_fade::ShadowFadePlugin,
             realm::RealmPlugin,
             relief::ReliefPlugin,
+            lawn::LawnPlugin,
         ));
         app.insert_resource(current)
             .insert_resource(Track::new(&current.get().layout))

@@ -21,9 +21,9 @@ use crate::render_scale::{NativeShare, drawn_size};
 use crate::settings::{
     ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
     DIFFICULTIES, FALSE_STARTS, FORCE_PERFORMANCES, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS,
-    FpsLimit, LIGHTS_HOLDS, RACE_STARTS, RELIEFS, RENDER_SCALES, RESOLUTIONS, RaceStart,
-    SHADOW_QUALITIES, START_LIGHTS, ScreenRate, Settings, ShadowQuality, StartedWith, TRACK_VIEWS,
-    WEB, cycle,
+    FpsLimit, GRASS_TILINGS, LIGHTS_HOLDS, RACE_STARTS, RELIEFS, RENDER_SCALES, RESOLUTIONS,
+    RaceStart, SHADOW_QUALITIES, START_LIGHTS, ScreenRate, Settings, ShadowQuality, StartedWith,
+    TRACK_VIEWS, WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
@@ -453,6 +453,12 @@ enum GraphicsItem {
     Antialiasing,
     /// The relief of the scenery's textures.
     Relief,
+    /// Whether the road has relief too.
+    RoadRelief,
+    /// Whether the relief is dropped at speed.
+    FlatAtSpeed,
+    /// How the lawn's repetition is broken up.
+    GrassTiling,
     /// The sea mirroring, or the cartoon one.
     Water,
     /// The page of what the performance HUD shows: the frame rate, the
@@ -601,6 +607,9 @@ fn graphics_items(page: Option<Page>) -> Vec<GraphicsItem> {
         GraphicsItem::Shadows,
         GraphicsItem::Antialiasing,
         GraphicsItem::Relief,
+        GraphicsItem::RoadRelief,
+        GraphicsItem::FlatAtSpeed,
+        GraphicsItem::GrassTiling,
         GraphicsItem::Water,
         GraphicsItem::PerformanceHud,
         GraphicsItem::Advanced,
@@ -776,7 +785,12 @@ fn section_is_default(
                     settings.render_scale,
                     settings.shadows,
                     settings.antialiasing,
-                    settings.relief,
+                    (
+                        settings.relief,
+                        settings.road_relief,
+                        settings.flat_at_speed,
+                        settings.grass_tiling,
+                    ),
                     settings.cartoon_water,
                 )
             };
@@ -847,6 +861,9 @@ fn reset_section(
             settings.shadows = first.shadows;
             settings.antialiasing = first.antialiasing;
             settings.relief = first.relief;
+            settings.road_relief = first.road_relief;
+            settings.flat_at_speed = first.flat_at_speed;
+            settings.grass_tiling = first.grass_tiling;
             settings.cartoon_water = first.cartoon_water;
             reset_performance_hud(settings, first);
             reset_advanced(settings, first);
@@ -1142,6 +1159,18 @@ fn use_options_menu(
                 }
                 GraphicsItem::Relief if change != 0 => {
                     settings.relief = cycle(&RELIEFS, settings.relief, change);
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::RoadRelief if change != 0 => {
+                    settings.road_relief = !settings.road_relief;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::FlatAtSpeed if change != 0 => {
+                    settings.flat_at_speed = !settings.flat_at_speed;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::GrassTiling if change != 0 => {
+                    settings.grass_tiling = cycle(&GRASS_TILINGS, settings.grass_tiling, change);
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Water if change != 0 => {
@@ -1737,7 +1766,8 @@ fn show_options_menu(
                     format!(
                         "<  {}  >",
                         match (settings.cartoon_water, lang) {
-                            (true, _) => "Wind Waker",
+                            (true, Language::Spanish) => "Estilo Cartoon",
+                            (true, Language::English) => "Cartoon style",
                             (false, Language::Spanish) => "Con reflejo",
                             (false, Language::English) => "Mirroring",
                         }
@@ -1761,6 +1791,27 @@ fn show_options_menu(
                         Language::English => "Relief",
                     },
                     format!("<  {}  >", settings.relief.name(lang)),
+                ),
+                GraphicsItem::RoadRelief => Row::check(
+                    match lang {
+                        Language::Spanish => "Relieve en la carretera",
+                        Language::English => "Relief on the road",
+                    },
+                    settings.road_relief,
+                ),
+                GraphicsItem::FlatAtSpeed => Row::check(
+                    match lang {
+                        Language::Spanish => "Sin relieve a alta velocidad",
+                        Language::English => "No relief at high speed",
+                    },
+                    settings.flat_at_speed,
+                ),
+                GraphicsItem::GrassTiling => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Repetición de la hierba",
+                        Language::English => "Grass tiling",
+                    },
+                    format!("<  {}  >", settings.grass_tiling.name(lang)),
                 ),
                 GraphicsItem::Trees => Row::with_value(
                     match lang {
@@ -2464,6 +2515,46 @@ mod tests {
         assert!(!section_is_default(graphics, None, &settings, &debug));
         reset_section(graphics, None, &mut settings, &mut debug);
         assert_eq!(settings.relief, Relief::Normal);
+        assert!(section_is_default(graphics, None, &settings, &debug));
+    }
+
+    #[test]
+    fn the_relief_s_options_follow_it_and_reset_with_graphics() {
+        let main = graphics_items(None);
+        let at = |item| main.iter().position(|&i| i == item).unwrap();
+        assert_eq!(at(GraphicsItem::RoadRelief), at(GraphicsItem::Relief) + 1);
+        assert_eq!(at(GraphicsItem::FlatAtSpeed), at(GraphicsItem::Relief) + 2);
+        let mut settings = Settings {
+            road_relief: true,
+            flat_at_speed: false,
+            ..default()
+        };
+        let mut debug = DebugOptions::default();
+        let graphics = OptionsTab::Graphics;
+        assert!(!section_is_default(graphics, None, &settings, &debug));
+        reset_section(graphics, None, &mut settings, &mut debug);
+        assert!(!settings.road_relief && settings.flat_at_speed);
+        assert!(section_is_default(graphics, None, &settings, &debug));
+    }
+
+    #[test]
+    fn the_grass_tiling_is_under_the_relief_and_resets_with_graphics() {
+        use crate::settings::GrassTiling;
+        let main = graphics_items(None);
+        let at = |item| main.iter().position(|&i| i == item).unwrap();
+        assert_eq!(
+            at(GraphicsItem::GrassTiling),
+            at(GraphicsItem::FlatAtSpeed) + 1
+        );
+        let mut settings = Settings {
+            grass_tiling: GrassTiling::Stochastic,
+            ..default()
+        };
+        let mut debug = DebugOptions::default();
+        let graphics = OptionsTab::Graphics;
+        assert!(!section_is_default(graphics, None, &settings, &debug));
+        reset_section(graphics, None, &mut settings, &mut debug);
+        assert_eq!(settings.grass_tiling, GrassTiling::Wide);
         assert!(section_is_default(graphics, None, &settings, &debug));
     }
 

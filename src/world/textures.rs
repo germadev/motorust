@@ -21,6 +21,9 @@ use bevy::{
 #[derive(Resource, Clone)]
 pub struct WorldTextures {
     pub grass: Handle<Image>,
+    /// The lawn four times as wide each way, put together from pieces of
+    /// it, for the grass tiled wide (see [`super::lawn`]).
+    pub grass_wide: Handle<Image>,
     pub rock: Handle<Image>,
     /// The rock without its warm tint: grey granite (see [`Soil::Granite`]).
     ///
@@ -78,6 +81,12 @@ impl FromWorld for WorldTextures {
         let grass_color = average_color(&lawn);
         let grass = images.add(lawn.clone());
         let lawn = Arc::new(lawn);
+        // The wide lawn, the longest to make, on a thread of its own while
+        // the rest are (but on the web, where there is only one).
+        let widening = (!cfg!(target_arch = "wasm32")).then(|| {
+            let lawn = lawn.clone();
+            std::thread::spawn(move || super::lawn::widen(&lawn))
+        });
         // The stones of the walls, with the photo's grain.
         let wall = images.add(stone_wall(&embedded(
             include_bytes!("../../assets/textures/wall.jpg"),
@@ -121,10 +130,15 @@ impl FromWorld for WorldTextures {
         let tuft = images.add(super::foliage::tuft());
         let grass_edge = images.add(super::foliage::grass_edge());
         let light_pool = images.add(light_pool());
+        let grass_wide = images.add(match widening {
+            Some(thread) => thread.join().expect("the wide lawn is made"),
+            None => super::lawn::widen(&lawn),
+        });
         let relief = ReliefMaps::new(
             &mut images,
             &[
                 (&grass, GRASS_BUMPS),
+                (&grass_wide, GRASS_BUMPS),
                 (&soil, SOIL_BUMPS),
                 (&rock, ROCK_BUMPS),
                 (&granite, ROCK_BUMPS),
@@ -140,6 +154,7 @@ impl FromWorld for WorldTextures {
         );
         Self {
             grass,
+            grass_wide,
             rock,
             granite,
             sand,

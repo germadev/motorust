@@ -63,6 +63,12 @@ pub struct Context {
     pub antialiasing: String,
     /// The relief of the scenery's textures.
     pub relief: String,
+    /// Whether the road has relief too, and whether the relief is dropped
+    /// at speed.
+    pub road_relief: bool,
+    pub flat_at_speed: bool,
+    /// How the lawn's repetition is broken up.
+    pub grass_tiling: String,
     /// The performance forced: off, or the frame rate it keeps.
     pub performance: String,
     /// The sea: mirroring or the cartoon one.
@@ -83,7 +89,7 @@ impl Context {
     fn pairs(&self) -> String {
         format!(
             "state={} mode={} players={} paused={} track={:?} trees={} lighter_far_trees={} \
-             lighter_split_screen={} force_performance={} water={} shadows={} antialiasing={} relief={} render_scale={} render={} fps_limit={} \
+             lighter_split_screen={} force_performance={} water={} shadows={} antialiasing={} relief={} road_relief={} flat_at_speed={} grass_tiling={} render_scale={} render={} fps_limit={} \
              resolution={} fullscreen={} pipelined_rendering={} frame_latency={} window={} ui_scale={:.2}",
             self.state,
             self.mode,
@@ -98,6 +104,9 @@ impl Context {
             self.shadows,
             self.antialiasing,
             self.relief,
+            self.road_relief,
+            self.flat_at_speed,
+            self.grass_tiling,
             self.render_scale,
             self.render,
             self.fps_limit,
@@ -592,6 +601,9 @@ fn log_performance(
         ),
         antialiasing: format!("{:?}", settings.antialiasing),
         relief: format!("{:?}", settings.relief),
+        road_relief: settings.road_relief,
+        flat_at_speed: settings.flat_at_speed,
+        grass_tiling: format!("{:?}", settings.grass_tiling),
         // As the options say, or as far as the performance forced has come.
         render_scale: render_percent(detail.as_deref()),
         render: window.map_or_else(

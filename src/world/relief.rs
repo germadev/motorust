@@ -15,10 +15,17 @@
 //! read off the texture as it is drawn, retouched (see
 //! [`super::textures`]), they always fit it.
 //!
+//! The road has it only if Options > Graphics says so too
+//! (`Settings::road_relief`); and, unless it says not to
+//! (`Settings::flat_at_speed`), the rest loses it while the players go fast
+//! ([`ReliefShown`]), where it is not seen, and gets it back as they slow
+//! down.
+//!
 //! A normal map changes the pipeline its materials are drawn with, so a
 //! change of relief makes some again, and what they draw vanishes for a
 //! moment meanwhile; a depth map is only read or not (a flag of the
-//! material), in the same pipeline.
+//! material), in the same pipeline. So at speed the normal maps are swapped
+//! for a flat one, not taken away: nothing vanishes in the middle of a race.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -30,6 +37,7 @@ use bevy::{
 };
 
 use super::textures::{WorldTextures, generate_mipmaps, sampler};
+use crate::bike::{BikeState, LocalPlayer, Player};
 use crate::settings::{Relief, Settings};
 
 pub struct ReliefPlugin;
@@ -39,12 +47,14 @@ impl Plugin for ReliefPlugin {
         // In `Last`, after the materials made this frame are announced and
         // before they and the meshes go to the GPU, so they are drawn with
         // their relief from their first frame.
-        app.init_resource::<SharedRelief>().add_systems(
-            Last,
-            (relieve_materials, give_tangents)
-                .chain()
-                .after(bevy::asset::AssetEventSystems),
-        );
+        app.init_resource::<SharedRelief>()
+            .init_resource::<ReliefShown>()
+            .add_systems(
+                Last,
+                (show_relief, relieve_materials, give_tangents)
+                    .chain()
+                    .after(bevy::asset::AssetEventSystems),
+            );
     }
 }
 
@@ -74,11 +84,74 @@ pub struct ReliefMap {
     /// Its depth map, and how deep it goes (a share of the texture's width,
     /// as Bevy takes it), for parallax.
     pub depth: Option<(Handle<Image>, f32)>,
+    /// A flat normal map (one pixel), the same for all, for the relief
+    /// dropped at speed.
+    pub flat: Handle<Image>,
 }
 
 /// The relief of each texture with one, by the texture.
 #[derive(Clone, Debug, Default)]
 pub struct ReliefMaps(Vec<(AssetId<Image>, ReliefMap)>);
+
+/// The speeds (m/s) over which, all the players going faster, the relief
+/// is dropped (80 km/h), and under which, one of them going slower, it is
+/// given back (60 km/h): apart, so that it does not come and go at one
+/// speed.
+pub const FAST: f32 = 80.0 / 3.6;
+pub const SLOW: f32 = 60.0 / 3.6;
+
+/// What a material with relief shows of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Look {
+    /// None: no normal map.
+    Off,
+    /// A flat normal map: none to be seen, in the pipeline of those with
+    /// one.
+    Flat,
+    Normal,
+    Parallax,
+}
+
+/// The relief the materials show: as Options > Graphics says, and as fast
+/// as the players go.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReliefShown {
+    /// The relief chosen.
+    pub relief: Relief,
+    /// Whether the road has it too.
+    pub road: bool,
+    /// Whether the rest has it flattened: dropped at speed, the players
+    /// going fast.
+    pub flat: bool,
+}
+
+impl ReliefShown {
+    /// What a material shows: the road's (`road`) or another's.
+    pub fn look(&self, road: bool) -> Look {
+        match self.relief {
+            Relief::Off => Look::Off,
+            _ if road && !self.road => Look::Off,
+            _ if self.flat && !road => Look::Flat,
+            Relief::Normal => Look::Normal,
+            Relief::Parallax => Look::Parallax,
+        }
+    }
+}
+
+/// Whether the players go fast, with the relief dropped (`flat`) or not as
+/// they did: all of them over [`FAST`] (over [`SLOW`] to keep it dropped).
+/// Without players (in the menus), not.
+pub fn fast(speeds: impl IntoIterator<Item = f32>, flat: bool) -> bool {
+    let limit = if flat { SLOW } else { FAST };
+    let mut any = false;
+    for speed in speeds {
+        if speed.abs() <= limit {
+            return false;
+        }
+        any = true;
+    }
+    any
+}
 
 impl ReliefMaps {
     /// The relief of each of `textures` (in `images`, with their pixels) as
@@ -103,6 +176,7 @@ impl ReliefMaps {
                     .collect()
             })
         };
+        let flat = images.add(flat_normal_map());
         Self(
             textures
                 .iter()
@@ -110,7 +184,15 @@ impl ReliefMaps {
                 .map(|((texture, _), (normal, depth))| {
                     let normal = images.add(normal);
                     let depth = depth.map(|(depth, scale)| (images.add(depth), scale));
-                    (texture.id(), ReliefMap { normal, depth })
+                    let flat = flat.clone();
+                    (
+                        texture.id(),
+                        ReliefMap {
+                            normal,
+                            depth,
+                            flat,
+                        },
+                    )
                 })
                 .collect(),
         )
@@ -290,6 +372,16 @@ fn depth_map(heights: &Heights) -> Image {
     data_image(heights, data, TextureFormat::R8Unorm)
 }
 
+/// A normal map of one pixel, level.
+fn flat_normal_map() -> Image {
+    let level = Heights {
+        width: 1,
+        height: 1,
+        values: vec![0.5],
+    };
+    data_image(&level, vec![128, 128], TextureFormat::Rg8Unorm)
+}
+
 /// An image of data (not colour) the size of `heights`, repeating both ways.
 fn data_image(heights: &Heights, data: Vec<u8>, format: TextureFormat) -> Image {
     let mut image = Image::new(
@@ -307,11 +399,15 @@ fn data_image(heights: &Heights, data: Vec<u8>, format: TextureFormat) -> Image 
     image
 }
 
-/// `material` with the relief `relief` says, `map` being its texture's:
+/// `material` with the relief `look` says, `map` being its texture's:
 /// whether that changed it.
-pub fn relieve(material: &mut StandardMaterial, map: &ReliefMap, relief: Relief) -> bool {
-    let normal = (relief != Relief::Off).then(|| map.normal.clone());
-    let depth = map.depth.clone().filter(|_| relief == Relief::Parallax);
+pub fn relieve(material: &mut StandardMaterial, map: &ReliefMap, look: Look) -> bool {
+    let normal = match look {
+        Look::Off => None,
+        Look::Flat => Some(map.flat.clone()),
+        Look::Normal | Look::Parallax => Some(map.normal.clone()),
+    };
+    let depth = map.depth.clone().filter(|_| look == Look::Parallax);
     if material.normal_map_texture == normal
         && material.depth_map.as_ref() == depth.as_ref().map(|(map, _)| map)
     {
@@ -330,19 +426,44 @@ pub fn relieve(material: &mut StandardMaterial, map: &ReliefMap, relief: Relief)
     true
 }
 
-/// The relief chosen given to the materials drawn with a texture that has
-/// one: all of them when it changes, otherwise each one as it is made.
-fn relieve_materials(
+/// The relief to show, as the settings say and the players go.
+#[allow(clippy::type_complexity)]
+pub(super) fn show_relief(
     settings: Option<Res<Settings>>,
+    players: Query<&BikeState, Or<(With<Player>, With<LocalPlayer>)>>,
+    mut shown: ResMut<ReliefShown>,
+) {
+    let (relief, road, at_speed) = settings.map_or((Relief::default(), false, true), |settings| {
+        (
+            settings.relief,
+            settings.road_relief,
+            settings.flat_at_speed,
+        )
+    });
+    let flat = at_speed && fast(players.iter().map(|bike| bike.speed), shown.flat);
+    let now = ReliefShown { relief, road, flat };
+    if *shown != now {
+        *shown = now;
+    }
+}
+
+/// Whether `material` is the road's: drawn with the asphalt.
+pub fn is_road(material: &StandardMaterial, textures: &WorldTextures) -> bool {
+    material.base_color_texture.as_ref() == Some(&textures.asphalt)
+}
+
+/// The relief shown given to the materials drawn with a texture that has
+/// one: all of them when it changes, otherwise each one as it is made.
+pub(super) fn relieve_materials(
+    shown: Res<ReliefShown>,
     textures: Res<WorldTextures>,
     shared: Res<SharedRelief>,
     mut events: MessageReader<AssetEvent<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut given: Local<Option<Relief>>,
+    mut given: Local<Option<ReliefShown>>,
 ) {
-    let relief = settings.map_or_else(Relief::default, |settings| settings.relief);
-    let ids: Vec<AssetId<StandardMaterial>> = if *given != Some(relief) {
-        *given = Some(relief);
+    let ids: Vec<AssetId<StandardMaterial>> = if *given != Some(*shown) {
+        *given = Some(*shown);
         events.clear();
         materials.ids().collect()
     } else {
@@ -365,7 +486,8 @@ fn relieve_materials(
         // Only those it changes are touched, so the others are not sent
         // to the GPU again.
         let mut material = materials.get(id).cloned().expect("it is there");
-        if relieve(&mut material, &map, relief)
+        let look = shown.look(is_road(&material, &textures));
+        if relieve(&mut material, &map, look)
             && let Some(mut slot) = materials.get_mut(id)
         {
             *slot = material;
@@ -382,7 +504,7 @@ fn relieve_materials(
 /// would send them again, with nothing left to send). One that has gone
 /// already is left without: drawn as it was.
 #[allow(clippy::type_complexity)]
-fn give_tangents(
+pub(super) fn give_tangents(
     textures: Res<WorldTextures>,
     shared: Res<SharedRelief>,
     new: Query<
@@ -626,31 +748,91 @@ mod tests {
         assert_eq!(depth_map(&flat).data.unwrap()[0], 128);
     }
 
-    fn map(parallax: bool) -> ReliefMap {
+    fn map(images: &mut Assets<Image>, parallax: bool) -> ReliefMap {
+        let mut image = || images.add(Image::default());
         ReliefMap {
-            normal: Handle::default(),
-            depth: parallax.then(|| (Handle::default(), 0.01)),
+            normal: image(),
+            depth: parallax.then(|| (image(), 0.01)),
+            flat: image(),
         }
     }
 
     #[test]
     fn materials_take_the_relief_chosen() {
+        let mut images = Assets::<Image>::default();
+        let deep = map(&mut images, true);
         let mut material = StandardMaterial::default();
-        assert!(!relieve(&mut material, &map(true), Relief::Off));
-        assert!(relieve(&mut material, &map(true), Relief::Normal));
-        assert!(material.normal_map_texture.is_some() && material.depth_map.is_none());
-        assert!(relieve(&mut material, &map(true), Relief::Parallax));
+        assert!(!relieve(&mut material, &deep, Look::Off));
+        assert!(relieve(&mut material, &deep, Look::Normal));
+        assert_eq!(material.normal_map_texture, Some(deep.normal.clone()));
+        assert!(material.depth_map.is_none());
+        assert!(relieve(&mut material, &deep, Look::Parallax));
         assert!(material.depth_map.is_some());
         assert_eq!(material.parallax_depth_scale, 0.01);
         assert_eq!(material.max_parallax_layer_count, PARALLAX_LAYERS);
-        assert!(!relieve(&mut material, &map(true), Relief::Parallax));
-        assert!(relieve(&mut material, &map(true), Relief::Off));
+        assert!(!relieve(&mut material, &deep, Look::Parallax));
+        // Flat: a normal map still (the same pipeline), level, no depth.
+        assert!(relieve(&mut material, &deep, Look::Flat));
+        assert_eq!(material.normal_map_texture, Some(deep.flat.clone()));
+        assert!(material.depth_map.is_none());
+        assert!(relieve(&mut material, &deep, Look::Off));
         assert!(material.normal_map_texture.is_none() && material.depth_map.is_none());
         // Without a depth map, parallax is normal maps alone.
+        let shallow = map(&mut images, false);
         let mut flat = StandardMaterial::default();
-        assert!(relieve(&mut flat, &map(false), Relief::Parallax));
+        assert!(relieve(&mut flat, &shallow, Look::Parallax));
         assert!(flat.normal_map_texture.is_some() && flat.depth_map.is_none());
-        assert!(!relieve(&mut flat, &map(false), Relief::Normal));
+        assert!(!relieve(&mut flat, &shallow, Look::Normal));
+    }
+
+    #[test]
+    fn the_road_has_relief_only_if_asked_and_keeps_it_at_speed() {
+        let shown = |relief, road, flat| ReliefShown { relief, road, flat };
+        // As the game starts: the road without, the rest with normal maps.
+        let first = shown(Relief::Normal, false, false);
+        assert_eq!(
+            (first.look(true), first.look(false)),
+            (Look::Off, Look::Normal)
+        );
+        let road = shown(Relief::Parallax, true, false);
+        assert_eq!(
+            (road.look(true), road.look(false)),
+            (Look::Parallax, Look::Parallax)
+        );
+        // At speed the rest is flattened, the road keeps it if it has it.
+        let fast = shown(Relief::Parallax, true, true);
+        assert_eq!(
+            (fast.look(true), fast.look(false)),
+            (Look::Parallax, Look::Flat)
+        );
+        let fast = shown(Relief::Normal, false, true);
+        assert_eq!((fast.look(true), fast.look(false)), (Look::Off, Look::Flat));
+        // None at all, whatever else.
+        let off = shown(Relief::Off, true, true);
+        assert_eq!((off.look(true), off.look(false)), (Look::Off, Look::Off));
+    }
+
+    #[test]
+    fn the_relief_goes_with_all_the_players_fast_and_comes_back_with_one_slow() {
+        let kmh = |speeds: &[f32]| speeds.iter().map(|s| s / 3.6).collect::<Vec<_>>();
+        assert!(!fast(kmh(&[]), false), "in the menus");
+        assert!(!fast(kmh(&[70.0]), false));
+        assert!(fast(kmh(&[90.0]), false));
+        assert!(!fast(kmh(&[90.0, 40.0]), false), "one of two slow");
+        assert!(fast(kmh(&[90.0, 120.0]), false));
+        // Between the two speeds it stays as it was.
+        assert!(fast(kmh(&[70.0]), true));
+        assert!(!fast(kmh(&[70.0]), false));
+        assert!(!fast(kmh(&[50.0]), true));
+        // Backwards counts as fast as forwards.
+        assert!(fast(kmh(&[-90.0]), false));
+    }
+
+    #[test]
+    fn the_flat_normal_map_is_level() {
+        let flat = flat_normal_map();
+        assert_eq!(flat.texture_descriptor.format, TextureFormat::Rg8Unorm);
+        assert_eq!(flat.data.as_deref(), Some(&[128, 128][..]));
     }
 
     /// Two triangles on the ground, u along x and v along z.
