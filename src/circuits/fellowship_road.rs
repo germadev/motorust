@@ -678,23 +678,24 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     shaft: Some(DIFFUSED_SHAFT),
                 },
             ],
-            // At the top of the pass, two arches of layered rock out of the
-            // cliff on the left, one after the other, the second seen
-            // through the first, each a little askew.
+            // At the top of the pass, two arches of rock out of the cliff
+            // on the left, where it comes nearest the road (30 m from its
+            // middle; between them, over the mines, it stands back), the
+            // second seen through the first, each a little askew.
             arches: &[
                 RockArch {
-                    along: PASS.from + 3.0,
-                    turn: 0.12,
+                    along: PASS.from + 8.0,
+                    turn: 0.1,
                     width: 29.0,
                     height: 17.0,
                     depth: 10.0,
                 },
                 RockArch {
-                    along: PASS.from + 36.0,
-                    turn: -0.1,
+                    along: PASS.from + 59.0,
+                    turn: -0.08,
                     width: 30.0,
                     height: 19.0,
-                    depth: 8.0,
+                    depth: 9.0,
                 },
             ],
         }),

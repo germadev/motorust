@@ -2,7 +2,8 @@
 //! con algo de retraso, quedándose atrás al acelerar y abriendo el ángulo de
 //! visión con la velocidad. El stick derecho del mando dice hacia dónde mira
 //! respecto a la moto: arriba, hacia delante como siempre; a un lado, a ese
-//! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante.
+//! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante. It
+//! looks there at once, as the stick moves, and back ahead at once too.
 //!
 //! Once the players' race is over, it follows the bikes the race watches
 //! come in ([`Watching`]), and then the shots of them riding on, cutting
@@ -49,9 +50,6 @@ const SURGE_RESPONSE: f32 = 3.0;
 /// Cuánto hay que inclinar el stick derecho para que la cámara mire hacia
 /// donde apunta; por debajo, mira hacia delante.
 const LOOK_DEADZONE: f32 = 0.4;
-/// Rapidez con la que la cámara gira hacia donde apunta el stick derecho y
-/// vuelve al soltarlo (1/s).
-const LOOK_RESPONSE: f32 = 6.0;
 /// Lo que tarda la cámara en ir de una pantalla de menú a la siguiente (s).
 const GLIDE_TIME: f32 = 1.2;
 /// How fast the camera comes back upright after leaving a loop the wrong
@@ -534,8 +532,8 @@ fn follow_player(
         };
         chase.yaw = Some(yaw);
 
-        // Stick derecho: la cámara mira hacia donde apunta, por el camino más
-        // corto, y al soltarlo vuelve a mirar hacia delante.
+        // Stick derecho: la cámara mira hacia donde apunta, y al soltarlo
+        // vuelve a mirar hacia delante; at once, as the stick moves.
         let dt = time.delta_secs();
         let stick = if *game_mode == GameMode::SplitScreen {
             let binding = if cam_player.0 == 0 {
@@ -551,9 +549,7 @@ fn follow_player(
             right_stick(&gamepads)
         };
 
-        let wanted = stick_direction(stick).unwrap_or(0.0);
-        let blend = 1.0 - (-LOOK_RESPONSE * dt).exp();
-        chase.look = wrap_angle(chase.look + wrap_angle(wanted - chase.look) * blend);
+        chase.look = stick_direction(stick).unwrap_or(0.0);
 
         let speed_factor = (speed / tuning.max_speed).clamp(0.0, 1.0);
         let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.start, SURGE.end);

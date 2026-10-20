@@ -16,7 +16,10 @@
 //! Durin and its glow, each in a material of its own).
 
 use bevy::{
-    asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
+    asset::RenderAssetUsages,
+    mesh::{Indices, VertexAttributeValues},
+    prelude::*,
+    render::render_resource::PrimitiveTopology,
 };
 
 use super::Assets3d;
@@ -26,7 +29,7 @@ use super::japan::{PropPack, Turning, in_view, spawn_petals, spot};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
 use super::scenery::{Glow, MiddleEarthModel, Prop, RockArch, Scenery, Shaft, Spot};
-use super::terrain::{GRASS_TILE, SEA_LEVEL, Terrain, shaded};
+use super::terrain::{GRASS_TILE, Ground, SEA_LEVEL, Terrain, ground_look, shaded};
 use crate::geometry::{fbm, random01, smoothstep};
 use crate::track::Track;
 
@@ -76,22 +79,20 @@ const SHAFT_CLEAR: f32 = 30.0;
 const SHAFT_REACH: f32 = 150.0;
 const SHAFT_FADE: f32 = 60.0;
 
-/// An arch of rock (see [`RockArch`]): how far its feet sink under the
-/// road (m), how much rock it has over its opening and either side of it
-/// (m), in how many pieces it goes round its opening, how much rougher its
-/// outside is than its inside (m, either way), and how tall and long each
-/// repetition of its strata is (m).
+/// An arch of rock (see [`RockArch`]): how far its foot on the right sinks
+/// under the road (m), and how far past its opening it reaches into the rock
+/// on the left (m across); how thick it is across its curve at its foot,
+/// over the road and where it goes into the rock (m); in how many pieces it
+/// goes along its curve and round it; how rough it is, as rock broken
+/// rather than cut, at two sizes (m either way); and how big each repetition
+/// of the rock's texture is over it (m).
 const ARCH_SINK: f32 = 6.0;
-const ARCH_CROWN: f32 = 8.0;
-const ARCH_LEG: f32 = 9.0;
-const ARCH_PIECES: usize = 28;
-const ARCH_ROUGH: f32 = 2.2;
-const ARCH_STRATA: f32 = 4.5;
-/// How much its strata lean (m up for each across).
-const ARCH_DIP: f32 = 0.22;
-/// The stone of the arches, through the strata's warm bands: dark and
-/// cool, as the slate of a beach of cliffs.
-const ARCH_STONE: Color = Color::srgb(0.4, 0.38, 0.37);
+const ARCH_INTO: f32 = 26.0;
+const ARCH_THICK: [f32; 3] = [5.5, 4.0, 8.0];
+const ARCH_ALONG: usize = 48;
+const ARCH_ROUND: usize = 18;
+const ARCH_ROUGH: (f32, f32) = (1.7, 0.45);
+const ARCH_TILE: f32 = 14.0;
 
 /// The hill a hobbit hole is dug into, a dome over its rooms behind its
 /// front: so many times as high as the hole and as wide as its front,
@@ -375,23 +376,22 @@ pub fn spawn_middle_earth(
         .map(|prop| spawn_prop(world, track, terrain, prop, props, &gate, &mut banks))
         .collect();
     if !middle_earth.arches.is_empty() {
-        let mut arches = MeshBuilder::default();
-        for arch in middle_earth.arches {
-            rock_arch(&mut arches, track, arch);
-            taken.extend(arch_feet(track, arch));
-        }
-        // Layered rock: the strata's bands across it, dark.
+        // The rock of the cliffs they come out of.
+        let (texture, roughness, reflectance) =
+            ground_look(Ground::Rock, terrain.soil(), assets.textures);
         let material = assets.materials.add(StandardMaterial {
-            base_color: ARCH_STONE,
-            base_color_texture: Some(assets.textures.strata.clone()),
-            perceptual_roughness: 0.92,
-            reflectance: 0.12,
+            base_color_texture: texture.cloned(),
+            perceptual_roughness: roughness,
+            reflectance,
             ..default()
         });
-        world.spawn((
-            Mesh3d(assets.meshes.add(arches.build())),
-            MeshMaterial3d(material),
-        ));
+        for arch in middle_earth.arches {
+            world.spawn((
+                Mesh3d(assets.meshes.add(rock_arch(track, arch))),
+                MeshMaterial3d(material.clone()),
+            ));
+            taken.extend(arch_feet(track, arch));
+        }
     }
     // Low bushes along the footpaths, out of the props' way, as round the
     // holes' gardens (see `BankMesh::garden`).
@@ -516,128 +516,130 @@ fn arch_frame(track: &Track, arch: &RockArch) -> (Vec3, Vec3, Vec3) {
     )
 }
 
-/// The ground an arch's feet take (see [`arch_frame`]): kept clear of
-/// trees.
+/// The curve of an arch's rock (see [`rock_arch`]), at `t` from its foot on
+/// the right (0) to where it goes into the rock on the left (1): where it
+/// is, across (m, to the left) and up (m) from the middle of the road, and
+/// how thick it is across it there (m). Up steeply from its sunk foot, over
+/// the road, and on into the rock, sinking a little.
+fn arch_curve(arch: &RockArch, t: f32) -> (Vec2, f32) {
+    let half = arch.width / 2.0;
+    let crown = arch.height + ARCH_THICK[1];
+    // Its foot's inside at the opening's edge.
+    let foot = half + ARCH_THICK[0];
+    let points = [
+        Vec2::new(-foot, -ARCH_SINK),
+        Vec2::new(-(foot + 1.0), crown * 1.05),
+        Vec2::new(half * 0.2, crown * 1.18),
+        Vec2::new(half + ARCH_INTO, crown * 0.7),
+    ];
+    let u = 1.0 - t;
+    let at = points[0] * u * u * u
+        + points[1] * 3.0 * u * u * t
+        + points[2] * 3.0 * u * t * t
+        + points[3] * t * t * t;
+    let thick = if t < 0.5 {
+        ARCH_THICK[0].lerp(ARCH_THICK[1], smoothstep(0.0, 0.5, t))
+    } else {
+        ARCH_THICK[1].lerp(ARCH_THICK[2], smoothstep(0.5, 1.0, t))
+    };
+    (at, thick)
+}
+
+/// The ground an arch takes (see [`arch_frame`]): its foot, and where it
+/// goes into the rock, kept clear of trees.
 fn arch_feet(track: &Track, arch: &RockArch) -> [Footprint; 2] {
     let (foot, across, _) = arch_frame(track, arch);
-    let out = arch.width / 2.0 + ARCH_LEG / 2.0;
-    [-1.0, 1.0].map(|side| {
-        let at = foot + across * side * out;
-        (Vec2::new(at.x, at.z), ARCH_LEG + arch.depth / 2.0)
+    [0.0, 1.0].map(|t| {
+        let (at, thick) = arch_curve(arch, t);
+        let at = foot + across * at.x;
+        (Vec2::new(at.x, at.z), thick + arch.depth / 2.0)
     })
 }
 
-/// An arch of rock over the road, as the sea's arches on a beach of cliffs
-/// (see [`RockArch`]): a band of rock round its opening, thick on its legs
-/// and over its crown, rough outside and a little inside (into the rock,
-/// never into the opening), its feet sunk under the road into the ground
-/// (and into the cliff it comes out of), in flat faces, in three slices
-/// along the road each rough in its own way; the strata's bands level
-/// across it, darker towards its feet.
-fn rock_arch(builder: &mut MeshBuilder, track: &Track, arch: &RockArch) {
+/// A rough fractal noise in space, about ½, over features `size` metres
+/// across.
+fn rock_noise(p: Vec3, size: f32) -> f32 {
+    let a = fbm(Vec2::new(p.x + 0.7 * p.y, p.z) / size, 3);
+    let b = fbm(
+        Vec2::new(p.y - 0.6 * p.z, p.x) / size + Vec2::splat(31.0),
+        3,
+    );
+    (a + b) / 2.0
+}
+
+/// An arch of rock over the road (see [`RockArch`]), as the sea's arches on
+/// a beach of cliffs: rock out of the rock on the left, over the road,
+/// down onto its foot on the right, sunk under the road: round its curve
+/// ([`arch_curve`]) a body as thick across it as the curve says and as
+/// `depth` along the road, its section swelling and narrowing, its surface
+/// broken at two sizes, smooth between (no cut faces), so it is rock as it
+/// broke and the sea wore it, not cut.
+fn rock_arch(track: &Track, arch: &RockArch) -> Mesh {
     let (foot, across, along) = arch_frame(track, arch);
-    let half = arch.width / 2.0;
-    let seed = Vec2::new(arch.along, arch.width);
-    // Round the opening, from the foot on the right to the foot on the
-    // left, its feet sunk; and the outside of the rock round it. Each a
-    // point across (m) and up (m) from the middle of the road.
-    let round = |slice: f32, outside: bool| -> Vec<Vec2> {
-        let mut points = Vec::with_capacity(ARCH_PIECES + 3);
-        for k in 0..=ARCH_PIECES {
-            let angle = std::f32::consts::PI * k as f32 / ARCH_PIECES as f32;
-            // Not a hair under nothing at its feet (sin π), which no power
-            // could take.
-            let rise = angle.sin().max(0.0);
-            let (across, up) = if outside {
-                (
-                    -(half + ARCH_LEG) * angle.cos(),
-                    (arch.height + ARCH_CROWN) * rise.powf(0.6),
-                )
-            } else {
-                (-half * angle.cos(), arch.height * rise.powf(0.75))
-            };
-            let point = Vec2::new(across, up);
-            // Rough: outside either way, inside only into the rock.
-            let noise = fbm(point / 6.0 + seed + Vec2::splat(slice * 3.7), 3) - 0.5;
-            let away = Vec2::new(across, up - arch.height * 0.3).normalize_or_zero();
-            let rough = if outside {
-                2.0 * ARCH_ROUGH * noise
-            } else {
-                ARCH_ROUGH * 0.5 * (noise + 0.5)
-            };
-            points.push(point + away * rough);
-        }
-        let (first, last) = (points[0], points[ARCH_PIECES]);
-        points.insert(0, Vec2::new(first.x, -ARCH_SINK));
-        points.push(Vec2::new(last.x, -ARCH_SINK));
-        points
-    };
-    let slices = [-arch.depth / 2.0, 0.0, arch.depth / 2.0];
-    let rings: Vec<(Vec<Vec2>, Vec<Vec2>)> = slices
-        .iter()
-        .enumerate()
-        .map(|(n, _)| (round(n as f32, false), round(n as f32, true)))
-        .collect();
-    let at = |point: Vec2, slice: f32| foot + across * point.x + Vec3::Y * point.y + along * slice;
-    // The strata leaning across it, the same all through it.
-    let uv_face = |point: Vec2| Vec2::new(point.x, ARCH_DIP * point.x - point.y) / ARCH_STRATA;
-    let uv_round =
-        |point: Vec2, slice: f32| Vec2::new(slice, ARCH_DIP * point.x - point.y) / ARCH_STRATA;
-    let shade = |point: Vec2| {
-        let lit = 0.7 + 0.3 * smoothstep(-ARCH_SINK, arch.height, point.y);
-        Color::linear_rgb(lit, lit, lit)
-    };
-    let middle = Vec2::new(0.0, arch.height * 0.3);
-    let mut triangles = |corners: [(Vec3, Vec2); 4], facing: Vec3, color: Color| {
-        builder.triangle([corners[0], corners[1], corners[2]], facing, color);
-        builder.triangle([corners[0], corners[2], corners[3]], facing, color);
-    };
-    let points = rings[0].0.len();
-    // Its faces, before and after, between the opening and the outside.
-    for (ring, slice, facing) in [
-        (&rings[0], slices[0], -along),
-        (&rings[2], slices[2], along),
-    ] {
-        let (inner, outer) = ring;
-        for k in 0..points - 1 {
-            triangles(
-                [
-                    (at(inner[k], slice), uv_face(inner[k])),
-                    (at(inner[k + 1], slice), uv_face(inner[k + 1])),
-                    (at(outer[k + 1], slice), uv_face(outer[k + 1])),
-                    (at(outer[k], slice), uv_face(outer[k])),
-                ],
-                facing,
-                shade(inner[k]),
-            );
+    let mut positions = Vec::with_capacity((ARCH_ALONG + 1) * ARCH_ROUND);
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    let mut colors = Vec::with_capacity(positions.capacity());
+    for k in 0..=ARCH_ALONG {
+        let t = k as f32 / ARCH_ALONG as f32;
+        let (at, thick) = arch_curve(arch, t);
+        let ahead =
+            arch_curve(arch, (t + 0.01).min(1.0)).0 - arch_curve(arch, (t - 0.01).max(0.0)).0;
+        // Out from the curve, in the plane across the road.
+        let out = Vec2::new(-ahead.y, ahead.x).normalize_or_zero();
+        let middle = foot + across * at.x + Vec3::Y * at.y;
+        let out = across * out.x + Vec3::Y * out.y;
+        for n in 0..ARCH_ROUND {
+            let angle = std::f32::consts::TAU * n as f32 / ARCH_ROUND as f32;
+            let round = out * (thick * angle.cos()) + along * (arch.depth / 2.0 * angle.sin());
+            let p = middle + round;
+            // Broken: bulging and hollowed out at two sizes, never more
+            // than the rock is thick.
+            let rough = ARCH_ROUGH.0 * 2.0 * (rock_noise(p, 7.0) - 0.5)
+                + ARCH_ROUGH.1 * 2.0 * (rock_noise(p, 1.8) - 0.5);
+            let p = p + round.normalize_or_zero() * rough.max(-0.5 * thick);
+            positions.push(p.to_array());
+            let flat = p - foot;
+            uvs.push([
+                (flat.dot(along) + flat.dot(across)) / ARCH_TILE,
+                -flat.y / ARCH_TILE,
+            ]);
+            let shade = 0.78 + 0.22 * smoothstep(-ARCH_SINK, arch.height, flat.y);
+            colors.push([shade, shade, shade, 1.0]);
         }
     }
-    // Round the opening and round the outside, slice to slice.
-    for n in 0..slices.len() - 1 {
-        let (from, to) = (slices[n], slices[n + 1]);
-        for outside in [false, true] {
-            let (a, b) = if outside {
-                (&rings[n].1, &rings[n + 1].1)
-            } else {
-                (&rings[n].0, &rings[n + 1].0)
-            };
-            for k in 0..points - 1 {
-                let middle_point = (a[k] + a[k + 1]) / 2.0;
-                let out = (middle_point - middle).normalize_or_zero();
-                let out = across * out.x + Vec3::Y * out.y;
-                triangles(
-                    [
-                        (at(a[k], from), uv_round(a[k], from)),
-                        (at(a[k + 1], from), uv_round(a[k + 1], from)),
-                        (at(b[k + 1], to), uv_round(b[k + 1], to)),
-                        (at(b[k], to), uv_round(b[k], to)),
-                    ],
-                    if outside { out } else { -out },
-                    shade(a[k]),
-                );
+    let mut indices = Vec::with_capacity(ARCH_ALONG * ARCH_ROUND * 6);
+    for k in 0..ARCH_ALONG as u32 {
+        for n in 0..ARCH_ROUND as u32 {
+            let next = (n + 1) % ARCH_ROUND as u32;
+            let (a, b) = (k * ARCH_ROUND as u32 + n, k * ARCH_ROUND as u32 + next);
+            let (c, d) = (b + ARCH_ROUND as u32, a + ARCH_ROUND as u32);
+            indices.extend([a, b, c, a, c, d]);
+        }
+    }
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32(indices));
+    mesh.compute_smooth_normals();
+    // Wound the way its outside faces: on top of its crown, up.
+    let top = (ARCH_ALONG / 2) * ARCH_ROUND;
+    let upward = matches!(
+        mesh.attribute(Mesh::ATTRIBUTE_NORMAL),
+        Some(VertexAttributeValues::Float32x3(normals)) if normals[top][1] > 0.0
+    );
+    if !upward {
+        if let Some(Indices::U32(indices)) = mesh.indices_mut() {
+            for triangle in indices.chunks_exact_mut(3) {
+                triangle.swap(1, 2);
             }
         }
+        mesh.compute_smooth_normals();
     }
+    mesh
 }
 
 /// The light of a [`Glow`]: a spot light shining at its target, as bright
@@ -1332,7 +1334,6 @@ mod tests {
     use crate::circuits::CIRCUITS;
     use crate::track::WALL_DISTANCE;
     use crate::world::japan::{VIEW_CLEAR, bounds};
-    use bevy::mesh::VertexAttributeValues;
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
@@ -1883,14 +1884,12 @@ mod tests {
     }
 
     #[test]
-    fn the_arches_of_rock_span_the_road_high_over_it() {
+    fn the_arches_of_rock_come_out_of_the_rock_on_the_left_high_over_the_road() {
         let mut arches = 0;
-        for (circuit, track, _) in &in_middle_earth() {
+        for (circuit, track, terrain) in &in_middle_earth() {
             let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
             for arch in middle_earth.arches {
-                let mut builder = MeshBuilder::default();
-                rock_arch(&mut builder, track, arch);
-                let mesh = builder.build();
+                let mesh = rock_arch(track, arch);
                 let (foot, across, along) = arch_frame(track, arch);
                 // Along the road ahead, and across it to the left.
                 let next = track.surface_point(track.index_at(arch.along) + 3, 0.0);
@@ -1900,8 +1899,7 @@ mod tests {
                     assert!(p.iter().all(|v| v.is_finite()), "{p:?}");
                     let point = Vec3::from_array(*p) - foot;
                     let (lateral, up) = (point.dot(across), point.y);
-                    // Between the walls, high over the road, its feet
-                    // beyond them.
+                    // Between the walls, high over the road.
                     if lateral.abs() < crate::track::WALL_DISTANCE + 0.5 {
                         assert!(up > 7.0, "{}: {up} m up, {lateral} m across", circuit.name);
                     }
@@ -1909,28 +1907,42 @@ mod tests {
                         crown = crown.min(up);
                     }
                 }
-                // Over the middle of the road, as high as it says.
+                // Over the middle of the road, about as high as it says.
                 assert!(
-                    (crown - arch.height).abs() < ARCH_ROUGH,
+                    (crown - arch.height).abs() < 3.0,
                     "{}: its crown {crown} m up",
                     circuit.name
                 );
-                // Its feet beyond the walls of the road under it (not of
-                // the road through the mines far below), kept clear of
-                // trees.
-                let index = track.index_at(arch.along);
-                let line = track.centerline();
-                for (at, reach) in arch_feet(track, arch) {
-                    let near = (index - 30..index + 30)
-                        .map(|i| line[i].distance(at))
-                        .fold(f32::MAX, f32::min);
-                    assert!(
-                        near > arch.width / 2.0,
-                        "{}: a foot {near} m off",
-                        circuit.name
-                    );
-                    assert!(reach > ARCH_LEG);
-                }
+                // Out of the rock on the left, where it ends inside it, and
+                // its foot on the right sunk in the ground.
+                let at = |t: f32| {
+                    let (at, thick) = arch_curve(arch, t);
+                    (foot + across * at.x + Vec3::Y * at.y, thick)
+                };
+                let ground = |p: Vec3| terrain.height(Vec2::new(p.x, p.z));
+                let (end, thick) = at(1.0);
+                assert!(
+                    ground(end) > end.y + thick,
+                    "{}: its end {} m up, the rock {} m",
+                    circuit.name,
+                    end.y,
+                    ground(end)
+                );
+                let (start, _) = at(0.0);
+                assert!(ground(start) > start.y);
+                // Its outside out: on its crown, up.
+                let Some(VertexAttributeValues::Float32x3(normals)) =
+                    mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+                else {
+                    panic!("normals");
+                };
+                assert!(normals[(ARCH_ALONG / 2) * ARCH_ROUND][1] > 0.5);
+                // No tree in it.
+                assert!(
+                    arch_feet(track, arch)
+                        .iter()
+                        .all(|(_, reach)| *reach > arch.depth / 2.0)
+                );
                 arches += 1;
             }
         }

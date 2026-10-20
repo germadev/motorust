@@ -11,10 +11,12 @@
 //!    upside down at the top, before it joins the lap again on the S-bends.
 //! 3. The road climbs into a tunnel through a checkerboard ridge and comes
 //!    out by a waterfall, high above the sea, into a long banked right-hander.
-//! 4. Down past a second waterfall, a wooden bridge, narrower than the road,
-//!    crosses an inlet where the sea runs in under it.
+//! 4. Down past a second waterfall, the road turns right and comes down
+//!    nearly to the sea, round a round bay with an islet in it, the sea
+//!    running in where the road crossed it on a bridge, and back up.
 //! 5. Rolling S-bends with totem poles lead down to the south shore: a
-//!    beach road with palms, back to the start.
+//!    beach road with palms, over a lagoon on a wooden bridge narrower than
+//!    the road, back to the start.
 
 use bevy::prelude::*;
 
@@ -26,15 +28,17 @@ use crate::track::{Banking, Branch, Layout, Narrowing, VerticalLoop, WALL_DISTAN
 use crate::world::scenery::*;
 
 /// Where things are, in metres from the finish line.
-const START: Span = span(2060.0, 290.0);
+const START: Span = span(2382.4, 290.0);
 const TUNNEL: Span = span(770.0, 870.0);
-const BRIDGE: Span = span(1230.0, 1310.0);
+/// The wooden bridge over the lagoon along the south shore.
+const BRIDGE: Span = span(2032.4, 2222.4);
 /// How far from the centre line the fences of the wooden bridge stand (m):
-/// the bridge is narrower than the asphalt of the road.
-const BRIDGE_WALL: f32 = 6.0;
+/// the bridge is narrower than the asphalt of the road, a little less than
+/// the old one over the inlet (6 m), as Fellowship Road's old bridges.
+const BRIDGE_WALL: f32 = 6.5;
 /// The halo the rear wheel leaves behind it riding a wheelie: Sonic's blue.
 const SPIN_HALO: Color = Color::srgb(0.2, 0.5, 1.0);
-const SHORE: Span = span(1660.0, 1960.0);
+const SHORE: Span = span(1982.4, 2282.4);
 /// The stretch of lap the branch with the loop leaves out: it forks off on
 /// the climb to the top of the start straight, so the turn off the lap is
 /// a long, gentle one.
@@ -77,8 +81,8 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 factor: 1.6,
             },
             Banking {
-                from: 1930.0,
-                to: 2070.0,
+                from: 2252.4,
+                to: 2392.4,
                 factor: 1.5,
             },
         ],
@@ -188,8 +192,9 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 color: RED,
                 text: Some("CHECKPOINT"),
             },
+            // On the bay's south shore, half way round the rest of the lap.
             Gantry {
-                along: 1420.0,
+                along: 1560.0,
                 color: RED,
                 text: Some("CHECKPOINT"),
             },
@@ -211,7 +216,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 accent: None,
             },
             Billboard {
-                along: 1870.0,
+                along: 2252.4,
                 side: Side::Right,
                 text: "ZONE 1",
                 color: Color::srgb(0.1, 0.5, 0.2),
@@ -254,7 +259,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 every: 30.0,
             },
             Row {
-                span: span(1350.0, 1640.0),
+                span: span(1672.4, 1962.4),
                 side: Side::Right,
                 lateral: WALL_DISTANCE + 6.0,
                 every: 34.0,
@@ -285,7 +290,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 every: 28.0,
             },
             Row {
-                span: span(1350.0, 1640.0),
+                span: span(1672.4, 1962.4),
                 side: Side::Left,
                 lateral: WALL_DISTANCE + 6.0,
                 every: 30.0,
@@ -297,7 +302,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 every: 26.0,
             },
             Row {
-                span: span(1960.0, 2060.0),
+                span: span(2282.4, 2382.4),
                 side: Side::Left,
                 lateral: WALL_DISTANCE + 8.0,
                 every: 22.0,
@@ -314,12 +319,12 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         }],
         chevrons: &[
             ChevronSign {
-                along: 1630.0,
+                along: 1952.4,
                 side: Side::Right,
                 direction: ChevronDirection::Left,
             },
             ChevronSign {
-                along: 1935.0,
+                along: 2257.4,
                 side: Side::Left,
                 direction: ChevronDirection::Right,
             },
@@ -369,15 +374,15 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 side: Side::Right,
             },
             Totem {
-                along: 1400.0,
+                along: 1722.4,
                 side: Side::Left,
             },
             Totem {
-                along: 1560.0,
+                along: 1882.4,
                 side: Side::Right,
             },
             Totem {
-                along: 2000.0,
+                along: 2322.4,
                 side: Side::Left,
             },
         ],
@@ -385,7 +390,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         loops: &[
             // Inland from the south shore.
             Loop {
-                along: 1590.0,
+                along: 1912.4,
                 side: Side::Right,
                 lateral: 45.0,
                 radius: 11.0,
@@ -419,7 +424,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
     },
 };
 
-const CONTROL_POINTS: [Vec2; 30] = [
+const CONTROL_POINTS: [Vec2; 40] = [
     // 1. The start straight, north (-Z).
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -110.0),
@@ -439,10 +444,22 @@ const CONTROL_POINTS: [Vec2; 30] = [
     Vec2::new(565.0, -445.0),
     Vec2::new(575.0, -380.0),
     Vec2::new(555.0, -320.0),
-    // 4. Down past the waterfall to the wooden bridge.
+    // 4. Down past the waterfall, and round to the right, down round the
+    // bay: along its north shore, round its far end and back along its
+    // south shore, onto the old way where the bridge over it ended.
     Vec2::new(520.0, -270.0),
-    Vec2::new(505.0, -200.0),
-    Vec2::new(515.0, -130.0),
+    Vec2::new(502.0, -252.0),
+    Vec2::new(470.0, -243.0),
+    Vec2::new(425.0, -243.0),
+    Vec2::new(372.0, -236.0),
+    Vec2::new(330.0, -212.0),
+    Vec2::new(313.0, -176.0),
+    Vec2::new(322.0, -140.0),
+    Vec2::new(352.0, -117.0),
+    Vec2::new(400.0, -108.0),
+    Vec2::new(450.0, -109.0),
+    Vec2::new(495.0, -110.0),
+    Vec2::new(525.0, -95.0),
     // 5. Rolling S-bends down to the south shore, and back to the start.
     Vec2::new(540.0, -60.0),
     Vec2::new(530.0, 10.0),
@@ -461,7 +478,7 @@ const CONTROL_POINTS: [Vec2; 30] = [
 /// past the line and a broad top further up the start straight, gentle rises
 /// over the S-bends and along the shore (none to fly off in a bend), and the
 /// high ground of the tunnel.
-const ELEVATION: [(f32, f32); 34] = [
+const ELEVATION: [(f32, f32); 39] = [
     (0.0, 0.0),
     // A crest where the bike takes off flat out, just past the line: it
     // lands on the straight, well before the branch to the loop forks off.
@@ -489,26 +506,34 @@ const ELEVATION: [(f32, f32); 34] = [
     (1060.0, 9.0),
     (1140.0, 6.0),
     (1200.0, 5.0),
-    (1300.0, 5.0),
+    // Down nearly to the sea round the bay, 0.8 m over it, and back up.
+    (1270.0, 1.8),
+    (1340.0, -0.6),
+    (1400.0, -1.2),
+    (1480.0, -1.2),
+    (1560.0, -1.0),
+    (1620.0, 0.4),
+    (1680.0, 3.6),
     // A long, gentle rise over the S-bends: no crest to fly off in them.
-    (1360.0, 6.8),
-    (1420.0, 8.0),
-    (1480.0, 6.6),
-    (1540.0, 4.0),
-    (1600.0, 3.0),
+    (1742.4, 8.0),
+    (1802.4, 6.6),
+    (1862.4, 4.0),
+    (1922.4, 3.0),
     // The shore road rolls gently: its bends come too close together to
     // land a jump between them.
-    (1680.0, 4.3),
-    (1760.0, 6.4),
-    (1840.0, 4.4),
-    (1880.0, 3.0),
-    (1960.0, 2.0),
-    (2040.0, 0.8),
+    (2002.4, 4.3),
+    (2082.4, 6.4),
+    (2162.4, 4.4),
+    (2202.4, 3.0),
+    (2282.4, 2.0),
+    (2362.4, 0.8),
 ];
 
-/// The island: how far out from the centre line the land goes (m), with an
-/// inlet where the sea runs in under the bridge.
-const COAST: [(f32, f32); 16] = [
+/// The island: how far out from the centre line the land goes (m). Round
+/// the bay, the sea right beyond the walls, on the left, inside the bay
+/// (its mouth where the road crossed it on a bridge, before); along the
+/// south shore, the sea running in under the bridge into a lagoon.
+const COAST: [(f32, f32); 19] = [
     (0.0, 140.0),
     (280.0, 160.0),
     (400.0, 220.0),
@@ -516,18 +541,27 @@ const COAST: [(f32, f32); 16] = [
     (880.0, 140.0),
     (1050.0, 70.0),
     (1180.0, 45.0),
-    (1200.0, 40.0),
-    (1235.0, -170.0),
-    (1305.0, -170.0),
-    (1340.0, 40.0),
-    (1500.0, 40.0),
-    (1650.0, 45.0),
-    (1950.0, 45.0),
-    (2000.0, 70.0),
-    (2060.0, 120.0),
+    (1200.0, 30.0),
+    (1230.0, BAY_SHORE),
+    (1650.0, BAY_SHORE),
+    (1690.0, 40.0),
+    (1822.4, 40.0),
+    (1972.4, 45.0),
+    (1997.4, -LAGOON),
+    (2237.4, -LAGOON),
+    (2262.4, 45.0),
+    (2272.4, 45.0),
+    (2322.4, 70.0),
+    (2382.4, 120.0),
 ];
 
-const MASSIFS: [Massif; 10] = [
+/// How far from the middle of the road the bay's shore is round it (m):
+/// right beyond the walls; and how far inland the lagoon under the bridge
+/// reaches past the road (m).
+const BAY_SHORE: f32 = 16.0;
+const LAGOON: f32 = 40.0;
+
+const MASSIFS: [Massif; 11] = [
     // The ridge the tunnel goes through.
     massif(430.0, -505.0, 80.0, 32.0),
     massif(395.0, -565.0, 60.0, 26.0),
@@ -539,9 +573,10 @@ const MASSIFS: [Massif; 10] = [
     massif(370.0, -70.0, 50.0, 18.0),
     // Hills behind the loop.
     massif(110.0, -520.0, 75.0, 30.0),
-    // Islets.
+    // Islets, and one in the middle of the bay.
     massif(-220.0, -160.0, 30.0, 12.0),
     massif(300.0, 260.0, 28.0, 10.0),
+    massif(418.0, -176.0, 24.0, 8.0),
 ];
 
 const CUTTINGS: [Cutting; 5] = [
@@ -567,9 +602,10 @@ const CUTTINGS: [Cutting; 5] = [
         side: Side::Right,
         height: 18.0,
     },
-    // Earth on the inside of the S-bends towards the shore.
+    // Earth on the inside of the S-bends towards the shore, short of the
+    // lagoon.
     Cutting {
-        span: span(1590.0, 1700.0),
+        span: span(1912.4, 1987.4),
         side: Side::Right,
         height: 14.0,
     },

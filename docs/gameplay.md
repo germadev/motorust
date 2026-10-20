@@ -141,7 +141,7 @@ The chase camera sits low behind the bike, as in *Moto Racer*. Its field of view
 - left or right looks to that side;
 - down looks back, with the camera in front of the bike.
 
-Release the stick and the camera looks ahead again.
+Release the stick and the camera looks ahead again. It turns at once, as the stick moves, and back at once too.
 
 ## Controls
 
