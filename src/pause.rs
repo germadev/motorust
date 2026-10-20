@@ -42,6 +42,9 @@ pub struct DebugOptions {
     /// Con el stick, cuánto limitar el giro según la velocidad (de entrada,
     /// medio).
     pub stick_limit: TurnLimit,
+    /// With the stick, how quickly the bike follows it (fast at first: as
+    /// always; slower for pads whose sticks feel too quick).
+    pub stick_response: StickResponse,
     /// Con el teclado o la cruceta, lo mismo (de entrada, medio).
     pub keyboard_limit: TurnLimit,
     /// Con el teclado o la cruceta, cuánto gira al dejar pulsada la tecla
@@ -61,12 +64,61 @@ impl Default for DebugOptions {
     fn default() -> Self {
         Self {
             stick_limit: TurnLimit::Medium,
+            stick_response: StickResponse::Fast,
             keyboard_limit: TurnLimit::Medium,
             keyboard_rate: SteerRate::Medium,
             keyboard_return: ReturnRate::Medium,
             keyboard_reverse: ReverseRate::Fast,
             show_legend: false,
         }
+    }
+}
+
+/// How quickly the steering follows the stick: fast (as always), medium or
+/// slow, both as it is pushed over and as it comes back.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StickResponse {
+    Fast,
+    Medium,
+    Slow,
+}
+
+const STICK_RESPONSES: [StickResponse; 3] = [
+    StickResponse::Fast,
+    StickResponse::Medium,
+    StickResponse::Slow,
+];
+
+impl StickResponse {
+    /// What multiplies how quickly the steering follows the stick: all the
+    /// way over in about a quarter of a second fast, 0.4 s medium, two
+    /// thirds of one slow.
+    pub fn factor(self) -> f32 {
+        match self {
+            StickResponse::Fast => 1.0,
+            StickResponse::Medium => 0.65,
+            StickResponse::Slow => 0.4,
+        }
+    }
+
+    pub fn name(self, lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => match self {
+                StickResponse::Fast => "rápida",
+                StickResponse::Medium => "media",
+                StickResponse::Slow => "lenta",
+            },
+            Language::English => match self {
+                StickResponse::Fast => "fast",
+                StickResponse::Medium => "medium",
+                StickResponse::Slow => "slow",
+            },
+        }
+    }
+
+    /// The next one (`step` 1) or the one before (-1), round and round.
+    pub fn next(self, step: i32) -> Self {
+        cycle(&STICK_RESPONSES, self, step)
     }
 }
 

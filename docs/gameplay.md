@@ -177,12 +177,15 @@ Options that are on or off (fullscreen, the controls legend, pipelined rendering
   | Page | Option | Values | Default |
   |---|---|---|---|
   | Stick | "Turn limit with speed" | off, low, medium, high | medium |
+  | Stick | "Stick response" ("Respuesta del stick") | fast, medium, slow | fast |
   | Keyboard | "Turn limit with speed" | off, low, medium, high | medium |
   | Keyboard | "Sustained turn rate" | slow, medium, fast | medium |
   | Keyboard | "Return rate released" | slow, medium, fast | medium |
   | Keyboard | "Turning the other way" ("rapidez de cambio de sentido") | slow, medium, fast | fast |
 
   The turn-limit levels apply a share of the speed-dependent limit described under [Steering](#steering): off is no limit, low a third, medium two thirds and high the whole limit (at top speed, holding the input gives 80 % of full lock). The rates scale how fast keyboard and D-pad steering builds up while a key is held (slow is half as fast as fast, medium three quarters), how fast it returns to centre once released (medium is half as fast as fast, slow a third), and how fast the bike and the rider swing over to the other side when the other key is pressed while turning: fast as always; medium at 60 % of that speed and slow at 35 %, both the bike's lean and the rider's body hanging off. The turn itself changes sides at once whatever the rate, so the bike's course is the same: only the swing is slower. With the stick nothing changes.
+
+  The stick response is how quickly the steering follows the stick, for gamepads whose sticks feel too lively. Fast is the response the game always had: the steering reaches a stick pushed all the way over in about a quarter of a second (0.26 s) and comes back to a released one in under a tenth. Medium is at 65 % of that speed (0.4 s over) and slow at 40 % (two thirds of a second over, 0.2 s back). The steering never goes past the stick, and pushing it to the other side still drops the turn at once.
 - **Sound.** "FX Volume" and "Music Volume", from 0 to 100 % in steps of 10 (80 % by default), and the music on or off. 80 % is the balance found by ear: the effects at a fifth and the music at nine tenths of the scale the game used before. Volumes saved with that older scale are not carried over: they start again at 80 %.
 - **Graphics.**
   - **Fullscreen.** At any time, Cmd+Enter on macOS or Alt+Enter on Windows and Linux switches to fullscreen and back. The change is saved as if you had picked it here.

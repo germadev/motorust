@@ -1278,7 +1278,7 @@ fn read_controller_binding(
 
                 let raw_steer = -stick_steer(gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0))
                     * reach_with(options.stick_limit, speed);
-                let steer = analog.update(raw_steer, dt);
+                let steer = analog.update(raw_steer, options.stick_response.factor(), dt);
 
                 let dpad_left = if gamepad.pressed(GamepadButton::DPadLeft) {
                     1.0f32
@@ -1462,7 +1462,7 @@ fn read_player_input(
         }
 
         let raw_steer = steer * reach_with(options.stick_limit, state.speed);
-        let steer = analog_p1.update(raw_steer, dt);
+        let steer = analog_p1.update(raw_steer, options.stick_response.factor(), dt);
         let steer_direct = digital_p1.update(
             pressed.clamp(-1.0, 1.0),
             reach_with(options.keyboard_limit, state.speed),
@@ -1566,14 +1566,16 @@ impl DigitalSteer {
 
 /// Dirección suavizada del stick: al tumbar hacia la curva (`leaning_in`), avanza
 /// a un ritmo progresivo parecido a la cruceta o el teclado; al soltar o enderezar
-/// hacia el centro, recupera de inmediato para mantener toda la agilidad.
+/// hacia el centro, recupera de inmediato para mantener toda la agilidad. Both
+/// as quickly as the stick's response chosen says (`response`, see
+/// [`pause::StickResponse`]).
 #[derive(Default)]
 struct AnalogSteer {
     value: f32,
 }
 
 impl AnalogSteer {
-    fn update(&mut self, target: f32, dt: f32) -> f32 {
+    fn update(&mut self, target: f32, response: f32, dt: f32) -> f32 {
         // Al girar hacia el otro lado, aborta el giro anterior de inmediato
         // (igual que hace DigitalSteer en teclado/cruceta) para que la respuesta
         // sea instantánea.
@@ -1581,7 +1583,7 @@ impl AnalogSteer {
             self.value = 0.0;
         }
         let leaning_in = target.abs() > self.value.abs();
-        let rate = if leaning_in { 3.8 } else { 12.0 };
+        let rate = if leaning_in { 3.8 } else { 12.0 } * response;
         self.value = move_toward(self.value, target, rate * dt);
         self.value
     }
@@ -2136,7 +2138,7 @@ mod tests {
         let dt = 1.0 / 120.0;
         let mut frames_in = 0;
         while analog.value < 0.99 {
-            analog.update(1.0, dt);
+            analog.update(1.0, 1.0, dt);
             frames_in += 1;
         }
         let time_in = frames_in as f32 * dt;
@@ -2144,7 +2146,7 @@ mod tests {
 
         let mut frames_out = 0;
         while analog.value > 0.01 {
-            analog.update(0.0, dt);
+            analog.update(0.0, 1.0, dt);
             frames_out += 1;
         }
         let time_out = frames_out as f32 * dt;
@@ -2158,13 +2160,44 @@ mod tests {
         );
 
         // Al cambiar de lado, aborta el lado anterior y empieza de inmediato
-        analog.update(1.0, dt);
+        analog.update(1.0, 1.0, dt);
         assert!(analog.value > 0.0);
-        analog.update(-1.0, dt);
+        analog.update(-1.0, 1.0, dt);
         assert!(
             analog.value < 0.0,
             "empieza de inmediato hacia el otro lado"
         );
+    }
+
+    #[test]
+    fn a_slower_stick_response_follows_the_stick_more_slowly_never_past_it() {
+        use crate::pause::StickResponse;
+        let dt = 1.0 / 120.0;
+        // How long it takes all the way over with each response.
+        let over = |response: StickResponse| {
+            let mut analog = AnalogSteer::default();
+            let mut frames = 0;
+            while analog.value < 0.99 {
+                let value = analog.update(1.0, response.factor(), dt);
+                assert!(value <= 1.0, "never past the stick");
+                frames += 1;
+            }
+            frames as f32 * dt
+        };
+        let (fast, medium, slow) = (
+            over(StickResponse::Fast),
+            over(StickResponse::Medium),
+            over(StickResponse::Slow),
+        );
+        // Fast as it always was; the others slower, slow slowest.
+        assert!((0.2..0.4).contains(&fast), "{fast} s");
+        assert!(
+            medium > fast * 1.3 && slow > medium * 1.3,
+            "{fast} {medium} {slow}"
+        );
+        assert!(slow < 1.0, "{slow} s");
+        assert_eq!(StickResponse::Fast.next(1), StickResponse::Medium);
+        assert_eq!(StickResponse::Fast.next(-1), StickResponse::Slow);
     }
 
     #[test]

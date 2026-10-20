@@ -16,7 +16,7 @@ use crate::mapping::{
     Held, MapDevice, Mapping, MappingLook, PAD_HEIGHT, Step, spawn_mapping, use_mapping,
 };
 use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
-use crate::pause::{DebugOptions, ReturnRate, ReverseRate, SteerRate, TurnLimit};
+use crate::pause::{DebugOptions, ReturnRate, ReverseRate, SteerRate, StickResponse, TurnLimit};
 use crate::render_scale::{NativeShare, drawn_size};
 use crate::settings::{
     ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
@@ -417,6 +417,8 @@ enum ControlItem {
     StickBehaviour,
     KeyboardBehaviour,
     StickTurnLimit,
+    /// How quickly the steering follows the stick.
+    StickResponse,
     KeyboardTurnLimit,
     KeyboardTurnRate,
     KeyboardReturnRate,
@@ -544,7 +546,7 @@ fn control_items(page: Option<Page>) -> Vec<ControlItem> {
             ControlItem::ShowLegend,
             ControlItem::RescanGamepads,
         ],
-        Some(Page::Stick) => vec![ControlItem::StickTurnLimit],
+        Some(Page::Stick) => vec![ControlItem::StickTurnLimit, ControlItem::StickResponse],
         Some(Page::Keyboard) => vec![
             ControlItem::KeyboardTurnLimit,
             ControlItem::KeyboardTurnRate,
@@ -706,6 +708,7 @@ fn steering(
     debug: &DebugOptions,
 ) -> (
     TurnLimit,
+    StickResponse,
     TurnLimit,
     SteerRate,
     ReturnRate,
@@ -714,6 +717,7 @@ fn steering(
 ) {
     (
         debug.stick_limit,
+        debug.stick_response,
         debug.keyboard_limit,
         debug.keyboard_rate,
         debug.keyboard_return,
@@ -734,7 +738,8 @@ fn section_is_default(
     let at_first = DebugOptions::default();
     match (tab, page) {
         (OptionsTab::Control, Some(Page::Stick)) => {
-            return debug.stick_limit == at_first.stick_limit;
+            return (debug.stick_limit, debug.stick_response)
+                == (at_first.stick_limit, at_first.stick_response);
         }
         (OptionsTab::Control, Some(Page::Keyboard)) => {
             return keyboard(debug) == keyboard(&at_first);
@@ -820,6 +825,7 @@ fn reset_section(
     match (tab, page) {
         (OptionsTab::Control, Some(Page::Stick)) => {
             debug.stick_limit = at_first.stick_limit;
+            debug.stick_response = at_first.stick_response;
             return;
         }
         (OptionsTab::Control, Some(Page::Keyboard)) => {
@@ -1061,6 +1067,10 @@ fn use_options_menu(
                 }
                 ControlItem::StickTurnLimit if change != 0 => {
                     debug_options.stick_limit = debug_options.stick_limit.next(change);
+                    sounds.write(MenuSound::Move);
+                }
+                ControlItem::StickResponse if change != 0 => {
+                    debug_options.stick_response = debug_options.stick_response.next(change);
                     sounds.write(MenuSound::Move);
                 }
                 ControlItem::KeyboardTurnLimit if change != 0 => {
@@ -1604,6 +1614,13 @@ fn show_options_menu(
                         Language::English => "Turn limit with speed",
                     },
                     format!("<  {}  >", debug_options.stick_limit.name(lang)),
+                ),
+                ControlItem::StickResponse => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Respuesta del stick",
+                        Language::English => "Stick response",
+                    },
+                    format!("<  {}  >", debug_options.stick_response.name(lang)),
                 ),
                 ControlItem::KeyboardTurnLimit => Row::with_value(
                     match lang {
@@ -2418,7 +2435,7 @@ mod tests {
         assert!((0..4).all(|index| !starts_group(OptionsTab::Control, keyboard, index)));
         assert_eq!(
             control_items(Some(Page::Stick)),
-            [ControlItem::StickTurnLimit]
+            [ControlItem::StickTurnLimit, ControlItem::StickResponse]
         );
     }
 
@@ -2754,6 +2771,7 @@ mod tests {
         // On a page of Control's, its own options only.
         let (stick, keyboard) = (Some(Page::Stick), Some(Page::Keyboard));
         debug.stick_limit = TurnLimit::Off;
+        debug.stick_response = StickResponse::Slow;
         debug.keyboard_reverse = ReverseRate::Slow;
         let control = OptionsTab::Control;
         assert!(!section_is_default(control, stick, &settings, &debug));
@@ -2761,7 +2779,9 @@ mod tests {
         reset_section(control, keyboard, &mut settings, &mut debug);
         assert!(section_is_default(control, keyboard, &settings, &debug));
         assert_eq!(debug.stick_limit, TurnLimit::Off);
+        assert_eq!(debug.stick_response, StickResponse::Slow);
         reset_section(control, stick, &mut settings, &mut debug);
+        assert_eq!(debug.stick_response, StickResponse::Fast);
         assert!(section_is_default(control, None, &settings, &debug));
     }
 
