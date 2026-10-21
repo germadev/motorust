@@ -67,8 +67,9 @@ grep -A1 '^name = "wasm-bindgen"$' Cargo.lock
 1. Runs `cargo build --release --target wasm32-unknown-unknown`.
 2. Runs `wasm-bindgen --target web`, dropping the name and producers sections (the function names take almost as much space as the code).
 3. Copies `web/index.html` into the output folder with the size of the `.wasm` filled in (`WASM_BYTES`), so the progress bar works even when the server sends the file compressed without a length, and its SHA-256 (`WASM_SHA256`), which names the build (see [Caching the game](#caching-the-game)).
+4. Copies `web/setup.sh` into the output folder with the version of the build filled in, so the installer for Linux and macOS downloads the same release the page is publishing (see [The installer for Linux and macOS](#the-installer-for-linux-and-macos)).
 
-The result is three files: `index.html`, `motorust.js` and `motorust_bg.wasm`.
+The result is three files for the game (`index.html`, `motorust.js` and `motorust_bg.wasm`) plus the installer (`setup.sh`).
 
 ### The page
 
@@ -145,3 +146,16 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 - **macOS:** the executables are not signed. The first time, open the game with right-click → Open, or remove the quarantine flag with `xattr -d com.apple.quarantine motorust` (or on `Motorust.app`). Double-clicking `Motorust.app` opens the game directly without launching Terminal.
 - **Windows:** the release build opens without a console window.
 - **Linux:** run `./motorust` from the extracted folder.
+
+## The installer for Linux and macOS
+
+`web/setup.sh` is published with the site at <https://motorust.germade.dev/setup.sh> and installs the game from the terminal:
+
+```sh
+curl -fsSL https://motorust.germade.dev/setup.sh | bash
+wget -qO- https://motorust.germade.dev/setup.sh | bash
+```
+
+It downloads `motorust-<version>-<target>.tar.gz` from `/downloads/` (the Pages function serves it from the R2 bucket, and falls back to the GitHub release), checks it against `SHA256SUMS.txt`, leaves the executable in `~/motorust/motorust` and links it into a directory of `$PATH` (`~/.local/bin` when it is there, otherwise the first writable one) so the game runs with `motorust`. Run it again and it offers to update or uninstall. It also takes `--install`, `--update`, `--uninstall`, `--dir` and `--version`.
+
+`web/build.sh` writes the version of the build into the script (the `__MOTORUST_VERSION__` placeholder), so the installer always downloads the release the site is publishing, and copies it to `dist/web/setup.sh`.

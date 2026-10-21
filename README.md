@@ -69,6 +69,22 @@ More about each one in [docs/tracks.md](docs/tracks.md).
 
 ## Quick start
 
+### Install the game (Linux and macOS)
+
+The site publishes an installer that downloads the game, leaves it in
+`~/motorust/motorust` and links it into a directory of your `$PATH`, so it
+runs from any terminal with `motorust`:
+
+```sh
+curl -fsSL https://motorust.germade.dev/setup.sh | bash
+# or
+wget -qO- https://motorust.germade.dev/setup.sh | bash
+```
+
+Run it again and it offers to install, update or uninstall the game.
+
+### Build it from the source
+
 You need Rust 1.95 or newer ([rustup](https://rustup.rs)) and `make`.
 
 ```sh
