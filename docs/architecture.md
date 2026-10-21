@@ -101,6 +101,7 @@ motorust is a [Bevy](https://bevy.org) 0.19 app built from one plugin per area. 
 | `src/web.rs` | Web only: tells the page the game is visible so it can remove the loading screen. |
 | `web/index.html` | The web page: canvas, "Jugar online" button (nothing is downloaded before it is pressed), download progress, audio unlock on first input, error display. |
 | `web/build.sh` | Builds the web version into `dist/web` (see [building.md](building.md#web-version)). |
+| `web/setup.sh` | The installer for Linux and macOS, published at <https://motorust.germade.dev/setup.sh>: downloads the game, leaves it in `~/motorust/motorust` and links it into a directory of `$PATH` (see [building.md](building.md#the-installer-for-linux-and-macos)). |
 | `tools/import_models.py` | Prepares the Meshy GLB files for the game (see [models.md](models.md#the-importer)). |
 | `tools/import_trees.py` | Prepares the Meshy trees for the game (see [models.md](models.md#trees)). |
 | `tools/import_props.py` | Prepares the Meshy props of feudal Japan for the game, mending those that came out wrong (see [models.md](models.md#the-props-of-feudal-japan)). |
