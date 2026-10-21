@@ -633,7 +633,7 @@ fn rock_arch(track: &Track, arch: &RockArch) -> Mesh {
     );
     if !upward {
         if let Some(Indices::U32(indices)) = mesh.indices_mut() {
-            for triangle in indices.chunks_exact_mut(3) {
+            for triangle in indices.as_chunks_mut::<3>().0.iter_mut() {
                 triangle.swap(1, 2);
             }
         }

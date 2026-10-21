@@ -192,7 +192,7 @@ pub fn widen(lawn: &Image) -> Image {
 fn mean_of(pixels: &[u8]) -> [f32; 3] {
     let count = (pixels.len() / 4) as f32;
     let mut sum = [0.0f64; 3];
-    for pixel in pixels.chunks_exact(4) {
+    for pixel in pixels.as_chunks::<4>().0 {
         for (sum, value) in sum.iter_mut().zip(pixel) {
             *sum += *value as f64;
         }
@@ -649,7 +649,12 @@ mod tests {
         }
         // Its stripes are still there, as light and as dark: the blend
         // keeps the contrast.
-        let red: Vec<u8> = data[..pixels * 4].chunks_exact(4).map(|p| p[0]).collect();
+        let red: Vec<u8> = data[..pixels * 4]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|p| p[0])
+            .collect();
         let share =
             |of: &dyn Fn(u8) -> bool| red.iter().filter(|&&r| of(r)).count() as f32 / pixels as f32;
         let (dark, light) = (share(&|r| r < 80), share(&|r| r > 120));

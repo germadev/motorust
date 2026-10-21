@@ -823,7 +823,7 @@ fn planks() -> Image {
         Color::LinearRgba(wood * (tone * grain))
     });
     let data = image.data.as_mut().expect("its pixels");
-    for (i, pixel) in data.chunks_exact_mut(4).enumerate() {
+    for (i, pixel) in data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         if gap(i as u32 / SIZE) {
             pixel[3] = 0;
         }

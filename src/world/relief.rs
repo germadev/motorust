@@ -266,7 +266,9 @@ impl Heights {
             .as_deref()
             .expect("the texture has its pixels on the CPU");
         let light: Vec<f32> = data[..width * height * 4]
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|p| (0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32) / 255.0)
             .collect();
         let fine = blur(&light, width, height, 1);
@@ -605,7 +607,7 @@ pub fn tangents(mesh: &Mesh) -> Option<Vec<[f32; 4]>> {
     };
     // Along u and along v, at each corner.
     let mut sums = vec![(Vec3::ZERO, Vec3::ZERO); positions.len()];
-    for triangle in corners.chunks_exact(3) {
+    for triangle in corners.as_chunks::<3>().0 {
         let [a, b, c] = [triangle[0], triangle[1], triangle[2]];
         let (pa, pb, pc) = (
             Vec3::from(positions[a]),
