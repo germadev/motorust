@@ -227,6 +227,9 @@ fn spawn_surface(
 ) {
     let line = road.line();
     let half = line.half_width();
+    // In a toy shop the road is not asphalt: it is the toy track itself,
+    // drawn by [`super::toy_store`] over the same ground.
+    let toy = scenery.toy_store.is_some();
     // On a wooden bridge the planks are the road (see `structures`): no
     // asphalt or paint under them, which would show past a fence narrower
     // than the road.
@@ -242,7 +245,8 @@ fn spawn_surface(
     let covered = |corners: [Vec2; 4]| corners.iter().all(|&p| road.on_other_asphalt(p));
     spawn(
         ribbon(road, -half, half, 0.0, ASPHALT_TILE, |index, corners| {
-            ((road.number == 0 || !covered(corners)) && !planked(index)).then_some(Color::WHITE)
+            (!toy && (road.number == 0 || !covered(corners)) && !planked(index))
+                .then_some(Color::WHITE)
         }),
         StandardMaterial {
             base_color_texture: Some(textures.asphalt.clone()),
@@ -264,7 +268,8 @@ fn spawn_surface(
         let middle = corners.iter().sum::<Vec2>() / 4.0;
         !road.on_other_asphalt(middle)
     };
-    let white = |index, corners| (clear(corners) && !planked(index)).then_some(Color::WHITE);
+    let white =
+        |index, corners| (clear(corners) && !planked(index) && !toy).then_some(Color::WHITE);
     let edge = half - EDGE_LINE_INSET;
     spawn(
         ribbon(road, edge - LINE_WIDTH, edge, PAINT_LIFT, 1.0, white),
@@ -275,7 +280,7 @@ fn spawn_surface(
         painted(),
     );
     let dashes = |index: usize, corners| {
-        (index % (DASH.0 + DASH.1) < DASH.0 && clear(corners) && !planked(index))
+        (index % (DASH.0 + DASH.1) < DASH.0 && clear(corners) && !planked(index) && !toy)
             .then_some(Color::WHITE)
     };
     let center = LINE_WIDTH / 2.0;
@@ -284,7 +289,7 @@ fn spawn_surface(
         painted(),
     );
     let curbs = |index: usize, corners| {
-        (has_curbs(road, index) && clear(corners) && !planked(index))
+        (has_curbs(road, index) && clear(corners) && !planked(index) && !toy)
             .then_some(scenery.curbs[index % 2])
     };
     spawn(
@@ -349,6 +354,17 @@ fn spawn_surface(
                 base_color: Color::srgb(0.8, 0.68, 0.56),
                 base_color_texture: Some(textures.planks.clone()),
                 perceptual_roughness: 0.9,
+                ..default()
+            },
+        ),
+        // A toy track's edge: bright blue plastic.
+        (
+            WallStyle::ToyRail,
+            StandardMaterial {
+                base_color: Color::srgb(0.09, 0.28, 0.78),
+                base_color_texture: Some(textures.plaster.clone()),
+                perceptual_roughness: 0.32,
+                reflectance: 0.6,
                 ..default()
             },
         ),
@@ -561,6 +577,21 @@ fn profile(style: WallStyle) -> Profile {
                 (WALL_THICKNESS, foot),
             ],
             0.04,
+            2,
+            Vec2::splat(WALL_TILE),
+        ),
+        // A toy track's edge: a low rail of blue plastic, rounded over the
+        // top.
+        WallStyle::ToyRail => (
+            &[
+                (0.0, foot),
+                (0.0, 0.42),
+                (0.06, 0.56),
+                (WALL_THICKNESS - 0.06, 0.56),
+                (WALL_THICKNESS, 0.42),
+                (WALL_THICKNESS, foot),
+            ],
+            0.07,
             2,
             Vec2::splat(WALL_TILE),
         ),

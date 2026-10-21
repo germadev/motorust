@@ -1,6 +1,6 @@
 # Tracks
 
-Motorust has seven tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All seven are closed roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners: three on the coast under a summer sky, a desert mountain at dusk, an island of feudal Japan, an Earth space center & lunar base under the starry sky of space connected by an interdimensional portal, and the journey of *The Fellowship of the Ring*. Loop Island has a branch with a vertical loop the bikes ride upside down; Gold Mine has four branches without loops through its excavation, Ghost Island and Fellowship Road have three each out in the open, and Base Lunar has a two-way crater split on its Moon sector.
+Motorust has eight tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All eight are closed roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners: three on the coast under a summer sky, a desert mountain at dusk, an island of feudal Japan, an Earth space center & lunar base under the starry sky of space connected by an interdimensional portal, the journey of *The Fellowship of the Ring*, and the inside of a toy shop, with a ceiling of lamps over it and no sky at all. Loop Island has a branch with a vertical loop the bikes ride upside down; Gold Mine has four branches without loops through its excavation, Ghost Island and Fellowship Road have three each out in the open, and Base Lunar has a two-way crater split on its Moon sector.
 
 | Track | Length | In the game's words |
 |---|---|---|
@@ -11,6 +11,7 @@ Motorust has seven tracks, picked on the track select screen (see [gameplay.md](
 | [Ghost Island](#ghost-island) | 5.97 km | "Inspirada en Ghost of Tsushima: un castillo cruzado por debajo y por encima, cuestas, un lago entre flores y dos bifurcaciones" (inspired by *Ghost of Tsushima*: a castle crossed under and over, steep hills, a lake among flowers and two splits) |
 | [Base Lunar](#base-lunar) ("Moon Base") | 4.6 km | "Centro espacial y observatorio en la Tierra con portal a la Luna: lanzadera, antenas gigantes, cúpulas de telescopio y base lunar" (Earth space center and observatory with portal to the Moon: launchpad, giant radio dishes, telescope domes and lunar base) |
 | [Fellowship Road](#fellowship-road) | 5.75 km | "Inspirada en La Comunidad del Anillo: de la Comarca a los Argonath, un ocho sobre y bajo las montañas, cuestas y dos bifurcaciones" (inspired by *The Fellowship of the Ring*: from the Shire to the Argonath, a figure of eight over and under the mountains, steep hills and two splits) |
+| [La Juguetería](#la-juguetería) (The Toy Store) | 1.97 km | "El interior de una juguetería: un circuito de juguete que sube a un sillón, pasa por una mesa y baja por un tobogán, al lado de un tren eléctrico" (the inside of a toy shop: a toy circuit that climbs on to an armchair, crosses a table and comes down a slide, beside an electric train) |
 
 Distances below are in metres from the finish line, as in the track data.
 
@@ -165,11 +166,66 @@ Its scenery is its own, made with Meshy (see [models.md](models.md#props-of-midd
   12. **The Anduin** (4587–5235 m). Down its gorge in esses, the cliffs on the right, of a browner stone (to 4882 m), to the water, and west down the middle of the river on a causeway (4900–5235 m), low over the water and narrower than the road (its fences 6.5 m from the middle, 0.75 m high), in a sweep to the right and the left, between the two kings of the Argonath (about 5070 m), 60 m high, close together at the foot of the cliffs, the lake ahead.
   13. **Amon Hen** (5235–5645 m). Past the lake and round to the right over the shoulder of the hill, the seat of seeing by the road on the left (5405 m), facing it, turned a little towards the riders coming, a broad, diffused sunbeam down onto it, no trees before it, and on up onto the start straight, into the wood.
 
+## La Juguetería
+
+La Juguetería (The Toy Store) is the inside of a toy shop: a 450 m by 730 m
+hall with a ceiling 30 m over the floor, its beams and its rows of
+fluorescent lamps, and shelves of toys along the walls. **There is no sky
+over it**: the dome, the sun and the clouds are put away (`SkyStyle::Indoor`)
+and the ceiling of the shop is seen instead, lit by the lamps hanging from
+it and by a warm light from straight above, as if from the lamps themselves.
+The road is not asphalt either: it is the toy track, an orange plastic
+circuit laid over the floor of the shop, with a blue rail down each side
+(`WallStyle::ToyRail`).
+
+The bikes are the size of toy motorcycles in it, and the furniture of the
+shop is the size of a giant's: the table the race starts on is 70 m across
+and 6 m above the floor, the armchair the track runs over is 44 m wide, and
+the shelves are 24 m tall. Its data is in `src/circuits/toy_store.rs` and
+its scenery is drawn by `src/world/toy_store.rs`.
+
+- **The light.** No sky, no sun and no clouds: the whole sky is hidden and
+  the picture is lit by the ceiling's lamps, a warm white from straight
+  above, and by the light of the white walls and ceiling. A soft haze
+  hangs in the air of the shop, and the far end of it fades.
+- **The track.** A single orange plastic circuit, 23 m wide between its
+  blue rails, that runs right round the shop: over the grey set of a
+  Scalextric in the north aisle (with its two little steel rails down the
+  middle), along the wooden railway of the electric train on the west side,
+  round the Hot Wheels circuit in the south aisle, and back to the table.
+- **The furniture.** The play table the race starts on, at the finish line;
+  the great armchair the track climbs over; the shelves of toys along the
+  walls, with boxes, dolls and balls on them; the toys lying about on the
+  floor; and the electric train, going round its railway on the floor.
+
+A lap, in order:
+
+  1. **The play table** (0–30 m, the finish line on it). The bikes start on
+     the table, 6 m above the floor of the shop, under an orange arch with
+     the name of the shop on it.
+  2. **The slide** (30–100 m). The track leaves the table's edge and comes
+     down a yellow plastic chute with blue sides, at up to 11 %, to the
+     floor of the shop.
+  3. **The armchair** (130–195 m). A ramp up to the seat of a great
+     armchair, 3 m above the floor, across it, and down again.
+  4. **The Scalextric aisle** (577–741 m, north). The long straight by the
+     north wall, where the track runs over a grey Scalextric set with its
+     two little rails down the middle, round the corner and into the west
+     aisle. A "CHECKPOINT" arch at 680 m.
+  5. **The railway** (924–1353 m, west). The track runs beside the
+     wooden railway of the electric train, which goes round the shop on its
+     own, under the armchair and the ramp to it.
+  6. **The Hot Wheels aisle** (1514–1739 m, south). An orange circuit with
+     two gentle esses in it, round the south wall.
+  7. **The ramp back to the table** (1880–1960 m). The last ramp of the
+     lap, up from the floor to the play table, with the finish line on it
+     again.
+
 ## Editing or adding a track
 
 ### Where tracks live
 
-Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs` and `fellowship_road.rs`). A `Circuit` has six fields:
+Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has six fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.

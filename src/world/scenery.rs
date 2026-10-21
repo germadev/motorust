@@ -204,6 +204,9 @@ pub enum WallStyle {
     /// A low concrete parapet, as along a dam's crest on its lake's side:
     /// the water shows over it, a little way down.
     Parapet,
+    /// A bright blue plastic rail, as the edges of a toy track are: low,
+    /// rounded over, and the same on both sides.
+    ToyRail,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -241,6 +244,9 @@ pub enum SkyStyle {
     /// Lord of the Rings* was shot.
     HighCountry,
     Space,
+    /// Indoors, under the ceiling of a shop: no sky at all, but the light of
+    /// the lamps on the ceiling and of the white walls.
+    Indoor,
 }
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
@@ -531,9 +537,18 @@ pub struct Scenery {
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
     pub space: Option<Space>,
+    /// The inside of a toy shop, if the road runs through one: see
+    /// [`ToyStore`].
+    pub toy_store: Option<ToyStore>,
 }
 
 impl Scenery {
+    /// Whether the circuit is indoors, under a ceiling, with no sky over
+    /// it (see [`SkyStyle::Indoor`]).
+    pub fn indoor(&self) -> bool {
+        self.sky == SkyStyle::Indoor
+    }
+
     /// The halls of the tunnels where they are excavations, a mine's or
     /// Moria's (see [`super::cavern`]), rather than tunnels lined with
     /// concrete panels.
@@ -1377,6 +1392,92 @@ pub struct StationArch {
 pub struct LunarBoulders {
     pub max: usize,
     pub spans: &'static [Span],
+}
+
+/// The inside of a toy shop, as at the Toy Store (see
+/// [`crate::world::toy_store`]): the room the road runs through, with its
+/// ceiling and its lights, the shelves of toys along the walls, the
+/// furniture the road runs over, the slide it comes down, the toys lying
+/// about and the electric train going round the floor.
+pub struct ToyStore {
+    /// The room: how far its floor reaches each way from its middle (m),
+    /// and how high its ceiling stands over the floor (m).
+    pub room: Vec2,
+    /// Where the middle of the floor is (x, z).
+    pub centre: Vec2,
+    pub ceiling: f32,
+    /// The chairs the road runs across.
+    pub chairs: &'static [Chair],
+    /// The tables the road runs across.
+    pub tables: &'static [Table],
+    /// The shelves of toys along the walls.
+    pub shelves: &'static [Shelf],
+    /// The stretch of the lap that comes down the plastic slide.
+    pub slide: Span,
+    /// The stretch of the lap that runs over the Scalextric set.
+    pub scalextric: Span,
+    /// The stretch of the lap that runs over the Hot Wheels circuit.
+    pub hot_wheels: Span,
+    /// The electric train on its railway round the floor.
+    pub train: Option<Train>,
+    /// The toys lying about on the floor.
+    pub toys: &'static [Toy],
+}
+
+/// A chair of the shop that the road runs across: where it stands (x, z),
+/// which way it faces, how wide it is, how deep, and how high its seat is.
+pub struct Chair {
+    pub position: Vec2,
+    pub heading: f32,
+    pub width: f32,
+    pub depth: f32,
+    pub height: f32,
+}
+
+/// A table of the shop that the road runs across: where it stands (x, z),
+/// which way it faces, how wide it is, how deep, and how high its top is.
+pub struct Table {
+    pub position: Vec2,
+    pub heading: f32,
+    pub width: f32,
+    pub depth: f32,
+    pub height: f32,
+}
+
+/// A shelf unit of the shop, full of toys, along a wall: where it stands
+/// (x, z), which way it faces and how long it is.
+pub struct Shelf {
+    pub position: Vec2,
+    pub heading: f32,
+    pub length: f32,
+}
+
+/// The electric train of the shop, running round its railway on the floor:
+/// the path it runs on, closed, and how fast (m/s).
+pub struct Train {
+    pub path: &'static [Vec2],
+    pub speed: f32,
+}
+
+/// A toy lying about on the floor of the shop: where it is (x, z), how big
+/// it is and what it is.
+pub struct Toy {
+    pub position: Vec2,
+    pub kind: ToyKind,
+    pub size: f32,
+}
+
+/// What a toy lying on the floor of the shop is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ToyKind {
+    /// A ball, lying on its side.
+    Ball,
+    /// A stack of building blocks.
+    Blocks,
+    /// A doll, sitting up.
+    Doll,
+    /// A tin spinning top.
+    Top,
 }
 
 #[cfg(test)]

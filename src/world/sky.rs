@@ -294,6 +294,35 @@ impl Palette {
                     highlight_saturation: 0.85,
                 },
             },
+            // Indoors, under the ceiling of a shop: no sky and no sun, but
+            // the light of the lamps on the ceiling, straight down and a
+            // little to one side, a warm white, and the light of the white
+            // walls and ceiling filling the shade; a soft haze in the air of
+            // the shop, and the picture graded as a photograph of a bright
+            // shop is.
+            SkyStyle::Indoor => Self {
+                zenith: Color::srgb(0.86, 0.87, 0.9),
+                above_horizon: Color::srgb(0.9, 0.9, 0.92),
+                horizon: Color::srgb(0.94, 0.93, 0.91),
+                glow: 0.0,
+                glow_color: Color::WHITE,
+                sun_azimuth: 0.75 * std::f32::consts::PI,
+                sun_elevation: 1.16,
+                sun_disc: Color::WHITE,
+                sunlight: Color::srgb(1.0, 0.97, 0.92),
+                sunlight_strength: 0.55,
+                ambient: Color::srgb(0.95, 0.94, 0.92),
+                ambient_brightness: 1000.0,
+                clouds: Color::srgba(1.0, 1.0, 1.0, 0.0),
+                fog: (400.0, 2200.0),
+                grade: Grade {
+                    saturation: 1.04,
+                    contrast: 1.02,
+                    exposure: 0.05,
+                    warmth: 0.004,
+                    highlight_saturation: 0.95,
+                },
+            },
         }
     }
 
@@ -326,6 +355,9 @@ impl Palette {
 /// The sky's parts that change with the light of the track.
 #[derive(Resource)]
 pub struct SkyParts {
+    /// The whole sky: the dome, the sun and the clouds. Indoors it is put
+    /// away, and the ceiling of the shop is seen instead.
+    sky: Entity,
     dome: Handle<Mesh>,
     sun: Entity,
     sun_material: Handle<StandardMaterial>,
@@ -534,7 +566,7 @@ pub fn spawn_sky(
 
     let mut sun = Entity::PLACEHOLDER;
     let mut space_sky = Entity::PLACEHOLDER;
-    commands
+    let sky_entity = commands
         .spawn((
             Sky,
             Mesh3d(dome.clone()),
@@ -636,8 +668,10 @@ pub fn spawn_sky(
                         ));
                     }
                 });
-        });
+        })
+        .id();
     commands.insert_resource(SkyParts {
+        sky: sky_entity,
         dome,
         sun,
         sun_material,
@@ -712,6 +746,14 @@ pub fn light_the_sky(
             Visibility::Inherited
         } else {
             Visibility::Hidden
+        };
+    }
+    // Indoors there is no sky: the ceiling of the shop is seen instead.
+    if let Ok(mut visibility) = visibilities.get_mut(parts.sky) {
+        *visibility = if style == SkyStyle::Indoor {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
         };
     }
     let sun = palette.sun_direction();

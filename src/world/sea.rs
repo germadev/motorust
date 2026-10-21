@@ -679,6 +679,10 @@ mod tests {
     #[test]
     fn every_circuit_has_shore_near_its_road() {
         for circuit in &crate::circuits::CIRCUITS {
+            // Indoors there is no sea at all.
+            if circuit.scenery.indoor() {
+                continue;
+            }
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let map = ShoreMap::new(&terrain, &track);

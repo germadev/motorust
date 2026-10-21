@@ -42,6 +42,9 @@ fn road_shoulders(
     let line = track.road(road);
     let lap = track.lap_length();
     let halls = scenery.excavation().unwrap_or(&[]);
+    // Indoors the ground beside the road is the floor of the shop: smooth,
+    // and quick on.
+    let indoor = scenery.indoor();
     (0..line.sample_count())
         .map(|index| {
             let along = line.lap_along_at(index);
@@ -55,7 +58,7 @@ fn road_shoulders(
                 && ((tunnel && !excavation)
                     || scenery.bridges.iter().any(|bridge| in_span(&bridge.span)));
             [1.0, -1.0].map(|side| {
-                if paved {
+                if indoor || paved {
                     return Surface::Paved;
                 }
                 let from = line.half_width_at(index) + CURB_WIDTH;

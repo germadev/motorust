@@ -7,7 +7,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Six tracks** with steep slopes, crests and banked curves (see
+- **Eight tracks** with steep slopes, crests and banked curves (see
   [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
@@ -83,6 +83,12 @@ pass, Lothlórien, where it splits three ways, and down the middle of the
 Anduin between the two kings of the Argonath, past Amon Hen and home again.
 Its own scenery, modelled with Meshy, is on the way.
 
+**La Juguetería** (The Toy Store) is the inside of a toy shop: a toy circuit
+that starts on a play table, dives down a plastic slide, climbs over an
+armchair and comes down again, and races on past an electric train, over a
+Scalextric set and round a Hot Wheels circuit. There is no sky over it: the
+ceiling of the shop and its lamps are overhead.
+
 More about each one in [docs/tracks.md](docs/tracks.md).
 
 ## Quick start
@@ -118,7 +124,7 @@ or English: the system's language at first, changed in Options.
 ## Documentation
 
 - [Playing](docs/gameplay.md): handling, bikes, menus, options and sound.
-- [Tracks](docs/tracks.md): the seven tracks, and how to edit one or add a new one.
+- [Tracks](docs/tracks.md): the eight tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions.

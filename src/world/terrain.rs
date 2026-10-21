@@ -2108,6 +2108,11 @@ mod tests {
     #[test]
     fn the_track_edge_is_where_the_earth_rises_inside_the_walls() {
         for circuit in &CIRCUITS {
+            // Indoors the ground is the floor of the shop: level, and it
+            // never rises inside the walls.
+            if circuit.scenery.indoor() {
+                continue;
+            }
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let edges = terrain.track_edges(&track);

@@ -459,6 +459,7 @@ pub const MOON_BASE: Circuit = Circuit {
         japan: None,
         middle_earth: None,
         space: Some(SPACE),
+        toy_store: None,
     },
 };
 

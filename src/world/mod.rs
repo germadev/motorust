@@ -30,6 +30,7 @@ mod space;
 pub(crate) mod structures;
 mod terrain;
 mod textures;
+mod toy_store;
 mod trees;
 mod tufts;
 
@@ -110,6 +111,7 @@ impl Plugin for WorldPlugin {
                     space::spin_portals,
                     japan::turn_wheels,
                     japan::drift_petals,
+                    toy_store::run_the_train,
                     spawn_prepared_circuit,
                 ),
             )
@@ -251,7 +253,11 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
     let terrain = terrain::Terrain::on_threads(&track, scenery, urgency.threads());
-    let mut ground = if realm::splits(scenery) {
+    // Indoors there is no land: the floor of the shop is drawn with the
+    // shop itself (see [`toy_store`]).
+    let mut ground = if scenery.indoor() {
+        Vec::new()
+    } else if realm::splits(scenery) {
         realm_ground(&terrain, urgency.threads())
     } else {
         terrain.meshes(urgency.threads())
@@ -263,12 +269,16 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         shoulders: shoulders::track_shoulders(&track, &terrain, scenery),
     };
     let mut pieces = road::road_pieces(&track, &terrain, scenery, textures);
-    let (structures, lamps, tops) =
+    let (structures, mut lamps, tops) =
         structures::structure_pieces(&track, &terrain, scenery, textures, None);
     pieces.extend(structures);
     ground.extend(tops);
+    // The lamps of the ceiling of the shop.
+    if let Some(store) = &scenery.toy_store {
+        lamps.extend(toy_store::lamps(store));
+    }
     let lakes = dam::prepare_lakes(&track, &terrain, scenery, textures, urgency.threads());
-    let sea_mirror = (!scenery.cartoon_water).then(|| {
+    let sea_mirror = (!scenery.cartoon_water && !scenery.indoor()).then(|| {
         mirror::sky_mirror(
             scenery,
             &sea::mirror_reach(&track),
@@ -314,7 +324,7 @@ fn realm_ground(terrain: &terrain::Terrain, threads: usize) -> Vec<terrain::Grou
 fn prepare_rest(basis: &Basis, textures: &textures::WorldTextures, urgency: Urgency) -> Rest {
     let scenery = &CIRCUITS[basis.index].scenery;
     let (track, terrain, shore) = (&*basis.track, &*basis.terrain, &*basis.shore);
-    let sea_mirror = (!scenery.cartoon_water).then(|| {
+    let sea_mirror = (!scenery.cartoon_water && !scenery.indoor()).then(|| {
         mirror::prepare_mirror(
             track,
             terrain,
@@ -1046,21 +1056,24 @@ fn build(
                 put_up(world);
             }
             // The sea: the cartoon one at first, mirroring, if it should,
-            // before it is first drawn (see `sea::dress_the_sea`).
-            let sea_water = sea::SeaWater {
-                cartoon: cartoon_sea,
-                mirror: sea_mirror.clone(),
-            };
-            let mut sea = world.spawn((
-                Mesh3d(builder.sea.0.clone()),
-                MeshMaterial3d(sea_water.cartoon.clone()),
-                sea_water,
-                Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
-            ));
-            // The Moon has no seas: on a split circuit, the sea is the
-            // Earth's.
-            if split {
-                sea.insert(realm::Realm::Earth.layers());
+            // before it is first drawn (see `sea::dress_the_sea`). Indoors
+            // there is no sea at all.
+            if !scenery.indoor() {
+                let sea_water = sea::SeaWater {
+                    cartoon: cartoon_sea,
+                    mirror: sea_mirror.clone(),
+                };
+                let mut sea = world.spawn((
+                    Mesh3d(builder.sea.0.clone()),
+                    MeshMaterial3d(sea_water.cartoon.clone()),
+                    sea_water,
+                    Transform::from_xyz(0.0, terrain::SEA_LEVEL, 0.0),
+                ));
+                // The Moon has no seas: on a split circuit, the sea is the
+                // Earth's.
+                if split {
+                    sea.insert(realm::Realm::Earth.layers());
+                }
             }
         })
         .id();
@@ -1139,6 +1152,9 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
                 rest.flowers,
                 &mut assets,
             );
+            // The shop the road runs through, with its ceiling, its
+            // furniture and its toys.
+            toy_store::spawn_toy_store(world, &basis.track, scenery, &mut assets);
         };
         // On a split circuit, each in the realm it stands in.
         if split {
