@@ -3,8 +3,8 @@
 //! (or those in `MOTORUST_BENCH_TRACKS`, as `0,2`) in free ride on
 //! autopilot, all round the lap with one player and then with two, trying
 //! each setting worth comparing (the shadows' levels, the ways of smoothing
-//! the edges, the lighter far trees, less detail for two players), with the
-//! frame rate unlimited.
+//! the edges, the lighter far trees, the relief of the textures, less detail
+//! for two players), with the frame rate unlimited.
 //!
 //! All round the lap the settings take turns of a couple of seconds (let
 //! settle half a second, then measured), each round in a different order,
@@ -47,7 +47,9 @@ use crate::perf_log::{
 };
 use crate::race::{Mode, Progress, Rules};
 use crate::render_scale::{NativeShare, drawn_size};
-use crate::settings::{Antialiasing, ForcePerformance, FpsLimit, Settings, ShadowQuality};
+use crate::settings::{
+    Antialiasing, ForcePerformance, FpsLimit, GrassTiling, Relief, Settings, ShadowQuality,
+};
 use crate::track::Track;
 use crate::ui::text_font;
 use crate::welcome::GameMode;
@@ -103,12 +105,24 @@ pub struct Scenario {
     pub split_detail: bool,
     /// The render scale (% of the window's resolution).
     pub render_scale: u32,
+    /// The relief of the scenery's textures.
+    pub relief: Relief,
+    /// Whether the road has relief too.
+    pub road_relief: bool,
+    /// Whether the relief is dropped at speed (but the road's).
+    pub flat_at_speed: bool,
+    /// How the lawn's repetition is broken up.
+    pub grass_tiling: GrassTiling,
 }
 
-/// Every scenario on each of `tracks`: one player as the game starts
-/// (shadows high, multisampled, whole trees, the world at the window's
-/// resolution), then one thing changed at a time; then two players, with
-/// less detail, with all of it and with less detail drawn smaller.
+/// Every scenario on each of `tracks`: one player at a fixed reference,
+/// not as the game starts (shadows high, not automatic, so that runs
+/// compare; multisampled, whole trees, the world at the window's
+/// resolution, normal maps but on the road and not at speed, the wide
+/// lawn; the game starts with FXAA, no relief and the shadows automatic),
+/// then one thing changed at a time (parallax, kept at speed too); then two
+/// players, with less detail, with all of it, with less detail drawn
+/// smaller and without relief.
 pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
     let base = |name, track| Scenario {
         name,
@@ -119,6 +133,10 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
         far_trees: false,
         split_detail: true,
         render_scale: 100,
+        relief: Relief::Normal,
+        road_relief: false,
+        flat_at_speed: true,
+        grass_tiling: GrassTiling::Wide,
     };
     tracks
         .iter()
@@ -154,6 +172,31 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
                     ..base("1p-render-50", track)
                 },
                 Scenario {
+                    relief: Relief::Off,
+                    ..base("1p-relief-off", track)
+                },
+                Scenario {
+                    flat_at_speed: false,
+                    ..base("1p-relief-at-speed", track)
+                },
+                Scenario {
+                    relief: Relief::Parallax,
+                    flat_at_speed: false,
+                    ..base("1p-parallax", track)
+                },
+                Scenario {
+                    road_relief: true,
+                    ..base("1p-road-relief", track)
+                },
+                Scenario {
+                    grass_tiling: GrassTiling::Plain,
+                    ..base("1p-grass-plain", track)
+                },
+                Scenario {
+                    grass_tiling: GrassTiling::Stochastic,
+                    ..base("1p-grass-stochastic", track)
+                },
+                Scenario {
                     players: 2,
                     ..base("2p", track)
                 },
@@ -166,6 +209,11 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
                     players: 2,
                     render_scale: 70,
                     ..base("2p-render-70", track)
+                },
+                Scenario {
+                    players: 2,
+                    relief: Relief::Off,
+                    ..base("2p-relief-off", track)
                 },
             ]
         })
@@ -276,15 +324,36 @@ pub fn resolution_said(settings: &Settings, window: UVec2, native: NativeShare) 
 }
 
 /// The settings on, as they are shown on the screen: the shadows, the
-/// smoothing of the edges, the far trees and, with two players, the detail.
+/// smoothing of the edges, the far trees, the relief, the lawn's tiling
+/// and, with two players, the detail.
 pub fn settings_said(settings: &Settings, players: u32) -> String {
     let antialiasing = match settings.antialiasing {
         Antialiasing::Msaa => "MSAA",
         Antialiasing::Fxaa => "FXAA",
         Antialiasing::Off => "no antialiasing",
     };
+    let relief = match settings.relief {
+        Relief::Off => "no relief",
+        Relief::Normal => "normal maps",
+        Relief::Parallax => "parallax",
+    };
+    let grass = match settings.grass_tiling {
+        GrassTiling::Plain => "grass tiled",
+        GrassTiling::Wide => "grass wide",
+        GrassTiling::Stochastic => "grass stochastic",
+    };
+    let road = if settings.road_relief {
+        " (road too)"
+    } else {
+        ""
+    };
+    let speed = if settings.flat_at_speed {
+        ""
+    } else {
+        " at speed too"
+    };
     let mut line = format!(
-        "shadows {} · {antialiasing} · far trees {}",
+        "shadows {} · {antialiasing} · far trees {} · {relief}{road}{speed} · {grass}",
         format!("{:?}", settings.shadows).to_lowercase(),
         if settings.lighter_far_trees {
             "lighter"
@@ -607,6 +676,10 @@ fn use_setting(scenario: &Scenario, settings: &mut Settings) {
     settings.lighter_far_trees = scenario.far_trees;
     settings.lighter_split_screen = scenario.split_detail;
     settings.render_scale = scenario.render_scale;
+    settings.relief = scenario.relief;
+    settings.road_relief = scenario.road_relief;
+    settings.flat_at_speed = scenario.flat_at_speed;
+    settings.grass_tiling = scenario.grass_tiling;
 }
 
 fn start_bench(mut rules: ResMut<Rules>) {
@@ -1047,10 +1120,10 @@ mod tests {
     #[test]
     fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time() {
         let all = scenarios(&tracks(None));
-        assert_eq!(all.len(), 11 * CIRCUITS.len());
-        let first = &all[..11];
+        assert_eq!(all.len(), 18 * CIRCUITS.len());
+        let first = &all[..18];
         assert!(first.iter().all(|scenario| scenario.track == 0));
-        // The first as the game starts; the others one change from it.
+        // The first the reference; the others one change from it.
         let base = &first[0];
         assert_eq!(
             (
@@ -1058,9 +1131,23 @@ mod tests {
                 base.shadows,
                 base.antialiasing,
                 base.far_trees,
-                base.render_scale
+                base.render_scale,
+                base.relief,
+                base.road_relief,
+                base.flat_at_speed,
+                base.grass_tiling
             ),
-            (1, ShadowQuality::High, Antialiasing::Msaa, false, 100)
+            (
+                1,
+                ShadowQuality::High,
+                Antialiasing::Msaa,
+                false,
+                100,
+                Relief::Normal,
+                false,
+                true,
+                GrassTiling::Wide
+            )
         );
         for scenario in &first[1..] {
             let changes = [
@@ -1070,6 +1157,10 @@ mod tests {
                 scenario.far_trees != base.far_trees,
                 scenario.split_detail != base.split_detail && scenario.players == 2,
                 scenario.render_scale != base.render_scale,
+                scenario.relief != base.relief,
+                scenario.road_relief != base.road_relief,
+                scenario.flat_at_speed != base.flat_at_speed,
+                scenario.grass_tiling != base.grass_tiling,
             ]
             .iter()
             .filter(|&&changed| changed)
@@ -1135,8 +1226,8 @@ mod tests {
                 scenario.track == first.track && scenario.players == first.players
             }));
         }
-        assert_eq!(laps[0].len(), 8);
-        assert_eq!(laps[1].len(), 3);
+        assert_eq!(laps[0].len(), 14);
+        assert_eq!(laps[1].len(), 4);
         assert_eq!(all[laps[2].start].track, 3);
     }
 
@@ -1198,10 +1289,14 @@ mod tests {
         };
         assert_eq!(
             settings_said(&settings, 1),
-            "shadows medium · FXAA · far trees lighter"
+            "shadows medium · FXAA · far trees lighter · no relief · grass wide"
         );
         settings.lighter_split_screen = false;
         assert!(settings_said(&settings, 2).ends_with(" · all the detail"));
+        settings.relief = Relief::Normal;
+        settings.road_relief = true;
+        settings.flat_at_speed = false;
+        assert!(settings_said(&settings, 1).contains("normal maps (road too) at speed too"));
         // The pixels the world is drawn at.
         let retina = UVec2::new(3024, 1898);
         let whole = NativeShare::default();

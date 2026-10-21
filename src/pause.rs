@@ -42,6 +42,9 @@ pub struct DebugOptions {
     /// Con el stick, cuánto limitar el giro según la velocidad (de entrada,
     /// medio).
     pub stick_limit: TurnLimit,
+    /// With the stick, how much the bike turns for how far it is pushed
+    /// (normal at first: as always).
+    pub stick_curve: StickCurve,
     /// Con el teclado o la cruceta, lo mismo (de entrada, medio).
     pub keyboard_limit: TurnLimit,
     /// Con el teclado o la cruceta, cuánto gira al dejar pulsada la tecla
@@ -61,12 +64,78 @@ impl Default for DebugOptions {
     fn default() -> Self {
         Self {
             stick_limit: TurnLimit::Medium,
+            stick_curve: StickCurve::Normal,
             keyboard_limit: TurnLimit::Medium,
             keyboard_rate: SteerRate::Medium,
             keyboard_return: ReturnRate::Medium,
             keyboard_reverse: ReverseRate::Fast,
             show_legend: false,
         }
+    }
+}
+
+/// How much the bike turns, and leans, for how far the stick is pushed:
+/// the curve from the stick to the steering, past the stick's dead zone.
+/// All of them turn fully with the stick all the way over; they differ
+/// near the middle.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StickCurve {
+    /// As always: between linear and quadratic, a little finer than linear
+    /// near the middle.
+    Normal,
+    /// As far as the stick is pushed.
+    Linear,
+    /// The square of it: finer near the middle, for lively sticks.
+    Quadratic,
+    /// The cube of it: finest near the middle, for the liveliest sticks.
+    Cubic,
+    /// The square root of it: liveliest near the middle.
+    SquareRoot,
+}
+
+const STICK_CURVES: [StickCurve; 5] = [
+    StickCurve::Normal,
+    StickCurve::Linear,
+    StickCurve::Quadratic,
+    StickCurve::Cubic,
+    StickCurve::SquareRoot,
+];
+
+impl StickCurve {
+    /// The power the stick's travel past its dead zone (from 0 to 1) is
+    /// raised to.
+    pub fn exponent(self) -> f32 {
+        match self {
+            StickCurve::Normal => 1.35,
+            StickCurve::Linear => 1.0,
+            StickCurve::Quadratic => 2.0,
+            StickCurve::Cubic => 3.0,
+            StickCurve::SquareRoot => 0.5,
+        }
+    }
+
+    pub fn name(self, lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => match self {
+                StickCurve::Normal => "normal",
+                StickCurve::Linear => "lineal",
+                StickCurve::Quadratic => "cuadrática",
+                StickCurve::Cubic => "cúbica",
+                StickCurve::SquareRoot => "raíz cuadrada",
+            },
+            Language::English => match self {
+                StickCurve::Normal => "normal",
+                StickCurve::Linear => "linear",
+                StickCurve::Quadratic => "quadratic",
+                StickCurve::Cubic => "cubic",
+                StickCurve::SquareRoot => "square root",
+            },
+        }
+    }
+
+    /// The next one (`step` 1) or the one before (-1), round and round.
+    pub fn next(self, step: i32) -> Self {
+        cycle(&STICK_CURVES, self, step)
     }
 }
 

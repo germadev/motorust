@@ -5,8 +5,9 @@
 //! fine. They fade out at the end of their reach (see [`super::shadow_fade`]),
 //! so a change of level shows as little as a shadow coming near. Nothing
 //! else changes with the level, so nothing pops in or out as it does. The
-//! edges are smoothed as Options > Graphics says, fixed: changing it would
-//! make every pipeline again, and what they draw would vanish meanwhile.
+//! edges are smoothed as Options > Graphics says: changing it makes every
+//! pipeline again, and what they draw vanishes meanwhile, so only the
+//! performance forced changes it by itself (below), and seldom.
 //!
 //! With two players the world is drawn twice a frame, once for each half of
 //! the screen, each with its own shadows, so (unless Options > Graphics says
@@ -15,10 +16,14 @@
 //!
 //! The performance forced (Options > Graphics > "Force performance") goes
 //! further down the same way, quicker, to keep 60 or 120 frames a second
-//! (no more than the frame rate cap or the screen let through): the shadows
-//! and the share of the window's resolution the world is drawn at (see
-//! [`crate::render_scale`]) together, down a ladder of [`Rung`]s
-//! ([`ladder`]). Neither makes a pipeline again, so neither stutters.
+//! (no more than the frame rate cap or the screen let through): the
+//! parallax first, if chosen (the dearest of the relief, on the most
+//! pixels, the grass, and the least seen in a race: the normal maps stay),
+//! then the shadows and the share of the window's resolution the world is
+//! drawn at (see [`crate::render_scale`]) by turns, down a ladder of
+//! [`Rung`]s ([`ladder`]), and on the way, if chosen, the multisampling,
+//! FXAA instead. None but the multisampling makes a pipeline again, so
+//! only it stutters: for a moment, as it goes and as it comes back.
 
 use bevy::anti_alias::fxaa::Fxaa;
 use bevy::camera::RenderTarget;
@@ -30,7 +35,7 @@ use super::realm::PortalView;
 use super::sky::Sunlight;
 use crate::menu::GameState;
 use crate::pause::Pause;
-use crate::settings::{Antialiasing, ScreenRate, Settings, ShadowQuality, WEB};
+use crate::settings::{Antialiasing, Relief, ScreenRate, Settings, ShadowQuality, WEB};
 use crate::welcome::GameMode;
 
 /// How much detail the shadows have, from the most to the least.
@@ -58,14 +63,19 @@ impl Level {
 }
 
 /// The detail the world is drawn with now: the shadows' level, whether the
-/// screen is split (and drawn lighter for it), and the share of the
-/// window's resolution the world is drawn at (%, see
-/// [`crate::render_scale`]).
+/// screen is split (and drawn lighter for it), the share of the window's
+/// resolution the world is drawn at (%, see [`crate::render_scale`]), and
+/// whether the parallax may be drawn (see [`super::relief::ReliefShown`])
+/// and the edges multisampled, if chosen.
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Detail {
     pub level: Level,
     pub split: bool,
     pub scale: u32,
+    pub parallax: bool,
+    /// Whether the edges may be multisampled, if chosen (otherwise FXAA
+    /// smooths them, see [`antialias`]).
+    pub msaa: bool,
 }
 
 impl Default for Detail {
@@ -74,31 +84,45 @@ impl Default for Detail {
             level: Level::High,
             split: false,
             scale: 100,
+            parallax: true,
+            msaa: true,
         }
     }
 }
 
-/// A rung of an automatic quality's ladder: the shadows' level and the
-/// share of the window's resolution the world is drawn at (%).
+/// A rung of an automatic quality's ladder: the shadows' level, the share
+/// of the window's resolution the world is drawn at (%), whether the
+/// parallax may be drawn and whether the edges may be multisampled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rung {
     pub level: Level,
     pub scale: u32,
+    pub parallax: bool,
+    pub msaa: bool,
 }
 
+/// A rung of the shadows and the resolution, the relief and the edges as
+/// chosen.
 const fn rung(level: Level, scale: u32) -> Rung {
-    Rung { level, scale }
+    Rung {
+        level,
+        scale,
+        parallax: true,
+        msaa: true,
+    }
 }
 
 /// The shadows alone, automatic (Options > Graphics > Shadows): their three
-/// levels, the world at the render scale chosen.
+/// levels, the world at the render scale chosen, the relief and the edges
+/// as chosen.
 const SHADOWS: [Rung; 3] = [
     rung(Level::High, 100),
     rung(Level::Medium, 100),
     rung(Level::Low, 100),
 ];
 /// The performance forced with one view: the shadows and the resolution down
-/// by turns, the shadows first, as they show least.
+/// by turns, the shadows first, as they show least (see [`ladder`] for the
+/// parallax and the multisampling, given up on the way).
 const PERFORMANCE: [Rung; 8] = [
     rung(Level::High, 100),
     rung(Level::Medium, 100),
@@ -120,15 +144,88 @@ const PERFORMANCE_SPLIT: [Rung; 6] = [
     rung(Level::Low, 50),
 ];
 
-/// The ladder an automatic quality goes down and up: the performance
-/// forced's (for two views drawn lighter, `split`, or one), or the
-/// shadows' alone.
-pub fn ladder(performance: bool, split: bool) -> &'static [Rung] {
-    match (performance, split) {
-        (true, false) => &PERFORMANCE,
-        (true, true) => &PERFORMANCE_SPLIT,
-        (false, _) => &SHADOWS,
+/// Which ladder an automatic quality is on: the performance forced or the
+/// shadows alone, two views drawn lighter (`split`) or one, the parallax and
+/// the multisampling chosen or not, and the most the shadows and the
+/// resolution may be (as chosen: the performance forced lowers them from
+/// there).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ladder {
+    pub performance: bool,
+    pub split: bool,
+    pub parallax: bool,
+    pub msaa: bool,
+    pub level: Level,
+    pub scale: u32,
+}
+
+impl Default for Ladder {
+    fn default() -> Self {
+        Self {
+            performance: false,
+            split: false,
+            parallax: false,
+            msaa: false,
+            level: Level::High,
+            scale: 100,
+        }
     }
+}
+
+/// The ladder an automatic quality goes down and up: the shadows' alone, or
+/// the performance forced's (for two views or one): the parallax first, if
+/// chosen (the dearest of the relief, over the most pixels, the grass, and
+/// the least seen racing: the normal maps stay); then the shadows down a
+/// level (one view); then, if chosen, the multisampling, smoothed with
+/// FXAA instead (a saving that grows with the pixels, and the edges a
+/// little softer), before the resolution; then the resolution and the
+/// shadows by turns. From the shadows and the resolution chosen at most
+/// (`level`, `scale`): no rung above them. A rung for what is not chosen,
+/// or that would change nothing, is left out.
+pub fn ladder(on: Ladder) -> Vec<Rung> {
+    if !on.performance {
+        return SHADOWS.to_vec();
+    }
+    let base: &[Rung] = if on.split {
+        &PERFORMANCE_SPLIT
+    } else {
+        &PERFORMANCE
+    };
+    let mut rungs = vec![Rung {
+        parallax: on.parallax,
+        msaa: on.msaa,
+        ..base[0]
+    }];
+    let mut last = rungs[0];
+    if last.parallax {
+        last.parallax = false;
+        rungs.push(last);
+    }
+    for &next in &base[1..] {
+        if next.scale < 100 && last.msaa {
+            last.msaa = false;
+            rungs.push(last);
+        }
+        last = Rung {
+            parallax: false,
+            msaa: last.msaa,
+            ..next
+        };
+        rungs.push(last);
+    }
+    // No more than chosen; a rung then as the one above it, left out.
+    let mut capped: Vec<Rung> = Vec::with_capacity(rungs.len());
+    for rung in rungs {
+        let rung = Rung {
+            level: rung.level.max(on.level),
+            scale: rung.scale.min(on.scale),
+            ..rung
+        };
+        if capped.last() != Some(&rung) {
+            capped.push(rung);
+        }
+    }
+    capped
 }
 
 /// The frame rate the performance forced keeps up, if it is on: 60 or 120,
@@ -228,6 +325,9 @@ pub const PERFORMANCE_PACE: Pace = Pace {
 /// to go down at once; and the most at once.
 const RUNG_GAIN: f32 = 1.1;
 const MOST_AT_ONCE: usize = 3;
+/// How long the frames are not looked at after the multisampling goes or
+/// comes back (s): every pipeline is made again.
+const MSAA_SETTLE: f32 = 3.0;
 /// How soon after a step up a step down undoes it (s).
 const UNDONE: f32 = 20.0;
 /// How long the frame rate must keep up before a step up (s), at first and
@@ -240,9 +340,8 @@ const HOLD: (f32, f32) = (10.0, 300.0);
 pub struct AutoQuality {
     /// The rung (0, the most detail; see [`ladder`]).
     pub step: usize,
-    /// The ladder it is on (see [`ladder`]): the performance forced's, for
-    /// two views drawn lighter.
-    ladder: (bool, bool),
+    /// The ladder it is on (see [`ladder`]).
+    ladder: Ladder,
     /// The frames of the look under way (s), and when it began.
     frames: Vec<f32>,
     began: f32,
@@ -259,7 +358,7 @@ impl Default for AutoQuality {
     fn default() -> Self {
         Self {
             step: 0,
-            ladder: (false, false),
+            ladder: Ladder::default(),
             frames: Vec::new(),
             began: 0.0,
             steady: None,
@@ -281,7 +380,7 @@ impl AutoQuality {
 
     /// On `ladder` (see [`ladder`]): if it was on another, back to its top,
     /// with everything it had learnt forgotten.
-    pub fn on(&mut self, ladder: (bool, bool), now: f32) {
+    pub fn on(&mut self, ladder: Ladder, now: f32) {
         if self.ladder != ladder {
             *self = Self {
                 ladder,
@@ -387,11 +486,10 @@ fn adapt_quality(
 ) {
     let now = time.elapsed_secs();
     let settings = settings.as_deref();
-    let performance = settings.is_some_and(|settings| settings.force_performance.is_on());
-    let split = split(settings, game_mode.as_deref());
-    auto.on((performance, split), now);
+    let on = ladder_on(settings, game_mode.as_deref());
+    auto.on(on, now);
     let automatic =
-        performance || settings.is_some_and(|settings| settings.shadows == ShadowQuality::Auto);
+        on.performance || settings.is_some_and(|settings| settings.shadows == ShadowQuality::Auto);
     let racing = state.is_some_and(|state| *state.get() == GameState::Race)
         && pause.is_none_or(|pause| !pause.is_open());
     let (Some(settings), true) = (settings, automatic && racing) else {
@@ -403,8 +501,53 @@ fn adapt_quality(
         Some(target) => (target, &PERFORMANCE_PACE),
         None => (settings.fps.target(), &SHADOWS_PACE),
     };
-    let rungs = ladder(performance, split).len();
-    auto.frame(now, time.delta_secs(), target, pace, rungs);
+    let rungs = ladder(on);
+    let was = rungs[auto.step.min(rungs.len() - 1)];
+    let step = auto.frame(now, time.delta_secs(), target, pace, rungs.len());
+    // Multisampling on or off, every pipeline is made again: what they
+    // draw vanishes a moment, and the frames are not as they will be.
+    if rungs[step].msaa != was.msaa {
+        auto.changed = now + MSAA_SETTLE - pace.settle;
+    }
+}
+
+/// The ladder the settings and the players at play call for.
+fn ladder_on(settings: Option<&Settings>, game_mode: Option<&GameMode>) -> Ladder {
+    Ladder {
+        performance: settings.is_some_and(|settings| settings.force_performance.is_on()),
+        split: split(settings, game_mode),
+        parallax: settings.is_some_and(|settings| settings.relief == Relief::Parallax),
+        msaa: settings.is_some_and(|settings| settings.antialiasing == Antialiasing::Msaa),
+        level: settings
+            .and_then(|settings| Level::of(settings.shadows))
+            .unwrap_or(Level::High),
+        scale: settings.map_or(100, |settings| settings.render_scale.min(100)),
+    }
+}
+
+/// What the performance forced may lower, as `settings` say: the
+/// resolution scale and the shadows (unless at their lowest already), the
+/// multisampling (if chosen) and the parallax (if chosen); nothing while it
+/// is off.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Lowered {
+    pub scale: bool,
+    pub shadows: bool,
+    pub antialiasing: bool,
+    pub relief: bool,
+}
+
+pub fn lowered(settings: &Settings) -> Lowered {
+    if !settings.force_performance.is_on() {
+        return Lowered::default();
+    }
+    let lowest = PERFORMANCE.last().map_or(50, |rung| rung.scale);
+    Lowered {
+        scale: settings.render_scale > lowest,
+        shadows: settings.shadows != ShadowQuality::Low,
+        antialiasing: settings.antialiasing == Antialiasing::Msaa,
+        relief: settings.relief == Relief::Parallax,
+    }
 }
 
 /// The detail for the players at play: with the performance forced, as far
@@ -418,22 +561,25 @@ pub fn choose_detail(
     mut detail: ResMut<Detail>,
 ) {
     let settings = settings.as_deref();
-    let split = split(settings, game_mode.as_deref());
-    let performance = settings.is_some_and(|settings| settings.force_performance.is_on());
-    let rungs = ladder(performance, split);
+    let on = ladder_on(settings, game_mode.as_deref());
+    let rungs = ladder(on);
     let reached = rungs[auto.step.min(rungs.len() - 1)];
-    let (level, scale) = match settings {
-        Some(_) if performance => (reached.level, reached.scale),
+    let (level, scale, parallax, msaa) = match settings {
+        Some(_) if on.performance => (reached.level, reached.scale, reached.parallax, reached.msaa),
         Some(settings) => (
             Level::of(settings.shadows).unwrap_or(reached.level),
             settings.render_scale,
+            true,
+            true,
         ),
-        None => (reached.level, 100),
+        None => (reached.level, 100, true, true),
     };
     detail.set_if_neq(Detail {
         level,
-        split,
+        split: on.split,
         scale,
+        parallax,
+        msaa,
     });
 }
 
@@ -529,6 +675,7 @@ fn reach_for_detail(
 fn antialias(
     mut commands: Commands,
     settings: Option<Res<Settings>>,
+    detail: Option<Res<Detail>>,
     cameras: Query<
         (
             Entity,
@@ -544,7 +691,7 @@ fn antialias(
     let chosen = settings
         .as_deref()
         .map_or(Antialiasing::default(), |settings| settings.antialiasing);
-    let (msaa, fxaa) = match chosen {
+    let (msaa, fxaa) = match in_use(chosen, detail.is_none_or(|detail| detail.msaa)) {
         Antialiasing::Msaa => (Msaa::Sample4, false),
         Antialiasing::Fxaa => (Msaa::Off, true),
         Antialiasing::Off => (Msaa::Off, false),
@@ -562,6 +709,17 @@ fn antialias(
         } else if has_fxaa && !(world && fxaa) {
             commands.entity(camera).remove::<Fxaa>();
         }
+    }
+}
+
+/// The smoothing of the edges in use: the one `chosen`, but FXAA for the
+/// multisampling while it may not be used (`msaa`, the performance forced
+/// short of its target).
+pub fn in_use(chosen: Antialiasing, msaa: bool) -> Antialiasing {
+    if chosen == Antialiasing::Msaa && !msaa {
+        Antialiasing::Fxaa
+    } else {
+        chosen
     }
 }
 
@@ -590,6 +748,8 @@ mod tests {
             level,
             split,
             scale: 100,
+            parallax: true,
+            msaa: true,
         };
         let levels = [Level::High, Level::Medium, Level::Low];
         for pair in levels.windows(2) {
@@ -673,7 +833,11 @@ mod tests {
     #[test]
     fn the_performance_forced_goes_down_quickly_as_far_as_it_falls_short() {
         let mut auto = AutoQuality::default();
-        auto.on((true, false), 0.0);
+        let one = Ladder {
+            performance: true,
+            ..default()
+        };
+        auto.on(one, 0.0);
         // At 45 fps: after a second settling and a second looking, three
         // rungs down at once (as many as it falls short by, three at most).
         let now = perform(&mut auto, 0.0, 2.1, 45.0);
@@ -691,34 +855,156 @@ mod tests {
         perform(&mut auto, now, 20.0, 20.0);
         assert_eq!(auto.step, PERFORMANCE.len() - 1);
         // Another ladder (two views): back to its top.
-        auto.on((true, true), 100.0);
+        auto.on(Ladder { split: true, ..one }, 100.0);
         assert_eq!(auto.step, 0);
     }
 
     #[test]
-    fn the_performance_ladder_lowers_the_shadows_and_the_resolution_by_turns() {
-        for rungs in [&PERFORMANCE[..], &PERFORMANCE_SPLIT[..], &SHADOWS[..]] {
+    fn the_performance_ladder_drops_the_parallax_the_shadows_the_multisampling_and_the_resolution()
+    {
+        let on = |performance, split, parallax, msaa| Ladder {
+            performance,
+            split,
+            parallax,
+            msaa,
+            ..default()
+        };
+        let mut ladders = vec![SHADOWS.to_vec()];
+        for split in [false, true] {
+            for parallax in [false, true] {
+                for msaa in [false, true] {
+                    ladders.push(ladder(on(true, split, parallax, msaa)));
+                }
+            }
+        }
+        for rungs in &ladders {
             assert_eq!(rungs[0].scale, 100);
             for pair in rungs.windows(2) {
                 let (above, below) = (pair[0], pair[1]);
                 // Each one down a little less: one thing at a time.
-                let lower = below.level > above.level;
-                let smaller = below.scale < above.scale;
-                assert!(lower != smaller, "{above:?} {below:?}");
+                let changes = [
+                    below.level > above.level,
+                    below.scale < above.scale,
+                    above.parallax && !below.parallax,
+                    above.msaa && !below.msaa,
+                ];
+                assert_eq!(
+                    changes.iter().filter(|&&c| c).count(),
+                    1,
+                    "{above:?} {below:?}"
+                );
                 assert!(below.level >= above.level && below.scale <= above.scale);
+                assert!((above.parallax || !below.parallax) && (above.msaa || !below.msaa));
             }
+            // Down to half the resolution.
+            assert_eq!(rungs.last().unwrap().scale.min(50), 50);
         }
-        // As the game starts, at the top; down to half the resolution.
-        assert_eq!(PERFORMANCE[0], rung(Level::High, 100));
-        assert_eq!(PERFORMANCE.last().unwrap().scale, 50);
-        // Two views: the resolution alone, the shadows at their lowest.
-        assert!(
-            PERFORMANCE_SPLIT
-                .iter()
-                .all(|rung| rung.level == Level::Low)
+        // Without the parallax or the multisampling chosen, the shadows and
+        // the resolution alone; each chosen, a rung more.
+        let plain = ladder(on(true, false, false, false));
+        assert_eq!(plain.len(), PERFORMANCE.len());
+        assert_eq!(
+            ladder(on(true, true, false, false)).len(),
+            PERFORMANCE_SPLIT.len()
         );
-        assert!(SHADOWS.iter().all(|rung| rung.scale == 100));
-        assert_eq!(ladder(true, true).len(), PERFORMANCE_SPLIT.len());
+        let all = ladder(on(true, false, true, true));
+        assert_eq!(all.len(), PERFORMANCE.len() + 2);
+        // At the top, everything as chosen: the parallax first to go, then
+        // the shadows a level, then the multisampling, before the
+        // resolution.
+        let at = |rung: &Rung| (rung.level, rung.scale, rung.parallax, rung.msaa);
+        assert_eq!(
+            all.iter().take(5).map(at).collect::<Vec<_>>(),
+            [
+                (Level::High, 100, true, true),
+                (Level::High, 100, false, true),
+                (Level::Medium, 100, false, true),
+                (Level::Medium, 100, false, false),
+                (Level::Medium, 90, false, false),
+            ]
+        );
+        // Two views, whose shadows are low already: the parallax, the
+        // multisampling, then the resolution alone.
+        let split = ladder(on(true, true, true, true));
+        assert!(split.iter().all(|rung| rung.level == Level::Low));
+        assert_eq!(
+            split.iter().take(4).map(at).collect::<Vec<_>>(),
+            [
+                (Level::Low, 100, true, true),
+                (Level::Low, 100, false, true),
+                (Level::Low, 100, false, false),
+                (Level::Low, 90, false, false),
+            ]
+        );
+        // The shadows alone leave the rest as chosen.
+        assert_eq!(ladder(on(false, true, true, true)), SHADOWS.to_vec());
+        assert!(
+            SHADOWS
+                .iter()
+                .all(|rung| rung.parallax && rung.msaa && rung.scale == 100)
+        );
+    }
+
+    #[test]
+    fn the_performance_forced_lowers_from_the_shadows_and_the_scale_chosen() {
+        let chosen = |level, scale| Ladder {
+            performance: true,
+            msaa: true,
+            level,
+            scale,
+            ..default()
+        };
+        // Medium shadows and 85 % chosen: never above them, and no rung
+        // that changes nothing.
+        let rungs = ladder(chosen(Level::Medium, 85));
+        assert!(
+            rungs
+                .iter()
+                .all(|r| r.level >= Level::Medium && r.scale <= 85)
+        );
+        assert_eq!(
+            rungs[0],
+            Rung {
+                level: Level::Medium,
+                scale: 85,
+                parallax: false,
+                msaa: true
+            }
+        );
+        for pair in rungs.windows(2) {
+            assert_ne!(pair[0], pair[1]);
+        }
+        assert_eq!(rungs.last().unwrap().scale, 50);
+        // At the lowest already: the multisampling alone left to give up.
+        let lowest = ladder(chosen(Level::Low, 50));
+        assert_eq!(lowest.len(), 2);
+        assert!(lowest[0].msaa && !lowest[1].msaa);
+        // What the options say it may lower.
+        let mut settings = Settings {
+            force_performance: crate::settings::ForcePerformance::Fps60,
+            ..default()
+        };
+        let first = lowered(&settings);
+        assert!(first.scale && first.shadows);
+        // As the game starts: FXAA and no relief, nothing of them to lower.
+        assert!(!first.antialiasing && !first.relief);
+        settings.antialiasing = Antialiasing::Msaa;
+        settings.relief = Relief::Parallax;
+        settings.render_scale = 50;
+        settings.shadows = ShadowQuality::Low;
+        let all = lowered(&settings);
+        assert!(all.antialiasing && all.relief && !all.scale && !all.shadows);
+        settings.force_performance = crate::settings::ForcePerformance::Off;
+        assert_eq!(lowered(&settings), Lowered::default());
+    }
+
+    #[test]
+    fn the_multisampling_given_up_is_fxaa_instead() {
+        assert_eq!(in_use(Antialiasing::Msaa, false), Antialiasing::Fxaa);
+        assert_eq!(in_use(Antialiasing::Msaa, true), Antialiasing::Msaa);
+        for chosen in [Antialiasing::Fxaa, Antialiasing::Off] {
+            assert_eq!(in_use(chosen, false), chosen);
+        }
     }
 
     #[test]
@@ -767,13 +1053,49 @@ mod tests {
             (Level::Medium, 70)
         );
         // With the performance forced, as far down its ladder as it has
-        // come.
+        // come, from the shadows and the scale chosen (medium, 70 %): with
+        // the multisampling chosen, first without it, then the shadows
+        // low, then the resolution.
+        {
+            let mut settings = app.world_mut().resource_mut::<Settings>();
+            settings.force_performance = crate::settings::ForcePerformance::Fps120;
+            settings.antialiasing = Antialiasing::Msaa;
+        }
+        app.update();
+        let at = |app: &App| {
+            let now = detail(app);
+            (now.level, now.scale, now.msaa)
+        };
+        assert_eq!(at(&app), (Level::Medium, 70, true));
+        let steps = [
+            (1, (Level::Medium, 70, false)),
+            (2, (Level::Low, 70, false)),
+            (4, (Level::Low, 50, false)),
+        ];
+        for (step, wanted) in steps {
+            app.world_mut().resource_mut::<AutoQuality>().step = step;
+            app.update();
+            assert_eq!(at(&app), wanted, "{step}");
+        }
+        assert!(!detail(&app).parallax);
+        // With the parallax chosen, it is the first to go (another ladder:
+        // from its top again).
+        app.world_mut().resource_mut::<Settings>().relief = Relief::Parallax;
+        app.update();
+        assert_eq!(app.world().resource::<AutoQuality>().step, 0);
+        assert!(detail(&app).parallax);
+        app.world_mut().resource_mut::<AutoQuality>().step = 1;
+        app.update();
+        let now = detail(&app);
+        assert_eq!(
+            (now.level, now.scale, now.parallax, now.msaa),
+            (Level::Medium, 70, false, true)
+        );
+        // Not forced, the relief and the edges as chosen.
         app.world_mut().resource_mut::<Settings>().force_performance =
-            crate::settings::ForcePerformance::Fps120;
+            crate::settings::ForcePerformance::Off;
         app.update();
-        app.world_mut().resource_mut::<AutoQuality>().step = 4;
-        app.update();
-        assert_eq!((detail(&app).level, detail(&app).scale), (Level::Low, 80));
+        assert!(detail(&app).parallax && detail(&app).msaa);
     }
 
     #[test]
@@ -882,9 +1204,12 @@ mod tests {
         assert_eq!(cascades(&app), low.cascades().bounds);
         assert_eq!(reach(&app), margins(&range));
 
-        // FXAA instead of multisampling; and back.
+        // FXAA as the game starts; multisampling instead, none; and back.
         let msaa = |app: &App| *app.world().get::<Msaa>(camera).unwrap();
         let fxaa = |app: &App| app.world().get::<Fxaa>(camera).is_some();
+        assert_eq!((msaa(&app), fxaa(&app)), (Msaa::Off, true));
+        app.world_mut().resource_mut::<Settings>().antialiasing = Antialiasing::Msaa;
+        app.update();
         assert_eq!((msaa(&app), fxaa(&app)), (Msaa::Sample4, false));
         app.world_mut().resource_mut::<Settings>().antialiasing = Antialiasing::Fxaa;
         app.update();

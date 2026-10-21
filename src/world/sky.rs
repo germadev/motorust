@@ -55,9 +55,10 @@ pub const HORIZON: Color = Color::srgb(0.68, 0.8, 0.94);
 /// (`SkyStyle::GoldenHour`), whose mountains stand out from across the sea.
 pub const FOG: (f32, f32) = (450.0, 3800.0);
 const GOLDEN_FOG: (f32, f32) = (2000.0, 6800.0);
-/// The haze of high country: from nearer, and thicker far off, so the
-/// hills behind fade one after another.
-const HAZE: (f32, f32) = (320.0, 4200.0);
+/// The haze of high country: from nearer, so the hills behind fade one
+/// after another, but thin, so the mountains far off stand out from the
+/// sky behind them instead of fading into it as clouds.
+const HAZE: (f32, f32) = (320.0, 6800.0);
 /// The haze of a Mediterranean summer: it begins nearer than on most days
 /// and thickens slowly, so the island's far side is already veiled.
 const MEDITERRANEAN_FOG: (f32, f32) = (300.0, 4200.0);

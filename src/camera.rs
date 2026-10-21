@@ -2,7 +2,8 @@
 //! con algo de retraso, quedándose atrás al acelerar y abriendo el ángulo de
 //! visión con la velocidad. El stick derecho del mando dice hacia dónde mira
 //! respecto a la moto: arriba, hacia delante como siempre; a un lado, a ese
-//! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante.
+//! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante. It
+//! looks there at once, as the stick moves, and back ahead at once too.
 //!
 //! Once the players' race is over, it follows the bikes the race watches
 //! come in ([`Watching`]), and then the shots of them riding on, cutting
@@ -49,9 +50,6 @@ const SURGE_RESPONSE: f32 = 3.0;
 /// Cuánto hay que inclinar el stick derecho para que la cámara mire hacia
 /// donde apunta; por debajo, mira hacia delante.
 const LOOK_DEADZONE: f32 = 0.4;
-/// Rapidez con la que la cámara gira hacia donde apunta el stick derecho y
-/// vuelve al soltarlo (1/s).
-const LOOK_RESPONSE: f32 = 6.0;
 /// Lo que tarda la cámara en ir de una pantalla de menú a la siguiente (s).
 const GLIDE_TIME: f32 = 1.2;
 /// How fast the camera comes back upright after leaving a loop the wrong
@@ -194,6 +192,11 @@ fn spawn_camera(mut commands: Commands) {
 }
 
 /// En modo pantalla dividida, crea la segunda cámara para el Jugador 2 (abajo).
+/// It draws after the first on the same picture, without clearing it:
+/// clearing, it cleared the whole picture, not only its half, and with one
+/// sample a pixel (FXAA, or no smoothing) the top half was left the colour
+/// of the sky. Its own half is drawn over whole, the sky first; multisampled,
+/// Bevy copies the picture into its samples first.
 fn setup_split_cameras(
     mut commands: Commands,
     game_mode: Res<GameMode>,
@@ -204,6 +207,7 @@ fn setup_split_cameras(
             Camera3d::default(),
             Camera {
                 order: 1,
+                clear_color: ClearColorConfig::None,
                 ..default()
             },
             Projection::Perspective(PerspectiveProjection {
@@ -534,8 +538,8 @@ fn follow_player(
         };
         chase.yaw = Some(yaw);
 
-        // Stick derecho: la cámara mira hacia donde apunta, por el camino más
-        // corto, y al soltarlo vuelve a mirar hacia delante.
+        // Stick derecho: la cámara mira hacia donde apunta, y al soltarlo
+        // vuelve a mirar hacia delante; at once, as the stick moves.
         let dt = time.delta_secs();
         let stick = if *game_mode == GameMode::SplitScreen {
             let binding = if cam_player.0 == 0 {
@@ -551,9 +555,7 @@ fn follow_player(
             right_stick(&gamepads)
         };
 
-        let wanted = stick_direction(stick).unwrap_or(0.0);
-        let blend = 1.0 - (-LOOK_RESPONSE * dt).exp();
-        chase.look = wrap_angle(chase.look + wrap_angle(wanted - chase.look) * blend);
+        chase.look = stick_direction(stick).unwrap_or(0.0);
 
         let speed_factor = (speed / tuning.max_speed).clamp(0.0, 1.0);
         let surge = (state.accel * SURGE_PER_ACCEL).clamp(SURGE.start, SURGE.end);
@@ -620,6 +622,36 @@ mod tests {
                 assert_eq!(glide.from.unwrap().0.translation, Vec3::new(1.0, 2.0, 3.0));
             }
         }
+    }
+
+    #[test]
+    fn the_second_player_s_camera_draws_over_the_first_s_without_clearing_it() {
+        let mut app = App::new();
+        app.insert_resource(GameMode::SplitScreen)
+            .add_systems(Update, setup_split_cameras);
+        app.world_mut()
+            .spawn((Camera3d::default(), Camera::default(), CameraPlayer(0)));
+        app.update();
+        let mut cameras = app
+            .world_mut()
+            .query::<(&CameraPlayer, &Camera)>()
+            .iter(app.world())
+            .map(|(player, camera)| (player.0, camera.order, camera.clear_color))
+            .collect::<Vec<_>>();
+        cameras.sort_by_key(|(player, ..)| *player);
+        assert_eq!(cameras.len(), 2);
+        assert!(matches!(cameras[0].2, ClearColorConfig::Default));
+        assert_eq!(cameras[1].1, 1, "after the first");
+        assert!(matches!(cameras[1].2, ClearColorConfig::None));
+        // Only one more, however often it is asked for.
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&CameraPlayer>()
+                .iter(app.world())
+                .count(),
+            2
+        );
     }
 
     #[test]

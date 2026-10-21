@@ -85,7 +85,7 @@ impl ModesMenu {
 /// The colour each mode lights up in.
 pub fn lit(mode: Mode) -> Color {
     match mode {
-        Mode::Arcade => Color::srgb(0.98, 0.7, 0.0),
+        Mode::Arcade => Color::srgb(1.0, 0.43, 0.0),
         Mode::Race => Color::srgb(0.04, 0.4, 1.0),
         Mode::Elimination => Color::srgb(0.88, 0.16, 0.16),
         Mode::Checkpoint => Color::srgb(0.5, 0.19, 0.88),
@@ -271,12 +271,16 @@ struct Shown {
     scale_factor: f32,
 }
 
+/// How much bigger the cards of the game modes are than the start menu,
+/// their lettering as big as on cards its size.
+const GROW: f32 = 1.15;
+
 /// How wide the cards of the game modes are (px), with the start menu
-/// `menu` px wide (the title's width) in a window `window` px wide: as wide
-/// as the start menu, whatever the resolution, but never wider than most of
-/// the window.
+/// `menu` px wide (the title's width) in a window `window` px wide: a
+/// little wider than the start menu ([`GROW`]), whatever the resolution,
+/// but never wider than most of the window.
 fn cards_width(menu: f32, window: f32) -> f32 {
-    menu.min(window * 0.92)
+    (menu * GROW).min(window * 0.92)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -319,8 +323,8 @@ fn show_modes(
         commands.entity(entity).despawn();
     }
 
-    // As big as the start menu; the cards and their lettering in
-    // proportion.
+    // A little bigger than the start menu, the cards in proportion and
+    // their lettering as on cards its size.
     let width = now.width;
     let gap = width * 0.025;
     let rows = rows(now.two);
@@ -346,11 +350,11 @@ fn show_modes(
             width * 0.14
         };
         let card_width = (width - gap * (row.len() - 1) as f32) / row.len() as f32;
-        let letters = if big { height * 0.42 } else { height * 0.36 };
+        let letters = (if big { height * 0.42 } else { height * 0.36 }) / GROW;
         (big, height, card_width, letters)
     };
     let mut fitted = |mode: Mode, (_, _, card_width, letters): (bool, f32, f32, f32)| {
-        let widest = card_width * 0.86;
+        let widest = card_width / GROW * 0.86;
         let wide = lettering(name(mode, lang), letters).1.x;
         if wide > widest {
             letters * widest / wide
@@ -497,11 +501,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_modes_are_as_wide_as_the_start_menu_at_any_resolution() {
+    fn the_modes_are_a_little_wider_than_the_start_menu_at_any_resolution() {
         let menu = 620.0;
         // The same, from a small window to a large one.
         for window in [1280.0, 1600.0, 1920.0, 2560.0] {
-            assert_eq!(cards_width(menu, window), menu);
+            assert_eq!(cards_width(menu, window), menu * GROW);
         }
         // But inside a narrow window.
         assert_eq!(cards_width(menu, 600.0), 600.0 * 0.92);
@@ -555,5 +559,18 @@ mod tests {
                 assert!(!description(mode, lang).is_empty());
             }
         }
+    }
+
+    #[test]
+    fn arcade_s_orange_is_vivid_with_its_white_lettering_as_readable() {
+        // Its brightest channel full and none of the others (the most
+        // vivid there is of its hue), and as dark as before: the white
+        // lettering on it 2.8 : 1 (relative luminance).
+        let orange = lit(Mode::Arcade).to_srgba();
+        assert_eq!((orange.red, orange.blue), (1.0, 0.0));
+        let linear = lit(Mode::Arcade).to_linear();
+        let luminance = 0.2126 * linear.red + 0.7152 * linear.green + 0.0722 * linear.blue;
+        let contrast = 1.05 / (luminance + 0.05);
+        assert!((2.75..2.9).contains(&contrast), "{contrast}");
     }
 }

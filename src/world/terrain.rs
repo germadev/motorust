@@ -836,9 +836,9 @@ pub fn spawn_terrain(
         if mesh.count_vertices() == 0 {
             continue;
         }
-        let (texture, roughness, reflectance) = match (ground, terrain.soil) {
+        let (texture, roughness, reflectance) = match flowers {
             // Grass in flower: the lawn covered in blossoms.
-            (Ground::Grass, _) if flowers.is_some() => {
+            Some(_) if ground == Ground::Grass => {
                 let meadow = meadows
                     .iter()
                     .find(|(kind, _)| Some(*kind) == flowers)
@@ -846,17 +846,7 @@ pub fn spawn_terrain(
                     .expect("a meadow for each kind of flower drawn");
                 (Some(meadow), 0.9, 0.18)
             }
-            // In a desert canyon the flat ground is dry dust.
-            (Ground::Grass, Soil::Mine) => (Some(&textures.sand), 0.95, 0.15),
-            (Ground::Grass, _) => (Some(&textures.grass), 0.90, 0.18),
-            (Ground::Sand, _) => (Some(&textures.sand), 0.88, 0.28),
-            (Ground::Rock, Soil::Rock | Soil::Mine | Soil::Lunar) => {
-                (Some(&textures.rock), 0.78, 0.42)
-            }
-            (Ground::Rock, Soil::Checkered) => (Some(&textures.soil), 0.92, 0.2),
-            (Ground::Rock, Soil::Granite) => (Some(&textures.granite), 0.82, 0.4),
-            // Snow, white but for its shading (see `ground_vertex_color`).
-            (Ground::Snow, _) => (None, 0.55, 0.35),
+            _ => ground_look(ground, terrain.soil, textures),
         };
         let mut piece = world.spawn((
             Mesh3d(meshes.add(mesh)),
@@ -870,6 +860,26 @@ pub fn spawn_terrain(
         if let Some(layers) = layers {
             piece.insert(layers);
         }
+    }
+}
+
+/// What `ground` (not in flower) on soil `soil` is drawn with: its texture,
+/// how rough it is and how much it reflects.
+pub fn ground_look(
+    ground: Ground,
+    soil: Soil,
+    textures: &WorldTextures,
+) -> (Option<&Handle<Image>>, f32, f32) {
+    match (ground, soil) {
+        // In a desert canyon the flat ground is dry dust.
+        (Ground::Grass, Soil::Mine) => (Some(&textures.sand), 0.95, 0.15),
+        (Ground::Grass, _) => (Some(&textures.grass), 0.90, 0.18),
+        (Ground::Sand, _) => (Some(&textures.sand), 0.88, 0.28),
+        (Ground::Rock, Soil::Rock | Soil::Mine | Soil::Lunar) => (Some(&textures.rock), 0.78, 0.42),
+        (Ground::Rock, Soil::Checkered) => (Some(&textures.soil), 0.92, 0.2),
+        (Ground::Rock, Soil::Granite) => (Some(&textures.granite), 0.82, 0.4),
+        // Snow, white but for its shading (see `ground_vertex_color`).
+        (Ground::Snow, _) => (None, 0.55, 0.35),
     }
 }
 

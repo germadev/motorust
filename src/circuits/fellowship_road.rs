@@ -30,7 +30,7 @@
 //!    again.
 //! 10. Lothlórien: where the road splits three ways, the lap snaking
 //!     between a way to the left over a hump and one to the right through a
-//!     dip.
+//!     dip, all of them up and down, high over the land.
 //! 11. The Anduin: down to the river, along its gorge in esses, and west
 //!     down its middle on a causeway, narrower than the road, in a sweep to
 //!     the right and the left between the two kings of the Argonath.
@@ -76,11 +76,17 @@ const CAUSEWAY_WALL: f32 = 6.5;
 /// just inside their leaves.
 const DURIN_WALL: f32 = 5.5;
 const AMON_HEN: Span = span(CAUSEWAY.to, WOOD.from);
+/// How far apart along the road the trees of the woods from Amon Hen to
+/// Hobbiton are, in each row (m): more open than a forest's, so that they
+/// are not dark.
+const OPEN_WOOD: f32 = 9.0;
 /// Where the seat of seeing stands by the road up Amon Hen (m).
 const AMON_HEN_SEAT: f32 = 5405.1;
 /// How far from the middle the walls stand over the bridge on the Water in
-/// Hobbiton, an old, narrow one (m).
+/// Hobbiton, an old, narrow one (m), and over the bridge on the Brandywine,
+/// as narrow.
 const HOBBITON_BRIDGE_WALL: f32 = 6.5;
+const BRANDYWINE_WALL: f32 = 6.5;
 /// Where the road splits: a way through the Prancing Pony in Bree, in two in
 /// Rivendell, three ways in Lothlórien.
 const BREE_SPLIT: (f32, f32) = (1097.1, 1525.9);
@@ -107,29 +113,29 @@ const RIVENDELL_TURF: f32 = 0.6;
 /// Anduin's gorge (see `MiddleEarth::rock_tints`).
 const GORGE_STONE: Color = Color::srgb(0.62, 0.53, 0.44);
 /// The sunbeams down from the sky onto Rivendell's halls: how bright on
-/// them (lx), spread wide over them and round them, and their light,
-/// golden.
-const SUNBEAM: f32 = 4500.0;
+/// them (lx), over them and a little round them, and their light, golden.
+const SUNBEAM: f32 = 4000.0;
 /// How bright the diffused sunbeams are on what they light (lx): less, so
 /// that the seat of seeing and the ruins on Weathertop keep their detail;
 /// and Amon Hen's, the most diffused, still less.
-const DIFFUSED_SUNBEAM: f32 = 3500.0;
-const AMON_HEN_SUNBEAM: f32 = 2500.0;
+const DIFFUSED_SUNBEAM: f32 = 3100.0;
+const AMON_HEN_SUNBEAM: f32 = 2200.0;
 const SUNBEAM_LIGHT: Color = Color::srgb(1.0, 0.84, 0.58);
 /// How their shafts show in the air (see `Shaft`): Rivendell's diffused,
-/// spreading to four and a half times as wide up into the sky; Amon Sûl's
-/// more, to six times as wide, and fainter; Amon Hen's most, to nine.
+/// spreading to a little over three times as wide up into the sky; Amon
+/// Sûl's more, to four and a half times as wide, and fainter; Amon Hen's
+/// most, to six and a half.
 const SUNBEAM_SHAFT: Shaft = Shaft {
-    spread: 4.5,
-    light: 0.032,
+    spread: 3.2,
+    light: 0.027,
 };
 const DIFFUSED_SHAFT: Shaft = Shaft {
-    spread: 6.0,
-    light: 0.03,
+    spread: 4.5,
+    light: 0.025,
 };
 const AMON_HEN_SHAFT: Shaft = Shaft {
-    spread: 9.0,
-    light: 0.024,
+    spread: 6.5,
+    light: 0.02,
 };
 
 pub const FELLOWSHIP_ROAD: Circuit = Circuit {
@@ -174,14 +180,20 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                 factor: 0.25,
             },
         ],
-        // The old bridge over the Water in Hobbiton, the way through the
-        // Doors of Durin, between their leaves, and the causeway between the
-        // kings are narrower than the road: its walls close in on them.
+        // The old bridges over the Water in Hobbiton and over the
+        // Brandywine, the way through the Doors of Durin, between their
+        // leaves, and the causeway between the kings are narrower than the
+        // road: its walls close in on them.
         narrows: &[
             Narrowing {
                 from: HOBBITON_BRIDGE.from,
                 to: HOBBITON_BRIDGE.to,
                 wall: HOBBITON_BRIDGE_WALL,
+            },
+            Narrowing {
+                from: BRANDYWINE.from,
+                to: BRANDYWINE.to,
+                wall: BRANDYWINE_WALL,
             },
             Narrowing {
                 from: MORIA.from - 12.0,
@@ -384,13 +396,23 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         lamps: &[],
         // Oaks and birches, as in the Shire.
         trees: &[Species::Broadleaf, Species::Poplar],
-        // The wood the race starts in, of oaks and dark trees, on from Amon
-        // Hen's of broadleaves, as the beech forests where the film was made;
+        // The wood the race starts in, of oaks and a few dark trees, on from
+        // Amon Hen's of broadleaves, as the beech forests where the film was
+        // made, both open, the low sun reaching in between their trees;
         // dark conifers through the Trollshaws and up Caradhras' foothills;
         // Rivendell's woods in autumn, red and gold, as the film has them;
         // and Lothlórien's in gold.
         forests: &[
-            forest(WOOD, &[Species::Broadleaf, Species::Tall]),
+            forest(
+                WOOD,
+                &[
+                    Species::Broadleaf,
+                    Species::Broadleaf,
+                    Species::Poplar,
+                    Species::Tall,
+                ],
+            )
+            .open(OPEN_WOOD),
             forest(TROLLSHAWS, &[Species::Sugi]),
             forest(RIVENDELL, &[Species::Ginkgo, Species::Momiji]),
             forest(span(CARADHRAS.from, PASS.from), &[Species::Sugi]),
@@ -398,7 +420,8 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             forest(
                 span(AMON_HEN_SEAT + 20.0, AMON_HEN.to),
                 &[Species::Broadleaf, Species::Poplar],
-            ),
+            )
+            .open(OPEN_WOOD),
         ],
         // No houses of the other tracks: Hobbiton has its hobbit holes and
         // Bree its own houses (see `PROPS`).
@@ -503,6 +526,13 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     radius: 250.0,
                     steepest: 0.45,
                 },
+                // Weathertop's flanks, risen over the road climbing them:
+                // grass up its slopes, the rock out between.
+                Turf {
+                    center: Vec2::new(WEATHERTOP_HILL.center.x, WEATHERTOP_HILL.center.y),
+                    radius: 260.0,
+                    steepest: RIVENDELL_TURF,
+                },
                 Turf {
                     center: Vec2::new(1650.0, 180.0),
                     radius: 115.0,
@@ -577,8 +607,8 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
             // halls, the pavilion, the Last Homely House and the tower, a
             // sunbeam down from the sky through the clouds, leaning towards
             // the riders, its shaft showing in the air, spreading up into the
-            // sky; and diffused ones on the seat of seeing on Amon Hen and on
-            // the ruins of Amon Sûl.
+            // sky; diffused ones on the seat of seeing on Amon Hen and on
+            // the ruins of Amon Sûl; and one on the stone trolls.
             glows: &[
                 Glow {
                     from: Vec3::new(1549.2, 133.2, -93.5),
@@ -609,7 +639,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1624.5, 27.3, 49.0),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.12,
+                    angle: 0.095,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 Glow {
@@ -617,7 +647,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1619.1, 40.0, 112.5),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.25,
+                    angle: 0.2,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 Glow {
@@ -625,7 +655,7 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(1577.1, 53.2, 151.9),
                     illuminance: SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.12,
+                    angle: 0.095,
                     shaft: Some(SUNBEAM_SHAFT),
                 },
                 // And, wider and far more diffused, one on the seat of seeing
@@ -636,16 +666,47 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                     to: Vec3::new(96.8, 16.3, 324.2),
                     illuminance: AMON_HEN_SUNBEAM,
                     color: SUNBEAM_LIGHT,
-                    angle: 0.2,
+                    angle: 0.16,
                     shaft: Some(AMON_HEN_SHAFT),
                 },
                 Glow {
-                    from: Vec3::new(1213.3, 195.2, -718.3),
-                    to: Vec3::new(1271.7, 59.2, -693.7),
+                    from: Vec3::new(1213.3, 218.6, -694.3),
+                    to: Vec3::new(1271.7, 82.6, -669.7),
                     illuminance: DIFFUSED_SUNBEAM,
                     color: SUNBEAM_LIGHT,
                     angle: 0.12,
                     shaft: Some(DIFFUSED_SHAFT),
+                },
+                // And one down through the dark trees of the Trollshaws onto
+                // the trolls turned to stone, leaning over the road towards
+                // the riders coming down at them.
+                Glow {
+                    from: Vec3::new(1494.5, 166.0, -691.1),
+                    to: Vec3::new(1545.3, 30.0, -653.7),
+                    illuminance: SUNBEAM,
+                    color: SUNBEAM_LIGHT,
+                    angle: 0.095,
+                    shaft: Some(SUNBEAM_SHAFT),
+                },
+            ],
+            // At the top of the pass, two arches of rock out of the cliff
+            // on the left, where it comes nearest the road (30 m from its
+            // middle; between them, over the mines, it stands back), the
+            // second seen through the first, each a little askew.
+            arches: &[
+                RockArch {
+                    along: PASS.from + 8.0,
+                    turn: 0.1,
+                    width: 29.0,
+                    height: 17.0,
+                    depth: 10.0,
+                },
+                RockArch {
+                    along: PASS.from + 59.0,
+                    turn: -0.08,
+                    width: 30.0,
+                    height: 19.0,
+                    depth: 9.0,
                 },
             ],
         }),
@@ -751,9 +812,10 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
     by_road(MiddleEarthModel::BreeHouseB, 1233.1, -16.0).turned(0.79),
     by_road(MiddleEarthModel::BreeHouseA, 1247.1, -24.0).turned(0.79),
     by_road(MiddleEarthModel::BreeHouseB, 1305.1, -16.0).turned(0.79),
-    // Weathertop: the ring of ruins of Amon Sûl beside the top straight, on
-    // the side of the summit, and broken arches either side of the road.
-    by_road(MiddleEarthModel::WeathertopRuin, 1813.1, -38.0).turned(0.79),
+    // Weathertop: the ring of ruins of Amon Sûl up on the summit, over the
+    // bank beside the top straight (on its own level ground, see
+    // `KNOLLS`), and broken arches either side of the road.
+    by_road(MiddleEarthModel::WeathertopRuin, 1813.1, -62.0).turned(0.79),
     by_road(MiddleEarthModel::RuinArch, 1765.1, 16.0).turned(-0.79),
     by_road(MiddleEarthModel::RuinArch, 1805.1, -16.0).turned(0.79),
     // The Trollshaws: the trolls turned to stone on the outside of the
@@ -816,7 +878,7 @@ const PROPS: [Prop<MiddleEarthModel>; 55] = [
 /// the road, raised 1.3 m over the ground there, so that the walls do not
 /// hide their feet, and the gardens before the hobbit holes, level with
 /// their doors: their middles, radii and heights (m).
-const KNOLLS: [Terrace; 17] = [
+const KNOLLS: [Terrace; 18] = [
     // A hobbit hole's doorstep, cut into the hill.
     garden(261.1, -446.4, 3.0, 8.9),
     // A hobbit hole's doorstep, cut into the hill.
@@ -845,6 +907,9 @@ const KNOLLS: [Terrace; 17] = [
     knoll(899.8, -450.4, 9.0, 9.9),
     // The stone trolls.
     knoll(1545.1, -654.1, 8.0, 25.9),
+    // The ruins of Amon Sûl, on Weathertop's summit, 25 m over the road:
+    // the summit levelled under them, so they stand on it whole.
+    knoll(1271.7, -669.7, 18.0, 75.0),
     // Rivendell's halls, one over another: the pavilion to the left of the
     // others, 4 m over the road, the Last Homely House on a ledge 10 m over
     // it, and the tower on a ledge at the edge of the rock behind, 16 m
@@ -1307,10 +1372,11 @@ const CONTROL_POINTS: [Vec2; 197] = [
 ];
 
 /// Up Weathertop, 42.7 m, and down to the ford; up Caradhras, 32 m, and down
-/// round it to the mines, 38 m under the pass; up through Moria and down
-/// through Lothlórien to the Anduin, at the water's level between the kings;
+/// round it to the mines, 38 m under the pass; up through Moria, up and
+/// down through Lothlórien, and down to the Anduin, at the water's level
+/// between the kings;
 /// over Amon Hen and down to the line. Up and down at up to 12 %.
-const ELEVATION: [(f32, f32); 85] = [
+const ELEVATION: [(f32, f32); 89] = [
     // The start straight through the wood, high over Hobbiton, over a
     // lower crest where the bike flies; down the long sweep into Hobbiton
     // at up to 9.4 % (drawn as a grade, its changes long and gentle) to the
@@ -1402,11 +1468,19 @@ const ELEVATION: [(f32, f32); 85] = [
     (3881.1, 9.0),
     (4053.1, 20.0),
     (4133.1, 24.0),
-    // Down steadily through Lothlórien's split (as Ghost Island's castle's).
+    // Up through Lothlórien's split, high over the land, to its top 5 m
+    // over where it came out of Moria, and down again: gently (at most
+    // 4.5 %), its top over the dip of the way to the right, so that the
+    // ways' humps and dips do not add up into a climb too steep or a crest
+    // that throws the bikes in the bends. Then down the Anduin's gorge to
+    // the water, and the causeway, low over it.
     (4187.1, 23.5),
-    (4537.1, 11.5),
-    // Down the Anduin's gorge to the water, and the causeway, low over it.
-    (4617.1, 9.5),
+    (4280.0, 24.5),
+    (4400.0, 28.5),
+    (4480.0, 26.5),
+    (4560.0, 22.5),
+    (4640.0, 14.0),
+    (4760.0, 5.4),
     (4887.1, 1.5),
     (4957.1, -1.4),
     (5211.1, -1.4),
@@ -1993,7 +2067,7 @@ fn river_banks(points: &[(Vec2, f32)], point: Vec2) -> f32 {
 
 /// Weathertop, Caradhras over the mines, and Amon Hen: their middles,
 /// radii and heights (m).
-const WEATHERTOP_HILL: Massif = climbed_massif(1225.0, -665.0, 280.0, 46.0);
+const WEATHERTOP_HILL: Massif = climbed_massif(1225.0, -665.0, 280.0, 68.0);
 const CARADHRAS_PEAK: Massif = climbed_massif(1595.0, 385.0, 280.0, 44.0);
 
 const MASSIFS: [Massif; 32] = [

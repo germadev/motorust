@@ -119,6 +119,17 @@ pub struct Settings {
     /// How the edges are smoothed (see [`crate::world::detail`]): fixed, as
     /// changing it makes every pipeline again.
     pub antialiasing: Antialiasing,
+    /// The relief of the scenery's textures: none, normal maps, or normal
+    /// maps and parallax (see [`crate::world::relief`]).
+    pub relief: Relief,
+    /// Whether the road has relief too (see [`crate::world::relief`]).
+    pub road_relief: bool,
+    /// Whether the relief is dropped while the players go fast, but the
+    /// road's (see [`crate::world::relief::ReliefShown`]).
+    pub flat_at_speed: bool,
+    /// How the grass's repetition is broken up: not at all, with a wide
+    /// texture, or stochastically (see [`crate::world::lawn`]).
+    pub grass_tiling: GrassTiling,
     /// How much of the window's resolution the world is drawn at (%), scaled
     /// up to it (see [`crate::render_scale`]); the interface is always drawn
     /// at the window's own.
@@ -128,10 +139,13 @@ pub struct Settings {
     /// [`crate::world::detail`]), instead of as chosen.
     pub force_performance: ForcePerformance,
     /// What the performance HUD shows at the top right: the frame rate, the
-    /// pixels the world is drawn at, and, on the race's map, where the
-    /// player is (see [`crate::hud`] and [`crate::minimap`]).
+    /// pixels the world is drawn at, the smoothing of the edges and the
+    /// textures (their relief, the lawn's tiling) in use, and, on the race's
+    /// map, where the player is (see [`crate::hud`] and [`crate::minimap`]).
     pub show_fps: bool,
     pub show_resolution: bool,
+    pub show_antialiasing: bool,
+    pub show_textures: bool,
     pub show_coordinates: bool,
     /// Whether the sea is drawn as in *The Wind Waker* (flat cartoon blues
     /// with waves rolling in), as it always is on Loop Island; otherwise it
@@ -366,10 +380,16 @@ impl Default for Settings {
             performance_log: true,
             shadows: ShadowQuality::default(),
             antialiasing: Antialiasing::default(),
+            relief: Relief::default(),
+            road_relief: false,
+            flat_at_speed: true,
+            grass_tiling: GrassTiling::default(),
             render_scale: DEFAULT_RENDER_SCALE,
             force_performance: ForcePerformance::Off,
             show_fps: true,
             show_resolution: false,
+            show_antialiasing: false,
+            show_textures: false,
             show_coordinates: false,
             cartoon_water: false,
             frame_latency: DEFAULT_FRAME_LATENCY,
@@ -500,12 +520,12 @@ pub const SHADOW_QUALITIES: [ShadowQuality; 4] = [
     ShadowQuality::Low,
 ];
 
-/// How the edges are smoothed: four samples a pixel (as always), FXAA over
-/// the frame (cheaper), or not at all.
+/// How the edges are smoothed: four samples a pixel, FXAA over the frame
+/// (cheaper; as the game starts), or not at all.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Antialiasing {
-    #[default]
     Msaa,
+    #[default]
     Fxaa,
     Off,
 }
@@ -513,6 +533,73 @@ pub enum Antialiasing {
 /// The ways of smoothing the edges that can be chosen, in order.
 pub const ANTIALIASINGS: [Antialiasing; 3] =
     [Antialiasing::Msaa, Antialiasing::Fxaa, Antialiasing::Off];
+
+/// The relief of the scenery's textures (see [`crate::world::relief`]):
+/// none, as they always were; normal maps, which light their bumps as the
+/// sun falls on them; or normal maps and, on the grass and the surfaces
+/// seen close (the walls, the planks, the tunnels' panels, the roofs),
+/// parallax, which shifts their bumps with the point of view as well, so
+/// they do not look flat going slowly by, at the cost of several more
+/// readings of a texture for each of their pixels.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum Relief {
+    /// As the game starts.
+    #[default]
+    Off,
+    Normal,
+    Parallax,
+}
+
+/// The reliefs that can be chosen, in order.
+pub const RELIEFS: [Relief; 3] = [Relief::Off, Relief::Normal, Relief::Parallax];
+
+/// How the grass's repetition is broken up (see [`crate::world::lawn`]):
+/// not at all, its lawn repeating every 11 m as it always did; with a
+/// texture four times as wide each way worked out at startup from pieces
+/// of it, drawn as the lawn is (more memory, nothing more to draw); or
+/// stochastically as it is drawn, pieces of it at random over a grid of
+/// triangles (three readings of the texture for each pixel of the grass,
+/// and no parallax on it).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum GrassTiling {
+    Plain,
+    #[default]
+    Wide,
+    Stochastic,
+}
+
+/// The grass tilings that can be chosen, in order.
+pub const GRASS_TILINGS: [GrassTiling; 3] = [
+    GrassTiling::Plain,
+    GrassTiling::Wide,
+    GrassTiling::Stochastic,
+];
+
+impl GrassTiling {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (GrassTiling::Plain, Language::Spanish) => "Ninguna",
+            (GrassTiling::Plain, Language::English) => "None",
+            (GrassTiling::Wide, Language::Spanish) => "Textura amplia",
+            (GrassTiling::Wide, Language::English) => "Wide texture",
+            (GrassTiling::Stochastic, Language::Spanish) => "Estocástica",
+            (GrassTiling::Stochastic, Language::English) => "Stochastic",
+        }
+    }
+}
+
+impl Relief {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (Relief::Off, Language::Spanish) => "No",
+            (Relief::Off, Language::English) => "Off",
+            (Relief::Normal, Language::Spanish) => "Normales",
+            (Relief::Normal, Language::English) => "Normal maps",
+            (Relief::Parallax, Language::Spanish) => "Normales y parallax",
+            (Relief::Parallax, Language::English) => "Normals and parallax",
+        }
+    }
+}
 
 /// The render scales that can be chosen (% of the window's resolution, see
 /// [`Settings::render_scale`]), in order, and the one at first: all of it.
@@ -1245,6 +1332,27 @@ impl Settings {
         self.fullscreen && self.fullscreen_kind() == FullscreenKind::Exclusive
     }
 
+    /// The pixels a fixed resolution draws the world at, at most, in a
+    /// fullscreen over the desktop, where the screen is not switched to it
+    /// and the window covers it as it is (see
+    /// [`crate::render_scale::NativeShare`]): there it changed nothing
+    /// before. `None` otherwise: in a window it is the window's size, in a
+    /// dedicated fullscreen the screen's display mode.
+    pub fn desktop_resolution(&self) -> Option<UVec2> {
+        self.desktop_resolution_as(self.fullscreen_kind())
+    }
+
+    fn desktop_resolution_as(&self, kind: FullscreenKind) -> Option<UVec2> {
+        match self.resolution {
+            Resolution::Window(width, height)
+                if !WEB && self.fullscreen && kind == FullscreenKind::Desktop =>
+            {
+                Some(UVec2::new(width, height))
+            }
+            _ => None,
+        }
+    }
+
     /// Sets `window` as these settings ask. In a dedicated fullscreen, the
     /// screen is switched to the display mode of `monitor` that comes
     /// closest to the resolution chosen (in pixels), or with a dynamic one
@@ -1764,12 +1872,84 @@ mod tests {
     }
 
     #[test]
+    fn the_road_starts_without_relief_and_the_rest_drops_it_at_speed() {
+        let first = Settings::default();
+        assert!(!first.road_relief && first.flat_at_speed);
+        // Saved before they were options: as at first.
+        let older: Settings = ron::from_str("(relief: Parallax)").unwrap();
+        assert!(!older.road_relief && older.flat_at_speed);
+        let text = ron::ser::to_string(&Settings {
+            road_relief: true,
+            flat_at_speed: false,
+            ..default()
+        })
+        .unwrap();
+        let read: Settings = ron::from_str(&text).unwrap();
+        assert!(read.road_relief && !read.flat_at_speed);
+    }
+
+    #[test]
+    fn the_grass_starts_with_the_wide_texture_and_is_kept() {
+        assert_eq!(Settings::default().grass_tiling, GrassTiling::Wide);
+        let older: Settings = ron::from_str("(fps: Unlimited)").unwrap();
+        assert_eq!(older.grass_tiling, GrassTiling::Wide);
+        for tiling in GRASS_TILINGS {
+            let text = ron::ser::to_string(&Settings {
+                grass_tiling: tiling,
+                ..default()
+            })
+            .unwrap();
+            assert_eq!(
+                ron::from_str::<Settings>(&text).unwrap().grass_tiling,
+                tiling
+            );
+        }
+        assert_eq!(GrassTiling::Plain.name(Language::Spanish), "Ninguna");
+    }
+
+    #[test]
+    fn the_game_starts_with_fxaa_and_no_relief_and_keeps_what_is_chosen() {
+        // As the game starts: no relief, FXAA, the shadows automatic.
+        let first = Settings::default();
+        assert_eq!(
+            (first.relief, first.antialiasing, first.shadows),
+            (Relief::Off, Antialiasing::Fxaa, ShadowQuality::Auto)
+        );
+        // Saved without them: as the game starts.
+        let older: Settings = ron::from_str("(fps: Unlimited)").unwrap();
+        assert_eq!(
+            (older.relief, older.antialiasing),
+            (Relief::Off, Antialiasing::Fxaa)
+        );
+        // Saved with them: as saved.
+        let saved: Settings = ron::from_str("(relief: Normal, antialiasing: Msaa)").unwrap();
+        assert_eq!(
+            (saved.relief, saved.antialiasing),
+            (Relief::Normal, Antialiasing::Msaa)
+        );
+        for relief in RELIEFS {
+            let text = ron::ser::to_string(&Settings {
+                relief,
+                ..default()
+            })
+            .unwrap();
+            assert_eq!(ron::from_str::<Settings>(&text).unwrap().relief, relief);
+        }
+        assert_eq!(
+            Relief::Parallax.name(Language::Spanish),
+            "Normales y parallax"
+        );
+        assert_eq!(Relief::Off.name(Language::English), "Off");
+    }
+
+    #[test]
     fn the_performance_forced_the_performance_hud_and_the_water_start_as_they_were() {
         let fresh: Settings = ron::from_str("()").unwrap();
         // Nothing forced; the frame rate shown, the rest of the HUD not;
         // the sea mirroring, not the cartoon one.
         assert_eq!(fresh.force_performance, ForcePerformance::Off);
         assert!(fresh.show_fps && !fresh.show_resolution && !fresh.show_coordinates);
+        assert!(!fresh.show_antialiasing && !fresh.show_textures);
         assert!(!fresh.cartoon_water);
         // The performance mode on, as saved before: forced to 60 fps; off,
         // nothing forced; and once saved again, as chosen.
@@ -1972,6 +2152,25 @@ mod tests {
         };
         assert_eq!(desktop.kind_of_fullscreen(false), FullscreenKind::Exclusive);
         assert_eq!(desktop.kind_of_fullscreen(true), FullscreenKind::Desktop);
+        // Over the desktop, a fixed resolution draws the world at that
+        // many pixels at most; switching the screen, or in a window, not.
+        assert_eq!(
+            desktop.desktop_resolution_as(FullscreenKind::Desktop),
+            Some(UVec2::new(1280, 720))
+        );
+        assert_eq!(
+            desktop.desktop_resolution_as(FullscreenKind::Exclusive),
+            None
+        );
+        let windowed = Settings {
+            fullscreen: false,
+            ..desktop.clone()
+        };
+        assert_eq!(
+            windowed.desktop_resolution_as(FullscreenKind::Desktop),
+            None
+        );
+        assert_eq!(dynamic.desktop_resolution_as(FullscreenKind::Desktop), None);
         let monitor = Monitor {
             name: None,
             physical_height: 1600,
