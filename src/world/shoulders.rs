@@ -89,6 +89,9 @@ fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
         // On the Moon all unpaved ground (classified as Sand or Rock) is grey
         // lunar regolith dust; the Earth portal sector has Ground::Grass.
         (Soil::Lunar, Ground::Sand | Ground::Rock) => Surface::Dirt(Dust::Slate),
+        // In an indoor toy shop, floor planks, hobby tabletops and wooden
+        // shelves are smooth indoor surfaces with no outdoor grass blades.
+        (Soil::ToyShop, Ground::Grass | Ground::Rock) => Surface::Dirt(Dust::Sand),
         (_, Ground::Sand) => Surface::Dirt(Dust::Sand),
         (_, Ground::Grass) => Surface::Grass,
         (Soil::Rock | Soil::Granite, Ground::Rock) => Surface::Dirt(Dust::Sand),

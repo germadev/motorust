@@ -295,6 +295,34 @@ impl Palette {
                     highlight_saturation: 0.85,
                 },
             },
+            // Indoor toy-shop fluorescent lighting: dark industrial ceiling
+            // slate backdrop (enclosed by the Toy Shop's ceiling grid and
+            // walls), warm-white overhead twin-tube lighting, generous ambient
+            // fill so every shelf and table is vivid, and no outdoor clouds or
+            // sun disc.
+            SkyStyle::ToyShop => Self {
+                zenith: Color::srgb(0.10, 0.13, 0.22),
+                above_horizon: Color::srgb(0.14, 0.16, 0.22),
+                horizon: Color::srgb(0.18, 0.19, 0.22),
+                glow: 0.0,
+                glow_color: Color::srgb(1.0, 0.96, 0.90),
+                sun_azimuth: SUN_AZIMUTH,
+                sun_elevation: 1.15,
+                sun_disc: Color::srgba(1.0, 1.0, 1.0, 0.0),
+                sunlight: Color::srgb(1.0, 0.96, 0.90),
+                sunlight_strength: 1.05,
+                ambient: Color::srgb(0.88, 0.86, 0.84),
+                ambient_brightness: 680.0,
+                clouds: Color::srgba(1.0, 1.0, 1.0, 0.0),
+                fog: (1600.0, 5800.0),
+                grade: Grade {
+                    saturation: 1.04,
+                    contrast: 1.08,
+                    exposure: 0.08,
+                    warmth: 0.004,
+                    highlight_saturation: 0.92,
+                },
+            },
         }
     }
 

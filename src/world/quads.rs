@@ -85,7 +85,9 @@ impl MeshBuilder {
     /// `width` de ancho y `height` de alto (de canto, hacia arriba si la viga
     /// no es vertical), con sus dos extremos cerrados.
     pub fn beam(&mut self, a: Vec3, b: Vec3, width: f32, height: f32, color: Color) {
-        let along = (b - a).normalize_or_zero();
+        let Some(along) = (b - a).try_normalize() else {
+            return;
+        };
         let side = if along.y.abs() > 0.99 {
             Vec3::X
         } else {
@@ -186,5 +188,12 @@ mod tests {
             assert!(normal.dot(facing) > 0.0);
             assert!(Vec3::from(builder.normals[0]).dot(facing) > 0.0);
         }
+    }
+
+    #[test]
+    fn degenerate_beam_does_not_produce_nan_vertices() {
+        let mut builder = MeshBuilder::default();
+        builder.beam(Vec3::ONE, Vec3::ONE, 1.0, 1.0, Color::WHITE);
+        assert!(builder.is_empty());
     }
 }

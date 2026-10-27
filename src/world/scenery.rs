@@ -223,13 +223,17 @@ pub enum Soil {
     /// Grey lunar regolith and basaltic crater rock; its tunnels are
     /// pressurized space-station corridors lit by cool white-cyan strips.
     Lunar,
+    /// Indoor toy-shop parquet floor, green Scalextric hobby tabletops, red
+    /// pleated table skirts and birch cube shelves; its tunnels run through a
+    /// giant colourful toy box.
+    ToyShop,
 }
 
 /// The light of a track: a summer day; a clear Mediterranean summer
 /// afternoon, graded as a photograph is; the last hours of a clear autumn
 /// afternoon, the sun low and golden; a low sun setting in a warm, hazy
-/// sky; or the black sky of the Moon with the Earth hanging above the
-/// horizon.
+/// sky; the black sky of the Moon with the Earth hanging above the
+/// horizon; or the warm overhead fluorescent lighting of an indoor toy shop.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SkyStyle {
     Day,
@@ -241,6 +245,9 @@ pub enum SkyStyle {
     /// Lord of the Rings* was shot.
     HighCountry,
     Space,
+    /// Indoor toy-shop lighting under a suspended ceiling grid with twin-tube
+    /// fluorescent fixtures and no outdoor clouds or sun disc.
+    ToyShop,
 }
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
@@ -548,6 +555,10 @@ pub struct Scenery {
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
     pub space: Option<Space>,
+    /// The indoor toy-shop room, ceiling lights, tables, chairs, shelves,
+    /// Scalextric and Hot Wheels sectors, electric trains, Playmobil castle
+    /// gate and giant toys, if any: see [`ToyShop`].
+    pub toy_shop: Option<ToyShop>,
 }
 
 impl Scenery {
@@ -1410,6 +1421,177 @@ pub struct StationArch {
 pub struct LunarBoulders {
     pub max: usize,
     pub spans: &'static [Span],
+}
+
+/// The indoor toy-shop and hobby-workshop scenery (see
+/// [`crate::world::toy_shop`]): enclosing yellow shop walls with banners and
+/// pillars, an industrial overhead ceiling grid with twin-tube fluorescent
+/// fixtures, Scalextric slot-car rails and bridges, a Hot Wheels multi-lane
+/// flag gate and T-Rex loop jaws, animated electric model trains, a Playmobil
+/// medieval castle gatehouse, Kallax wooden cube shelves, a playground slide,
+/// a xylophone & LEGO bridge, a floor piano, Nutcracker soldiers, and giant
+/// toys.
+pub struct ToyShop {
+    /// Span where twin metallic Scalextric slot-car rails and copper braids
+    /// are embedded along the road surface.
+    pub scalextric: Span,
+    /// Span where bright orange Hot Wheels side rails and blue track boosters
+    /// line the road.
+    pub hot_wheels: Span,
+    /// Where the green T-Rex / Dragon head stands with open jaws framing the
+    /// vertical loop (`along` metres from the finish line).
+    pub dino_loop_along: f32,
+    /// Overhead Hot Wheels multi-lane start/finish gates with hanging yellow
+    /// lane flags (`1..5`).
+    pub hot_wheels_gates: &'static [HotWheelsGate],
+    /// Arched Scalextric overpass bridges spanning over the road.
+    pub scalextric_bridges: &'static [ScalextricBridge],
+    /// Playmobil medieval castle gatehouses spanning over the road, with twin
+    /// crenellated grey towers, red conical roofs, yellow flags, portcullis
+    /// arch and Playmobil knights.
+    pub playmobil_gates: &'static [PlaymobilGate],
+    /// Animated electric model train lines running beside the road.
+    pub train_lines: &'static [ToyTrainLine],
+    /// Giant wooden chairs standing beside the climb/descent ramps between the
+    /// floor and the tables.
+    pub chairs: &'static [ToyChair],
+    /// Tall wooden cube shelves (`Kallax`-style) stocked with giant toys.
+    pub cube_shelves: &'static [CubeShelf],
+    /// Steep playground slide (`Tobogán`) runs with bright yellow and blue
+    /// curved side-chutes.
+    pub slides: &'static [SlideRun],
+    /// Narrow bridges lined with rainbow metallic xylophone bars and giant
+    /// studded LEGO construction bricks.
+    pub xylophones: &'static [XylophoneSpan],
+    /// Giant floor pianos (`Big`-style) with white and black keys beside the
+    /// road.
+    pub floor_pianos: &'static [FloorPiano],
+    /// Rows of giant wooden Nutcracker soldiers standing guard along the red
+    /// runner carpet.
+    pub soldier_rows: &'static [SoldierRow],
+    /// Individual giant toy props placed beside the road or on tables/shelves.
+    pub props: &'static [ToyProp],
+}
+
+/// An overhead Hot Wheels multi-lane start/finish gate spanning over the road
+/// at `along` metres from the finish line, with a blue plastic frame and five
+/// numbered yellow hanging lane paddles.
+pub struct HotWheelsGate {
+    pub along: f32,
+}
+
+/// A grey plastic Scalextric / Ninco arched bridge spanning over the road at
+/// `along` metres from the finish line.
+pub struct ScalextricBridge {
+    pub along: f32,
+}
+
+/// A Playmobil medieval castle gatehouse spanning over the road at `along`
+/// metres from the finish line, with twin crenellated stone towers, conical
+/// red roofs, banners, a raised portcullis arch and Playmobil knights.
+pub struct PlaymobilGate {
+    pub along: f32,
+}
+
+/// An animated electric model railway line beside the road over `span`,
+/// `lateral` metres from the centre line on `side`, with `trains` colourful
+/// steam locomotives pulling wagons along the sleepers and rails.
+pub struct ToyTrainLine {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+    pub trains: u32,
+}
+
+/// A giant wooden chair beside the road at `along` metres from the finish
+/// line, `lateral` metres from the centre line on `side`, turned by `heading`
+/// radians relative to the road direction.
+pub struct ToyChair {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub heading: f32,
+}
+
+/// A tall wooden cube shelf unit (`Kallax`-style) beside the road over `span`
+/// on `side`, `lateral` metres from the centre line, stocked with giant toys
+/// in its cubbies.
+pub struct CubeShelf {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// A playground slide (`Tobogán`) run over `span`, lining the road with glossy
+/// yellow and blue curved plastic slide chutes and support struts.
+pub struct SlideRun {
+    pub span: Span,
+}
+
+/// A bridge span lined with rainbow metallic xylophone keys, wooden mallets
+/// and giant studded LEGO bricks.
+pub struct XylophoneSpan {
+    pub span: Span,
+}
+
+/// A giant floor piano (`Big`-style) beside the road over `span`, `lateral`
+/// metres from the centre line on `side`.
+pub struct FloorPiano {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// A row of giant painted Nutcracker toy soldiers standing along `span` on
+/// `side`, `lateral` metres from the centre line and `every` metres apart.
+pub struct SoldierRow {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+    pub every: f32,
+}
+
+/// What kind of giant toy prop stands at a [`ToyProp`] spot.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ToyKind {
+    /// A giant 1:32 Scalextric / Ninco slot-car racer with roof stripes and a
+    /// guide blade.
+    SlotCar,
+    /// A fiery Hot Wheels tire tower and blue track booster.
+    HotWheelsTower,
+    /// A cardboard castle turret with pink curtains, crenellations and a blue
+    /// shield crest (`photo 3`).
+    CardboardTurret,
+    /// A stack of giant colourful board-game boxes and giant six-sided dice.
+    BoardGameStack,
+    /// A giant wooden robot with articulated block limbs and glowing eyes.
+    WoodenRobot,
+    /// A giant painted Russian nesting doll (`Matryoshka`, `photo 1`).
+    Matryoshka,
+    /// A giant spotted plush rocking horse (`photo 1`).
+    RockingHorse,
+    /// A wooden Brio-style railway control tower with a rooftop helipad.
+    TrainHelipadTower,
+    /// A giant toy sailboat / pirate ship floating in the toy pond or standing
+    /// on a shelf.
+    ToyPirateShip,
+    /// A cluster of giant studded LEGO construction brick towers.
+    LegoTower,
+    /// A giant painted hopscotch court (`rayuela`, `photo 3`) laid flat on the
+    /// floor beside the road.
+    Hopscotch,
+    /// A giant Playmobil medieval knight figure holding a halberd and shield.
+    PlaymobilKnight,
+}
+
+/// A giant toy prop placed beside the road at `along` metres from the finish
+/// line, `lateral` metres from the centre line on `side`.
+pub struct ToyProp {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub kind: ToyKind,
+    pub scale: f32,
 }
 
 #[cfg(test)]

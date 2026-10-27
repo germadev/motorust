@@ -521,6 +521,7 @@ impl Terrain {
         match (self.soil, ground) {
             (Soil::Mine, _) => canyon_vertex_color(ground, p, normal),
             (Soil::Lunar, _) if !earth => lunar_vertex_color(ground, p, normal),
+            (Soil::ToyShop, _) => toy_shop_vertex_color(ground, p, normal),
             (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
             (_, Ground::Grass) => self.grass_color(p, normal),
             _ => ground_vertex_color(ground, p, normal),
@@ -619,9 +620,11 @@ impl Terrain {
                                         ) * 2.2;
                                         Vec2::new(p.x + warp.x, p.z + warp.y)
                                     }
-                                    // Checkerboard earth: straight rows at the same
-                                    // heights on every cliff, as in Loop Island.
-                                    false if self.soil == Soil::Checkered => {
+                                    // Checkerboard earth or toy-shop table skirts:
+                                    // straight rows at the same heights on every face.
+                                    false
+                                        if matches!(self.soil, Soil::Checkered | Soil::ToyShop) =>
+                                    {
                                         rock_projection(p, face)
                                     }
                                     false => {
@@ -683,6 +686,9 @@ impl Terrain {
                                     }
                                     (Soil::Lunar, ..) if !earth => {
                                         lunar_vertex_color(ground_type, p, normal)
+                                    }
+                                    (Soil::ToyShop, ..) => {
+                                        toy_shop_vertex_color(ground_type, p, normal)
                                     }
                                     (_, Ground::Grass, _) => {
                                         let outside = (self.fine.0 - Vec2::new(p.x, p.z))
@@ -788,7 +794,7 @@ impl Terrain {
         } = joined;
         let rock_tile = match self.soil {
             Soil::Rock | Soil::Mine | Soil::Granite | Soil::Lunar => ROCK_TILE,
-            Soil::Checkered => SOIL_TILE,
+            Soil::Checkered | Soil::ToyShop => SOIL_TILE,
         };
         let layers = style.map(|style| match side {
             Some(side) if side != style => style.beyond_layers(),
@@ -873,10 +879,13 @@ pub fn ground_look(
     match (ground, soil) {
         // In a desert canyon the flat ground is dry dust.
         (Ground::Grass, Soil::Mine) => (Some(&textures.sand), 0.95, 0.15),
+        // In a toy shop the flat ground is polished parquet floor, green
+        // Scalextric hobby felt tabletops, and birch cube shelves.
+        (Ground::Grass, Soil::ToyShop) => (Some(&textures.sand), 0.72, 0.28),
         (Ground::Grass, _) => (Some(&textures.grass), 0.90, 0.18),
         (Ground::Sand, _) => (Some(&textures.sand), 0.88, 0.28),
         (Ground::Rock, Soil::Rock | Soil::Mine | Soil::Lunar) => (Some(&textures.rock), 0.78, 0.42),
-        (Ground::Rock, Soil::Checkered) => (Some(&textures.soil), 0.92, 0.2),
+        (Ground::Rock, Soil::Checkered | Soil::ToyShop) => (Some(&textures.soil), 0.82, 0.22),
         (Ground::Rock, Soil::Granite) => (Some(&textures.granite), 0.82, 0.4),
         // Snow, white but for its shading (see `ground_vertex_color`).
         (Ground::Snow, _) => (None, 0.55, 0.35),
@@ -1935,6 +1944,64 @@ fn lunar_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
             let layered = dark_basalt.mix(&anorthosite, band);
             let ao = (0.5 + 0.5 * normal.y.max(0.0)).clamp(0.5, 1.0);
             layered.mix(&Color::srgb(0.24, 0.27, 0.34), (1.0 - ao) * 0.65)
+        }
+        Ground::Snow => snow_color(p, normal),
+    };
+    color.to_linear().to_f32_array()
+}
+
+/// The colours of an indoor toy shop (`Soil::ToyShop`):
+/// - At floor level (`p.y < 3.5 m`): warm honey-oak parquet wooden planks.
+/// - At hobby tabletop level (`3.5 <= p.y < 26.0 m`): green Scalextric felt
+///   tabletop on flat surfaces and red pleated trestle table skirts (`photo 4`)
+///   on steep drop-offs.
+/// - At high shelf level (`p.y >= 26.0 m`): warm birch and maple Kallax wooden
+///   cube shelves.
+fn toy_shop_vertex_color(ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
+    let color = match ground {
+        Ground::Grass | Ground::Sand => {
+            let grain = value_noise(Vec2::new(p.x * 0.18, p.z * 0.04));
+            let plank = ((p.x * 0.55).sin() * (p.z * 0.12).cos()) * 0.5 + 0.5;
+            // Warm honey-oak parquet floor.
+            let oak_light = Color::srgb(0.84, 0.62, 0.38);
+            let oak_dark = Color::srgb(0.68, 0.47, 0.27);
+            let floor_wood =
+                oak_dark.mix(&oak_light, (plank * 0.65 + grain * 0.35).clamp(0.0, 1.0));
+
+            // Green Scalextric hobby tabletop felt (photo 4).
+            let patch = fbm(Vec2::new(p.x * 0.025, p.z * 0.025), 2);
+            let felt_bright = Color::srgb(0.24, 0.68, 0.34);
+            let felt_deep = Color::srgb(0.18, 0.54, 0.27);
+            let table_felt = felt_deep.mix(&felt_bright, patch);
+
+            // High birch Kallax wooden shelf surface (photo 1).
+            let birch_light = Color::srgb(0.92, 0.78, 0.56);
+            let birch_warm = Color::srgb(0.80, 0.64, 0.42);
+            let shelf_wood = birch_warm.mix(&birch_light, grain);
+
+            let to_table = smoothstep(3.0, 4.8, p.y);
+            let to_shelf = smoothstep(23.0, 27.0, p.y);
+            floor_wood
+                .mix(&table_felt, to_table)
+                .mix(&shelf_wood, to_shelf)
+        }
+        Ground::Rock => {
+            // Lower drop-offs are red pleated trestle table skirts (photo 4);
+            // upper drop-offs are birch Kallax cube-shelf sides (photo 1).
+            let pleat = ((p.x + p.z) * 1.35).sin() * 0.5 + 0.5;
+            let skirt_red = Color::srgb(0.86, 0.16, 0.18);
+            let skirt_fold = Color::srgb(0.58, 0.09, 0.11);
+            let skirt = skirt_fold.mix(&skirt_red, pleat);
+
+            let cubby = (p.y * 0.55).sin() * 0.5 + 0.5;
+            let shelf_side =
+                Color::srgb(0.74, 0.58, 0.38).mix(&Color::srgb(0.88, 0.72, 0.50), cubby);
+
+            let to_shelf = smoothstep(23.0, 27.0, p.y);
+            let ao = (0.58 + 0.42 * normal.y.max(0.0)).clamp(0.58, 1.0);
+            skirt
+                .mix(&shelf_side, to_shelf)
+                .mix(&Color::srgb(0.32, 0.20, 0.18), (1.0 - ao) * 0.45)
         }
         Ground::Snow => snow_color(p, normal),
     };

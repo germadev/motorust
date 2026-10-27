@@ -616,9 +616,9 @@ fn texel(
         // `terrain::spawn_terrain`): a desert canyon's flat ground is dusty
         // earth, not grass.
         let texture = match (kind, terrain.soil()) {
-            (Ground::Grass, Soil::Mine) | (Ground::Sand, _) => SAND_AVERAGE,
+            (Ground::Grass, Soil::Mine | Soil::ToyShop) | (Ground::Sand, _) => SAND_AVERAGE,
             (Ground::Grass, _) => [grass_average.red, grass_average.green, grass_average.blue],
-            (Ground::Rock, Soil::Checkered) => SOIL_AVERAGE,
+            (Ground::Rock, Soil::Checkered | Soil::ToyShop) => SOIL_AVERAGE,
             (Ground::Rock, _) => ROCK_AVERAGE,
             (Ground::Snow, _) => [0.9, 0.92, 0.95],
         };

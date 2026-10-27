@@ -321,11 +321,12 @@ pub fn plan_line(
         .filter(|other| gap_to(other).abs() <= BESIDE)
         .map(across)
         .collect();
-    // Coming off a branch without a loop, it joins the lap on its line
-    // there: it gives way to the bikes on the lap about level with it and
-    // near that line, dropping in behind them.
+    // Coming off a branch, it joins the lap on its line there: it gives way
+    // to the bikes on the lap about level with it and near that line,
+    // dropping in behind them.
     if let Waypoint::Road(road, index) = way
-        && track.forks().iter().any(|fork| fork.road == road)
+        && (track.forks().iter().any(|fork| fork.road == road)
+            || track.loops().iter().any(|looped| looped.exit == road))
     {
         let branch = track.road(road);
         let last = branch.sample_count() - 1;

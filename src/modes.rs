@@ -85,8 +85,8 @@ impl ModesMenu {
 /// The colour each mode lights up in.
 pub fn lit(mode: Mode) -> Color {
     match mode {
-        Mode::Arcade => Color::srgb(1.0, 0.43, 0.0),
-        Mode::Race => Color::srgb(0.04, 0.4, 1.0),
+        Mode::Arcade => Color::srgb(0.04, 0.4, 1.0),
+        Mode::Race => Color::srgb(0.88, 0.46, 0.08),
         Mode::Elimination => Color::srgb(0.88, 0.16, 0.16),
         Mode::Checkpoint => Color::srgb(0.5, 0.19, 0.88),
         Mode::Free => Color::srgb(0.08, 0.66, 0.34),
@@ -562,15 +562,14 @@ mod tests {
     }
 
     #[test]
-    fn arcade_s_orange_is_vivid_with_its_white_lettering_as_readable() {
-        // Its brightest channel full and none of the others (the most
-        // vivid there is of its hue), and as dark as before: the white
-        // lettering on it 2.8 : 1 (relative luminance).
-        let orange = lit(Mode::Arcade).to_srgba();
-        assert_eq!((orange.red, orange.blue), (1.0, 0.0));
-        let linear = lit(Mode::Arcade).to_linear();
-        let luminance = 0.2126 * linear.red + 0.7152 * linear.green + 0.0722 * linear.blue;
-        let contrast = 1.05 / (luminance + 0.05);
-        assert!((2.75..2.9).contains(&contrast), "{contrast}");
+    fn arcade_is_blue_and_every_mode_keeps_white_lettering_readable() {
+        assert_eq!(lit(Mode::Arcade), Color::srgb(0.04, 0.4, 1.0));
+        assert_ne!(lit(Mode::Race), lit(Mode::Arcade));
+        for mode in MODES {
+            let linear = lit(mode).to_linear();
+            let luminance = 0.2126 * linear.red + 0.7152 * linear.green + 0.0722 * linear.blue;
+            let contrast = 1.05 / (luminance + 0.05);
+            assert!(contrast > 3.0, "{mode:?} contrast {contrast}");
+        }
     }
 }

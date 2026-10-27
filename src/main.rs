@@ -146,6 +146,16 @@ fn main() {
             primary_window: Some(settings.window()),
             ..default()
         })
+        // Silences two benign upstream Bevy/winit messages emitted on macOS
+        // window teardown (un-applied deferred extract commands and AppKit
+        // window delegate callbacks firing after winit's handler is cleared).
+        .set(bevy::log::LogPlugin {
+            filter: format!(
+                "{},bevy_ecs::world::command_queue=error,winit::platform_impl::macos::event_handler=off",
+                bevy::log::DEFAULT_FILTER
+            ),
+            ..default()
+        })
         // Los mandos los lee `gamepads`, que además los vuelve a buscar.
         .disable::<bevy::gilrs::GilrsPlugin>();
     // Pipelined rendering draws each frame while the next one is

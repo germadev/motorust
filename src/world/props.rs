@@ -73,6 +73,9 @@ pub fn spawn_props(
     occupied.extend(super::space::spawn_space(
         world, track, terrain, scenery, assets,
     ));
+    if let Some(toy_shop) = &scenery.toy_shop {
+        super::toy_shop::spawn_toy_shop(world, track, terrain, toy_shop, assets);
+    }
     occupied.extend(super::japan::spawn_japan(
         world, track, terrain, scenery, japanese, assets,
     ));

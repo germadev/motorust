@@ -149,10 +149,18 @@ pub fn structure_pieces(
                 perceptual_roughness: 0.9,
                 ..default()
             },
+            Soil::ToyShop => StandardMaterial {
+                base_color: Color::srgb(0.95, 0.32, 0.24),
+                base_color_texture: Some(textures.panels.clone()),
+                perceptual_roughness: 0.45,
+                reflectance: 0.35,
+                ..default()
+            },
         };
         // Warm and lit by the lamps, as in Moto Racer; through checkerboard
         // earth, a cave of it; in a lunar station, pressurized metallic hull
-        // panels lit by cool cyan-white strips.
+        // panels lit by cool cyan-white strips; in a toy shop, a bright
+        // printed cardboard toy box interior.
         let lining = match scenery.soil {
             Soil::Rock | Soil::Mine | Soil::Granite => StandardMaterial {
                 base_color: Color::srgb(0.95, 0.78, 0.52),
@@ -173,6 +181,13 @@ pub fn structure_pieces(
                 base_color_texture: Some(textures.soil.clone()),
                 emissive: LinearRgba::rgb(0.1, 0.06, 0.02),
                 perceptual_roughness: 0.9,
+                ..default()
+            },
+            Soil::ToyShop => StandardMaterial {
+                base_color: Color::srgb(0.98, 0.88, 0.52),
+                base_color_texture: Some(textures.panels.clone()),
+                emissive: LinearRgba::rgb(0.14, 0.11, 0.05),
+                perceptual_roughness: 0.65,
                 ..default()
             },
         };

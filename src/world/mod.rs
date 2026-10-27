@@ -32,6 +32,7 @@ mod space;
 pub(crate) mod structures;
 mod terrain;
 mod textures;
+mod toy_shop;
 mod trees;
 mod tufts;
 
@@ -112,6 +113,7 @@ impl Plugin for WorldPlugin {
                     desert::tumble,
                     space::turn_dishes,
                     space::spin_portals,
+                    toy_shop::roll_toy_trains,
                     japan::turn_wheels,
                     japan::drift_petals,
                     spawn_prepared_circuit,
@@ -1422,6 +1424,10 @@ mod tests {
             "{shown} {}",
             pieces(&mut app)
         );
+        let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+        for (_, mesh) in meshes.iter_mut() {
+            let _ = mesh.take_gpu_data();
+        }
     }
 
     /// A world with the tracks menu seen as `view`.
