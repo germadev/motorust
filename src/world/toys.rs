@@ -307,7 +307,7 @@ const RISER_GREY: Color = Color::srgb(0.58, 0.6, 0.64);
 
 /// The points of `indices` (in order, round a lap of `count` points) in
 /// runs one after another, a run across the finish line joined into one.
-fn runs(indices: &[usize], count: usize) -> Vec<Vec<usize>> {
+pub(super) fn runs(indices: &[usize], count: usize) -> Vec<Vec<usize>> {
     let mut runs: Vec<Vec<usize>> = Vec::new();
     for &index in indices {
         match runs.last_mut() {
@@ -803,6 +803,7 @@ pub fn store_pieces(
     let mut baseplates = MeshBuilder::default();
     let mut foam = MeshBuilder::default();
     let mut blocks = MeshBuilder::default();
+    let mut bricks = MeshBuilder::default();
     wall_shelves(&mut solid, &mut boxes, store);
     for (index, furniture) in store.furniture.iter().enumerate() {
         match furniture.kind {
@@ -845,6 +846,10 @@ pub fn store_pieces(
         rails(&mut solid, train);
     }
     block_walls(&mut blocks, track, scenery);
+    for (index, built) in store.bricks.iter().enumerate() {
+        super::bricks::build(&mut bricks, built, index as u32);
+    }
+    super::bricks::walls(&mut bricks, track, scenery);
     let textured = |texture: &Handle<Image>, roughness: f32| StandardMaterial {
         base_color_texture: Some(texture.clone()),
         perceptual_roughness: roughness,
@@ -856,6 +861,7 @@ pub fn store_pieces(
         (baseplates, textured(&textures.baseplate, 0.4)),
         (foam, textured(&textures.foam, 0.85)),
         (blocks, textured(&textures.blocks, 0.6)),
+        (bricks, super::bricks::material()),
     ]
     .into_iter()
     .filter(|(mesh, _)| !mesh.is_empty())
@@ -1137,7 +1143,9 @@ fn table(mesh: &mut MeshBuilder, furniture: &Furniture, track: &Track) {
 
 /// The studded green top of a diorama table, just over its top.
 fn baseplate(mesh: &mut MeshBuilder, furniture: &Furniture) {
-    const STUDS: f32 = 4.8;
+    // Four studs to the texture, as far apart as the bricks' (see
+    // `textures::baseplate`).
+    const STUDS: f32 = 4.0 * super::bricks::STUD;
     let half = furniture.size / 2.0;
     let corner = |x: f32, z: f32| {
         let ground = furniture.world(Vec2::new(x, z));
@@ -1642,7 +1650,16 @@ fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32, 
                 solid.beam(knot, top, 0.05, 0.05, Color::srgb(0.85, 0.85, 0.82));
             }
         }
-        ToyKind::Bear | ToyKind::Duck | ToyKind::Robot | ToyKind::Top | ToyKind::Ship => {}
+        ToyKind::Bear
+        | ToyKind::Duck
+        | ToyKind::Robot
+        | ToyKind::Top
+        | ToyKind::Ship
+        | ToyKind::Giraffe
+        | ToyKind::Dollhouse
+        | ToyKind::FireTruck
+        | ToyKind::Pegasus
+        | ToyKind::CrocCar => {}
     }
 }
 
@@ -1657,6 +1674,11 @@ fn model_of(kind: ToyKind) -> Option<&'static str> {
         ToyKind::Plane => Some("biplane"),
         ToyKind::Helicopter => Some("helicopter"),
         ToyKind::Ship => Some("pirate_ship"),
+        ToyKind::Giraffe => Some("giraffe_plush"),
+        ToyKind::Dollhouse => Some("dollhouse"),
+        ToyKind::FireTruck => Some("fire_truck"),
+        ToyKind::Pegasus => Some("mech_pegasus"),
+        ToyKind::CrocCar => Some("croc_car"),
         ToyKind::Blocks | ToyKind::Ball | ToyKind::Tyres => None,
     }
 }
@@ -2111,6 +2133,30 @@ mod tests {
                     toy.position
                 );
             }
+            // What is built of bricks, all of it over what it stands on.
+            for built in store.bricks {
+                assert_eq!(
+                    ground_under(store, built.position, built.base),
+                    built.base,
+                    "{name}: the bricks at {}",
+                    built.position
+                );
+                let (low, high) = bricks_bounds(built);
+                for corner in [
+                    low,
+                    high,
+                    Vec3::new(low.x, 0.0, high.z),
+                    Vec3::new(high.x, 0.0, low.z),
+                ] {
+                    let corner = Vec2::new(corner.x, corner.z);
+                    assert_eq!(
+                        ground_under(store, corner, built.base),
+                        built.base,
+                        "{name}: the bricks at {} reach off what they stand on at {corner}",
+                        built.position
+                    );
+                }
+            }
         }
     }
 
@@ -2167,6 +2213,26 @@ mod tests {
                     toy_loop.center
                 );
             }
+            for built in store.bricks {
+                let (low, high) = bricks_bounds(built);
+                let reach = [
+                    low,
+                    high,
+                    Vec3::new(low.x, 0.0, high.z),
+                    Vec3::new(high.x, 0.0, low.z),
+                ]
+                .map(|corner| Vec2::new(corner.x, corner.z).distance(built.position))
+                .into_iter()
+                .fold(0.0, f32::max);
+                let tall = high.y - y(built.base);
+                let (low, high) = (built.base - 3.0, built.base + tall + 3.0);
+                assert!(
+                    clear(built.position, reach, low, high),
+                    "{name}: the bricks at {} reach {reach} m, the road {} m off",
+                    built.position,
+                    road_near(&track, built.position, low, high)
+                );
+            }
             for toy in store.toys {
                 // How far it reaches round its middle and how tall it is:
                 // Meshy's as it was made (centred), the others about a
@@ -2218,6 +2284,13 @@ mod tests {
             }
         }
         assert!(castles > 0);
+    }
+
+    /// The corners of the box round what is built of bricks at `built`.
+    fn bricks_bounds(built: &crate::world::scenery::Bricks) -> (Vec3, Vec3) {
+        let mut mesh = MeshBuilder::default();
+        super::super::bricks::build(&mut mesh, built, 0);
+        super::super::japan::bounds(&mesh.build())
     }
 
     /// The pieces of Meshy's toys in their pack.

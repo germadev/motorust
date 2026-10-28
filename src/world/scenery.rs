@@ -214,6 +214,10 @@ pub enum WallStyle {
     /// A row of wooden toy blocks, each painted a bright colour of its own
     /// with a letter on its face.
     Blocks,
+    /// A low wall of plastic building bricks in bright colours, a course of
+    /// bricks and a course of plates on it in a running bond, studs on top
+    /// (see `world::bricks`).
+    Bricks,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -1461,6 +1465,7 @@ pub struct ToyStore {
     pub loops: &'static [ToyLoop],
     pub mats: &'static [Mat],
     pub toys: &'static [Toy],
+    pub bricks: &'static [Bricks],
 }
 
 /// A piece of furniture: a box `size` across (x and z before it is turned
@@ -1591,6 +1596,33 @@ pub struct Toy {
     pub base: f32,
 }
 
+/// Something built of plastic bricks as big as the studs of the diorama's
+/// baseplate (see `world::bricks`), standing `base` over the floor at
+/// `position` (x, z), turned `heading` (its front along +z).
+pub struct Bricks {
+    pub kind: BrickKind,
+    pub position: Vec2,
+    pub heading: f32,
+    pub base: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BrickKind {
+    /// `count` bricks spilled in a heap: most lying flat, a few on their
+    /// sides, some stacked on others.
+    Heap { count: u32 },
+    /// A tower of `count` bricks stacked crosswise, as a child stacks them.
+    Tower { count: u32 },
+    /// A little house `width` studs across its front and `depth` deep, its
+    /// walls `courses` bricks high, a door in its front and windows round
+    /// it, under a roof stepping up to its ridge.
+    House {
+        width: u32,
+        depth: u32,
+        courses: u32,
+    },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ToyKind {
     /// A stack of wooden blocks with letters on them.
@@ -1614,6 +1646,17 @@ pub enum ToyKind {
     Tyres,
     /// A pirate ship, its sails striped red and white (Meshy's).
     Ship,
+    /// A plush giraffe standing tall (Meshy's).
+    Giraffe,
+    /// A doll's house of three storeys, its front painted in pastel colours
+    /// (Meshy's).
+    Dollhouse,
+    /// A toy fire engine with its ladder (Meshy's).
+    FireTruck,
+    /// A winged mechanical pegasus (Meshy's).
+    Pegasus,
+    /// A monster truck made as a crocodile (Meshy's).
+    CrocCar,
 }
 
 #[cfg(test)]

@@ -48,8 +48,11 @@ const HELIX: Span = span(1053.0, 1348.0);
 const SHELVES: Span = span(1348.0, 1427.0);
 const SLIDE: Span = span(1427.0, 1888.0);
 const TRAIN_TABLE: Span = span(2453.0, 2818.0);
-/// Along the north wall, past the loop.
+/// Along the north wall, past the loop; round the north-east corner, under
+/// the first table and down the east side; and round the last bend.
 const NORTH_WALL: Span = span(1908.0, 2208.0);
+const BRICK_WALLS: Span = span(2208.0, 2453.0);
+const HOME: Span = span(2818.0, 2888.0);
 /// How far the walls stand from the middle of the road (m): a toy track's,
 /// narrow.
 const WALL: f32 = 7.5;
@@ -204,6 +207,28 @@ pub const TOY_STORE: Circuit = Circuit {
                 span: NORTH_WALL,
                 side: Side::Left,
                 style: WallStyle::Blocks,
+            },
+            // Walls of bricks round the north-east corner, under the first
+            // table and down the east side, and round the last bend.
+            WallRun {
+                span: BRICK_WALLS,
+                side: Side::Left,
+                style: WallStyle::Bricks,
+            },
+            WallRun {
+                span: BRICK_WALLS,
+                side: Side::Right,
+                style: WallStyle::Bricks,
+            },
+            WallRun {
+                span: HOME,
+                side: Side::Left,
+                style: WallStyle::Bricks,
+            },
+            WallRun {
+                span: HOME,
+                side: Side::Right,
+                style: WallStyle::Bricks,
             },
             WallRun {
                 span: LAP,
@@ -556,6 +581,47 @@ const STORE: ToyStore = ToyStore {
             scale: 0.6,
             base: 0.0,
         },
+        // A plush giraffe standing tall south of the north wall's road,
+        // turned to the bikes coming along it; a fire engine at the
+        // north-east corner, facing the road; a crocodile monster truck by
+        // the start straight, facing it as if to race; a doll's house
+        // inside the last bend, its front to the home straight; and a
+        // mechanical pegasus on the first table, by its hairpin.
+        Toy {
+            kind: ToyKind::Giraffe,
+            position: Vec2::new(158.0, -262.0),
+            heading: -2.4,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::FireTruck,
+            position: Vec2::new(288.0, -260.0),
+            heading: -FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::CrocCar,
+            position: Vec2::new(-18.0, -85.0),
+            heading: FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::Dollhouse,
+            position: Vec2::new(95.0, 55.0),
+            heading: 0.0,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::Pegasus,
+            position: Vec2::new(320.0, -178.0),
+            heading: -2.0,
+            scale: 1.0,
+            base: 13.2,
+        },
         // Spinning tops on the first table, among its esses.
         Toy {
             kind: ToyKind::Top,
@@ -661,6 +727,117 @@ const STORE: ToyStore = ToyStore {
             position: Vec2::new(-20.0, 100.0),
             heading: 1.57,
             scale: 3.0,
+            base: 0.0,
+        },
+    ],
+    bricks: &[
+        // A village of little houses of bricks on the diorama, round its
+        // castles, turned to the road.
+        Bricks {
+            kind: BrickKind::House {
+                width: 10,
+                depth: 6,
+                courses: 4,
+            },
+            position: Vec2::new(-95.0, -108.0),
+            heading: PI,
+            base: 13.4,
+        },
+        Bricks {
+            kind: BrickKind::House {
+                width: 10,
+                depth: 6,
+                courses: 4,
+            },
+            position: Vec2::new(-25.0, -110.0),
+            heading: PI,
+            base: 13.4,
+        },
+        Bricks {
+            kind: BrickKind::House {
+                width: 10,
+                depth: 6,
+                courses: 4,
+            },
+            position: Vec2::new(50.0, -106.0),
+            heading: PI,
+            base: 13.4,
+        },
+        Bricks {
+            kind: BrickKind::House {
+                width: 10,
+                depth: 6,
+                courses: 4,
+            },
+            position: Vec2::new(82.0, -106.0),
+            heading: PI,
+            base: 13.4,
+        },
+        Bricks {
+            kind: BrickKind::House {
+                width: 10,
+                depth: 6,
+                courses: 4,
+            },
+            position: Vec2::new(150.0, -106.0),
+            heading: PI,
+            base: 13.4,
+        },
+        Bricks {
+            kind: BrickKind::House {
+                width: 10,
+                depth: 6,
+                courses: 4,
+            },
+            position: Vec2::new(183.0, -107.0),
+            heading: PI,
+            base: 13.4,
+        },
+        // Towers of bricks stacked crosswise by the start straight, on the
+        // first table and on the train table.
+        Bricks {
+            kind: BrickKind::Tower { count: 9 },
+            position: Vec2::new(15.0, -12.0),
+            heading: 0.3,
+            base: 0.0,
+        },
+        Bricks {
+            kind: BrickKind::Tower { count: 7 },
+            position: Vec2::new(300.0, -226.0),
+            heading: 1.1,
+            base: 13.2,
+        },
+        Bricks {
+            kind: BrickKind::Tower { count: 6 },
+            position: Vec2::new(205.0, 74.0),
+            heading: -0.4,
+            base: 8.2,
+        },
+        // Heaps of them spilled on the floor by the road: inside the
+        // north-east corner, by the road to the chair, beside the start
+        // straight and by the road down the east side.
+        Bricks {
+            kind: BrickKind::Heap { count: 14 },
+            position: Vec2::new(242.0, -272.0),
+            heading: 0.0,
+            base: 0.0,
+        },
+        Bricks {
+            kind: BrickKind::Heap { count: 14 },
+            position: Vec2::new(60.0, -180.0),
+            heading: 1.0,
+            base: 0.0,
+        },
+        Bricks {
+            kind: BrickKind::Heap { count: 14 },
+            position: Vec2::new(-26.0, -62.0),
+            heading: 2.0,
+            base: 0.0,
+        },
+        Bricks {
+            kind: BrickKind::Heap { count: 12 },
+            position: Vec2::new(243.0, -10.0),
+            heading: 0.5,
             base: 0.0,
         },
     ],

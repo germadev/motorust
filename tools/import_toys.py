@@ -67,6 +67,8 @@ SIZES = {
     "rocking_horse": ("length", 18.0),
     "nutcracker": ("height", 15.0),
     "fire_truck": ("length", 25.0),
+    "mech_pegasus": ("height", 16.0),
+    "croc_car": ("length", 16.0),
     "dump_truck": ("length", 20.0),
     "garage_playset": ("height", 20.0),
     "train_station": ("length", 25.0),
@@ -89,8 +91,18 @@ SIZES = {
     "kids_table": ("length", 16.0),
 }
 # Those Meshy made facing -X (a ship's bow, a locomotive's chimney, a
-# plane's nose), turned a quarter turn to face +Z as the others.
-TURNED = {"pirate_ship", "locomotive", "coach", "freight_wagon", "biplane", "helicopter"}
+# plane's nose, a truck's cab), turned a quarter turn to face +Z as the
+# others.
+TURNED = {
+    "pirate_ship",
+    "locomotive",
+    "coach",
+    "freight_wagon",
+    "biplane",
+    "helicopter",
+    "fire_truck",
+    "croc_car",
+}
 # The cells of the big toys the riders pass close by (px); the others' are
 # `CELL`.
 CELLS = {
@@ -103,6 +115,8 @@ CELLS = {
     "tin_robot": 1024,
     "biplane": 1024,
     "helicopter": 1024,
+    "fire_truck": 1024,
+    "mech_pegasus": 1024,
 }
 CELL = 512
 # How wide the atlas is (px): four of the big cells, or eight of the others.

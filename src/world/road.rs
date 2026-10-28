@@ -772,7 +772,8 @@ fn profile(style: WallStyle) -> Profile {
         | WallStyle::Railing
         | WallStyle::ShrineFence
         | WallStyle::Fence
-        | WallStyle::Blocks => (
+        | WallStyle::Blocks
+        | WallStyle::Bricks => (
             &[
                 (0.0, foot),
                 (0.0, WALL_HEIGHT),
