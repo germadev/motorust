@@ -32,6 +32,7 @@ mod space;
 pub(crate) mod structures;
 mod terrain;
 mod textures;
+mod toys;
 mod trees;
 mod tufts;
 
@@ -100,6 +101,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<trees::ModelledTrees>()
             .init_resource::<japan::ModelledProps>()
             .init_resource::<middle_earth::FellowshipProps>()
+            .init_resource::<toys::ToyModels>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
@@ -115,6 +117,7 @@ impl Plugin for WorldPlugin {
                     desert::tumble,
                     space::turn_dishes,
                     space::spin_portals,
+                    toys::run_trains,
                     japan::turn_wheels,
                     japan::drift_petals,
                     spawn_prepared_circuit,
@@ -304,7 +307,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         )
     });
     let meadows = preview::meadows(&ground, textures);
-    structures::draw_signs(scenery);
+    structures::draw_signs(scenery, track.wall());
     Prepared {
         basis: Basis {
             index,
@@ -931,6 +934,7 @@ struct Builder<'w> {
     textures: Res<'w, textures::WorldTextures>,
     props: Res<'w, japan::ModelledProps>,
     fellowship: Res<'w, middle_earth::FellowshipProps>,
+    toy_models: Res<'w, toys::ToyModels>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
     mirror_materials: ResMut<'w, Assets<mirror::MirrorMaterial>>,
@@ -1001,6 +1005,7 @@ fn build(
         textures: &builder.textures,
         props: &builder.props,
         fellowship: &builder.fellowship,
+        toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -1031,6 +1036,10 @@ fn build(
             );
             for (mesh, material) in lakes {
                 world.spawn((Mesh3d(mesh), MeshMaterial3d(material), NotShadowCaster));
+            }
+            // Indoors, the room's walls and ceiling round it all.
+            if let Some(store) = &scenery.toys {
+                toys::spawn_room(world, store, &mut assets);
             }
             for (mesh, material) in pieces {
                 // What is see-through or glows (light, dust) casts no
@@ -1132,6 +1141,7 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
         textures: &builder.textures,
         props: &builder.props,
         fellowship: &builder.fellowship,
+        toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -1202,6 +1212,8 @@ pub struct Assets3d<'a> {
     /// The props made with Meshy (see [`japan`] and [`middle_earth`]).
     pub props: &'a japan::ModelledProps,
     pub fellowship: &'a middle_earth::FellowshipProps,
+    /// The toys made with Meshy (see [`toys`]).
+    pub toys: &'a toys::ToyModels,
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub images: &'a mut Assets<Image>,
@@ -1392,9 +1404,12 @@ mod tests {
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Tracks);
         app.update();
-        // The last circuit, chosen at once: shown first, its rest (its
+        // Fellowship Road, chosen at once: shown first, its rest (its
         // houses, trees, props, grass and flowers) still to come.
-        let last = CIRCUITS.len() - 1;
+        let last = CIRCUITS
+            .iter()
+            .position(|circuit| circuit.name == "Fellowship Road")
+            .expect("Fellowship Road is a circuit");
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
         app.update();
         let started = std::time::Instant::now();

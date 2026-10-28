@@ -7,6 +7,7 @@ mod ghost_island;
 mod gold_mine;
 mod loop_island;
 mod moon_base;
+mod toy_store;
 mod turbo_bay;
 
 use bevy::prelude::*;
@@ -25,6 +26,11 @@ pub struct Circuit {
     pub song: Song,
     /// What its surroundings sound like, choosing the bike.
     pub ambience: Ambience,
+    /// How fast it is ridden against most tracks (1): against the clock,
+    /// the checkpoints of a slower one, narrow and twisting, give their
+    /// seconds at a pace this much slower (see
+    /// [`crate::race::CheckpointTimes::at`]).
+    pub pace: f32,
     pub layout: Layout,
     pub scenery: Scenery,
 }
@@ -85,7 +91,7 @@ impl Circuit {
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista.
-pub static CIRCUITS: [Circuit; 7] = [
+pub static CIRCUITS: [Circuit; 8] = [
     bay::BAY,
     turbo_bay::TURBO_BAY,
     loop_island::LOOP_ISLAND,
@@ -93,6 +99,7 @@ pub static CIRCUITS: [Circuit; 7] = [
     ghost_island::GHOST_ISLAND,
     moon_base::MOON_BASE,
     fellowship_road::FELLOWSHIP_ROAD,
+    toy_store::TOY_STORE,
 ];
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
@@ -128,5 +135,6 @@ mod tests {
             CIRCUITS[6].checkpoints(),
             vec![868.0, 1905.1, 2955.1, 3585.1, 4565.1]
         );
+        assert_eq!(CIRCUITS[7].checkpoints(), vec![635.0, 1378.0, 2300.0]);
     }
 }

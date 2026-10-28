@@ -58,6 +58,31 @@ pub struct WorldTextures {
     /// A pool of lamplight: white in the middle, fading out to nothing at
     /// its edges (see [`light_pool`]).
     pub light_pool: Handle<Image>,
+    /// A room's varnished floorboards, indoors (see [`floorboards`]).
+    pub floor: Handle<Image>,
+    /// A slot-car track's dark plastic, two lanes of it a repetition (see
+    /// [`slot_track`]).
+    pub slot_track: Handle<Image>,
+    /// Hot Wheels' orange track, two lanes of it a repetition (see
+    /// [`orange_track`]).
+    pub orange_track: Handle<Image>,
+    /// A slide's glossy yellow plastic (see [`chute`]).
+    pub chute: Handle<Image>,
+    /// A shop's ceiling of white tiles in a grid (see [`ceiling_tiles`]).
+    pub ceiling: Handle<Image>,
+    /// The fronts of boxed toys, eight of them side by side (see
+    /// [`toy_boxes`]).
+    pub toy_boxes: Handle<Image>,
+    /// A green baseplate of plastic bricks, studded (see [`baseplate`]).
+    pub baseplate: Handle<Image>,
+    /// A mat of foam tiles in bright colours, fitting together like a
+    /// jigsaw (see [`foam_mat`]).
+    pub foam: Handle<Image>,
+    /// The faces of toy blocks, sixteen letters each of its colour (see
+    /// [`block_faces`]).
+    pub blocks: Handle<Image>,
+    /// Red and white stripes, a slot-car track's borders (see [`stripes`]).
+    pub stripes: Handle<Image>,
     /// The average colour of the grass texture: the tufts of grass are
     /// painted it (see [`super::tufts`]).
     pub grass_color: Color,
@@ -130,6 +155,16 @@ impl FromWorld for WorldTextures {
         let tuft = images.add(super::foliage::tuft());
         let grass_edge = images.add(super::foliage::grass_edge());
         let light_pool = images.add(light_pool());
+        let floor = images.add(floorboards());
+        let slot_track = images.add(slot_track());
+        let orange_track = images.add(orange_track());
+        let chute = images.add(chute());
+        let ceiling = images.add(ceiling_tiles());
+        let toy_boxes = images.add(toy_boxes());
+        let baseplate = images.add(baseplate());
+        let foam = images.add(foam_mat());
+        let blocks = images.add(block_faces());
+        let stripes = images.add(stripes());
         let grass_wide = images.add(match widening {
             Some(thread) => thread.join().expect("the wide lawn is made"),
             None => super::lawn::widen(&lawn),
@@ -172,6 +207,16 @@ impl FromWorld for WorldTextures {
             tuft,
             grass_edge,
             light_pool,
+            floor,
+            slot_track,
+            orange_track,
+            chute,
+            ceiling,
+            toy_boxes,
+            baseplate,
+            foam,
+            blocks,
+            stripes,
             grass_color,
             lawn,
             relief,
@@ -713,6 +758,343 @@ fn checker() -> Image {
     image.sampler = sampler(ImageAddressMode::Repeat);
     generate_mipmaps(&mut image);
     image
+}
+
+/// How many px a metre the floorboards are drawn at, how wide each board
+/// is (m) and how long (m): a texture of eight boards, 12.8 m square.
+const FLOOR_PX: f32 = 40.0;
+const BOARD_WIDTH: f32 = 1.6;
+const BOARD_LENGTH: f32 = 6.4;
+
+/// A room's floorboards, honey-coloured oak, varnished: boards along x, each
+/// [`BOARD_WIDTH`] wide, their ends staggered, each its own tone, with the
+/// grain of the wood along them and a thin dark gap between them. It
+/// repeats every 12.8 m both ways.
+fn floorboards() -> Image {
+    const SIZE: u32 = 512;
+    let oak = Color::srgb(0.66, 0.45, 0.26).to_linear();
+    let gap = Color::srgb(0.16, 0.1, 0.06);
+    tiling(SIZE, SIZE, |x, y| {
+        let (u, v) = (x as f32 / FLOOR_PX, y as f32 / FLOOR_PX);
+        let board = (v / BOARD_WIDTH).floor() as u32;
+        // Each row's ends a different way along, so they never line up.
+        let shift = random01(board * 7 + 3) * BOARD_LENGTH;
+        let along = (u + shift).rem_euclid(BOARD_LENGTH);
+        let piece = ((u + shift) / BOARD_LENGTH).floor() as u32;
+        let across = v.rem_euclid(BOARD_WIDTH);
+        if across < 0.06 || along < 0.05 {
+            return gap;
+        }
+        // Each board of its own tone, darker or lighter, a little redder or
+        // yellower.
+        let tone = 0.68 + 0.5 * random01(board * 31 + piece * 7 + 11);
+        let warm = random01(board * 13 + piece * 3 + 5) - 0.5;
+        let grain = value_noise(Vec2::new(u * 0.35 + piece as f32 * 9.0, v * 9.0));
+        let figure = fbm(
+            Vec2::new(u * 0.8, v * 3.0) + Vec2::splat(board as f32 * 5.1),
+            3,
+        );
+        let light = tone * (0.8 + 0.3 * grain) * (0.85 + 0.3 * figure);
+        let tint = LinearRgba::rgb(1.0 + 0.12 * warm, 1.0, 1.0 - 0.15 * warm);
+        Color::LinearRgba(LinearRgba::rgb(
+            oak.red * tint.red * light,
+            oak.green * tint.green * light,
+            oak.blue * tint.blue * light,
+        ))
+    })
+}
+
+/// A slot-car track's surface: dark charcoal plastic, a little speckled,
+/// two lanes a repetition across (3.5 m each on the road's 7 m texture),
+/// each with its slot down the middle, a narrow black groove between two
+/// strips of copper braid, and a thin pale line at each lane's edge; a
+/// joint between the pieces of track at each repetition along.
+fn slot_track() -> Image {
+    const SIZE: u32 = 256;
+    let plastic = Color::srgb(0.07, 0.07, 0.08);
+    tiling(SIZE, SIZE, |x, y| {
+        let (u, v) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
+        // Across a lane, from its edge (0 to 1), and from its slot (m).
+        let lane = (u * 2.0).fract();
+        let from_slot = (lane - 0.5).abs() * 3.5;
+        if from_slot < 0.05 {
+            return Color::srgb(0.01, 0.01, 0.01);
+        }
+        if (0.1..0.2).contains(&from_slot) {
+            let shine = 0.85 + 0.15 * value_noise(Vec2::new(u * 400.0, v * 30.0));
+            return Color::srgb(0.58 * shine, 0.58 * shine, 0.6 * shine);
+        }
+        let edge = lane.min(1.0 - lane) * 3.5;
+        if edge < 0.04 {
+            return Color::srgb(0.7, 0.7, 0.68);
+        }
+        if !(0.006..=0.994).contains(&v) {
+            return Color::srgb(0.02, 0.02, 0.02);
+        }
+        let speckle = 0.9 + 0.2 * value_noise(Vec2::new(x as f32, y as f32) * 0.7);
+        let worn = 0.95 + 0.1 * fbm(Vec2::new(u * 9.0, v * 3.0), 2);
+        plastic.mix(
+            &Color::srgb(0.16, 0.16, 0.17),
+            (speckle * worn - 0.9).max(0.0),
+        )
+    })
+}
+
+/// Hot Wheels' track: bright orange plastic, two lanes a repetition
+/// across, each with a row of chevrons down its middle pointing the way
+/// the road runs (towards +v) and a low ridge between the lanes; a darker
+/// joint where each piece of track meets the next.
+fn orange_track() -> Image {
+    const SIZE: u32 = 256;
+    let orange = Color::srgb(1.0, 0.42, 0.04);
+    let dark = Color::srgb(0.86, 0.28, 0.02);
+    tiling(SIZE, SIZE, |x, y| {
+        let (u, v) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
+        let lane = (u * 2.0).fract();
+        let edge = lane.min(1.0 - lane);
+        if edge < 0.02 {
+            return Color::srgb(1.0, 0.56, 0.18);
+        }
+        if edge < 0.035 {
+            return dark;
+        }
+        if v < 0.01 {
+            return Color::srgb(0.7, 0.22, 0.02);
+        }
+        // Four chevrons a repetition, each a V pointing along +v.
+        let across = (lane - 0.5).abs();
+        let along = (v * 4.0).fract();
+        let chevron = along - 0.3 - across * 0.9;
+        if across < 0.22 && (0.0..0.12).contains(&chevron) {
+            return dark;
+        }
+        let sheen = 0.96 + 0.06 * value_noise(Vec2::new(u * 40.0, v * 12.0));
+        orange.mix(&Color::WHITE, (sheen - 1.0).max(0.0) * 2.0)
+    })
+}
+
+/// A slide's chute: glossy yellow plastic, a faint sheen along it and a
+/// seam across it at each repetition.
+fn chute() -> Image {
+    const SIZE: u32 = 128;
+    let yellow = Color::srgb(1.0, 0.8, 0.08);
+    tiling(SIZE, SIZE, |x, y| {
+        let (u, v) = (x as f32 / SIZE as f32, y as f32 / SIZE as f32);
+        if v < 0.015 {
+            return Color::srgb(0.85, 0.6, 0.04);
+        }
+        let sheen = 0.5 + 0.5 * (u * std::f32::consts::TAU * 2.0).cos();
+        yellow.mix(&Color::srgb(1.0, 0.95, 0.6), 0.25 * sheen * sheen)
+    })
+}
+
+/// A shop's ceiling: square white tiles in a grid of thin grey rails, four
+/// tiles a repetition, each finely speckled, as acoustic tiles are.
+fn ceiling_tiles() -> Image {
+    const SIZE: u32 = 256;
+    tiling(SIZE, SIZE, |x, y| {
+        let (px, py) = (x % (SIZE / 2), y % (SIZE / 2));
+        if px < 3 || py < 3 {
+            return Color::srgb(0.62, 0.62, 0.6);
+        }
+        let speckle = value_noise(Vec2::new(x as f32, y as f32) * 0.9);
+        let v = 0.9 + 0.08 * speckle;
+        Color::srgb(v, v, v * 0.98)
+    })
+}
+
+/// How many box fronts [`toy_boxes`] draws side by side.
+pub const TOY_BOXES: u32 = 8;
+
+/// The fronts of boxed toys, [`TOY_BOXES`] side by side, each in its own
+/// bright colour: a white band with a coloured logo at the top, a window in
+/// the middle showing the toy inside (a round head over a body, or a car,
+/// or bricks), a stripe of another colour down one side and a darker
+/// border, as the boxes on a toy shop's shelves look from across the room.
+fn toy_boxes() -> Image {
+    const WIDTH: u32 = 64;
+    const HEIGHT: u32 = 96;
+    let paints = [
+        Color::srgb(0.95, 0.3, 0.6),
+        Color::srgb(0.15, 0.4, 0.9),
+        Color::srgb(0.9, 0.12, 0.1),
+        Color::srgb(1.0, 0.8, 0.1),
+        Color::srgb(0.2, 0.7, 0.3),
+        Color::srgb(0.55, 0.25, 0.85),
+        Color::srgb(1.0, 0.5, 0.05),
+        Color::srgb(0.1, 0.7, 0.75),
+    ];
+    tiling(WIDTH * TOY_BOXES, HEIGHT, |x, y| {
+        let index = x / WIDTH;
+        let paint = paints[index as usize % paints.len()];
+        let accent = paints[(index as usize + 3) % paints.len()];
+        let (u, v) = ((x % WIDTH) as f32 / WIDTH as f32, y as f32 / HEIGHT as f32);
+        let border = u.min(1.0 - u).min(v.min(1.0 - v) * 1.5);
+        if border < 0.04 {
+            return paint.mix(&Color::BLACK, 0.45);
+        }
+        // The logo band at the top, with its blob of colour.
+        if v < 0.2 {
+            let logo = Vec2::new((u - 0.5) * 2.2, (v - 0.1) * 6.0).length();
+            return if logo < 0.55 { accent } else { Color::WHITE };
+        }
+        if u < 0.14 {
+            return accent;
+        }
+        // The window, with the toy in it against a pale backing.
+        let (wu, wv) = ((u - 0.2) / 0.72, (v - 0.27) / 0.62);
+        if (0.0..1.0).contains(&wu) && (0.0..1.0).contains(&wv) {
+            let toy = match index % 3 {
+                // A figure: a round head over a body.
+                0 => {
+                    Vec2::new(wu - 0.5, (wv - 0.28) * 1.2).length() < 0.17
+                        || ((wu - 0.5).abs() < 0.2 && (0.45..0.92).contains(&wv))
+                }
+                // A car: a body on two wheels.
+                1 => {
+                    ((wu - 0.5).abs() < 0.4 && (0.45..0.68).contains(&wv))
+                        || ((wu - 0.5).abs() < 0.22 && (0.3..0.5).contains(&wv))
+                        || Vec2::new((wu - 0.25) * 1.0, wv - 0.72).length() < 0.1
+                        || Vec2::new((wu - 0.75) * 1.0, wv - 0.72).length() < 0.1
+                }
+                // Bricks, stacked.
+                _ => wv > 0.25 && (wu * 3.0).fract() > 0.08 && (wv * 4.0).fract() > 0.1,
+            };
+            return if toy {
+                accent.mix(&Color::BLACK, 0.15)
+            } else {
+                Color::srgb(0.92, 0.94, 0.98)
+            };
+        }
+        let shade = 0.92 + 0.08 * value_noise(Vec2::new(x as f32, y as f32) * 0.3);
+        paint.mix(&Color::BLACK, 1.0 - shade)
+    })
+}
+
+/// A green baseplate of plastic bricks: a grid of round studs, four by
+/// four a repetition, each lit on top, with a darker ring of shadow round
+/// its foot.
+fn baseplate() -> Image {
+    const SIZE: u32 = 128;
+    const STUDS: u32 = 4;
+    let green = Color::srgb(0.16, 0.56, 0.22);
+    tiling(SIZE, SIZE, |x, y| {
+        let cell = SIZE / STUDS;
+        let p = Vec2::new((x % cell) as f32, (y % cell) as f32) / cell as f32 - Vec2::splat(0.5);
+        let r = p.length();
+        if r < 0.3 {
+            // Lit from the top left.
+            let lit = 1.0 + 0.5 * (-p.x - p.y).clamp(-0.3, 0.3);
+            return Color::LinearRgba(green.to_linear() * lit);
+        }
+        if r < 0.36 {
+            return green.mix(&Color::BLACK, 0.3);
+        }
+        green
+    })
+}
+
+/// A mat of foam tiles, two by two a repetition, red, blue, yellow and
+/// green, fitting together with the round tabs of a jigsaw, a seam between
+/// them.
+fn foam_mat() -> Image {
+    const SIZE: u32 = 256;
+    let colors = [
+        Color::srgb(0.9, 0.2, 0.18),
+        Color::srgb(0.18, 0.42, 0.88),
+        Color::srgb(1.0, 0.8, 0.12),
+        Color::srgb(0.2, 0.68, 0.3),
+    ];
+    let half = SIZE as f32 / 2.0;
+    tiling(SIZE, SIZE, |x, y| {
+        let p = Vec2::new(x as f32, y as f32);
+        // Which tile: a round tab of the tile to the left and of the one
+        // above sticks into each, in the middle of its edge.
+        let tile = (p / half).floor();
+        let local = p - tile * half;
+        let tab = half * 0.12;
+        let tabs = [Vec2::new(0.0, half * 0.5), Vec2::new(half * 0.5, 0.0)];
+        let owner = match tabs.iter().position(|centre| local.distance(*centre) < tab) {
+            Some(0) => tile - Vec2::X,
+            Some(_) => tile - Vec2::Y,
+            None => tile,
+        };
+        let index = (owner.x.rem_euclid(2.0) + 2.0 * owner.y.rem_euclid(2.0)) as usize;
+        let color = colors[index % colors.len()];
+        // The seam: round a tab (its own or its neighbours'), its outline;
+        // elsewhere the tile's edge.
+        let near = [
+            tabs[0],
+            tabs[1],
+            Vec2::new(half, half * 0.5),
+            Vec2::new(half * 0.5, half),
+        ]
+        .iter()
+        .map(|centre| local.distance(*centre))
+        .fold(f32::MAX, f32::min);
+        let seam = if near < tab + 2.0 {
+            (near - tab).abs()
+        } else {
+            local.x.min(local.y).min(half - local.x).min(half - local.y)
+        };
+        if seam < 1.5 {
+            return color.mix(&Color::BLACK, 0.35);
+        }
+        let grain = 0.95 + 0.05 * value_noise(p * 0.5);
+        color.mix(&Color::BLACK, 1.0 - grain)
+    })
+}
+
+/// A red stripe and a white one, side by side across the texture, with a
+/// thin grey line between them: a slot-car track's borders.
+fn stripes() -> Image {
+    const WIDTH: u32 = 64;
+    tiling(WIDTH, 4, |x, _| {
+        let at = x % (WIDTH / 2);
+        if at < 1 {
+            Color::srgb(0.5, 0.5, 0.5)
+        } else if x < WIDTH / 2 {
+            Color::srgb(0.88, 0.08, 0.06)
+        } else {
+            Color::srgb(0.96, 0.96, 0.94)
+        }
+    })
+}
+
+/// The faces of toy blocks: sixteen in a row, each a letter of its own
+/// in a contrasting colour on a painted face with a lighter bevelled
+/// border, as wooden alphabet blocks.
+fn block_faces() -> Image {
+    const FACE: u32 = 32;
+    const LETTERS: &str = "ABCDEFGHIJKLMNOP";
+    let paints = [
+        Color::srgb(0.9, 0.15, 0.12),
+        Color::srgb(0.15, 0.4, 0.9),
+        Color::srgb(1.0, 0.78, 0.1),
+        Color::srgb(0.2, 0.68, 0.28),
+        Color::srgb(0.95, 0.45, 0.08),
+        Color::srgb(0.6, 0.25, 0.8),
+    ];
+    let glyphs: Vec<[u8; 7]> = LETTERS.chars().map(super::lettering::glyph).collect();
+    tiling(FACE * 16, FACE, |x, y| {
+        let index = (x / FACE) as usize;
+        let paint = paints[index % paints.len()];
+        let ink = paints[(index + 2) % paints.len()];
+        let (px, py) = (x % FACE, y);
+        let border = px.min(FACE - 1 - px).min(py.min(FACE - 1 - py));
+        if border < 2 {
+            return paint.mix(&Color::WHITE, 0.35);
+        }
+        // The letter, 5 × 7 pixels of the font at 4 px each, centred.
+        let (gx, gy) = (px as i32 - 6, py as i32 - 2);
+        if (0..20).contains(&gx) && (0..28).contains(&gy) {
+            let row = glyphs[index][(gy / 4) as usize];
+            if row & (16 >> (gx / 4)) != 0 {
+                return ink.mix(&Color::WHITE, 0.15);
+            }
+        }
+        paint
+    })
 }
 
 /// An sRGB texture of `width` × `height` pixels that repeats both ways, with

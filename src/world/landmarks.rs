@@ -178,14 +178,21 @@ pub fn spawn_ridden_loops(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     curbs: [Color; 2],
+    toy: bool,
     assets: &mut Assets3d,
 ) -> Vec<Footprint> {
     if track.loops().is_empty() {
         return Vec::new();
     }
+    // A toy's (indoors): Hot Wheels' orange track, its edges and the ring
+    // under it of orange plastic, on a blue stand (see `toys`).
     let asphalt = assets.materials.add(StandardMaterial {
-        base_color_texture: Some(assets.textures.asphalt.clone()),
-        perceptual_roughness: 0.88,
+        base_color_texture: Some(if toy {
+            assets.textures.orange_track.clone()
+        } else {
+            assets.textures.asphalt.clone()
+        }),
+        perceptual_roughness: if toy { 0.38 } else { 0.88 },
         reflectance: 0.5,
         ..default()
     });
@@ -193,16 +200,25 @@ pub fn spawn_ridden_loops(
         perceptual_roughness: 0.7,
         ..default()
     });
-    let soil = assets.materials.add(StandardMaterial {
-        base_color_texture: Some(assets.textures.soil.clone()),
-        perceptual_roughness: 0.9,
-        ..default()
+    let soil = assets.materials.add(if toy {
+        StandardMaterial {
+            base_color: TOY_ORANGE,
+            perceptual_roughness: 0.4,
+            ..default()
+        }
+    } else {
+        StandardMaterial {
+            base_color_texture: Some(assets.textures.soil.clone()),
+            perceptual_roughness: 0.9,
+            ..default()
+        }
     });
+    let curbs = if toy { [TOY_ORANGE; 2] } else { curbs };
     track
         .loops()
         .iter()
         .map(|looped| {
-            let [road, paint, earth] = ridden_loop_meshes(looped, curbs);
+            let [road, paint, earth] = ridden_loop_meshes(looped, curbs, !toy);
             for (mesh, material) in [(road, &asphalt), (paint, &painted), (earth, &soil)] {
                 world.spawn((
                     Mesh3d(assets.meshes.add(mesh)),
@@ -234,10 +250,13 @@ const RIDDEN_LINE: f32 = 0.25;
 const RIDDEN_PAINT_LIFT: f32 = 0.012;
 const RIDDEN_ASPHALT_TILE: f32 = 7.0;
 
+/// The orange of a toy loop's edges and ring.
+const TOY_ORANGE: Color = Color::srgb(0.92, 0.36, 0.04);
+
 /// The meshes of a loop the bikes ride, in the world: the asphalt of the
-/// running surface, its paint (curbs in `curbs` and white lines), and the
-/// earth (the ring and the walls along its edges).
-fn ridden_loop_meshes(looped: &crate::track::Loop, curbs: [Color; 2]) -> [Mesh; 3] {
+/// running surface, its paint (curbs in `curbs`, and white lines if
+/// `lines`), and the earth (the ring and the walls along its edges).
+fn ridden_loop_meshes(looped: &crate::track::Loop, curbs: [Color; 2], lines: bool) -> [Mesh; 3] {
     let (mut road, mut paint, mut earth) = (
         MeshBuilder::default(),
         MeshBuilder::default(),
@@ -324,15 +343,17 @@ fn ridden_loop_meshes(looped: &crate::track::Loop, curbs: [Color; 2]) -> [Mesh; 
             );
             let line = side * (half - RIDDEN_LINE_INSET);
             let (from, to) = (line, line - side * RIDDEN_LINE);
-            strip(
-                &mut paint,
-                from.min(to),
-                from.max(to),
-                RIDDEN_PAINT_LIFT,
-                1.0,
-                up,
-                Color::WHITE,
-            );
+            if lines {
+                strip(
+                    &mut paint,
+                    from.min(to),
+                    from.max(to),
+                    RIDDEN_PAINT_LIFT,
+                    1.0,
+                    up,
+                    Color::WHITE,
+                );
+            }
             // The edge of earth beyond the curbs, the wall and its top, and
             // the side of the ring down to its outer face.
             let (edge, lip, out) = (

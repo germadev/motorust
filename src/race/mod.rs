@@ -75,6 +75,16 @@ impl CheckpointTimes {
     pub fn starting(self, points: &[f32]) -> f32 {
         self.bonus(stretch_after(points, usize::MAX)) + self.start
     }
+
+    /// The same on a track ridden `pace` times as fast as most (see
+    /// [`crate::circuits::Circuit::pace`]): the seconds of each stretch at
+    /// that much of the pace, and as many to spare.
+    pub fn at(self, pace: f32) -> Self {
+        Self {
+            pace: self.pace * pace,
+            ..self
+        }
+    }
 }
 
 /// When nothing else is known of a bike, the pace it is thought to keep
@@ -576,7 +586,7 @@ fn start_race(
 ) {
     let mut standing = Standing::default();
     if rules.mode == Mode::Checkpoint {
-        let times = CheckpointTimes::on(settings.difficulty);
+        let times = CheckpointTimes::on(settings.difficulty).at(current.get().pace);
         standing.time_left = times.starting(&track_checkpoints(&current, &track));
     }
     commands.insert_resource(standing);
@@ -643,7 +653,7 @@ fn follow_the_race(
 ) {
     let lap = track.lap_length();
     let points = track_checkpoints(&current, &track);
-    let times = CheckpointTimes::on(settings.difficulty);
+    let times = CheckpointTimes::on(settings.difficulty).at(current.get().pace);
     // Restarted: everyone back to the grid.
     if *was_started && !race.started {
         let left = (rules.mode == Mode::Checkpoint).then(|| times.starting(&points));

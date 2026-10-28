@@ -81,12 +81,14 @@ pub const GOLD_MINE: Circuit = Circuit {
         length: 177.9,
         loudness: -16.8,
     },
+    pace: 1.0,
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         // Hardly banked under the mountain, where the road snakes through
         // its splits, and less than their curves would have it round the
         // hairpins, cut into the mountainside.
+        wall: WALL_DISTANCE,
         banking: &[
             Banking {
                 from: EXCAVATION.from,
@@ -318,6 +320,7 @@ pub const GOLD_MINE: Circuit = Circuit {
         japan: None,
         middle_earth: None,
         space: None,
+        toys: None,
         sky: SkyStyle::Dusk,
         // The great lake is the bottom of an open pit, flooded with red water.
         water: Water::Iron,

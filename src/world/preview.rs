@@ -225,10 +225,14 @@ mod tests {
         let mut world = World::new();
         world.init_resource::<Assets<Image>>();
         let textures = WorldTextures::from_world(&mut world);
-        // Ghost Island, the longest to prepare: its grid of heights under half
-        // the whole circuit's (fine round the start, and across the grid in
-        // its rows and columns there), its roads only near the start.
-        let index = CIRCUITS.len() - 1;
+        // Fellowship Road, among the longest to prepare: its grid of heights
+        // under half the whole circuit's (fine round the start, and across
+        // the grid in its rows and columns there), its roads only near the
+        // start.
+        let index = CIRCUITS
+            .iter()
+            .position(|circuit| circuit.name == "Fellowship Road")
+            .expect("Fellowship Road is a circuit");
         let look = prepare_preview(index, &textures, Urgency::Now);
         let whole = Terrain::on_threads(
             &Track::new(&CIRCUITS[index].layout),

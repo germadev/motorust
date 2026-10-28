@@ -94,11 +94,13 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         length: 175.8,
         loudness: -15.9,
     },
+    pace: 1.0,
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         // Banked round the lake, and hardly banked where the road splits,
         // as in Gold Mine.
+        wall: WALL_DISTANCE,
         banking: &[
             Banking {
                 from: 2860.0,
@@ -439,6 +441,7 @@ pub const GHOST_ISLAND: Circuit = Circuit {
         desert: None,
         mine: None,
         space: None,
+        toys: None,
         wheelie_halo: None,
         japan: Some(Japan {
             // Up the red ridge, as at Fushimi Inari: a gate every 6 m where

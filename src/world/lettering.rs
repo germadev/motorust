@@ -10,7 +10,7 @@ use bevy::{
 use super::textures::generate_mipmaps;
 
 /// Letras de 5 × 7 píxeles: una fila por byte, el bit 4 a la izquierda.
-fn glyph(letter: char) -> [u8; 7] {
+pub(super) fn glyph(letter: char) -> [u8; 7] {
     match letter.to_ascii_uppercase() {
         'A' => [14, 17, 17, 31, 17, 17, 17],
         'B' => [30, 17, 17, 30, 17, 17, 30],

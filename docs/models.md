@@ -158,6 +158,19 @@ Fellowship Road's props were made with Meshy by the author too: four hobbit hole
 
 All of them take about 10.4 MB. `cargo test` checks that every prop is in the pack, standing on the ground and not too heavy to draw, the mill's wheel turning clear of its wall, Bree's gate leaving the road clear under its beam, the Doors of Durin open with their drawing on them, and that every prop of the track stands clear of the roads, on land or on the water as it should (but for the gates over the road and the Prancing Pony over its way, nothing of it as high as a rider within that way's walls).
 
+## Toys of the toy store
+
+Juguetería's toys are being made with Meshy by the author, one by one: so far the castle of bricks on the diorama table (`castle_big`); the rest of the store's toys are still built in code (`src/world/toys.rs`), to be replaced as their models come (a teddy bear, a tin robot, a duck, a spinning top, the trains, a pirate ship, planes, and more to fill the floor). Where each stands is in the track's data (see [tracks.md](tracks.md#scenery), `toys`); a castle no road runs through is Meshy's, as big as fits in its `size`, its gate where its `heading` says.
+
+`tools/import_toys.py` turns the GLB files into `assets/models/toys/` as `tools/import_props.py` does Ghost Island's (`props.bin`, and `color.jpg`, an atlas 2048 pixels wide), each by its name in `SIZES` (by its height, or its length for a ship, a train or a plane), its texture in a cell 1024 pixels square for the big toys the riders pass close by (`CELLS`) and 512 for the rest:
+
+```sh
+python3 tools/import_toys.py castle_big=CASTLE.glb
+python3 tools/import_toys.py --keep teddy_bear=BEAR.glb   # add one, keeping the others
+```
+
+With `--keep`, the toys already in the pack stay as they are (their meshes, and their cells of the texture moved to the new atlas), so the GLBs of the others need not be at hand. Each should have no more than 8,000 triangles (Meshy's remesh), fewer the further from the road it stands and the more copies of it there are. `cargo test` checks that every toy the game places is in the pack, standing on the ground, centred and light enough to draw.
+
 ## Textures
 
 The scenery textures are CC0 (public domain) photos from [Poly Haven](https://polyhaven.com), reduced in size and retouched to look closer to 90s games: more saturation, less contrast in the asphalt cracks and the grass recoloured to a brighter green. Mipmaps are computed at startup so distant surfaces do not flicker (`src/world/textures.rs`).

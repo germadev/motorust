@@ -86,12 +86,14 @@ pub const TURBO_BAY: Circuit = Circuit {
         length: 163.1,
         loudness: -16.0,
     },
+    pace: 1.0,
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         // The drop to the water after the seafront, banked like a velodrome;
         // and the crest of the dam, level across like a dam's, so its low
         // parapet on the lake's side does not stand up into the view.
+        wall: WALL_DISTANCE,
         banking: &[
             Banking {
                 from: 330.0,
@@ -507,6 +509,7 @@ pub const TURBO_BAY: Circuit = Circuit {
         japan: None,
         middle_earth: None,
         space: None,
+        toys: None,
     },
 };
 

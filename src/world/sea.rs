@@ -616,9 +616,12 @@ mod tests {
     #[test]
     fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say() {
         // Loop Island's sea is always the cartoon one; every other's
-        // mirrors unless the options ask for the cartoon one.
+        // mirrors unless the options ask for the cartoon one, but indoors,
+        // where the sea lies under the floor, never seen, and nothing is
+        // worked out for it to mirror.
         for circuit in &crate::circuits::CIRCUITS {
-            let cartoon = circuit.name == "Loop Island";
+            let cartoon = circuit.name == "Loop Island"
+                || circuit.scenery.soil == crate::world::scenery::Soil::Floor;
             assert_eq!(circuit.scenery.cartoon_water, cartoon, "{}", circuit.name);
         }
         let mirroring = SeaWater {
@@ -678,7 +681,11 @@ mod tests {
 
     #[test]
     fn every_circuit_has_shore_near_its_road() {
-        for circuit in &crate::circuits::CIRCUITS {
+        // Indoors, there is no sea.
+        for circuit in crate::circuits::CIRCUITS
+            .iter()
+            .filter(|circuit| circuit.scenery.soil != crate::world::scenery::Soil::Floor)
+        {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let map = ShoreMap::new(&terrain, &track);

@@ -68,9 +68,11 @@ pub const MOON_BASE: Circuit = Circuit {
         length: 179.6,
         loudness: -16.5,
     },
+    pace: 1.0,
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
+        wall: WALL_DISTANCE,
         banking: &[
             // Banked sweep round the Sea of Tranquillity crater rim on the Moon.
             Banking {
@@ -462,6 +464,7 @@ pub const MOON_BASE: Circuit = Circuit {
         japan: None,
         middle_earth: None,
         space: Some(SPACE),
+        toys: None,
     },
 };
 

@@ -204,6 +204,16 @@ pub enum WallStyle {
     /// A low concrete parapet, as along a dam's crest on its lake's side:
     /// the water shows over it, a little way down.
     Parapet,
+    /// The low border of a slot-car track, in red and white stripes.
+    SlotBorder,
+    /// The raised orange edge of Hot Wheels' track, with a little light
+    /// every few metres along its top.
+    OrangeEdge,
+    /// The tall, rounded side of a slide's chute, of red plastic.
+    ChuteSide,
+    /// A row of wooden toy blocks, each painted a bright colour of its own
+    /// with a letter on its face.
+    Blocks,
 }
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
@@ -223,6 +233,11 @@ pub enum Soil {
     /// Grey lunar regolith and basaltic crater rock; its tunnels are
     /// pressurized space-station corridors lit by cool white-cyan strips.
     Lunar,
+    /// The floor of a room, indoors: flat boards, with no rock, sand nor
+    /// grass; its tunnels are what stands over the road (a table, another
+    /// stretch of the road), which draw nothing of their own (see
+    /// [`ToyStore`]).
+    Floor,
 }
 
 /// The light of a track: a summer day; a clear Mediterranean summer
@@ -241,6 +256,10 @@ pub enum SkyStyle {
     /// Lord of the Rings* was shot.
     HighCountry,
     Space,
+    /// Indoors, under a ceiling: no sky, no sun and no clouds, but the
+    /// light of the lamps from overhead, white and warm, softly filling the
+    /// shade, as in a shop (see [`ToyStore`]).
+    Indoor,
 }
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
@@ -306,6 +325,15 @@ pub enum BridgeStyle {
     /// gorge below it, with the lake it holds on the other side (see
     /// [`Dam`], which says how).
     Dam,
+    /// A slot-car track: its dark plastic with the slots and their rails,
+    /// lying on the furniture under it, or carried over the floor on blue
+    /// lattice pillars, between red and white borders (see [`ToyStore`]).
+    SlotTrack,
+    /// Hot Wheels' orange track, with its chevrons, on blue pillars, between
+    /// its raised edges.
+    OrangeTrack,
+    /// A slide's chute of yellow plastic between tall red sides.
+    Slide,
 }
 
 /// A dam across a gorge, as El Atazar's, with the road along its crest (a
@@ -548,6 +576,9 @@ pub struct Scenery {
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
     pub space: Option<Space>,
+    /// The inside of a toy store, if the road runs through one: see
+    /// [`ToyStore`].
+    pub toys: Option<ToyStore>,
 }
 
 impl Scenery {
@@ -1410,6 +1441,154 @@ pub struct StationArch {
 pub struct LunarBoulders {
     pub max: usize,
     pub spans: &'static [Span],
+}
+
+/// The inside of a toy store (see [`crate::world::toys`]): the room, with
+/// shelves of boxed toys round its walls and lamps in its ceiling; the
+/// furniture the roads run on (tables, chairs and a tall shelving unit), the
+/// tower a slide winds round, electric trains, castles of plastic bricks,
+/// loops of orange track, mats on the floor and toys about. Heights are
+/// the road's, as [`crate::track::Layout::elevation`]'s: the floor is at 0.
+pub struct ToyStore {
+    /// The corners of the room's floor (x, z): the least and the most.
+    pub room: (Vec2, Vec2),
+    /// How high its ceiling is over the floor (m).
+    pub ceiling: f32,
+    pub furniture: &'static [Furniture],
+    pub towers: &'static [Tower],
+    pub trains: &'static [Train],
+    pub castles: &'static [Castle],
+    pub loops: &'static [ToyLoop],
+    pub mats: &'static [Mat],
+    pub toys: &'static [Toy],
+}
+
+/// A piece of furniture: a box `size` across (x and z before it is turned
+/// `heading`, as a road's heading), its top `top` over the floor, at
+/// `center` (x, z).
+pub struct Furniture {
+    pub kind: FurnitureKind,
+    pub center: Vec2,
+    pub size: Vec2,
+    pub heading: f32,
+    pub top: f32,
+    pub color: Color,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FurnitureKind {
+    /// A table on four legs: the slot-car track lies on its top.
+    Table,
+    /// A table whose top is a green baseplate of plastic bricks, studded,
+    /// as a diorama's, castles on it.
+    Diorama,
+    /// A chair on four legs, its back on its left side (along x).
+    Chair,
+    /// A tall shelving unit, as down the middle of a shop, its shelves full
+    /// of boxed toys on both sides: the road runs along its top.
+    Shelves,
+}
+
+/// A tower a spiral road winds round, carrying it on brackets: a slide's,
+/// as a fairground's helter-skelter, or Hot Wheels' blue column.
+pub struct Tower {
+    pub kind: TowerKind,
+    pub center: Vec2,
+    pub radius: f32,
+    /// How high its top is over the floor (m): a helter-skelter's eaves,
+    /// under its pointed roof.
+    pub height: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TowerKind {
+    /// Striped red and white under a pointed roof.
+    HelterSkelter,
+    /// A blue column with a cap.
+    Column,
+}
+
+/// An electric train going round and round its track, a closed curve
+/// through `track` (x, z), on whatever stands under it, `height` over the
+/// floor: a locomotive and `wagons` wagons at `speed` (m/s).
+pub struct Train {
+    pub track: &'static [Vec2],
+    pub height: f32,
+    pub wagons: u32,
+    pub speed: f32,
+}
+
+/// A castle of plastic bricks `size` across (x and z before it is turned
+/// `heading`, its front along +z), standing `base` over the floor: Meshy's,
+/// as big as fits; or, if a road runs `through` it, grey bricks with red
+/// roofs on its towers built round the road, which runs along it (the way
+/// `heading` says, as a road's), in under a gatehouse at one end and out
+/// under another at the other, between its walls.
+pub struct Castle {
+    pub center: Vec2,
+    pub size: Vec2,
+    pub heading: f32,
+    pub base: f32,
+    pub through: bool,
+}
+
+/// A loop of orange toy track on a blue stand, to look at: standing up,
+/// facing along `heading`, `radius` round, `base` over the floor.
+pub struct ToyLoop {
+    pub center: Vec2,
+    pub heading: f32,
+    pub radius: f32,
+    pub base: f32,
+}
+
+/// Something lying on the floor: a mat of foam tiles in bright colours, or
+/// a rug of one colour, `size` across, turned `heading`.
+pub struct Mat {
+    pub center: Vec2,
+    pub size: Vec2,
+    pub heading: f32,
+    pub kind: MatKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MatKind {
+    Foam,
+    Rug(Color),
+}
+
+/// A toy standing about, as big as it says (`scale` times its own size),
+/// turned `heading`, `base` over the floor.
+pub struct Toy {
+    pub kind: ToyKind,
+    pub position: Vec2,
+    pub heading: f32,
+    pub scale: f32,
+    pub base: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ToyKind {
+    /// A stack of wooden blocks with letters on them.
+    Blocks,
+    /// A beach ball in segments of bright colours.
+    Ball,
+    /// A teddy bear, sitting.
+    Bear,
+    /// A rubber duck.
+    Duck,
+    /// A robot standing guard, square and blue.
+    Robot,
+    /// A spinning top.
+    Top,
+    /// A toy aeroplane hanging from the ceiling on its strings, `base` its
+    /// height.
+    Plane,
+    /// A toy helicopter hanging from the ceiling, as the aeroplane.
+    Helicopter,
+    /// A stack of black tyres, as round a racetrack.
+    Tyres,
+    /// A pirate ship, its sails striped.
+    Ship,
 }
 
 #[cfg(test)]

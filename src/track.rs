@@ -31,6 +31,11 @@ pub struct Layout {
     /// Stretches where the walls close in, narrower than the road: a narrow
     /// bridge.
     pub narrows: &'static [Narrowing],
+    /// How far the walls stand from the centre line where nothing closes
+    /// them in (m): [`WALL_DISTANCE`] on most tracks, less on a narrow one,
+    /// whose asphalt is as much narrower (half a metre short of them, as
+    /// where they close in, see [`Narrowing`]).
+    pub wall: f32,
 }
 
 /// A stretch of the lap, `from` and `to` metres from the finish line, where
@@ -119,7 +124,7 @@ pub struct Banking {
 
 /// Altura de la línea de meta sobre el nivel del mar: el resto del perfil va
 /// por encima, así ni el lado bajo de los peraltes toca el agua.
-const BASE_ELEVATION: f32 = 2.0;
+pub const BASE_ELEVATION: f32 = 2.0;
 /// Peralte (rad) por cada unidad de curvatura (1/m): cuanto más cerrada la
 /// curva, más inclinada hacia dentro está la carretera.
 const BANK_PER_CURVATURE: f32 = 7.0;
@@ -147,10 +152,10 @@ const GRID_LANES: [f32; 3] = [4.5, 0.0, -4.5];
 /// Half the width of the asphalt of a road off the lap (m).
 const SIDE_HALF_WIDTH: f32 = 5.0;
 /// While a road off the lap shares the road between the lap's walls, it
-/// lies on the lap's surface, with its height and its banking. From this far
-/// from the lap's centre line (m), where their walls part, it goes over to
-/// its own height and banking, all of it this much further away (m).
-const JUNCTION_APART: f32 = 2.0 * WALL_DISTANCE;
+/// lies on the lap's surface, with its height and its banking. From twice
+/// as far from the lap's centre line as the lap's walls, where their walls
+/// part, it goes over to its own height and banking, all of it this much
+/// further away (m).
 const JUNCTION_BLEND: f32 = 30.0;
 /// A branch without a loop goes over to its own height faster, over this
 /// much further away (m): it can climb or drop away from the lap as soon as
@@ -166,7 +171,8 @@ const FORK_SMOOTHING: usize = 8;
 /// starts, and its climbs and drops with it.
 const FORK_FAR_BLEND: f32 = 45.0;
 /// Distance from the centre line of a branch without a loop to its walls
-/// once it has parted from the lap (m): closer than the lap's.
+/// once it has parted from the lap (m): closer than the lap's (or as close,
+/// on a narrow track).
 pub const FORK_WALL: f32 = 8.5;
 /// Half the width of the running surface of a loop (m): the asphalt of the
 /// road that leads to it and its curbs.
@@ -243,8 +249,11 @@ pub struct Track {
     /// (see [`Branch`]) does not.
     closed: bool,
     /// How far the walls are from the centre line at each point (m). Empty:
-    /// at [`WALL_DISTANCE`] everywhere, as on the lap.
+    /// at [`Self::wall`] everywhere.
     walls: Vec<f32>,
+    /// How far the walls stand from the centre line where nothing closes
+    /// them in (m): the lap's (see [`Layout::wall`]), on a road off it too.
+    wall: f32,
     /// On a road off the lap, how far along the lap each of its points
     /// counts as (m from the finish line). Empty on the lap.
     lap_along: Vec<f32>,
@@ -396,12 +405,13 @@ impl Track {
             centerline: resample(&sample_spline(layout.control_points), SAMPLE_SPACING),
             elevation: Vec::new(),
             bank: Vec::new(),
-            half_width: TRACK_WIDTH / 2.0,
+            half_width: (TRACK_WIDTH / 2.0).min(layout.wall - NARROW_MARGIN),
             step: 0.0,
             edges: Vec::new(),
             shoulders: Vec::new(),
             closed: true,
             walls: Vec::new(),
+            wall: layout.wall,
             lap_along: Vec::new(),
             apart: Vec::new(),
             side_roads: Vec::new(),
@@ -451,9 +461,9 @@ impl Track {
                                 smoothstep(0.0, NARROW_EASE, into)
                                     * smoothstep(0.0, NARROW_EASE, total - into)
                             };
-                            WALL_DISTANCE.lerp(narrow.wall, closed)
+                            track.wall.lerp(narrow.wall, closed)
                         })
-                        .fold(WALL_DISTANCE, f32::min)
+                        .fold(track.wall, f32::min)
                 })
                 .collect();
         }
@@ -584,6 +594,7 @@ impl Track {
             shoulders: Vec::new(),
             closed: false,
             walls: Vec::new(),
+            wall: self.wall,
             lap_along: Vec::new(),
             apart: Vec::new(),
             side_roads: Vec::new(),
@@ -603,6 +614,7 @@ impl Track {
         };
         // Near the lap the road lies on its surface; once their walls part,
         // it has a surface of its own.
+        let junction_apart = 2.0 * self.wall;
         let on_lap: Vec<Nearest> = road
             .centerline
             .iter()
@@ -617,7 +629,7 @@ impl Track {
                 } else {
                     FORK_BLEND
                 };
-                smoothstep(JUNCTION_APART, JUNCTION_APART + blend, on.distance)
+                smoothstep(junction_apart, junction_apart + blend, on.distance)
             })
             .collect();
         let elevation = match toward {
@@ -657,8 +669,8 @@ impl Track {
                         let far =
                             self.elevation[k].lerp(self.elevation[(k + 1) % laps], counted.fract());
                         let away = smoothstep(
-                            JUNCTION_APART,
-                            JUNCTION_APART + FORK_FAR_BLEND,
+                            junction_apart,
+                            junction_apart + FORK_FAR_BLEND,
                             on_lap[i].distance,
                         );
                         beside.lerp(far, away) + open_profile(rise, length, i as f32 * step)
@@ -688,8 +700,8 @@ impl Track {
         // it has parted from the lap.
         road.walls = (0..n)
             .map(|i| match toward {
-                Some(_) => LOOP_WALL.lerp(WALL_DISTANCE, smoothstep(10.0, FUNNEL, from_loop(i))),
-                None => WALL_DISTANCE.lerp(FORK_WALL, apart[i]),
+                Some(_) => LOOP_WALL.lerp(self.wall, smoothstep(10.0, FUNNEL, from_loop(i))),
+                None => self.wall.lerp(FORK_WALL.min(self.wall), apart[i]),
             })
             .collect();
         road.apart = apart;
@@ -839,7 +851,13 @@ impl Track {
         self.walls
             .get(self.wrap(index as isize))
             .copied()
-            .unwrap_or(WALL_DISTANCE)
+            .unwrap_or(self.wall)
+    }
+
+    /// How far the walls stand from the centre line where nothing closes
+    /// them in (m): see [`Layout::wall`].
+    pub fn wall(&self) -> f32 {
+        self.wall
     }
 
     /// Point `index` of the centre line, counting round the lap, or held at
@@ -1844,13 +1862,14 @@ mod tests {
     #[test]
     fn curves_are_drivable() {
         // Por debajo de este radio el muro del interior de la curva se doblaría
-        // sobre sí mismo, y además no habría quien la tomase.
-        const MIN_RADIUS: f32 = 2.5 * WALL_DISTANCE;
+        // sobre sí mismo, y además no habría quien la tomase: two and a half
+        // times as far as the walls stand from the centre line.
         for (name, track) in every_track() {
+            let min_radius = 2.5 * track.wall();
             for index in 0..track.centerline.len() {
                 let radius = 1.0 / track.curvature(index).abs();
                 assert!(
-                    radius > MIN_RADIUS,
+                    radius > min_radius,
                     "curva de radio {radius} m en {index} de {name}"
                 );
             }
@@ -1874,8 +1893,8 @@ mod tests {
             // Puntos cercanos sobre el trazado pueden estar cerca en el
             // espacio; más allá, entre sus muros tiene que haber sitio para el
             // escenario.
-            let neighborhood = (8.0 * WALL_DISTANCE / SAMPLE_SPACING) as usize;
-            let clearance = 2.0 * WALL_DISTANCE + 10.0;
+            let neighborhood = (8.0 * track.wall() / SAMPLE_SPACING) as usize;
+            let clearance = 2.0 * track.wall() + 10.0;
             for i in 0..n {
                 for j in i + neighborhood..n.min(i + n - neighborhood) {
                     let distance = track.centerline[i].distance(track.centerline[j]);
@@ -1997,8 +2016,8 @@ mod tests {
 
     #[test]
     fn branches_are_rideable_and_clear_of_the_lap() {
-        const MIN_RADIUS: f32 = 2.5 * WALL_DISTANCE;
         for (name, track) in tracks_with_branches() {
+            let (lap_wall, min_radius) = (track.wall(), 2.5 * track.wall());
             for looped in &track.loops {
                 for (leaving_lap, number) in [(true, looped.approach), (false, looped.exit)] {
                     let road = track.road(number);
@@ -2006,7 +2025,7 @@ mod tests {
                     for i in 0..n - 1 {
                         let radius = 1.0 / road.curvature(i).abs();
                         assert!(
-                            radius > MIN_RADIUS,
+                            radius > min_radius,
                             "{name}, road {number}: {radius} m at {i}"
                         );
                         let grade = (road.elevation[i + 1] - road.elevation[i]) / road.step;
@@ -2025,7 +2044,7 @@ mod tests {
                     let mut parted = false;
                     for i in from_lap {
                         let lap = track.project_on_lap(road.centerline[i]).distance;
-                        let apart = lap > WALL_DISTANCE + road.wall_at(i) + 2.0;
+                        let apart = lap > lap_wall + road.wall_at(i) + 2.0;
                         assert!(
                             apart || !parted,
                             "{name}, road {number}: {lap} m from the lap at {i}"
@@ -2033,8 +2052,8 @@ mod tests {
                         parted |= apart;
                         // Where they share it, their walls are as far out, so
                         // the road between them is the same seen from either.
-                        if lap < WALL_DISTANCE + road.wall_at(i) {
-                            assert!(road.wall_at(i) > WALL_DISTANCE - 0.25, "{name}: {i}");
+                        if lap < lap_wall + road.wall_at(i) {
+                            assert!(road.wall_at(i) > lap_wall - 0.25, "{name}: {i}");
                         }
                     }
                     assert!(parted, "{name}, road {number}");
@@ -2080,9 +2099,10 @@ mod tests {
                 assert_eq!(nearest.road, looped.approach, "{name}");
                 assert!((nearest.lateral - 2.0).abs() < 0.05);
                 assert!((track.height_beside(&nearest) - height).abs() < 0.05);
-                // Its walls close in towards the loop, and it counts as a
-                // stretch of the lap further on than its start.
-                assert!(track.edge_beside(&nearest) < WALL_DISTANCE);
+                // Its walls close in towards the loop (unless the lap's are
+                // as close), and it counts as a stretch of the lap further on
+                // than its start.
+                assert!(track.edge_beside(&nearest) < track.wall().max(LOOP_WALL + 0.01));
                 let start = track.nearest_at(into.centerline[0], into.elevation[0]);
                 assert!(track.along(&nearest) > track.along(&start));
                 let (_, heading) = track.pose_beside(&nearest, 0.0);
@@ -2103,8 +2123,8 @@ mod tests {
 
     #[test]
     fn a_fork_leaves_the_lap_and_joins_it_again_past_rock() {
-        const MIN_RADIUS: f32 = 2.5 * WALL_DISTANCE;
         for (name, track) in tracks_with_forks() {
+            let (lap_wall, min_radius) = (track.wall(), 2.5 * track.wall());
             for fork in &track.forks {
                 let road = track.road(fork.road);
                 let n = road.sample_count();
@@ -2126,7 +2146,7 @@ mod tests {
                 let mut widest = 0.0f32;
                 for i in 0..n - 1 {
                     let radius = 1.0 / road.curvature(i).abs();
-                    assert!(radius > MIN_RADIUS, "{name}: {radius} m at {i}");
+                    assert!(radius > min_radius, "{name}: {radius} m at {i}");
                     let grade = (road.elevation[i + 1] - road.elevation[i]) / road.step;
                     assert!(grade.abs() < 0.12, "{name}: {grade} at {i}");
                     assert!(road.bank[i].abs() <= MAX_BANK);
@@ -2154,10 +2174,10 @@ mod tests {
                     if lap.distance > 1.0 {
                         assert_eq!(lap.lateral.signum(), fork.side, "{name}: {i}");
                     }
-                    if lap.distance < WALL_DISTANCE + road.wall_at(i) {
-                        assert!(road.wall_at(i) > WALL_DISTANCE - 0.25, "{name}: {i}");
+                    if lap.distance < lap_wall + road.wall_at(i) {
+                        assert!(road.wall_at(i) > lap_wall - 0.25, "{name}: {i}");
                     }
-                    widest = widest.max(lap.distance - WALL_DISTANCE - road.wall_at(i));
+                    widest = widest.max(lap.distance - lap_wall - road.wall_at(i));
                 }
                 assert!(widest > 10.0, "{name}: {widest} m of rock at most");
                 // A bike half way along finds its road, counted as a stretch
@@ -2203,10 +2223,10 @@ mod tests {
                 narrow.from - NARROW_EASE - 5.0,
                 narrow.to + NARROW_EASE + 5.0,
             ] {
-                assert_eq!(track.wall_at(track.index_at(along)), WALL_DISTANCE);
+                assert_eq!(track.wall_at(track.index_at(along)), track.wall());
                 assert_eq!(
                     track.half_width_at(track.index_at(along)),
-                    TRACK_WIDTH / 2.0
+                    track.half_width()
                 );
             }
             let first = track.index_at(narrow.from - NARROW_EASE - 10.0);

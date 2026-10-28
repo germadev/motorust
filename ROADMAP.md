@@ -4,11 +4,12 @@ Where Motorust is going next, in order. Each step is worked on in a branch of it
 
 ## 1. Measure first
 
-The benchmark has not been run since 2026-10-16, before the relief of the textures, Fellowship Road, Base Lunar and the new web, and before the M4 mini's world was drawn at its panel's own pixels.
+The benchmark has not been run since 2026-10-16, before the relief of the textures, Fellowship Road, Base Lunar, Juguetería and the new web, and before the M4 mini's world was drawn at its panel's own pixels.
 
 - `make bench` on the M4 mini, and on the M1 Pro, the M4 Pro and the BC-250, at the commit that adds the scenarios below (then `make bench.push`).
 - **The ground in the shadows:** `1p` against `1p-no-ground-shadows`, and `2p` against `2p-no-ground-shadows`. The difference is the most cutting the ground into pieces could save in the shadow maps (step 2).
 - **The edges:** `1p-msaa-2x` and `1p-smaa` against `1p` (MSAA 4×) and `1p-fxaa`: what each costs, and whether the game should start with another one (it starts with FXAA).
+- **Juguetería**, the first track indoors: its ceiling's lamps glow but cast no shadow, and the room, the furniture, the toy tracks and the toys are batched into a few meshes. Measured as it is, and again once Meshy's toys fill it (see [Alongside](#alongside-jugueterías-toys)).
 - The render world's CPU time apart from the simulation's, with Tracy (`--features bevy/trace_tracy`), where a machine is not bound by its GPU (the M4 Pro).
 
 What the measurements said so far, machine by machine, is in `RECORD/2026-10-16.performance-plan-and-measuring-guide.completed.md`: the Macs are bound by the pixels they draw (the render scale and the antialiasing count most, the shadows less), and the simulation takes under a millisecond a frame since the nearest road is found through a grid.
@@ -30,16 +31,16 @@ Both ask for the same thing: an engine that knows nothing of the content it runs
 
 ### What stands in the way today
 
-- **The engine knows each circuit and each bike.** `CIRCUITS` (a `const` array) is used in 36 files and `ROSTER` in 6.
-- **Themed code inside the engine.** `Scenery` has fields for each theme (`japan`, `middle_earth`, `space`, `desert`, `mine`, `pit`, `loops`, `rings`, `totems`, …), served by about 10,600 lines of world code made for one circuit or another (`world/japan.rs`, `middle_earth.rs`, `space.rs`, `desert.rs`, `mine.rs`, `cavern.rs`, `landmarks.rs`).
+- **The engine knows each circuit and each bike.** `CIRCUITS` (a `const` array) is used in 37 files and `ROSTER` in 6.
+- **Themed code inside the engine.** `Scenery` has fields for each theme (`japan`, `middle_earth`, `space`, `desert`, `mine`, `pit`, `loops`, `rings`, `totems`, `toys`, …), served by about 13,100 lines of world code made for one circuit or another (`world/japan.rs`, `middle_earth.rs`, `space.rs`, `desert.rs`, `mine.rs`, `cavern.rs`, `landmarks.rs`, `toys.rs`).
 - **Functions, not data.** Each circuit's `mountains`, and the coasts, lakes and rivers given as functions (`Coast::Function`, `OutlineWithLakes`, `Inland`): a volcano with its gullies, coasts as sums of sines over `fbm`. An editor cannot edit a function.
 - **Values worked out from others.** `span(TUNNEL.from + 60.0, …)`, `const fn` helpers (`knoll`, `fence`, `curve_sign`); and the circuits' many comments. A file the editor writes keeps neither.
-- **Every asset built into the engine's own code** with `include_bytes!`: the bikes in `bike/model/imported.rs`, the music in each circuit, the textures in `world/textures.rs`. Nothing goes through Bevy's asset server.
+- **Every asset built into the engine's own code** with `include_bytes!`: the bikes in `bike/model/imported.rs`, the music in each circuit, the scenery's model packs in `world/japan.rs`, `middle_earth.rs` and `toys.rs`, the textures in `world/textures.rs`. Nothing goes through Bevy's asset server.
 
 ### What is open and what is private
 
 - **Open (the engine's own demo content, so it runs on its own):** the four bikes built in code with their painted liveries (`Design::Afilada`, `Escudo`, `Alerones`, `Rombo`; `bike/model/livery.rs`), the Poly Haven textures (CC0) and the NASA maps (public domain), and a plain circuit (Bahía GP).
-- **Private (the game):** the Meshy bikes and riders, the music, the modelled trees and props (feudal Japan, Middle-earth), and the circuits after other works (Fellowship Road, Ghost Island).
+- **Private (the game):** the Meshy bikes and riders, the music, the modelled trees, props and toys (feudal Japan, Middle-earth, the toy store), and the circuits after other works (Fellowship Road, Ghost Island).
 
 ### Steps
 
@@ -51,3 +52,14 @@ Both ask for the same thing: an engine that knows nothing of the content it runs
 6. **The engine published** from a new repository, with its licence (MIT or Apache-2.0, as Bevy) and its credits. Never by making this repository public: its history holds every model, song and circuit (a 99 MiB pack).
 
 Steps 1 and 2 are worth it before anything is split: circuits tuned without compiling.
+
+## Alongside: Juguetería's toys
+
+Content, not engine: it runs beside the steps above, in a branch of its own.
+
+Juguetería, the toy store (`RECORD/2026-10-28.toy-store-track.completed.md`), is in [germadev/motorust#28](https://github.com/germadev/motorust/pull/28): a compact lap of 2.92 km on a narrow road (`Layout::wall`, 7.5 m), a way through a castle and a way round a loop, its checkpoints at three quarters of the usual pace (`Circuit::pace`). Its surroundings still look sparse, and the toys built in code (the bear, the robot, the duck, the spinning top, the pirate ship, the aeroplanes, the helicopter, the trains) look simple. Meshy's models are to replace them and fill the floor, as the author makes them; the list (36 pieces, with their sizes, where each stands on the new layout, how close it comes to the road and its triangle budget) was given to the author. The first, the big castle, is in.
+
+- **One at a time**, with `tools/import_toys.py --keep`: each into the pack at its size (`SIZES`), placed by `spawn_models` (today only the castles no road runs through), the code-built toy it replaces dropped. The test of the pack checks every piece in it: on the ground, centred, under 8,000 triangles.
+- **The atlas** is 2048 pixels wide and grows downwards: with every toy on the list it would reach about 2048 × 7,200, past the 4096 pixels square of the largest atlas the game has (Fellowship Road's). Before it passes 4096: widen it to 4096 (sixteen 1024-pixel cells), or bring some of the big cells down to 512.
+- **`CELLS`** (the 1024-pixel cells) to follow the pieces the riders pass closest on the new layout: the castles, the giraffe, the nutcracker, the station, the garage, the checkout counter; the ship and the dollhouse, further now, can do with 512.
+- **Measured** (step 1) once most of them are in: about 200,000 triangles more in all, drawn whole (no levels of detail), one material.
