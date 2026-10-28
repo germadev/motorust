@@ -142,6 +142,9 @@ or English: the system's language at first, changed in Options.
   and the import pipelines.
 - [Development record](RECORD/): what was asked and what was done, request by
   request.
+- [Roadmap](ROADMAP.md): what comes next: measuring, the ground in pieces, and
+  the engine apart from the game (circuits as data, a map editor, an
+  open-source engine).
 
 ## Credits
 

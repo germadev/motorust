@@ -1,0 +1,53 @@
+# Roadmap
+
+Where Motorust is going next, in order. Each step is worked on in a branch of its own and recorded in `RECORD/` as it goes; this file says what is planned and why, and is updated as steps are done or change.
+
+## 1. Measure first
+
+The benchmark has not been run since 2026-10-16, before the relief of the textures, Fellowship Road, Base Lunar and the new web, and before the M4 mini's world was drawn at its panel's own pixels.
+
+- `make bench` on the M4 mini, and on the M1 Pro, the M4 Pro and the BC-250, at the commit that adds the scenarios below (then `make bench.push`).
+- **The ground in the shadows:** `1p` against `1p-no-ground-shadows`, and `2p` against `2p-no-ground-shadows`. The difference is the most cutting the ground into pieces could save in the shadow maps (step 2).
+- **The edges:** `1p-msaa-2x` and `1p-smaa` against `1p` (MSAA 4×) and `1p-fxaa`: what each costs, and whether the game should start with another one (it starts with FXAA).
+- The render world's CPU time apart from the simulation's, with Tracy (`--features bevy/trace_tracy`), where a machine is not bound by its GPU (the M4 Pro).
+
+What the measurements said so far, machine by machine, is in `RECORD/2026-10-16.performance-plan-and-measuring-guide.completed.md`: the Macs are bound by the pixels they draw (the render scale and the antialiasing count most, the shadows less), and the simulation takes under a millisecond a frame since the nearest road is found through a grid.
+
+## 2. The ground in pieces (if step 1 says it is worth it)
+
+Each mesh of the ground (one for each kind of ground, or field of flowers) covers the whole circuit, so neither the cameras' culling nor the shadow cascades' leave any of it out: all of it is drawn in the main pass and in each cascade (four at high shadows), and again for each view with two players. Cut into squares of about 100–200 m, each sharing its kind's material, the cascades would draw only the squares they reach. The editor (section 3, step 5) needs it too: a change rebuilds only the squares near it.
+
+Judged of little worth for now: compressed textures (KTX2: the textures that fill the screen are painted at startup; the bikes' would save about 300 MB of memory, not frames), GPU occlusion culling (Apple's GPUs already drop hidden opaque fragments; it needs a depth prepass, which costs pixels), and another engine (the simulation is cheap; the limit is the pixels, not Bevy).
+
+## 3. The engine apart from the game
+
+Two aims:
+
+- **A map editor**, to lay out and dress circuits without writing code or compiling.
+- **An open-source engine**, with the game's characters, models, music and circuits kept private.
+
+Both ask for the same thing: an engine that knows nothing of the content it runs. Circuits written in RON are the first step, not the whole of it.
+
+### What stands in the way today
+
+- **The engine knows each circuit and each bike.** `CIRCUITS` (a `const` array) is used in 36 files and `ROSTER` in 6.
+- **Themed code inside the engine.** `Scenery` has fields for each theme (`japan`, `middle_earth`, `space`, `desert`, `mine`, `pit`, `loops`, `rings`, `totems`, …), served by about 10,600 lines of world code made for one circuit or another (`world/japan.rs`, `middle_earth.rs`, `space.rs`, `desert.rs`, `mine.rs`, `cavern.rs`, `landmarks.rs`).
+- **Functions, not data.** Each circuit's `mountains`, and the coasts, lakes and rivers given as functions (`Coast::Function`, `OutlineWithLakes`, `Inland`): a volcano with its gullies, coasts as sums of sines over `fbm`. An editor cannot edit a function.
+- **Values worked out from others.** `span(TUNNEL.from + 60.0, …)`, `const fn` helpers (`knoll`, `fence`, `curve_sign`); and the circuits' many comments. A file the editor writes keeps neither.
+- **Every asset built into the engine's own code** with `include_bytes!`: the bikes in `bike/model/imported.rs`, the music in each circuit, the textures in `world/textures.rs`. Nothing goes through Bevy's asset server.
+
+### What is open and what is private
+
+- **Open (the engine's own demo content, so it runs on its own):** the four bikes built in code with their painted liveries (`Design::Afilada`, `Escudo`, `Alerones`, `Rombo`; `bike/model/livery.rs`), the Poly Haven textures (CC0) and the NASA maps (public domain), and a plain circuit (Bahía GP).
+- **Private (the game):** the Meshy bikes and riders, the music, the modelled trees and props (feudal Japan, Middle-earth), and the circuits after other works (Fellowship Road, Ghost Island).
+
+### Steps
+
+1. **Circuits as data.** The layout and scenery types made serialisable and owned (`Vec`s rather than `&'static` slices, or parsed once and leaked to `&'static` so the code using them stays as it is); a `Circuits` resource filled at startup instead of `CIRCUITS`; Bahía GP first in RON, then the rest one by one, the Rust ones working meanwhile; a test that loads every circuit, so a mistake fails `cargo test` and not the game. The bikes' roster the same way. RON rather than JSON: it is Rust's own (the settings are in it already) and keeps comments in what is written by hand.
+2. **The terrain's functions as shapes with parameters**, circuit by circuit: ranges of `fbm` hills (a middle, an inner and an outer radius, a height, a scale), a cone with its crater and gullies, a coast as an outline with a ragged edge. Half of it is there already (`massif`, `climbed_massif`, the outlines as polygons). Named Rust functions only as a way out for what the game adds of its own, not edited. Notes as fields where a comment matters; values written out, or as anchors (a stretch from another's end), where they now come from sums.
+3. **A content pack**: circuits, models, music and textures through a Bevy asset source; built into the release of the private game, so it stays a single executable (the web too); read from disk, and reloaded when it changes, in development and by the editor.
+4. **A workspace** in this repository: an `engine` crate and a `game` crate. The themed code goes to `game`, as generic features where it can (a corridor of torii is a corridor of gates with a model) and otherwise through points the engine offers to hook into (as plugins adding their own scenery). A CI job runs the engine with the open content alone.
+5. **The editor**, in the engine, inside the game's own world, so that what is edited is seen as it will be raced: the plan and the height profile; control points, heights, banking and stretches; what stands along the road. The limits `tools/circuit_layout.py` and the tests check (`curves_are_drivable`, `slopes_and_banking_stay_rideable`, the crests the bike takes off over) shown as it edits, ported to Rust and shared with the tests. Only the road and the ground near a change rebuilt (step 2's pieces).
+6. **The engine published** from a new repository, with its licence (MIT or Apache-2.0, as Bevy) and its credits. Never by making this repository public: its history holds every model, song and circuit (a 99 MiB pack).
+
+Steps 1 and 2 are worth it before anything is split: circuits tuned without compiling.

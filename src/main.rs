@@ -47,6 +47,22 @@ use bevy::prelude::*;
 /// 240 FPS y la simulación es reproducible.
 const SIMULATION_HZ: f64 = 120.0;
 
+/// At most this many steps of the simulation in a frame. After a frame that
+/// came late (a hitch, a circuit put in the world), Bevy catches up with as
+/// many steps as the time it took, up to a quarter of a second's (30 at
+/// 120 Hz): the race jumps on at once, and that frame takes longer still.
+/// Past these the game's time slows down for that frame instead: it keeps
+/// to real time down to 15 frames a second.
+const MAX_STEPS_PER_FRAME: u32 = 8;
+
+/// The simulation's clocks: its fixed step, and the game's time, which goes
+/// on at most [`MAX_STEPS_PER_FRAME`] of those steps in a frame.
+fn simulation_clocks() -> (Time<Fixed>, Time<Virtual>) {
+    let fixed = Time::<Fixed>::from_hz(SIMULATION_HZ);
+    let game = Time::<Virtual>::from_max_delta(fixed.timestep() * MAX_STEPS_PER_FRAME);
+    (fixed, game)
+}
+
 /// The game's version and the commit it is built from (see `build.rs`), for
 /// its logs: "0.0.10 (1a2b3c4d5)", "-dirty" after it with changes not
 /// committed.
@@ -164,8 +180,10 @@ fn main() {
     if settings.performance_log {
         app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
     }
+    let (fixed, game) = simulation_clocks();
     app.add_plugins(plugins)
-        .insert_resource(Time::<Fixed>::from_hz(SIMULATION_HZ))
+        .insert_resource(fixed)
+        .insert_resource(game)
         .insert_resource(settings::StartedWith::from(&settings))
         .insert_resource(settings)
         .add_plugins((
@@ -198,4 +216,47 @@ fn main() {
         app.add_plugins(bench::BenchPlugin);
     }
     app.run();
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use bevy::time::TimeUpdateStrategy;
+
+    use super::*;
+
+    #[derive(Resource, Default)]
+    struct Steps(u32);
+
+    #[test]
+    fn a_late_frame_catches_up_by_a_few_steps_at_most() {
+        let (fixed, game) = simulation_clocks();
+        let step = fixed.timestep();
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(fixed)
+            .insert_resource(game)
+            .init_resource::<Steps>()
+            .add_systems(FixedUpdate, |mut steps: ResMut<Steps>| steps.0 += 1);
+        let frame = |app: &mut App, millis: u64| {
+            app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                millis,
+            )));
+            app.world_mut().resource_mut::<Steps>().0 = 0;
+            app.update();
+            app.world().resource::<Steps>().0
+        };
+        // The clocks start.
+        frame(&mut app, 0);
+        // A frame of 25 ms: three steps of 1/120 s.
+        assert_eq!(frame(&mut app, 25), 3);
+        // Half a second late (a hitch): eight steps, not Bevy's thirty (a
+        // quarter of a second's), and the game's time on by as much.
+        assert_eq!(frame(&mut app, 500), MAX_STEPS_PER_FRAME);
+        let moved = app.world().resource::<Time<Virtual>>().delta();
+        assert_eq!(moved, step * MAX_STEPS_PER_FRAME);
+        // And back to keeping time.
+        assert_eq!(frame(&mut app, 25), 3);
+    }
 }

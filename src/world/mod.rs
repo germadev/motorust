@@ -54,6 +54,9 @@ use crate::settings::{Settings, WEB};
 use crate::track::{Surface, Track};
 #[cfg(test)]
 pub use preview::stretch as preview_stretch;
+// For the benchmark, which leaves the ground out of the shadows for a turn.
+#[cfg(not(target_arch = "wasm32"))]
+pub use terrain::GroundPiece;
 #[cfg(test)]
 pub use terrain::is_earth_realm;
 pub use textures::generate_mipmaps;

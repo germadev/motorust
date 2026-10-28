@@ -2,9 +2,10 @@
 //! `MOTORUST_BENCH=1`): with no one at the controls, it rides every track
 //! (or those in `MOTORUST_BENCH_TRACKS`, as `0,2`) in free ride on
 //! autopilot, all round the lap with one player and then with two, trying
-//! each setting worth comparing (the shadows' levels, the ways of smoothing
-//! the edges, the lighter far trees, the relief of the textures, less detail
-//! for two players), with the frame rate unlimited.
+//! each setting worth comparing (the shadows' levels, the ground left out of
+//! them, the ways of smoothing the edges, the lighter far trees, the relief
+//! of the textures, less detail for two players), with the frame rate
+//! unlimited.
 //!
 //! All round the lap the settings take turns of a couple of seconds (let
 //! settle half a second, then measured), each round in a different order,
@@ -34,6 +35,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use bevy::diagnostic::{DiagnosticsStore, SystemInfo};
+use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 use bevy::window::PrimaryWindow;
@@ -53,6 +55,8 @@ use crate::settings::{
 use crate::track::Track;
 use crate::ui::text_font;
 use crate::welcome::GameMode;
+use crate::world::GroundPiece;
+use crate::world::detail::TwoSamples;
 
 /// Each setting's turn on the lap (s): let settle first (the setting just
 /// put on: its pipelines, shadow maps, trees), then measured.
@@ -113,6 +117,11 @@ pub struct Scenario {
     pub flat_at_speed: bool,
     /// How the lawn's repetition is broken up.
     pub grass_tiling: GrassTiling,
+    /// Whether the ground casts the sun's shadows, as in the game. Each of
+    /// its meshes covers the whole circuit, so every cascade draws all of
+    /// it: without, how much cutting it into pieces the cascades could
+    /// leave out would save at most (see [`GroundPiece`]).
+    pub ground_shadows: bool,
 }
 
 /// Every scenario on each of `tracks`: one player at a fixed reference,
@@ -137,6 +146,7 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
         road_relief: false,
         flat_at_speed: true,
         grass_tiling: GrassTiling::Wide,
+        ground_shadows: true,
     };
     tracks
         .iter()
@@ -152,12 +162,24 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
                     ..base("1p-shadows-low", track)
                 },
                 Scenario {
+                    ground_shadows: false,
+                    ..base("1p-no-ground-shadows", track)
+                },
+                Scenario {
                     antialiasing: Antialiasing::Fxaa,
                     ..base("1p-fxaa", track)
                 },
                 Scenario {
                     antialiasing: Antialiasing::Off,
                     ..base("1p-no-antialiasing", track)
+                },
+                Scenario {
+                    antialiasing: Antialiasing::Msaa2,
+                    ..base("1p-msaa-2x", track)
+                },
+                Scenario {
+                    antialiasing: Antialiasing::Smaa,
+                    ..base("1p-smaa", track)
                 },
                 Scenario {
                     far_trees: true,
@@ -214,6 +236,11 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
                     players: 2,
                     relief: Relief::Off,
                     ..base("2p-relief-off", track)
+                },
+                Scenario {
+                    players: 2,
+                    ground_shadows: false,
+                    ..base("2p-no-ground-shadows", track)
                 },
             ]
         })
@@ -328,7 +355,9 @@ pub fn resolution_said(settings: &Settings, window: UVec2, native: NativeShare) 
 /// and, with two players, the detail.
 pub fn settings_said(settings: &Settings, players: u32) -> String {
     let antialiasing = match settings.antialiasing {
-        Antialiasing::Msaa => "MSAA",
+        Antialiasing::Msaa => "MSAA 4x",
+        Antialiasing::Msaa2 => "MSAA 2x",
+        Antialiasing::Smaa => "SMAA",
         Antialiasing::Fxaa => "FXAA",
         Antialiasing::Off => "no antialiasing",
     };
@@ -440,9 +469,60 @@ pub struct Bench {
 }
 
 impl Bench {
+    /// A run of `scenarios`, each measured `measure` s a lap, on `machine`,
+    /// its results written to `folder`; not begun.
+    fn new(scenarios: Vec<Scenario>, measure: f32, machine: String, folder: PathBuf) -> Self {
+        Bench {
+            laps: laps(&scenarios),
+            scenarios,
+            lap: 0,
+            phase: Phase::Start,
+            measure,
+            stretches: Vec::new(),
+            cpu: Vec::new(),
+            turns: 0,
+            turn_frames: Vec::new(),
+            turn_cpu: None,
+            turn_from: None,
+            length: 1.0,
+            start_along: 0.0,
+            along: None,
+            ridden: 0.0,
+            measuring_since: 0.0,
+            quarters: 0,
+            spots: Vec::new(),
+            results: Vec::new(),
+            machine,
+            folder,
+            path: None,
+            file: None,
+        }
+    }
+
+    /// Leaves out the scenarios `out` says, before the run begins (its laps
+    /// made again from those left): how many.
+    fn leave_out(&mut self, out: impl Fn(&Scenario) -> bool) -> usize {
+        let before = self.scenarios.len();
+        self.scenarios.retain(|scenario| !out(scenario));
+        self.laps = laps(&self.scenarios);
+        before - self.scenarios.len()
+    }
+
     /// The scenarios of the lap under way.
     fn tried(&self) -> &[Scenario] {
         &self.scenarios[self.laps[self.lap].clone()]
+    }
+
+    /// The scenario whose setting is on: the lap's first while its race is
+    /// set up, then each in its turn; none before the first lap.
+    fn setting_on(&self) -> Option<&Scenario> {
+        match self.phase {
+            Phase::Start => None,
+            Phase::Entering(_) => self.tried().first(),
+            Phase::Warming { setting, .. } | Phase::Turn { setting, .. } => {
+                self.tried().get(setting)
+            }
+        }
     }
 
     /// The lap under way, as the terminal says it: `[3/10] Loop Island · 1
@@ -617,33 +697,17 @@ impl Plugin for BenchPlugin {
         // The performance log of the run goes beside its results, once they
         // are named.
         app.insert_resource(PerfLog::waiting())
-            .insert_resource(Bench {
-                laps: laps(&scenarios),
+            .insert_resource(Bench::new(
                 scenarios,
-                lap: 0,
-                phase: Phase::Start,
                 measure,
-                stretches: Vec::new(),
-                cpu: Vec::new(),
-                turns: 0,
-                turn_frames: Vec::new(),
-                turn_cpu: None,
-                turn_from: None,
-                length: 1.0,
-                start_along: 0.0,
-                along: None,
-                ridden: 0.0,
-                measuring_since: 0.0,
-                quarters: 0,
-                spots: Vec::new(),
-                results: Vec::new(),
-                machine: machine().trim().to_string(),
-                folder: results,
-                path: None,
-                file: None,
-            })
+                machine().trim().to_string(),
+                results,
+            ))
             .add_systems(Startup, (start_bench, spawn_bench_label))
-            .add_systems(Update, (run_bench, show_bench).chain());
+            .add_systems(
+                Update,
+                (run_bench, (show_bench, cast_ground_shadows)).chain(),
+            );
     }
 }
 
@@ -680,6 +744,25 @@ fn use_setting(scenario: &Scenario, settings: &mut Settings) {
     settings.road_relief = scenario.road_relief;
     settings.flat_at_speed = scenario.flat_at_speed;
     settings.grass_tiling = scenario.grass_tiling;
+}
+
+/// The ground in the sun's shadows or out of them, as the setting on says,
+/// as it comes too (a race set up again builds it again).
+fn cast_ground_shadows(
+    mut commands: Commands,
+    bench: Res<Bench>,
+    ground: Query<(Entity, Has<NotShadowCaster>), With<GroundPiece>>,
+) {
+    let cast = bench
+        .setting_on()
+        .is_none_or(|scenario| scenario.ground_shadows);
+    for (piece, left_out) in &ground {
+        if cast && left_out {
+            commands.entity(piece).remove::<NotShadowCaster>();
+        } else if !cast && !left_out {
+            commands.entity(piece).insert(NotShadowCaster);
+        }
+    }
 }
 
 fn start_bench(mut rules: ResMut<Rules>) {
@@ -844,12 +927,13 @@ fn run_bench(
     ),
     (riders, track): (Riders, Res<Track>),
     keyboard: Res<ButtonInput<KeyCode>>,
-    (frame_start, store, system, adapter, window): (
+    (frame_start, store, system, adapter, window, two_samples): (
         Res<FrameStart>,
         Option<Res<DiagnosticsStore>>,
         Option<Res<SystemInfo>>,
         Option<Res<RenderAdapterInfo>>,
         Query<&Window, With<PrimaryWindow>>,
+        Option<Res<TwoSamples>>,
     ),
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -872,6 +956,11 @@ fn run_bench(
     }
     match bench.phase {
         Phase::Start => {
+            // Two samples a pixel only where the GPU has them: elsewhere
+            // they would be drawn as four, and measured again as such.
+            let two_samples = TwoSamples::of(two_samples.as_deref());
+            let left_out = bench
+                .leave_out(|scenario| scenario.antialiasing == Antialiasing::Msaa2 && !two_samples);
             if bench.laps.is_empty() {
                 exit.write(AppExit::Success);
                 return;
@@ -879,13 +968,16 @@ fn run_bench(
             // The heading, in the terminal and in the file, named after
             // when, the system, the CPU and the GPU, with the performance
             // log beside it.
-            let heading = machine_lines(
+            let mut heading = machine_lines(
                 &bench,
                 system.as_deref(),
                 adapter.as_deref(),
                 window.iter().next(),
                 &settings,
             );
+            if left_out > 0 {
+                heading.push("MSAA 2x left out: this GPU draws one or four samples a pixel".into());
+            }
             println!();
             for line in &heading {
                 println!("{line}");
@@ -1120,8 +1212,8 @@ mod tests {
     #[test]
     fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time() {
         let all = scenarios(&tracks(None));
-        assert_eq!(all.len(), 18 * CIRCUITS.len());
-        let first = &all[..18];
+        assert_eq!(all.len(), 22 * CIRCUITS.len());
+        let first = &all[..22];
         assert!(first.iter().all(|scenario| scenario.track == 0));
         // The first the reference; the others one change from it.
         let base = &first[0];
@@ -1135,7 +1227,8 @@ mod tests {
                 base.relief,
                 base.road_relief,
                 base.flat_at_speed,
-                base.grass_tiling
+                base.grass_tiling,
+                base.ground_shadows
             ),
             (
                 1,
@@ -1146,7 +1239,8 @@ mod tests {
                 Relief::Normal,
                 false,
                 true,
-                GrassTiling::Wide
+                GrassTiling::Wide,
+                true
             )
         );
         for scenario in &first[1..] {
@@ -1161,6 +1255,7 @@ mod tests {
                 scenario.road_relief != base.road_relief,
                 scenario.flat_at_speed != base.flat_at_speed,
                 scenario.grass_tiling != base.grass_tiling,
+                scenario.ground_shadows != base.ground_shadows,
             ]
             .iter()
             .filter(|&&changed| changed)
@@ -1173,6 +1268,67 @@ mod tests {
             .position(|scenario| scenario.players == 2)
             .unwrap();
         assert!(first[two..].iter().all(|scenario| scenario.players == 2));
+    }
+
+    #[test]
+    fn the_ground_is_left_out_of_the_shadows_only_in_its_turn() {
+        let mut app = App::new();
+        app.insert_resource(Bench::new(
+            scenarios(&[0]),
+            MEASURE,
+            String::new(),
+            PathBuf::new(),
+        ))
+        .add_systems(Update, cast_ground_shadows);
+        let ground = app.world_mut().spawn(GroundPiece).id();
+        let unshadowed = |app: &App| app.world().get::<NotShadowCaster>(ground).is_some();
+        let turn = |app: &mut App, name: &str| {
+            let mut bench = app.world_mut().resource_mut::<Bench>();
+            let setting = bench
+                .tried()
+                .iter()
+                .position(|scenario| scenario.name == name)
+                .unwrap();
+            bench.phase = Phase::Turn {
+                setting,
+                since: 0.0,
+            };
+            app.update();
+        };
+        // Before the run and while a race is set up: in the shadows.
+        app.update();
+        assert!(!unshadowed(&app));
+        app.world_mut().resource_mut::<Bench>().phase = Phase::Entering(0.0);
+        app.update();
+        assert!(!unshadowed(&app));
+        turn(&mut app, "1p-no-ground-shadows");
+        assert!(unshadowed(&app));
+        // Ground built again in that turn is left out too.
+        let rebuilt = app.world_mut().spawn(GroundPiece).id();
+        app.update();
+        assert!(app.world().get::<NotShadowCaster>(rebuilt).is_some());
+        turn(&mut app, "1p-shadows-low");
+        assert!(!unshadowed(&app));
+        assert!(app.world().get::<NotShadowCaster>(rebuilt).is_none());
+    }
+
+    #[test]
+    fn two_samples_are_left_out_where_the_gpu_has_not_got_them() {
+        let mut bench = Bench::new(scenarios(&[0]), MEASURE, String::new(), PathBuf::new());
+        assert_eq!(bench.leave_out(|_| false), 0);
+        let left_out = bench.leave_out(|scenario| scenario.antialiasing == Antialiasing::Msaa2);
+        assert_eq!(left_out, 1);
+        assert!(
+            bench
+                .scenarios
+                .iter()
+                .all(|scenario| scenario.name != "1p-msaa-2x")
+        );
+        // The laps made again: one player's one fewer, two players' as many.
+        assert_eq!(
+            bench.laps.iter().map(|lap| lap.len()).collect::<Vec<_>>(),
+            [16, 5]
+        );
     }
 
     #[test]
@@ -1226,8 +1382,8 @@ mod tests {
                 scenario.track == first.track && scenario.players == first.players
             }));
         }
-        assert_eq!(laps[0].len(), 14);
-        assert_eq!(laps[1].len(), 4);
+        assert_eq!(laps[0].len(), 17);
+        assert_eq!(laps[1].len(), 5);
         assert_eq!(all[laps[2].start].track, 3);
     }
 

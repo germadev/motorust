@@ -26,16 +26,22 @@
 //! only it stutters: for a moment, as it goes and as it comes back.
 
 use bevy::anti_alias::fxaa::Fxaa;
+use bevy::anti_alias::smaa::Smaa;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::VisibilityRange;
+use bevy::core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy::light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap};
 use bevy::prelude::*;
+use bevy::render::render_resource::{TextureFormat, WgpuFeatures};
+use bevy::render::renderer::{RenderAdapter, RenderDevice};
 
 use super::realm::PortalView;
 use super::sky::Sunlight;
 use crate::menu::GameState;
 use crate::pause::Pause;
-use crate::settings::{Antialiasing, Relief, ScreenRate, Settings, ShadowQuality, WEB};
+use crate::settings::{
+    ANTIALIASINGS, Antialiasing, Relief, ScreenRate, Settings, ShadowQuality, WEB,
+};
 use crate::welcome::GameMode;
 
 /// How much detail the shadows have, from the most to the least.
@@ -448,6 +454,8 @@ impl Plugin for DetailPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Detail>()
             .init_resource::<AutoQuality>()
+            .init_resource::<TwoSamples>()
+            .add_systems(Startup, find_two_samples)
             .add_systems(
                 PostUpdate,
                 (
@@ -517,7 +525,7 @@ fn ladder_on(settings: Option<&Settings>, game_mode: Option<&GameMode>) -> Ladde
         performance: settings.is_some_and(|settings| settings.force_performance.is_on()),
         split: split(settings, game_mode),
         parallax: settings.is_some_and(|settings| settings.relief == Relief::Parallax),
-        msaa: settings.is_some_and(|settings| settings.antialiasing == Antialiasing::Msaa),
+        msaa: settings.is_some_and(|settings| settings.antialiasing.is_multisampled()),
         level: settings
             .and_then(|settings| Level::of(settings.shadows))
             .unwrap_or(Level::High),
@@ -545,7 +553,7 @@ pub fn lowered(settings: &Settings) -> Lowered {
     Lowered {
         scale: settings.render_scale > lowest,
         shadows: settings.shadows != ShadowQuality::Low,
-        antialiasing: settings.antialiasing == Antialiasing::Msaa,
+        antialiasing: settings.antialiasing.is_multisampled(),
         relief: settings.relief == Relief::Parallax,
     }
 }
@@ -664,23 +672,85 @@ fn reach_for_detail(
     }
 }
 
+/// Whether this machine's GPU draws two samples a pixel, for MSAA 2×
+/// ([`Antialiasing::Msaa2`]): WebGPU promises only one or four, and some
+/// GPUs have no more (Mesa's llvmpipe), so it is read from the GPU as the
+/// game starts; not known (on the web, in tests), it is not. Without it, two
+/// samples are not offered, and drawn as four if they come chosen.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TwoSamples(pub bool);
+
+impl TwoSamples {
+    /// As the resource says, if there is one.
+    pub fn of(two: Option<&TwoSamples>) -> bool {
+        two.is_some_and(|two| two.0)
+    }
+}
+
+/// Whether the GPU draws two samples a pixel of what the cameras
+/// multisample (the colour they draw, not HDR, in either of the formats
+/// Bevy draws it in, and its depth): wgpu allows a count past one and four
+/// only for the adapter's own formats' features, when those are asked for
+/// (Bevy asks for all the adapter has).
+fn find_two_samples(
+    mut two: ResMut<TwoSamples>,
+    adapter: Option<Res<RenderAdapter>>,
+    device: Option<Res<RenderDevice>>,
+) {
+    let (Some(adapter), Some(device)) = (adapter, device) else {
+        return;
+    };
+    two.0 = device
+        .features()
+        .contains(WgpuFeatures::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        && [
+            TextureFormat::Rgba8UnormSrgb,
+            TextureFormat::Rgba8Unorm,
+            CORE_3D_DEPTH_FORMAT,
+        ]
+        .into_iter()
+        .all(|format| {
+            adapter
+                .get_texture_format_features(format)
+                .flags
+                .sample_count_supported(2)
+        });
+    info!(
+        "Two samples a pixel (MSAA 2×): {}",
+        if two.0 { "yes" } else { "not on this GPU" }
+    );
+}
+
+/// The ways of smoothing the edges offered in Options > Graphics: those of
+/// [`ANTIALIASINGS`], but two samples a pixel where the GPU has not got them
+/// (`two_samples`, see [`TwoSamples`]).
+pub fn offered(two_samples: bool) -> Vec<Antialiasing> {
+    ANTIALIASINGS
+        .into_iter()
+        .filter(|&antialiasing| antialiasing != Antialiasing::Msaa2 || two_samples)
+        .collect()
+}
+
 /// The edges smoothed as Options > Graphics says, on every camera as it
 /// comes: all of them (the interface's too, while it draws over what the
-/// world's drew on the window) multisampled alike, four samples a pixel or
-/// one, and FXAA on the world's if chosen. With the world drawn smaller,
-/// into an image (see [`crate::render_scale`]), the interface's camera
-/// draws on its own over the window, with one sample a pixel: told from
-/// where the world's cameras draw this frame, so that both change together.
+/// world's drew on the window) multisampled alike, four, two or one samples
+/// a pixel, and SMAA or FXAA on the world's if chosen. With the world drawn
+/// smaller, into an image (see [`crate::render_scale`]), the interface's
+/// camera draws on its own over the window, with one sample a pixel: told
+/// from where the world's cameras draw this frame, so that both change
+/// together.
 #[allow(clippy::type_complexity)]
 fn antialias(
     mut commands: Commands,
     settings: Option<Res<Settings>>,
     detail: Option<Res<Detail>>,
+    two_samples: Option<Res<TwoSamples>>,
     cameras: Query<
         (
             Entity,
             Option<&Msaa>,
             Has<Fxaa>,
+            Has<Smaa>,
             Has<Camera3d>,
             Option<&RenderTarget>,
         ),
@@ -691,15 +761,22 @@ fn antialias(
     let chosen = settings
         .as_deref()
         .map_or(Antialiasing::default(), |settings| settings.antialiasing);
-    let (msaa, fxaa) = match in_use(chosen, detail.is_none_or(|detail| detail.msaa)) {
-        Antialiasing::Msaa => (Msaa::Sample4, false),
-        Antialiasing::Fxaa => (Msaa::Off, true),
-        Antialiasing::Off => (Msaa::Off, false),
+    let now = in_use(
+        chosen,
+        detail.is_none_or(|detail| detail.msaa),
+        TwoSamples::of(two_samples.as_deref()),
+    );
+    let (msaa, fxaa, smaa) = match now {
+        Antialiasing::Msaa => (Msaa::Sample4, false, false),
+        Antialiasing::Msaa2 => (Msaa::Sample2, false, false),
+        Antialiasing::Smaa => (Msaa::Off, false, true),
+        Antialiasing::Fxaa => (Msaa::Off, true, false),
+        Antialiasing::Off => (Msaa::Off, false, false),
     };
     let scaled = cameras
         .iter()
         .any(|(.., world, target)| world && matches!(target, Some(RenderTarget::Image(_))));
-    for (camera, current, has_fxaa, world, _) in &cameras {
+    for (camera, current, has_fxaa, has_smaa, world, _) in &cameras {
         let msaa = if scaled && !world { Msaa::Off } else { msaa };
         if current != Some(&msaa) {
             commands.entity(camera).insert(msaa);
@@ -709,14 +786,26 @@ fn antialias(
         } else if has_fxaa && !(world && fxaa) {
             commands.entity(camera).remove::<Fxaa>();
         }
+        if world && smaa && !has_smaa {
+            commands.entity(camera).insert(Smaa::default());
+        } else if has_smaa && !(world && smaa) {
+            commands.entity(camera).remove::<Smaa>();
+        }
     }
 }
 
 /// The smoothing of the edges in use: the one `chosen`, but FXAA for the
 /// multisampling while it may not be used (`msaa`, the performance forced
-/// short of its target).
-pub fn in_use(chosen: Antialiasing, msaa: bool) -> Antialiasing {
-    if chosen == Antialiasing::Msaa && !msaa {
+/// short of its target); four samples for two where the GPU has not got
+/// them (`two_samples`, see [`TwoSamples`]); and FXAA for SMAA on the web,
+/// where it cannot be chosen (see [`Antialiasing`]).
+pub fn in_use(chosen: Antialiasing, msaa: bool, two_samples: bool) -> Antialiasing {
+    let chosen = match chosen {
+        Antialiasing::Msaa2 if !two_samples => Antialiasing::Msaa,
+        Antialiasing::Smaa if WEB => Antialiasing::Fxaa,
+        chosen => chosen,
+    };
+    if chosen.is_multisampled() && !msaa {
         Antialiasing::Fxaa
     } else {
         chosen
@@ -994,17 +1083,41 @@ mod tests {
         settings.shadows = ShadowQuality::Low;
         let all = lowered(&settings);
         assert!(all.antialiasing && all.relief && !all.scale && !all.shadows);
+        // Two samples may be given up as four; SMAA, as FXAA, is kept.
+        settings.antialiasing = Antialiasing::Msaa2;
+        assert!(lowered(&settings).antialiasing);
+        settings.antialiasing = Antialiasing::Smaa;
+        assert!(!lowered(&settings).antialiasing);
         settings.force_performance = crate::settings::ForcePerformance::Off;
         assert_eq!(lowered(&settings), Lowered::default());
     }
 
     #[test]
     fn the_multisampling_given_up_is_fxaa_instead() {
-        assert_eq!(in_use(Antialiasing::Msaa, false), Antialiasing::Fxaa);
-        assert_eq!(in_use(Antialiasing::Msaa, true), Antialiasing::Msaa);
-        for chosen in [Antialiasing::Fxaa, Antialiasing::Off] {
-            assert_eq!(in_use(chosen, false), chosen);
+        for samples in [Antialiasing::Msaa, Antialiasing::Msaa2] {
+            assert_eq!(in_use(samples, false, true), Antialiasing::Fxaa);
         }
+        assert_eq!(in_use(Antialiasing::Msaa, true, true), Antialiasing::Msaa);
+        for chosen in [Antialiasing::Fxaa, Antialiasing::Off] {
+            assert_eq!(in_use(chosen, false, true), chosen);
+        }
+        // Two samples as chosen where the GPU has them, four where not.
+        assert_eq!(in_use(Antialiasing::Msaa2, true, true), Antialiasing::Msaa2);
+        assert_eq!(in_use(Antialiasing::Msaa2, true, false), Antialiasing::Msaa);
+        // SMAA as chosen on the desktop; on the web, FXAA.
+        let smaa = if WEB {
+            Antialiasing::Fxaa
+        } else {
+            Antialiasing::Smaa
+        };
+        assert_eq!(in_use(Antialiasing::Smaa, false, true), smaa);
+        // Two samples offered only where the GPU has them.
+        assert!(!offered(false).contains(&Antialiasing::Msaa2));
+        assert_eq!(offered(true), ANTIALIASINGS);
+        assert_eq!(
+            offered(false).len(),
+            ANTIALIASINGS.len() - usize::from(!WEB)
+        );
     }
 
     #[test]
@@ -1204,21 +1317,34 @@ mod tests {
         assert_eq!(cascades(&app), low.cascades().bounds);
         assert_eq!(reach(&app), margins(&range));
 
-        // FXAA as the game starts; multisampling instead, none; and back.
-        let msaa = |app: &App| *app.world().get::<Msaa>(camera).unwrap();
-        let fxaa = |app: &App| app.world().get::<Fxaa>(camera).is_some();
-        assert_eq!((msaa(&app), fxaa(&app)), (Msaa::Off, true));
-        app.world_mut().resource_mut::<Settings>().antialiasing = Antialiasing::Msaa;
-        app.update();
-        assert_eq!((msaa(&app), fxaa(&app)), (Msaa::Sample4, false));
-        app.world_mut().resource_mut::<Settings>().antialiasing = Antialiasing::Fxaa;
-        app.update();
-        assert_eq!((msaa(&app), fxaa(&app)), (Msaa::Off, true));
-        app.world_mut().resource_mut::<Settings>().antialiasing = Antialiasing::Off;
-        app.update();
-        assert_eq!((msaa(&app), fxaa(&app)), (Msaa::Off, false));
-        app.world_mut().resource_mut::<Settings>().antialiasing = Antialiasing::Msaa;
-        app.update();
-        assert_eq!((msaa(&app), fxaa(&app)), (Msaa::Sample4, false));
+        // FXAA as the game starts; multisampling instead, two samples,
+        // SMAA, none; and back.
+        let smoothing = |app: &App| {
+            (
+                *app.world().get::<Msaa>(camera).unwrap(),
+                app.world().get::<Fxaa>(camera).is_some(),
+                app.world().get::<Smaa>(camera).is_some(),
+            )
+        };
+        assert_eq!(smoothing(&app), (Msaa::Off, true, false));
+        let mut choose = |antialiasing| {
+            app.world_mut().resource_mut::<Settings>().antialiasing = antialiasing;
+            app.update();
+            smoothing(&app)
+        };
+        assert_eq!(choose(Antialiasing::Msaa), (Msaa::Sample4, false, false));
+        // Two samples where the GPU has them, else four.
+        assert_eq!(choose(Antialiasing::Msaa2), (Msaa::Sample4, false, false));
+        app.insert_resource(TwoSamples(true));
+        let mut choose = |antialiasing| {
+            app.world_mut().resource_mut::<Settings>().antialiasing = antialiasing;
+            app.update();
+            smoothing(&app)
+        };
+        assert_eq!(choose(Antialiasing::Msaa2), (Msaa::Sample2, false, false));
+        assert_eq!(choose(Antialiasing::Smaa), (Msaa::Off, WEB, !WEB));
+        assert_eq!(choose(Antialiasing::Fxaa), (Msaa::Off, true, false));
+        assert_eq!(choose(Antialiasing::Off), (Msaa::Off, false, false));
+        assert_eq!(choose(Antialiasing::Msaa), (Msaa::Sample4, false, false));
     }
 }

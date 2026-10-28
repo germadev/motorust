@@ -520,17 +520,39 @@ pub const SHADOW_QUALITIES: [ShadowQuality; 4] = [
     ShadowQuality::Low,
 ];
 
-/// How the edges are smoothed: four samples a pixel, FXAA over the frame
-/// (cheaper; as the game starts), or not at all.
+/// How the edges are smoothed: four or two samples a pixel, SMAA or FXAA
+/// over the frame (FXAA the cheaper; as the game starts), or not at all.
+/// Two samples and SMAA only on the desktop: WebGL2 and WebGPU promise
+/// multisampling at four samples alone, and Bevy's SMAA has not been tried
+/// on the web (see [`crate::world::detail::in_use`]).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum Antialiasing {
     Msaa,
+    Msaa2,
+    Smaa,
     #[default]
     Fxaa,
     Off,
 }
 
+impl Antialiasing {
+    /// Whether it takes several samples a pixel: changing to or from it
+    /// makes every pipeline again.
+    pub fn is_multisampled(self) -> bool {
+        matches!(self, Antialiasing::Msaa | Antialiasing::Msaa2)
+    }
+}
+
 /// The ways of smoothing the edges that can be chosen, in order.
+#[cfg(not(target_arch = "wasm32"))]
+pub const ANTIALIASINGS: [Antialiasing; 5] = [
+    Antialiasing::Msaa,
+    Antialiasing::Msaa2,
+    Antialiasing::Smaa,
+    Antialiasing::Fxaa,
+    Antialiasing::Off,
+];
+#[cfg(target_arch = "wasm32")]
 pub const ANTIALIASINGS: [Antialiasing; 3] =
     [Antialiasing::Msaa, Antialiasing::Fxaa, Antialiasing::Off];
 
@@ -1905,6 +1927,36 @@ mod tests {
             );
         }
         assert_eq!(GrassTiling::Plain.name(Language::Spanish), "Ninguna");
+    }
+
+    #[test]
+    fn every_smoothing_is_kept_and_only_the_samples_are_multisampled() {
+        for antialiasing in ANTIALIASINGS {
+            let text = ron::ser::to_string(&Settings {
+                antialiasing,
+                ..default()
+            })
+            .unwrap();
+            assert_eq!(
+                ron::from_str::<Settings>(&text).unwrap().antialiasing,
+                antialiasing
+            );
+        }
+        // Two samples and SMAA on the desktop, between four samples and FXAA.
+        assert_eq!(ANTIALIASINGS.len(), if WEB { 3 } else { 5 });
+        assert_eq!(ANTIALIASINGS.first(), Some(&Antialiasing::Msaa));
+        assert_eq!(ANTIALIASINGS.last(), Some(&Antialiasing::Off));
+        let multisampled: Vec<_> = [
+            Antialiasing::Msaa,
+            Antialiasing::Msaa2,
+            Antialiasing::Smaa,
+            Antialiasing::Fxaa,
+            Antialiasing::Off,
+        ]
+        .into_iter()
+        .filter(|antialiasing| antialiasing.is_multisampled())
+        .collect();
+        assert_eq!(multisampled, [Antialiasing::Msaa, Antialiasing::Msaa2]);
     }
 
     #[test]
