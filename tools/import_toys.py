@@ -7,15 +7,20 @@ and writes to `assets/models/toys/` what the game loads
 (`src/world/toys.rs`):
 
 - `props.bin`: every toy as a piece named after it, centred on the origin
-  with its lowest point on the ground, up along +Y, facing +Z as Meshy made
-  it, at the game's size (`SIZES`: by its height, or by its length, the
-  longest way across, for a ship, a train or a plane). Same format as the
-  other packs (see `tools/import_props.py`).
+  with its lowest point on the ground, up along +Y, facing +Z (those Meshy
+  made facing -X, `TURNED`, turned a quarter turn), at the game's size
+  (`SIZES`: by its height, or by its length, the longest way across, for a
+  ship, a train or a plane). Same format as the other packs (see
+  `tools/import_props.py`).
 - `color.jpg`: their colour textures together, each brought down to its
   cell (`CELLS`: 1024 pixels square for the big toys the riders pass close
-  by, 512 for the rest), with a 2-pixel margin, the texture coordinates of
-  each moved into it: one texture and one material for every toy. The
-  normal and metal-roughness maps are left out.
+  by, 512 for the small ones), with a 2-pixel margin, the texture
+  coordinates of each moved into it, in an atlas `WIDTH` wide: one texture
+  and one material for every toy. The normal and metal-roughness maps are
+  left out.
+
+A toy that changes cell size has to be given again (its GLB), as its cell
+of the old atlas is cut out at its size in `CELLS`.
 
 The models come one by one: with `--keep`, the toys already in the pack
 stay as they are (their meshes, and their cells of the texture moved to the
@@ -51,7 +56,8 @@ SIZES = {
     "dollhouse": ("height", 30.0),
     # The trains.
     "locomotive": ("length", 7.0),
-    "coach": ("length", 7.0),
+    # Longer than the others, as a coach is: as tall and as wide then.
+    "coach": ("length", 10.5),
     "freight_wagon": ("length", 7.0),
     # Standing about.
     "teddy_bear": ("height", 15.0),
@@ -82,6 +88,9 @@ SIZES = {
     "potted_plant": ("height", 20.0),
     "kids_table": ("length", 16.0),
 }
+# Those Meshy made facing -X (a ship's bow, a locomotive's chimney, a
+# plane's nose), turned a quarter turn to face +Z as the others.
+TURNED = {"pirate_ship", "locomotive", "coach", "freight_wagon", "biplane", "helicopter"}
 # The cells of the big toys the riders pass close by (px); the others' are
 # `CELL`.
 CELLS = {
@@ -90,10 +99,14 @@ CELLS = {
     "pirate_ship": 1024,
     "giraffe_plush": 1024,
     "dollhouse": 1024,
+    "teddy_bear": 1024,
+    "tin_robot": 1024,
+    "biplane": 1024,
+    "helicopter": 1024,
 }
 CELL = 512
-# How wide the atlas is (px): two of the big cells, or four of the others.
-WIDTH = 2048
+# How wide the atlas is (px): four of the big cells, or eight of the others.
+WIDTH = 4096
 MARGIN = 2
 
 
@@ -122,6 +135,12 @@ def read_pack(path):
         triangles = take(indices, "<u4", 1).astype(np.uint32)
         pieces.append((name, positions, normals, uvs, triangles))
     return pieces
+
+
+def quarter_turn(vectors):
+    """`vectors` turned a quarter turn about +Y, -X to +Z."""
+    x, y, z = vectors[:, 0], vectors[:, 1], vectors[:, 2]
+    return np.stack([z, y, -x], axis=1)
 
 
 def cells(sizes):
@@ -180,6 +199,8 @@ def main():
             ))
     for name, path in given:
         positions, normals, uvs, indices, color = read_glb(path)
+        if name in TURNED:
+            positions, normals = quarter_turn(positions), quarter_turn(normals)
         placed, turned, _, _ = place(positions, normals, SIZES[name])
         toys[name] = (placed, turned, uvs, indices, color)
 

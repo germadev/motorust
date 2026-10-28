@@ -1510,26 +1510,49 @@ pub enum TowerKind {
 
 /// An electric train going round and round its track, a closed curve
 /// through `track` (x, z), on whatever stands under it, `height` over the
-/// floor: a locomotive and `wagons` wagons at `speed` (m/s).
+/// floor: a locomotive and `wagons` wagons of `wagon` at `speed` (m/s).
 pub struct Train {
     pub track: &'static [Vec2],
     pub height: f32,
+    pub wagon: Wagon,
     pub wagons: u32,
     pub speed: f32,
 }
 
+/// What a train's locomotive pulls: Meshy's (see `tools/import_toys.py`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Wagon {
+    /// A green coach, longer than the locomotive.
+    Coach,
+    /// A red open wagon loaded with crates.
+    Freight,
+}
+
 /// A castle of plastic bricks `size` across (x and z before it is turned
-/// `heading`, its front along +z), standing `base` over the floor: Meshy's,
-/// as big as fits; or, if a road runs `through` it, grey bricks with red
-/// roofs on its towers built round the road, which runs along it (the way
-/// `heading` says, as a road's), in under a gatehouse at one end and out
-/// under another at the other, between its walls.
+/// `heading`, its front along +z), standing `base` over the floor: one of
+/// Meshy's, as big as fits; or one a road runs through (see
+/// [`CastleKind::Through`]).
 pub struct Castle {
     pub center: Vec2,
     pub size: Vec2,
     pub heading: f32,
     pub base: f32,
-    pub through: bool,
+    pub kind: CastleKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CastleKind {
+    /// Meshy's castle: walls and towers round a keep, its gate on its
+    /// front.
+    Big,
+    /// Meshy's small castle: a round tower under a red roof, its gate on
+    /// its front.
+    Tower,
+    /// Grey bricks with red roofs on its towers built round a road, which
+    /// runs along it (the way `heading` says, as a road's), in under a
+    /// gatehouse at one end and out under another at the other, between its
+    /// walls.
+    Through,
 }
 
 /// A loop of orange toy track on a blue stand, to look at: standing up,
@@ -1556,8 +1579,10 @@ pub enum MatKind {
     Rug(Color),
 }
 
-/// A toy standing about, as big as it says (`scale` times its own size),
-/// turned `heading`, `base` over the floor.
+/// A toy standing about, turned `heading` (its front along +z), `base` over
+/// the floor, as big as `scale` says: times the size it was made at, for
+/// one Meshy made (see `tools/import_toys.py`), or times its own size
+/// (about a metre) for one built in code.
 pub struct Toy {
     pub kind: ToyKind,
     pub position: Vec2,
@@ -1572,22 +1597,22 @@ pub enum ToyKind {
     Blocks,
     /// A beach ball in segments of bright colours.
     Ball,
-    /// A teddy bear, sitting.
+    /// A teddy bear, sitting, a red bow under its chin (Meshy's).
     Bear,
-    /// A rubber duck.
+    /// A rubber duck (Meshy's).
     Duck,
-    /// A robot standing guard, square and blue.
+    /// A tin robot standing guard, blue (Meshy's).
     Robot,
-    /// A spinning top.
+    /// A spinning top in stripes (Meshy's).
     Top,
-    /// A toy aeroplane hanging from the ceiling on its strings, `base` its
-    /// height.
+    /// A biplane hanging from the ceiling on its strings, `base` the height
+    /// of its middle (Meshy's).
     Plane,
-    /// A toy helicopter hanging from the ceiling, as the aeroplane.
+    /// A toy helicopter hanging from the ceiling, as the biplane (Meshy's).
     Helicopter,
     /// A stack of black tyres, as round a racetrack.
     Tyres,
-    /// A pirate ship, its sails striped.
+    /// A pirate ship, its sails striped red and white (Meshy's).
     Ship,
 }
 

@@ -99,11 +99,13 @@ pub const TURBO_BAY: Circuit = Circuit {
                 from: 330.0,
                 to: 470.0,
                 factor: 2.5,
+                raised: false,
             },
             Banking {
                 from: CREST.from,
                 to: CREST.to,
                 factor: 0.0,
+                raised: false,
             },
         ],
         narrows: &[Narrowing {

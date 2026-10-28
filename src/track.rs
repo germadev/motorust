@@ -116,10 +116,16 @@ pub struct Fork {
 
 /// Un tramo (m desde la meta) en el que el peralte se multiplica por
 /// `factor`, sin pasar del máximo.
+///
+/// Where it is `raised`, the road banks as a toy track's banked curve does,
+/// its outside raised on supports: its inside wall stays where it would be
+/// level (on the table or the floor it lies on), and the rest of it rises,
+/// instead of the road turning about its middle (see [`Track::lift`]).
 pub struct Banking {
     pub from: f32,
     pub to: f32,
     pub factor: f32,
+    pub raised: bool,
 }
 
 /// Altura de la línea de meta sobre el nivel del mar: el resto del perfil va
@@ -131,6 +137,10 @@ const BANK_PER_CURVATURE: f32 = 7.0;
 const MAX_BANK: f32 = 0.17;
 /// Puntos a cada lado con los que se suaviza el peralte.
 const BANK_SMOOTHING: usize = 10;
+/// Where the road banks raised (see [`Banking::raised`]), how many points
+/// either side its lift is eased over, twice: in and out over a few tens of
+/// metres, no crest or dip to take off from.
+const LIFT_SMOOTHING: usize = 10;
 
 const TRACK_WIDTH: f32 = 14.0;
 pub const CURB_WIDTH: f32 = 1.2;
@@ -234,6 +244,14 @@ pub struct Track {
     /// Peralte en cada punto (rad): positivo si el lado derecho está más alto,
     /// como en una curva a la izquierda.
     bank: Vec<f32>,
+    /// How much each point of the centre line is raised for its banking
+    /// (m), where it banks raised (see [`Banking::raised`]): at least as much
+    /// as its inside wall would sink turning about the middle. Empty: none
+    /// (a road off the lap lies level where the lap banks raised).
+    lift: Vec<f32>,
+    /// Whether each point of the lap's centre line banks raised. Empty:
+    /// none do.
+    raised: Vec<bool>,
     half_width: f32,
     /// Distancia entre puntos de la línea central (ver [`Self::step_length`]).
     step: f32,
@@ -405,6 +423,8 @@ impl Track {
             centerline: resample(&sample_spline(layout.control_points), SAMPLE_SPACING),
             elevation: Vec::new(),
             bank: Vec::new(),
+            lift: Vec::new(),
+            raised: Vec::new(),
             half_width: (TRACK_WIDTH / 2.0).min(layout.wall - NARROW_MARGIN),
             step: 0.0,
             edges: Vec::new(),
@@ -466,6 +486,35 @@ impl Track {
                         .fold(track.wall, f32::min)
                 })
                 .collect();
+        }
+        // Where it banks raised, its middle goes up by as much as its inside
+        // wall would sink, eased in and out.
+        track.raised = (0..n)
+            .map(|i| {
+                let along = i as f32 * step;
+                layout
+                    .banking
+                    .iter()
+                    .find(|banking| (banking.from..banking.to).contains(&along))
+                    .is_some_and(|banking| banking.raised)
+            })
+            .collect();
+        if track.raised.contains(&true) {
+            let sink: Vec<f32> = (0..n)
+                .map(|i| {
+                    if track.raised[i] {
+                        track.wall_at(i) * track.bank[i].tan().abs()
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+            track.lift = eased(&sink);
+            for (elevation, lift) in track.elevation.iter_mut().zip(&track.lift) {
+                *elevation += lift;
+            }
+        } else {
+            track.raised.clear();
         }
         track
     }
@@ -588,6 +637,8 @@ impl Track {
             centerline,
             elevation: Vec::new(),
             bank: Vec::new(),
+            lift: Vec::new(),
+            raised: Vec::new(),
             half_width: SIDE_HALF_WIDTH,
             step,
             edges: Vec::new(),
@@ -679,7 +730,9 @@ impl Track {
             }
         };
         // It banks for its own curves, but not in the straight into or out
-        // of the loop.
+        // of the loop, nor where the lap beside it banks raised (a toy
+        // track's, on supports): there it lies level.
+        let level_into_loop = |i: usize| smoothstep(LOOP_LEAD, LOOP_LEAD + 30.0, from_loop(i));
         let bank = (0..n)
             .map(|i| {
                 let on = &on_lap[i];
@@ -689,9 +742,12 @@ impl Track {
                     (i as isize - BANK_SMOOTHING as isize)..=(i as isize + BANK_SMOOTHING as isize);
                 let count = window.clone().count() as f32;
                 let curvature = window.map(|j| road.curvature(road.wrap(j))).sum::<f32>() / count;
-                let own_bank = (curvature * BANK_PER_CURVATURE).clamp(-MAX_BANK, MAX_BANK)
-                    * smoothstep(LOOP_LEAD, LOOP_LEAD + 30.0, from_loop(i));
-                lap_bank.lerp(own_bank, apart[i])
+                let own_bank = if self.raised.get(on.index).copied().unwrap_or(false) {
+                    0.0
+                } else {
+                    (curvature * BANK_PER_CURVATURE).clamp(-MAX_BANK, MAX_BANK)
+                };
+                lap_bank.lerp(own_bank, apart[i]) * level_into_loop(i)
             })
             .collect();
         road.elevation = elevation;
@@ -858,6 +914,33 @@ impl Track {
     /// them in (m): see [`Layout::wall`].
     pub fn wall(&self) -> f32 {
         self.wall
+    }
+
+    /// How much point `index` of the centre line is raised for its banking
+    /// (m): where it banks raised (see [`Banking::raised`]), at least as
+    /// much as its inside wall would sink turning about the middle, eased in
+    /// and out; elsewhere nothing.
+    pub fn lift(&self, index: usize) -> f32 {
+        self.lift
+            .get(self.wrap(index as isize))
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    /// The height of the road beside a point already found as it would lie
+    /// level where it banks raised (see [`Banking::raised`]): its inside
+    /// wall's, which stays there; elsewhere, as [`Self::height_beside`].
+    pub fn level_beside(&self, nearest: &Nearest) -> f32 {
+        let road = self.road(nearest.road);
+        let (i, j) = (
+            road.wrap(nearest.index as isize),
+            road.wrap(nearest.index as isize + 1),
+        );
+        if !road.raised.get(i).copied().unwrap_or(false) {
+            return self.height_beside(nearest);
+        }
+        let elevation = road.elevation[i].lerp(road.elevation[j], nearest.t);
+        elevation - road.lift[i].lerp(road.lift[j], nearest.t)
     }
 
     /// Point `index` of the centre line, counting round the lap, or held at
@@ -1542,6 +1625,30 @@ fn profile_height(points: &[(f32, f32)], lap: f32, s: f32) -> f32 {
 
 /// Points about `spacing` metres apart along the smooth closed curve through
 /// `points`, drawn like the centre line of a track: for coastlines.
+/// `values` round a lap eased in and out: at each point the most of them
+/// within twice [`LIFT_SMOOTHING`] points, averaged over as many either
+/// side twice. No less than they were anywhere, and smooth, its grade too.
+fn eased(values: &[f32]) -> Vec<f32> {
+    let n = values.len() as isize;
+    let at = |values: &[f32], i: isize| values[i.rem_euclid(n) as usize];
+    let reach = LIFT_SMOOTHING as isize;
+    let most: Vec<f32> = (0..n)
+        .map(|i| {
+            (i - 2 * reach..=i + 2 * reach)
+                .map(|j| at(values, j))
+                .fold(0.0, f32::max)
+        })
+        .collect();
+    let average = |values: &[f32]| -> Vec<f32> {
+        (0..n)
+            .map(|i| {
+                (i - reach..=i + reach).map(|j| at(values, j)).sum::<f32>() / (2 * reach + 1) as f32
+            })
+            .collect()
+    };
+    average(&average(&most))
+}
+
 pub fn closed_curve(points: &[Vec2], spacing: f32) -> Vec<Vec2> {
     resample(&sample_spline(points), spacing)
 }
@@ -2256,6 +2363,32 @@ mod tests {
             // Las curvas cerradas sí tienen peralte.
             assert!(track.bank.iter().any(|b| b.abs() > 0.08), "{name}");
         }
+    }
+
+    #[test]
+    fn raised_banking_keeps_the_inside_where_it_would_lie_level() {
+        // Its inside wall no lower than the road would lie level, and its
+        // outside well up where it banks well.
+        let mut banked = 0;
+        for (name, track) in every_track() {
+            for i in 0..track.sample_count() {
+                if !track.raised.get(i).copied().unwrap_or(false) {
+                    continue;
+                }
+                let wall = track.wall_at(i);
+                let (left, right) = (
+                    track.surface_point(i, wall).y,
+                    track.surface_point(i, -wall).y,
+                );
+                let level = track.elevation[i] - track.lift[i];
+                assert!(left.min(right) > level - 0.01, "{name}: at {i}");
+                if track.bank[i].abs() > 0.15 {
+                    assert!(left.max(right) > level + 2.0, "{name}: at {i}");
+                    banked += 1;
+                }
+            }
+        }
+        assert!(banked > 0);
     }
 
     #[test]

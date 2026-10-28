@@ -79,18 +79,21 @@ pub const MOON_BASE: Circuit = Circuit {
                 from: LUNAR_CRATER_TURN.from,
                 to: LUNAR_CRATER_TURN.to,
                 factor: 2.2,
+                raised: false,
             },
             // Level across the Crater Split so the branch joins smoothly.
             Banking {
                 from: CRATER_SPLIT.0,
                 to: CRATER_SPLIT.1,
                 factor: 0.25,
+                raised: false,
             },
             // Banked final corner onto the Earth start straight.
             Banking {
                 from: 4340.0,
                 to: 4540.0,
                 factor: 1.5,
+                raised: false,
             },
         ],
         narrows: &[],

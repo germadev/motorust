@@ -90,7 +90,8 @@ a way splits off through a castle of bricks, up a Hot Wheels helix to the top
 of a tall shelving unit, down a helter-skelter's slide to the floor, where
 another way splits off round a loop of orange track, and onto a train table
 and off its edge, crossing over and under itself on slot-car, Hot Wheels and
-slide tracks.
+slide tracks, the slot-car track's bends banked on plastic risers, past toys
+modelled with Meshy.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

@@ -17,7 +17,12 @@ steepest grade, distant stretches clear of each other unless one passes more
 than 12 m over the other, the crests the bikes take off over at top speed
 (on straights only), and the branches' bends and how far they part from the
 lap. The centre line and the heights are worked out as `src/track.rs` does,
-through `tools/circuit_layout.py`: keep the two in step.
+through `tools/circuit_layout.py`: keep the two in step. The banking is left
+out, and with it the lift of the bends on the floor and the furniture,
+which bank raised (their middles up to about 1.3 m higher, eased in and out:
+see `Banking::raised`); the game's tests check the grades and crests with
+it. The way through the castle and the lap beside it are mirror images, as
+long and as gently bent, so that neither way is quicker.
 
 Usage:
     python3 tools/toy_store_layout.py              # the checks
@@ -64,8 +69,9 @@ HELIX_RADIUS = 36.0
 # The way through the castle: straight on along the lap at first and last
 # (m), out to the side and back in bends of this radius (m) and angle (°),
 # gently, and straight through the castle (m); as far along the lap as it
-# runs beside it.
-CASTLE_LEAD, CASTLE_BEND, CASTLE_ANGLE, CASTLE_THROUGH = 10.0, 55.0, 40.0, 20.0
+# runs beside it. The lap beside it does the same to the other side, its
+# mirror image: neither way is the longer or the slower.
+CASTLE_LEAD, CASTLE_BEND, CASTLE_ANGLE, CASTLE_THROUGH = 10.0, 100.0, 20.7, 20.0
 CASTLE_SPAN = 2 * CASTLE_LEAD + 4 * CASTLE_BEND * math.sin(math.radians(CASTLE_ANGLE)) + CASTLE_THROUGH
 CIRCUIT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "circuits", "toy_store.rs")
 
@@ -155,12 +161,19 @@ def lap():
     t.R(30, 180).at(T0, "hairpin")
     t.S(40).at(T0, "T0 edge")
     # Across to the diorama; round its castle (a way through it, see
-    # `castle_way`) and over the start straight.
+    # `castle_way`, while the lap swings out the other way, as far and as
+    # gently) and over the start straight.
     t.S(36).at(T1, "T1 edge")
     t.S(40).at(T1)
     t.keep("castle fork")
-    t.S(CASTLE_SPAN / 2).at(T1, "castle")
-    t.S(CASTLE_SPAN / 2).at(T1, "castle join")
+    t.S(CASTLE_LEAD)
+    t.R(CASTLE_BEND, CASTLE_ANGLE)
+    t.L(CASTLE_BEND, CASTLE_ANGLE)
+    t.S(CASTLE_THROUGH / 2).at(T1, "castle")
+    t.S(CASTLE_THROUGH / 2)
+    t.L(CASTLE_BEND, CASTLE_ANGLE)
+    t.R(CASTLE_BEND, CASTLE_ANGLE)
+    t.S(CASTLE_LEAD).at(T1, "castle join")
     t.keep("castle join")
     # Swinging right and left over the start straight.
     t.R(60, 20).at(T1)

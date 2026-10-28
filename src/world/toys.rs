@@ -22,8 +22,8 @@ use super::Assets3d;
 use super::japan::{Piece, PropPack};
 use super::quads::MeshBuilder;
 use super::scenery::{
-    BridgeStyle, Castle, Furniture, FurnitureKind, Mat, MatKind, Scenery, Span, Tower, Toy,
-    ToyKind, ToyLoop, ToyStore, Train,
+    BridgeStyle, Castle, CastleKind, Furniture, FurnitureKind, Mat, MatKind, Scenery, Span, Tower,
+    Toy, ToyKind, ToyLoop, ToyStore, Train, Wagon,
 };
 use super::structures::indices;
 use super::textures::{TOY_BOXES, WorldTextures};
@@ -115,7 +115,9 @@ fn deck_of(style: BridgeStyle) -> (f32, Color) {
 /// a blue pillar in the middle with a cradle across, and under a slide red
 /// posts in pairs, or, round a tower, brackets off it; each from the deck
 /// down to whatever stands under it (a table, a chair or the floor), but
-/// none where it would stand on a road below.
+/// none where it would stand on a road below. And where a road banks
+/// raised on what it lies on (see [`crate::track::Banking::raised`]), the
+/// grey plastic risers under its outside, and off the bridges its deck too.
 pub fn bridge_pieces(
     track: &Track,
     scenery: &Scenery,
@@ -139,6 +141,34 @@ pub fn bridge_pieces(
                 continue;
             }
             support(&mut supports, track, store, bridge.style, index, depth);
+        }
+    }
+    // Off the bridges, on the floor, where the lap banks raised, its deck,
+    // so that its raised outside shows how thick it is.
+    let step = track.step_length();
+    let on_a_bridge = |index: usize| {
+        scenery
+            .bridges
+            .iter()
+            .any(|bridge| bridge.span.contains(index as f32 * step, lap))
+    };
+    let wanted = |along: f32| within.is_none_or(|stretch| stretch.contains(along, lap));
+    let raised: Vec<usize> = (0..track.sample_count())
+        .filter(|&index| {
+            track.lift(index) > LEAST_LIFT && !on_a_bridge(index) && wanted(index as f32 * step)
+        })
+        .collect();
+    let (depth, color) = deck_of(BridgeStyle::SlotTrack);
+    for run in runs(&raised, track.sample_count()) {
+        deck(&mut decks, track, &run, depth, color);
+    }
+    // The risers, on the lap and on the roads off it.
+    for number in 0..=track.side_roads().len() {
+        let road = track.road(number);
+        for index in (0..road.sample_count()).step_by(RISER_EVERY) {
+            if road.lift(index) > LEAST_LIFT && wanted(road.lap_along_at(index)) {
+                riser(&mut supports, road, store, index, depth);
+            }
         }
     }
     let plastic = |roughness: f32| StandardMaterial {
@@ -196,6 +226,10 @@ fn support(
     index: usize,
     depth: f32,
 ) {
+    // Where it banks raised on what it lies on, its risers carry it.
+    if style == BridgeStyle::SlotTrack && resting(track, store, index, depth) {
+        return;
+    }
     // Under the middle, or in pairs under the lanes, in from the walls.
     let wall = track.wall();
     let laterals: Vec<f32> = match style {
@@ -257,6 +291,117 @@ fn on_a_road_below(track: &Track, point: Vec2, foot: f32, top: f32) -> bool {
         height += 2.0;
     }
     false
+}
+
+/// How much a road must be raised for its banking (m) to stand on risers
+/// (see [`riser`]).
+const LEAST_LIFT: f32 = 0.05;
+/// Every how many points of its centre line a road banked raised has a
+/// riser under it, how long each is along the road (m), and the least gap
+/// under its deck one fills (m).
+const RISER_EVERY: usize = 5;
+const RISER_LENGTH: f32 = 0.8;
+const RISER_GAP: f32 = 0.1;
+/// The grey plastic of a slot-car track's banking supports.
+const RISER_GREY: Color = Color::srgb(0.58, 0.6, 0.64);
+
+/// The points of `indices` (in order, round a lap of `count` points) in
+/// runs one after another, a run across the finish line joined into one.
+fn runs(indices: &[usize], count: usize) -> Vec<Vec<usize>> {
+    let mut runs: Vec<Vec<usize>> = Vec::new();
+    for &index in indices {
+        match runs.last_mut() {
+            Some(run) if run.last() == Some(&(index - 1)) => run.push(index),
+            _ => runs.push(vec![index]),
+        }
+    }
+    if runs.len() > 1 && runs[0][0] == 0 && runs.last().unwrap().last() == Some(&(count - 1)) {
+        let first = runs.remove(0);
+        runs.last_mut().unwrap().extend(first);
+    }
+    runs
+}
+
+/// How far to the left of `road`'s centre line (m) its inside is at point
+/// `index`, where it banks: its lower wall.
+fn inside(road: &Track, index: usize) -> f32 {
+    let wall = road.wall_at(index);
+    if road.surface_point(index, wall).y <= road.surface_point(index, -wall).y {
+        wall
+    } else {
+        -wall
+    }
+}
+
+/// Whether `road`'s deck (`depth` thick) at point `index` rests on what
+/// stands under it on its inside, where it banks raised: on a table, a
+/// chair or the floor, whose risers carry its outside.
+fn resting(road: &Track, store: &ToyStore, index: usize, depth: f32) -> bool {
+    if road.lift(index) <= LEAST_LIFT {
+        return false;
+    }
+    let under = road.surface_point(index, inside(road, index)) - Vec3::Y * depth;
+    let ground = y(ground_under(
+        store,
+        Vec2::new(under.x, under.z),
+        under.y - BASE_ELEVATION,
+    ));
+    under.y - ground < LEAST_GAP
+}
+
+/// A slot-car track's banking support under `road` (its deck `depth`
+/// thick) at point `index`, where it banks raised resting on what stands
+/// under it: a wedge of grey plastic `RISER_LENGTH` along the road, from
+/// where the gap under its deck opens out to its outside edge, its top
+/// under the deck and its foot on the table, the chair or the floor.
+fn riser(mesh: &mut MeshBuilder, road: &Track, store: &ToyStore, index: usize, depth: f32) {
+    if !resting(road, store, index, depth) {
+        return;
+    }
+    let inner = inside(road, index);
+    let edge = -inner.signum() * deck_edge(road);
+    let under = |lateral: f32| road.surface_point(index, lateral) - Vec3::Y * depth;
+    let at = under(inner);
+    let ground = y(ground_under(
+        store,
+        Vec2::new(at.x, at.z),
+        at.y - BASE_ELEVATION,
+    ));
+    // The gap under the deck grows steadily from its inside to its
+    // outside: where it is `RISER_GAP`, the riser starts.
+    let (low, high) = (under(inner).y - ground, under(edge).y - ground);
+    if high <= RISER_GAP {
+        return;
+    }
+    let start = ((RISER_GAP - low) / (high - low)).clamp(0.0, 1.0);
+    let from = inner.lerp(edge, start);
+    let (_, heading) = road.pose_at(index);
+    let along = crate::geometry::forward(heading) * RISER_LENGTH / 2.0;
+    let along = Vec3::new(along.x, 0.0, along.y);
+    let (top_in, top_out) = (under(from), under(edge));
+    let foot = |top: Vec3| Vec3::new(top.x, ground, top.z);
+    let out = (top_out - top_in).with_y(0.0).normalize_or_zero();
+    // Its sloping top, its outer face and its two sides.
+    let (a, b) = (top_in - along, top_in + along);
+    let (c, d) = (top_out + along, top_out - along);
+    let quads = [
+        ([a, b, c, d], Vec3::Y),
+        ([foot(d), foot(c), c, d], out),
+        ([foot(a), foot(d), d, a], -along),
+        ([foot(b), foot(c), c, b], along),
+    ];
+    for (corners, facing) in quads {
+        mesh.quad(
+            [
+                (corners[0], Vec2::ZERO),
+                (corners[1], Vec2::X),
+                (corners[2], Vec2::ONE),
+                (corners[3], Vec2::Y),
+            ],
+            facing,
+            RISER_GREY,
+        );
+    }
 }
 
 /// A tower of four thin posts `half` either side of `base`, `height` tall,
@@ -677,7 +822,11 @@ pub fn store_pieces(
     }
     // The castles a road runs through; the others are Meshy's (see
     // `spawn_models`).
-    for castle in store.castles.iter().filter(|castle| castle.through) {
+    for castle in store
+        .castles
+        .iter()
+        .filter(|castle| castle.kind == CastleKind::Through)
+    {
         self::castle(&mut solid, castle, track.wall());
     }
     for toy_loop in store.loops {
@@ -690,7 +839,7 @@ pub fn store_pieces(
         self::mat(&mut solid, &mut foam, mat);
     }
     for (index, toy) in store.toys.iter().enumerate() {
-        self::toy(&mut solid, &mut blocks, toy, index as u32);
+        self::toy(&mut solid, &mut blocks, toy, index as u32, store.ceiling);
     }
     for train in store.trains {
         rails(&mut solid, train);
@@ -1404,8 +1553,11 @@ fn mat(solid: &mut MeshBuilder, foam: &mut MeshBuilder, mat: &Mat) {
     }
 }
 
-/// A toy standing about (see [`ToyKind`]), as big as its `scale` says.
-fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32) {
+/// A toy standing about (see [`ToyKind`]), as big as its `scale` says,
+/// those built in code: Meshy's are spawned whole (see [`spawn_models`]),
+/// but for the strings those hanging from the ceiling hang from, up to it
+/// (`ceiling` over the floor).
+fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32, ceiling: f32) {
     let s = toy.scale;
     let base = Vec3::new(toy.position.x, y(toy.base), toy.position.y);
     let turn = Quat::from_rotation_y(toy.heading);
@@ -1462,194 +1614,6 @@ fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32) 
                 },
             );
         }
-        ToyKind::Bear => {
-            let fur = Color::srgb(0.66, 0.44, 0.24);
-            let light = Color::srgb(0.9, 0.76, 0.56);
-            let dark = Color::srgb(0.08, 0.06, 0.05);
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.42, 0.0)),
-                0.36 * s,
-                Vec3::new(1.0, 1.1, 0.9),
-                toy.heading,
-                |n| {
-                    if n.z > 0.6 { light } else { fur }
-                },
-            );
-            ball(
-                solid,
-                at(Vec3::new(0.0, 1.0, 0.04)),
-                0.27 * s,
-                Vec3::ONE,
-                toy.heading,
-                |_| fur,
-            );
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.95, 0.27)),
-                0.1 * s,
-                Vec3::new(1.2, 0.9, 1.0),
-                toy.heading,
-                |_| light,
-            );
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.98, 0.37)),
-                0.035 * s,
-                Vec3::ONE,
-                toy.heading,
-                |_| dark,
-            );
-            for x in [-1.0, 1.0] {
-                ball(
-                    solid,
-                    at(Vec3::new(0.2 * x, 1.24, 0.0)),
-                    0.09 * s,
-                    Vec3::new(1.0, 1.0, 0.6),
-                    toy.heading,
-                    |_| fur,
-                );
-                ball(
-                    solid,
-                    at(Vec3::new(0.1 * x, 1.06, 0.24)),
-                    0.035 * s,
-                    Vec3::ONE,
-                    toy.heading,
-                    |_| dark,
-                );
-                ball(
-                    solid,
-                    at(Vec3::new(0.38 * x, 0.55, 0.12)),
-                    0.12 * s,
-                    Vec3::new(0.9, 1.5, 0.9),
-                    toy.heading,
-                    |_| fur,
-                );
-                ball(
-                    solid,
-                    at(Vec3::new(0.2 * x, 0.12, 0.36)),
-                    0.14 * s,
-                    Vec3::new(1.0, 0.9, 1.5),
-                    toy.heading,
-                    |n| {
-                        if n.z > 0.7 { light } else { fur }
-                    },
-                );
-            }
-            // A red bow under its chin.
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.76, 0.24)),
-                0.08 * s,
-                Vec3::new(2.0, 0.8, 0.8),
-                toy.heading,
-                |_| ROOF_RED,
-            );
-        }
-        ToyKind::Duck => {
-            let yellow = Color::srgb(1.0, 0.82, 0.1);
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.32, 0.0)),
-                0.36 * s,
-                Vec3::new(1.0, 0.8, 1.35),
-                toy.heading,
-                |_| yellow,
-            );
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.78, 0.25)),
-                0.22 * s,
-                Vec3::ONE,
-                toy.heading,
-                |_| yellow,
-            );
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.74, 0.47)),
-                0.1 * s,
-                Vec3::new(1.2, 0.5, 1.4),
-                toy.heading,
-                |_| Color::srgb(1.0, 0.45, 0.05),
-            );
-            for x in [-1.0, 1.0] {
-                ball(
-                    solid,
-                    at(Vec3::new(0.12 * x, 0.86, 0.42)),
-                    0.03 * s,
-                    Vec3::ONE,
-                    toy.heading,
-                    |_| Color::BLACK,
-                );
-            }
-        }
-        ToyKind::Robot => {
-            let blue = Color::srgb(0.18, 0.36, 0.8);
-            let grey = Color::srgb(0.62, 0.66, 0.72);
-            let red = Color::srgb(0.85, 0.15, 0.12);
-            let part = |mesh: &mut MeshBuilder, center: Vec3, half: Vec3, color: Color| {
-                cuboid(mesh, at(center), half * s, toy.heading, color);
-            };
-            for x in [-1.0, 1.0] {
-                part(
-                    solid,
-                    Vec3::new(0.13 * x, 0.2, 0.0),
-                    Vec3::new(0.08, 0.2, 0.1),
-                    grey,
-                );
-                part(
-                    solid,
-                    Vec3::new(0.13 * x, 0.03, 0.03),
-                    Vec3::new(0.1, 0.03, 0.14),
-                    blue,
-                );
-                part(
-                    solid,
-                    Vec3::new(0.34 * x, 0.6, 0.0),
-                    Vec3::new(0.07, 0.2, 0.08),
-                    grey,
-                );
-                part(
-                    solid,
-                    Vec3::new(0.34 * x, 0.36, 0.02),
-                    Vec3::new(0.08, 0.05, 0.09),
-                    red,
-                );
-            }
-            part(
-                solid,
-                Vec3::new(0.0, 0.62, 0.0),
-                Vec3::new(0.26, 0.24, 0.17),
-                blue,
-            );
-            part(
-                solid,
-                Vec3::new(0.0, 0.66, 0.175),
-                Vec3::new(0.14, 0.1, 0.01),
-                red,
-            );
-            part(
-                solid,
-                Vec3::new(0.0, 0.98, 0.0),
-                Vec3::new(0.15, 0.12, 0.13),
-                grey,
-            );
-            part(
-                solid,
-                Vec3::new(0.0, 1.0, 0.135),
-                Vec3::new(0.11, 0.03, 0.01),
-                Color::srgb(1.0, 0.85, 0.2),
-            );
-            part(
-                solid,
-                Vec3::new(0.0, 1.14, 0.0),
-                Vec3::new(0.015, 0.05, 0.015),
-                red,
-            );
-        }
-        ToyKind::Plane | ToyKind::Helicopter => {
-            hanging(solid, toy, at, s);
-        }
         ToyKind::Tyres => {
             // Three stacks side by side, five tyres each, the middle one a
             // tyre taller.
@@ -1670,191 +1634,45 @@ fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32) 
                 );
             }
         }
-        ToyKind::Ship => ship(solid, at, s, toy.heading),
-        ToyKind::Top => {
-            let stripes = [
-                Color::srgb(0.9, 0.15, 0.12),
-                Color::srgb(1.0, 0.8, 0.1),
-                Color::srgb(0.15, 0.45, 0.9),
-            ];
-            ball(
-                solid,
-                at(Vec3::new(0.0, 0.42, 0.0)),
-                0.42 * s,
-                Vec3::new(1.0, 0.75, 1.0),
-                toy.heading,
-                |n| stripes[((n.y + 1.0) * 3.0) as usize % stripes.len()],
-            );
-            cone(
-                solid,
-                at(Vec3::new(0.0, 0.12, 0.0)),
-                0.2 * s,
-                -0.12 * s,
-                10,
-                Color::srgb(0.3, 0.3, 0.32),
-            );
-            cylinder(
-                solid,
-                at(Vec3::new(0.0, 0.7, 0.0)),
-                0.06 * s,
-                0.35 * s,
-                8,
-                |_| Color::srgb(0.9, 0.15, 0.12),
-            );
+        ToyKind::Plane | ToyKind::Helicopter => {
+            // Its strings, from where they are tied on up to the ceiling.
+            for &tie in strings_of(toy.kind) {
+                let knot = at(tie);
+                let top = Vec3::new(knot.x, y(ceiling), knot.z);
+                solid.beam(knot, top, 0.05, 0.05, Color::srgb(0.85, 0.85, 0.82));
+            }
         }
+        ToyKind::Bear | ToyKind::Duck | ToyKind::Robot | ToyKind::Top | ToyKind::Ship => {}
     }
 }
 
-/// A toy aeroplane or helicopter hanging from the ceiling on strings, its
-/// middle at `at` of its frame (0 at its middle, `s` its length).
-fn hanging(mesh: &mut MeshBuilder, toy: &Toy, at: impl Fn(Vec3) -> Vec3, s: f32) {
-    let string = Color::srgb(0.85, 0.85, 0.82);
-    let body = Color::srgb(0.92, 0.2, 0.14);
-    let trim = Color::srgb(0.96, 0.96, 0.94);
-    let ahead = |z: f32| at(Vec3::new(0.0, 0.0, -z));
-    // Its strings up to the ceiling, far over it.
-    for z in [-0.3, 0.3] {
-        mesh.beam(ahead(z), ahead(z) + Vec3::Y * 30.0, 0.05, 0.05, string);
-    }
-    if toy.kind == ToyKind::Plane {
-        mesh.beam(ahead(-0.5), ahead(0.5), 0.14 * s, 0.14 * s, body);
-        cone(mesh, ahead(0.5), 0.08 * s, 0.12 * s, 8, trim);
-        // Wings across, a tail plane and a fin.
-        mesh.beam(
-            at(Vec3::new(-0.55, 0.0, -0.1)),
-            at(Vec3::new(0.55, 0.0, -0.1)),
-            0.22 * s,
-            0.03 * s,
-            trim,
-        );
-        mesh.beam(
-            at(Vec3::new(-0.2, 0.02, 0.42)),
-            at(Vec3::new(0.2, 0.02, 0.42)),
-            0.1 * s,
-            0.03 * s,
-            trim,
-        );
-        mesh.beam(
-            at(Vec3::new(0.0, 0.0, 0.45)),
-            at(Vec3::new(0.0, 0.16, 0.48)),
-            0.02 * s,
-            0.1 * s,
-            body,
-        );
-    } else {
-        let blue = Color::srgb(0.15, 0.4, 0.88);
-        ball(
-            mesh,
-            ahead(0.1),
-            0.18 * s,
-            Vec3::new(1.0, 0.9, 1.4),
-            toy.heading,
-            |n| {
-                if n.z < -0.6 && n.y > -0.2 {
-                    Color::srgb(0.6, 0.85, 1.0)
-                } else {
-                    blue
-                }
-            },
-        );
-        mesh.beam(ahead(-0.1), ahead(-0.55), 0.06 * s, 0.06 * s, blue);
-        mesh.beam(
-            at(Vec3::new(-0.05, 0.0, 0.55)),
-            at(Vec3::new(0.05, 0.16, 0.55)),
-            0.02 * s,
-            0.1 * s,
-            body,
-        );
-        // Its rotor, two blades crossed, and a mast.
-        mesh.beam(
-            ahead(0.1) + Vec3::Y * 0.18 * s,
-            ahead(0.1) + Vec3::Y * 0.26 * s,
-            0.04 * s,
-            0.04 * s,
-            trim,
-        );
-        for (a, b) in [
-            (Vec3::new(-0.6, 0.27, 0.1), Vec3::new(0.6, 0.27, 0.1)),
-            (Vec3::new(0.0, 0.27, -0.5), Vec3::new(0.0, 0.27, 0.7)),
-        ] {
-            mesh.beam(
-                at(a),
-                at(b),
-                0.05 * s,
-                0.01 * s,
-                Color::srgb(0.2, 0.2, 0.22),
-            );
-        }
+/// Which of Meshy's toys (see `tools/import_toys.py`) a toy of `kind` is,
+/// if it is one.
+fn model_of(kind: ToyKind) -> Option<&'static str> {
+    match kind {
+        ToyKind::Bear => Some("teddy_bear"),
+        ToyKind::Duck => Some("rubber_duck"),
+        ToyKind::Robot => Some("tin_robot"),
+        ToyKind::Top => Some("spinning_top"),
+        ToyKind::Plane => Some("biplane"),
+        ToyKind::Helicopter => Some("helicopter"),
+        ToyKind::Ship => Some("pirate_ship"),
+        ToyKind::Blocks | ToyKind::Ball | ToyKind::Tyres => None,
     }
 }
 
-/// A pirate ship at `at` of its frame (its keel at 0, `s` its length): a
-/// brown hull with a raised stern, two masts with striped sails, and a
-/// black flag.
-fn ship(mesh: &mut MeshBuilder, at: impl Fn(Vec3) -> Vec3, s: f32, heading: f32) {
-    let wood = Color::srgb(0.45, 0.26, 0.12);
-    let dark = Color::srgb(0.3, 0.17, 0.08);
-    let sail = Color::srgb(0.95, 0.93, 0.86);
-    let stripe = Color::srgb(0.82, 0.12, 0.1);
-    let part = |mesh: &mut MeshBuilder, center: Vec3, half: Vec3, color: Color| {
-        cuboid(mesh, at(center), half * s, heading, color);
-    };
-    // The hull, narrower towards its bow, and its stern castle.
-    part(
-        mesh,
-        Vec3::new(0.0, 0.1, 0.05),
-        Vec3::new(0.14, 0.1, 0.38),
-        wood,
-    );
-    part(
-        mesh,
-        Vec3::new(0.0, 0.08, -0.38),
-        Vec3::new(0.09, 0.08, 0.1),
-        wood,
-    );
-    part(
-        mesh,
-        Vec3::new(0.0, 0.26, 0.34),
-        Vec3::new(0.15, 0.07, 0.1),
-        dark,
-    );
-    part(
-        mesh,
-        Vec3::new(0.0, 0.205, 0.0),
-        Vec3::new(0.145, 0.01, 0.42),
-        dark,
-    );
-    for (z, high) in [(-0.15, 0.75), (0.15, 0.85)] {
-        part(
-            mesh,
-            Vec3::new(0.0, 0.2 + high / 2.0, z),
-            Vec3::new(0.012, high / 2.0, 0.012),
-            dark,
-        );
-        for (k, up) in [0.42, 0.62].into_iter().enumerate() {
-            let color = if k == 0 { stripe } else { sail };
-            part(
-                mesh,
-                Vec3::new(0.0, up * high / 0.85 + 0.12, z + 0.015),
-                Vec3::new(0.2 - 0.04 * k as f32, 0.08, 0.005),
-                color,
-            );
-        }
+/// Where the strings a toy hanging from the ceiling hangs from are tied on,
+/// in its own frame (m, as Meshy's is made, its underside on 0): on a
+/// biplane's upper wing either side of it, on the mast of a helicopter's
+/// rotor.
+fn strings_of(kind: ToyKind) -> &'static [Vec3] {
+    const BIPLANE: [Vec3; 2] = [Vec3::new(-4.3, 7.0, 4.0), Vec3::new(4.3, 7.0, 4.0)];
+    const HELICOPTER: [Vec3; 1] = [Vec3::new(0.0, 6.1, 1.4)];
+    match kind {
+        ToyKind::Plane => &BIPLANE,
+        ToyKind::Helicopter => &HELICOPTER,
+        _ => &[],
     }
-    part(
-        mesh,
-        Vec3::new(0.0, 1.07, 0.21),
-        Vec3::new(0.005, 0.03, 0.05),
-        Color::srgb(0.05, 0.05, 0.05),
-    );
-    // The bowsprit.
-    mesh.beam(
-        at(Vec3::new(0.0, 0.18, -0.45)),
-        at(Vec3::new(0.0, 0.3, -0.62)),
-        0.012 * s,
-        0.012 * s,
-        dark,
-    );
 }
 
 /// How big each of the blocks of a wall of toy blocks is (m).
@@ -1896,8 +1714,9 @@ fn block_walls(mesh: &mut MeshBuilder, track: &Track, scenery: &Scenery) {
     }
 }
 
-/// How far apart a train's rails are (m), and its sleepers.
-const GAUGE: f32 = 2.2;
+/// How far apart a train's rails are (m), about as the wheels of Meshy's
+/// trains (1.25 to 1.55 m apart), and its sleepers.
+const GAUGE: f32 = 1.4;
 const SLEEPER_EVERY: f32 = 1.8;
 
 /// A train's track: its sleepers and its two rails round its curve.
@@ -1913,8 +1732,8 @@ fn rails(mesh: &mut MeshBuilder, train: &Train) {
         for s in [-1.0, 1.0] {
             let (p, q) = (a + side * s * GAUGE / 2.0, b + side * s * GAUGE / 2.0);
             mesh.beam(
-                Vec3::new(p.x, up + 0.45, p.y),
-                Vec3::new(q.x, up + 0.45, q.y),
+                Vec3::new(p.x, up + RAIL_TOP - 0.15, p.y),
+                Vec3::new(q.x, up + RAIL_TOP - 0.15, q.y),
                 0.25,
                 0.3,
                 Color::srgb(0.55, 0.56, 0.6),
@@ -1935,20 +1754,22 @@ fn rails(mesh: &mut MeshBuilder, train: &Train) {
     }
 }
 
-/// A car of an electric train going round its track: the locomotive (0)
-/// or a wagon behind it, so far behind its front (m), along its path (the
-/// track's curve, every metre), at its speed.
+/// A car of an electric train going round its track: the locomotive or a
+/// wagon behind it, `length` long, so far `behind` its front (m), along its
+/// path (the track's curve, every metre), at its speed.
 #[derive(Component)]
 pub struct TrainCar {
     path: std::sync::Arc<Vec<Vec2>>,
     height: f32,
     speed: f32,
     behind: f32,
+    length: f32,
 }
 
-/// How long a train's cars are (m), and the gap between them.
-const CAR_LENGTH: f32 = 7.0;
-const CAR_GAP: f32 = 1.2;
+/// The gap between the cars of a train, buffer to buffer (m).
+const CAR_GAP: f32 = 0.5;
+/// How high the tops of a train's rails are over what it stands on (m).
+const RAIL_TOP: f32 = 0.6;
 
 /// The toys made with Meshy (see `tools/import_toys.py`).
 #[derive(Resource)]
@@ -1964,8 +1785,25 @@ impl FromWorld for ToyModels {
     }
 }
 
-/// The castle of bricks Meshy made, its gate on its front (+Z).
-const CASTLE_MODEL: &str = "castle_big";
+/// Which of Meshy's castles a castle of `kind` is, if it is one: each its
+/// gate on its front (+Z).
+fn castle_model(kind: CastleKind) -> Option<&'static str> {
+    match kind {
+        CastleKind::Big => Some("castle_big"),
+        CastleKind::Tower => Some("castle_small"),
+        CastleKind::Through => None,
+    }
+}
+
+/// Meshy's locomotive, and the wagons it pulls, each facing +Z.
+const LOCOMOTIVE: &str = "locomotive";
+
+fn wagon_model(wagon: Wagon) -> &'static str {
+    match wagon {
+        Wagon::Coach => "coach",
+        Wagon::Freight => "freight_wagon",
+    }
+}
 
 /// How `piece` stands to fill a box `size` across (x and z before it is
 /// turned), turned `heading` (its front, +Z, where the box's +z is), on the
@@ -1978,14 +1816,27 @@ fn fitted(piece: &Piece, size: Vec2, heading: f32, at: Vec2, base: f32) -> Trans
         .with_scale(Vec3::splat(scale))
 }
 
-/// The toys of a toy store Meshy made: the castles no road runs through.
+/// The toys of a toy store Meshy made: the castles no road runs through,
+/// as big as fits in them, and the toys not built in code, as big as they
+/// say, each turned as it says on what it stands on, or, hanging from the
+/// ceiling, its underside as high as it says (its strings are with the rest
+/// of the store, see [`toy`]).
 pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &mut Assets3d) {
     let pack = &assets.toys.0;
-    let piece = pack.piece(CASTLE_MODEL);
-    for castle in store.castles.iter().filter(|castle| !castle.through) {
+    let mut spawn = |piece: &Piece, transform: Transform| {
         world.spawn((
             Mesh3d(piece.mesh.clone()),
             MeshMaterial3d(pack.material.clone()),
+            transform,
+        ));
+    };
+    for castle in store.castles {
+        let Some(name) = castle_model(castle.kind) else {
+            continue;
+        };
+        let piece = pack.piece(name);
+        spawn(
+            piece,
             fitted(
                 piece,
                 castle.size,
@@ -1993,43 +1844,48 @@ pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: 
                 castle.center,
                 castle.base,
             ),
-        ));
+        );
+    }
+    for toy in store.toys {
+        let Some(name) = model_of(toy.kind) else {
+            continue;
+        };
+        spawn(
+            pack.piece(name),
+            Transform::from_xyz(toy.position.x, y(toy.base), toy.position.y)
+                .with_rotation(Quat::from_rotation_y(toy.heading))
+                .with_scale(Vec3::splat(toy.scale)),
+        );
     }
 }
 
-/// The electric trains, each a locomotive and its wagons, put on their
-/// tracks to go round them.
+/// The electric trains, each Meshy's locomotive and its wagons, put on
+/// their tracks to go round them.
 pub fn spawn_trains(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &mut Assets3d) {
-    let material = assets.materials.add(plastic(0.4));
-    let locomotive = assets.meshes.add(locomotive_mesh());
-    let wagons: Vec<Handle<Mesh>> = [
-        Color::srgb(0.85, 0.15, 0.12),
-        Color::srgb(1.0, 0.78, 0.1),
-        Color::srgb(0.15, 0.42, 0.88),
-        Color::srgb(0.2, 0.66, 0.3),
-    ]
-    .into_iter()
-    .map(|color| assets.meshes.add(wagon_mesh(color)))
-    .collect();
+    let pack = &assets.toys.0;
     for train in store.trains {
         let path = std::sync::Arc::new(closed_curve(train.track, 1.0));
+        let mut behind = 0.0;
         for car in 0..=train.wagons {
-            let mesh = if car == 0 {
-                locomotive.clone()
+            let piece = pack.piece(if car == 0 {
+                LOCOMOTIVE
             } else {
-                wagons[(car as usize - 1) % wagons.len()].clone()
-            };
+                wagon_model(train.wagon)
+            });
+            let length = piece.high.z - piece.low.z;
             world.spawn((
-                Mesh3d(mesh),
-                MeshMaterial3d(material.clone()),
+                Mesh3d(piece.mesh.clone()),
+                MeshMaterial3d(pack.material.clone()),
                 Transform::default(),
                 TrainCar {
                     path: path.clone(),
                     height: train.height,
                     speed: train.speed,
-                    behind: car as f32 * (CAR_LENGTH + CAR_GAP),
+                    behind,
+                    length,
                 },
             ));
+            behind += length + CAR_GAP;
         }
     }
 }
@@ -2045,7 +1901,7 @@ pub fn run_trains(time: Res<Time>, mut cars: Query<(&mut Transform, &TrainCar)>)
 
 /// Where a car of a train is at `elapsed` seconds, and which way it faces:
 /// between the points of its curve its wheels are on, half its length
-/// either side of its middle.
+/// either side of its middle, on its rails, its front (+Z) ahead.
 fn car_pose(car: &TrainCar, elapsed: f32) -> Transform {
     let n = car.path.len();
     let at = |s: f32| {
@@ -2053,112 +1909,14 @@ fn car_pose(car: &TrainCar, elapsed: f32) -> Transform {
         let i = s.floor() as usize;
         car.path[i % n].lerp(car.path[(i + 1) % n], s.fract())
     };
-    let middle = elapsed * car.speed - car.behind - CAR_LENGTH / 2.0;
-    let (front, back) = (at(middle + CAR_LENGTH / 2.0), at(middle - CAR_LENGTH / 2.0));
+    let half = car.length / 2.0;
+    let middle = elapsed * car.speed - car.behind - half;
+    let (front, back) = (at(middle + half), at(middle - half));
     let center = (front + back) / 2.0;
-    let heading = crate::geometry::heading_of(front - back);
-    Transform::from_xyz(center.x, y(car.height) + 0.6, center.y)
+    // A heading turns -Z along the way; the cars face +Z.
+    let heading = crate::geometry::heading_of(front - back) + PI;
+    Transform::from_xyz(center.x, y(car.height) + RAIL_TOP, center.y)
         .with_rotation(Quat::from_rotation_y(heading))
-}
-
-/// An electric train's locomotive, in its own frame (facing -z, its wheels
-/// on 0): a black boiler with a chimney and a red cab, on red wheels.
-fn locomotive_mesh() -> Mesh {
-    let mut mesh = MeshBuilder::default();
-    let black = Color::srgb(0.1, 0.1, 0.12);
-    let red = Color::srgb(0.82, 0.12, 0.1);
-    let gold = Color::srgb(0.95, 0.75, 0.25);
-    // The frame, the boiler lying along it, the chimney and the cab.
-    cuboid(
-        &mut mesh,
-        Vec3::new(0.0, 0.9, 0.0),
-        Vec3::new(1.4, 0.35, 3.5),
-        0.0,
-        black,
-    );
-    mesh.beam(
-        Vec3::new(0.0, 2.4, -3.4),
-        Vec3::new(0.0, 2.4, 0.6),
-        2.2,
-        2.2,
-        black,
-    );
-    cuboid(
-        &mut mesh,
-        Vec3::new(0.0, 2.4, -3.45),
-        Vec3::new(0.8, 0.8, 0.06),
-        0.0,
-        gold,
-    );
-    cylinder(&mut mesh, Vec3::new(0.0, 3.4, -2.6), 0.45, 1.6, 8, |_| {
-        black
-    });
-    cuboid(
-        &mut mesh,
-        Vec3::new(0.0, 2.7, 2.0),
-        Vec3::new(1.4, 1.6, 1.4),
-        0.0,
-        red,
-    );
-    cuboid(
-        &mut mesh,
-        Vec3::new(0.0, 4.4, 2.0),
-        Vec3::new(1.6, 0.15, 1.6),
-        0.0,
-        black,
-    );
-    for z in [-2.4, -0.6, 1.2, 2.8] {
-        for x in [-1.25, 1.25] {
-            mesh.beam(
-                Vec3::new(x - 0.2, 0.75, z),
-                Vec3::new(x + 0.2, 0.75, z),
-                1.4,
-                1.4,
-                red,
-            );
-        }
-    }
-    mesh.build()
-}
-
-/// A wagon of `color` in its own frame (as [`locomotive_mesh`]): a covered
-/// box car on black wheels.
-fn wagon_mesh(color: Color) -> Mesh {
-    let mut mesh = MeshBuilder::default();
-    let black = Color::srgb(0.1, 0.1, 0.12);
-    cuboid(
-        &mut mesh,
-        Vec3::new(0.0, 0.9, 0.0),
-        Vec3::new(1.3, 0.3, 3.4),
-        0.0,
-        black,
-    );
-    cuboid(
-        &mut mesh,
-        Vec3::new(0.0, 2.4, 0.0),
-        Vec3::new(1.4, 1.2, 3.3),
-        0.0,
-        color,
-    );
-    cuboid(
-        &mut mesh,
-        Vec3::new(0.0, 3.75, 0.0),
-        Vec3::new(1.55, 0.15, 3.45),
-        0.0,
-        color.mix(&Color::WHITE, 0.35),
-    );
-    for z in [-2.3, 2.3] {
-        for x in [-1.2, 1.2] {
-            mesh.beam(
-                Vec3::new(x - 0.2, 0.7, z),
-                Vec3::new(x + 0.2, 0.7, z),
-                1.2,
-                1.2,
-                black,
-            );
-        }
-    }
-    mesh.build()
 }
 
 #[cfg(test)]
@@ -2206,19 +1964,86 @@ mod tests {
 
     #[test]
     fn the_road_lies_on_the_furniture_or_well_clear_of_it() {
-        // On a piece of furniture the road lies on its top; over it or
-        // under it, it leaves room for a bike and its rider.
+        // On a piece of furniture the road lies on its top, its inside
+        // (where it banks, its lower wall) a little over it, more by no
+        // more than it is raised for its banking, on its risers; over it
+        // or under it, it leaves room for a bike and its rider.
         for (name, store, track) in stores() {
-            for (point, height) in road(&track) {
-                for furniture in store.furniture.iter().filter(|f| f.covers(point, 1.0)) {
-                    let over = height - furniture.top;
-                    assert!(
-                        (0.2..=1.5).contains(&over) || over.abs() > 8.0,
-                        "{name}: the road at {point} is {over} m over the top of the furniture at {}",
-                        furniture.center
-                    );
+            for number in 0..=track.side_roads().len() {
+                let line = track.road(number);
+                for index in 0..line.sample_count() {
+                    let (point, _) = line.pose_at(index);
+                    let wall = line.wall_at(index);
+                    let low = line
+                        .surface_point(index, wall)
+                        .y
+                        .min(line.surface_point(index, -wall).y)
+                        - BASE_ELEVATION;
+                    for furniture in store.furniture.iter().filter(|f| f.covers(point, 1.0)) {
+                        let over = low - furniture.top;
+                        assert!(
+                            (0.2..=1.5 + line.lift(index)).contains(&over) || over.abs() > 8.0,
+                            "{name}: the road at {point} is {over} m over the top of the furniture at {}",
+                            furniture.center
+                        );
+                    }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn the_way_through_the_castle_is_as_long_and_as_fast_as_the_lap_beside_it() {
+        // The two ways are mirror images: as long, and their tightest bends
+        // as wide.
+        for (name, _, track) in stores() {
+            let n = track.sample_count();
+            for fork in track.forks() {
+                let road = track.road(fork.road);
+                let lap = ((fork.join + n - fork.fork) % n) as f32 * track.step_length();
+                assert!(
+                    (road.length() - lap).abs() < 2.0,
+                    "{name}: {} m beside {lap} m",
+                    road.length()
+                );
+                let tightest = |line: &Track, from: usize, count: usize| {
+                    (from..from + count)
+                        .map(|i| line.smoothed_curvature(i % line.sample_count(), 4))
+                        .fold(0.0, f32::max)
+                };
+                let (own, beside) = (
+                    tightest(road, 0, road.sample_count()),
+                    tightest(&track, fork.fork, (fork.join + n - fork.fork) % n),
+                );
+                assert!(
+                    (own - beside).abs() < 0.1 * beside,
+                    "{name}: bends of {} m beside {} m",
+                    1.0 / own,
+                    1.0 / beside
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_bends_on_the_furniture_bank_raised_on_their_risers() {
+        // Banked well, their insides on the furniture, their outsides up
+        // on risers.
+        for (name, store, track) in stores() {
+            let (depth, _) = deck_of(BridgeStyle::SlotTrack);
+            let banked = (0..track.sample_count())
+                .filter(|&index| {
+                    let (point, _) = track.pose_at(index);
+                    let wall = track.wall_at(index);
+                    let rise = (track.surface_point(index, wall).y
+                        - track.surface_point(index, -wall).y)
+                        .abs();
+                    store.furniture.iter().any(|f| f.covers(point, 0.0))
+                        && rise > 1.5
+                        && resting(&track, store, index, depth)
+                })
+                .count();
+            assert!(banked > 100, "{name}: {banked} points");
         }
     }
 
@@ -2306,7 +2131,11 @@ mod tests {
                     );
                 }
             }
-            for castle in store.castles.iter().filter(|castle| !castle.through) {
+            for castle in store
+                .castles
+                .iter()
+                .filter(|castle| castle.kind != CastleKind::Through)
+            {
                 assert!(
                     clear(
                         castle.center,
@@ -2339,13 +2168,23 @@ mod tests {
                 );
             }
             for toy in store.toys {
+                // How far it reaches round its middle and how tall it is:
+                // Meshy's as it was made (centred), the others about a
+                // metre.
+                let (reach, tall) = match model_of(toy.kind) {
+                    Some(model) => {
+                        let (_, high) = model_bounds(model);
+                        (Vec2::new(high.x, high.z).length(), high.y)
+                    }
+                    None => (1.6, 1.5),
+                };
                 // Those hanging from the ceiling, from their strings down.
                 let (low, high) = match toy.kind {
                     ToyKind::Plane | ToyKind::Helicopter => (toy.base - 3.0, store.ceiling),
-                    _ => (toy.base - 3.0, toy.base + 1.5 * toy.scale + 3.0),
+                    _ => (toy.base - 3.0, toy.base + tall * toy.scale + 3.0),
                 };
                 assert!(
-                    clear(toy.position, 1.6 * toy.scale, low, high),
+                    clear(toy.position, reach * toy.scale, low, high),
                     "{name}: the toy at {}",
                     toy.position
                 );
@@ -2357,7 +2196,11 @@ mod tests {
     fn a_road_runs_through_the_castle_built_round_it() {
         let mut castles = 0;
         for (name, store, track) in stores() {
-            for castle in store.castles.iter().filter(|castle| castle.through) {
+            for castle in store
+                .castles
+                .iter()
+                .filter(|castle| castle.kind == CastleKind::Through)
+            {
                 // A road along it, through its middle, on what it stands on,
                 // its walls well inside the castle's.
                 let nearest = track.nearest_at(castle.center, y(castle.base) + 1.0);
@@ -2377,16 +2220,41 @@ mod tests {
         assert!(castles > 0);
     }
 
+    /// The pieces of Meshy's toys in their pack.
+    fn pack() -> Vec<crate::bike::model::imported::PackedMesh> {
+        crate::bike::model::imported::read(include_bytes!("../../assets/models/toys/props.bin"))
+            .meshes
+    }
+
+    /// The corners of the box round Meshy's toy `name` as it was made.
+    fn model_bounds(name: &str) -> (Vec3, Vec3) {
+        let pieces = pack();
+        let piece = pieces
+            .iter()
+            .find(|piece| piece.name == name)
+            .unwrap_or_else(|| panic!("no {name} in the pack"));
+        super::super::japan::bounds(&piece.mesh)
+    }
+
     #[test]
     fn every_toy_meshy_made_is_in_the_pack_on_the_ground_and_light() {
-        let pack = crate::bike::model::imported::read(include_bytes!(
-            "../../assets/models/toys/props.bin"
-        ));
-        assert!(
-            pack.meshes.iter().any(|piece| piece.name == CASTLE_MODEL),
-            "no {CASTLE_MODEL} in the pack"
-        );
-        for piece in &pack.meshes {
+        let pieces = pack();
+        // Every one the stores place.
+        for (name, store, _) in stores() {
+            let castles = store.castles.iter().filter_map(|c| castle_model(c.kind));
+            let toys = store.toys.iter().filter_map(|toy| model_of(toy.kind));
+            let trains = store
+                .trains
+                .iter()
+                .flat_map(|train| [LOCOMOTIVE, wagon_model(train.wagon)]);
+            for model in castles.chain(toys).chain(trains) {
+                assert!(
+                    pieces.iter().any(|piece| piece.name == model),
+                    "{name}: no {model} in the pack"
+                );
+            }
+        }
+        for piece in &pieces {
             let name = &piece.name;
             let (low, high) = super::super::japan::bounds(&piece.mesh);
             assert!(low.y.abs() < 1e-3, "{name} stands on the ground");
@@ -2394,6 +2262,50 @@ mod tests {
             assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");
             let triangles = piece.mesh.indices().unwrap().len() / 3;
             assert!(triangles < 8_000, "{name}: {triangles} triangles");
+        }
+    }
+
+    #[test]
+    fn the_hanging_toys_strings_are_tied_on_to_them() {
+        // Each knot on the toy's top, within its box.
+        for kind in [ToyKind::Plane, ToyKind::Helicopter] {
+            let model = model_of(kind).unwrap();
+            let (low, high) = model_bounds(model);
+            assert!(!strings_of(kind).is_empty(), "{model}");
+            for knot in strings_of(kind) {
+                assert!(
+                    (low.x..=high.x).contains(&knot.x) && (low.z..=high.z).contains(&knot.z),
+                    "{model}: {knot}"
+                );
+                assert!(high.y - knot.y < 0.5, "{model}: {knot}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_trains_wheels_run_on_their_rails() {
+        // The wheels of each car (most of its vertices near the ground)
+        // either side of its middle, about as far apart as the rails.
+        for model in [LOCOMOTIVE, "coach", "freight_wagon"] {
+            let pieces = pack();
+            let piece = pieces.iter().find(|piece| piece.name == model).unwrap();
+            let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) =
+                piece.mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+            else {
+                panic!("{model}: no positions");
+            };
+            let mut wheels: Vec<f32> = positions
+                .iter()
+                .filter(|p| p[1] < 0.25)
+                .map(|p| p[0].abs())
+                .collect();
+            wheels.sort_by(f32::total_cmp);
+            let spread = wheels[wheels.len() / 2];
+            assert!(
+                (spread * 2.0 - GAUGE).abs() < 0.3,
+                "{model}: its wheels {} m apart",
+                spread * 2.0
+            );
         }
     }
 
@@ -2407,6 +2319,7 @@ mod tests {
             speed: train.speed,
             behind: 0.0,
             height: train.height,
+            length: 7.0,
         };
         let length = path.len() as f32;
         let lap = length / train.speed;
