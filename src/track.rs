@@ -119,7 +119,7 @@ pub struct Banking {
 
 /// Altura de la línea de meta sobre el nivel del mar: el resto del perfil va
 /// por encima, así ni el lado bajo de los peraltes toca el agua.
-const BASE_ELEVATION: f32 = 2.0;
+pub const BASE_ELEVATION: f32 = 2.0;
 /// Peralte (rad) por cada unidad de curvatura (1/m): cuanto más cerrada la
 /// curva, más inclinada hacia dentro está la carretera.
 const BANK_PER_CURVATURE: f32 = 7.0;

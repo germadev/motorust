@@ -9,7 +9,7 @@ use bevy::{
 use super::Assets3d;
 use super::lettering::sign_image;
 use super::quads::MeshBuilder;
-use super::scenery::{BridgeStyle, Gantry, Scenery, Side, Span, WallStyle};
+use super::scenery::{BridgeStyle, Gantry, Scenery, Side, Soil, Span, WallStyle};
 use super::terrain::{Terrain, shaded};
 use super::textures::{STONE_WALL, WorldTextures};
 use crate::geometry::{fbm, smoothstep};
@@ -44,6 +44,18 @@ const RAILING_GREEN: Color = Color::srgb(0.08, 0.42, 0.28);
 const SHRINE_VERMILION: Color = Color::srgb(0.8, 0.17, 0.07);
 /// The weathered wood of a fence along the Shire's lanes.
 const FENCE_WOOD: Color = Color::srgb(0.42, 0.33, 0.24);
+/// Indoors, the borders of the toy tracks: a slot-car track's low red and
+/// white one, Hot Wheels' orange edge and a slide's tall side (m over the
+/// road).
+const SLOT_BORDER_HEIGHT: f32 = 0.7;
+const ORANGE_EDGE_HEIGHT: f32 = 1.0;
+const CHUTE_SIDE_HEIGHT: f32 = 2.45;
+const HOT_WHEELS_ORANGE: Color = Color::srgb(1.0, 0.42, 0.04);
+const SLIDE_RED: Color = Color::srgb(0.88, 0.12, 0.08);
+/// The plastic of a toy track between its lanes and its borders: a slot-car
+/// track's charcoal, Hot Wheels' orange and a slide's yellow.
+const SLOT_MARGIN: Color = Color::srgb(0.1, 0.1, 0.11);
+const SLIDE_YELLOW: Color = Color::srgb(1.0, 0.8, 0.08);
 const WALL_THICKNESS: f32 = 0.6;
 /// Lo que se hunde el muro en el suelo, para que no flote en las cuestas.
 const WALL_FOOTING: f32 = 0.5;
@@ -95,8 +107,11 @@ pub fn road_pieces(
         },
     );
 
-    // Huellas de derrape y frenada en las curvas para dar dinamismo al asfalto.
-    if let Some(skids) = skid_marks(track) {
+    // Huellas de derrape y frenada en las curvas para dar dinamismo al asfalto
+    // (not on a toy's clean plastic, indoors).
+    if scenery.soil != Soil::Floor
+        && let Some(skids) = skid_marks(track)
+    {
         spawn(
             skids,
             StandardMaterial {
@@ -240,17 +255,22 @@ fn spawn_surface(
     };
     // The asphalt, except where it lies under the lap's.
     let covered = |corners: [Vec2; 4]| corners.iter().all(|&p| road.on_other_asphalt(p));
-    spawn(
-        ribbon(road, -half, half, 0.0, ASPHALT_TILE, |index, corners| {
-            ((road.number == 0 || !covered(corners)) && !planked(index)).then_some(Color::WHITE)
-        }),
-        StandardMaterial {
-            base_color_texture: Some(textures.asphalt.clone()),
-            perceptual_roughness: 0.88,
-            reflectance: 0.5,
-            ..default()
-        },
-    );
+    let indoors = scenery.soil == Soil::Floor;
+    if indoors {
+        spawn_toy_tracks(spawn, road, scenery, textures);
+    } else {
+        spawn(
+            ribbon(road, -half, half, 0.0, ASPHALT_TILE, |index, corners| {
+                ((road.number == 0 || !covered(corners)) && !planked(index)).then_some(Color::WHITE)
+            }),
+            StandardMaterial {
+                base_color_texture: Some(textures.asphalt.clone()),
+                perceptual_roughness: 0.88,
+                reflectance: 0.5,
+                ..default()
+            },
+        );
+    }
 
     // Pinturas: líneas blancas a los lados, discontinua en el centro y pianos
     // de dos colores solo en las curvas (and into and out of the loops).
@@ -264,7 +284,8 @@ fn spawn_surface(
         let middle = corners.iter().sum::<Vec2>() / 4.0;
         !road.on_other_asphalt(middle)
     };
-    let white = |index, corners| (clear(corners) && !planked(index)).then_some(Color::WHITE);
+    let white =
+        |index, corners| (clear(corners) && !planked(index) && !indoors).then_some(Color::WHITE);
     let edge = half - EDGE_LINE_INSET;
     spawn(
         ribbon(road, edge - LINE_WIDTH, edge, PAINT_LIFT, 1.0, white),
@@ -275,7 +296,7 @@ fn spawn_surface(
         painted(),
     );
     let dashes = |index: usize, corners| {
-        (index % (DASH.0 + DASH.1) < DASH.0 && clear(corners) && !planked(index))
+        (index % (DASH.0 + DASH.1) < DASH.0 && clear(corners) && !planked(index) && !indoors)
             .then_some(Color::WHITE)
     };
     let center = LINE_WIDTH / 2.0;
@@ -283,9 +304,14 @@ fn spawn_surface(
         ribbon(road, -center, center, PAINT_LIFT, 1.0, dashes),
         painted(),
     );
+    // Indoors, kerbs only on a slot-car track, as its red and white ones.
     let curbs = |index: usize, corners| {
-        (has_curbs(road, index) && clear(corners) && !planked(index))
-            .then_some(scenery.curbs[index % 2])
+        let toy = indoors.then(|| toy_track(scenery, lap, line.lap_along_at(index)));
+        (has_curbs(road, index)
+            && clear(corners)
+            && !planked(index)
+            && toy.is_none_or(|style| style == BridgeStyle::SlotTrack))
+        .then_some(scenery.curbs[index % 2])
     };
     spawn(
         ribbon(road, half, half + CURB_WIDTH, 0.0, 1.0, curbs),
@@ -352,6 +378,30 @@ fn spawn_surface(
                 ..default()
             },
         ),
+        (
+            WallStyle::SlotBorder,
+            StandardMaterial {
+                base_color_texture: Some(textures.stripes.clone()),
+                perceptual_roughness: 0.4,
+                ..default()
+            },
+        ),
+        (
+            WallStyle::OrangeEdge,
+            StandardMaterial {
+                base_color: HOT_WHEELS_ORANGE,
+                perceptual_roughness: 0.35,
+                ..default()
+            },
+        ),
+        (
+            WallStyle::ChuteSide,
+            StandardMaterial {
+                base_color: SLIDE_RED,
+                perceptual_roughness: 0.3,
+                ..default()
+            },
+        ),
     ] {
         let mesh = walls(road, terrain, wanted, |index, side| {
             style(index, side) == Some(wanted)
@@ -382,10 +432,81 @@ fn spawn_surface(
     }
 }
 
+/// Which toy track the road is at a point of the lap indoors: Hot Wheels'
+/// orange track or a slide where a bridge of theirs says so, and otherwise
+/// a slot-car track, on the floor or on what stands on it.
+pub(super) fn toy_track(scenery: &Scenery, lap: f32, along: f32) -> BridgeStyle {
+    scenery
+        .bridges
+        .iter()
+        .find(|bridge| bridge.span.contains(along, lap))
+        .map(|bridge| bridge.style)
+        .filter(|style| matches!(style, BridgeStyle::OrangeTrack | BridgeStyle::Slide))
+        .unwrap_or(BridgeStyle::SlotTrack)
+}
+
+/// Indoors, the road as a toy track (see [`toy_track`]): its lanes, and its
+/// plastic on out under its borders.
+fn spawn_toy_tracks(
+    spawn: &mut impl FnMut(Mesh, StandardMaterial),
+    road: Road,
+    scenery: &Scenery,
+    textures: &WorldTextures,
+) {
+    let line = road.line();
+    let half = line.half_width();
+    let lap = road.track.lap_length();
+    let style = |index: usize| toy_track(scenery, lap, line.lap_along_at(index));
+    for (wanted, texture, margin, roughness) in [
+        (
+            BridgeStyle::SlotTrack,
+            &textures.slot_track,
+            SLOT_MARGIN,
+            0.22,
+        ),
+        (
+            BridgeStyle::OrangeTrack,
+            &textures.orange_track,
+            HOT_WHEELS_ORANGE,
+            0.38,
+        ),
+        (BridgeStyle::Slide, &textures.chute, SLIDE_YELLOW, 0.22),
+    ] {
+        let mine = |index: usize| (style(index) == wanted).then_some(Color::WHITE);
+        let lanes = ribbon(road, -half, half, 0.0, ASPHALT_TILE, |index, _| mine(index));
+        if lanes.count_vertices() == 0 {
+            continue;
+        }
+        spawn(
+            lanes,
+            StandardMaterial {
+                base_color_texture: Some(texture.clone()),
+                perceptual_roughness: roughness,
+                reflectance: 0.5,
+                ..default()
+            },
+        );
+        // Under the kerbs and out to the borders, a little below the lanes.
+        let plastic = || StandardMaterial {
+            base_color: margin,
+            perceptual_roughness: roughness,
+            ..default()
+        };
+        for (from, to) in [(half, WALL_DISTANCE + 0.3), (-WALL_DISTANCE - 0.3, -half)] {
+            spawn(
+                ribbon(road, from, to, -0.01, 1.0, |index, _| mine(index)),
+                plastic(),
+            );
+        }
+    }
+}
+
 /// Cómo se cierra la carretera a un lado en un punto de la vuelta, o `None`
 /// si no hay muro (en los túneles, que tienen sus paredes).
-fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<WallStyle> {
-    if scenery.tunnels.iter().any(|span| span.contains(along, lap)) {
+pub(super) fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<WallStyle> {
+    // Indoors, a tunnel is only a stretch under something else: the road
+    // has its borders there as anywhere.
+    if scenery.soil != Soil::Floor && scenery.tunnels.iter().any(|span| span.contains(along, lap)) {
         return None;
     }
     if let Some(bridge) = scenery
@@ -409,6 +530,10 @@ fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<Wal
                 Some(WallStyle::Concrete)
             }
             BridgeStyle::Wooden | BridgeStyle::OldWooden => None,
+            // A toy track's own borders.
+            BridgeStyle::SlotTrack => Some(WallStyle::SlotBorder),
+            BridgeStyle::OrangeTrack => Some(WallStyle::OrangeEdge),
+            BridgeStyle::Slide => Some(WallStyle::ChuteSide),
         };
     }
     // Where a small prop stands by the road, the wall is the shrine's low
@@ -564,11 +689,57 @@ fn profile(style: WallStyle) -> Profile {
             2,
             Vec2::splat(WALL_TILE),
         ),
+        // A slot-car track's low border, rounded over its top.
+        WallStyle::SlotBorder => (
+            &[
+                (0.0, foot),
+                (0.0, SLOT_BORDER_HEIGHT - 0.2),
+                (0.15, SLOT_BORDER_HEIGHT),
+                (0.5, SLOT_BORDER_HEIGHT),
+                (0.6, SLOT_BORDER_HEIGHT - 0.2),
+                (0.6, foot),
+            ],
+            0.08,
+            1,
+            Vec2::splat(4.0),
+        ),
+        // Hot Wheels' edge: thin, straight up, its top lip turned out.
+        WallStyle::OrangeEdge => (
+            &[
+                (0.0, foot),
+                (0.0, ORANGE_EDGE_HEIGHT - 0.1),
+                (0.06, ORANGE_EDGE_HEIGHT),
+                (0.32, ORANGE_EDGE_HEIGHT),
+                (0.32, ORANGE_EDGE_HEIGHT - 0.12),
+                (0.2, ORANGE_EDGE_HEIGHT - 0.2),
+                (0.2, foot),
+            ],
+            0.04,
+            1,
+            Vec2::splat(WALL_TILE),
+        ),
+        // A slide's side: tall, curving up from the chute, rolled over at
+        // its top.
+        WallStyle::ChuteSide => (
+            &[
+                (-0.5, 0.0),
+                (0.0, 0.5),
+                (0.0, CHUTE_SIDE_HEIGHT - 0.25),
+                (0.15, CHUTE_SIDE_HEIGHT),
+                (0.45, CHUTE_SIDE_HEIGHT),
+                (0.5, CHUTE_SIDE_HEIGHT - 0.25),
+                (0.5, foot),
+            ],
+            0.25,
+            1,
+            Vec2::splat(WALL_TILE),
+        ),
         WallStyle::Checkered
         | WallStyle::Timber
         | WallStyle::Railing
         | WallStyle::ShrineFence
-        | WallStyle::Fence => (
+        | WallStyle::Fence
+        | WallStyle::Blocks => (
             &[
                 (0.0, foot),
                 (0.0, WALL_HEIGHT),
@@ -633,7 +804,10 @@ const BARRIER_JOINT: f32 = 0.025;
 /// grime at its foot, slow changes of tone along it, and, on stone, its
 /// lighter coping and moss low down; on a hedge, the shade inside it.
 fn wall_tint(style: WallStyle, p: Vec3, up: f32) -> Color {
-    if style == WallStyle::Checkered {
+    if matches!(
+        style,
+        WallStyle::Checkered | WallStyle::SlotBorder | WallStyle::OrangeEdge | WallStyle::ChuteSide
+    ) {
         return Color::WHITE;
     }
     let ground = Vec2::new(p.x, p.z);
@@ -1500,6 +1674,10 @@ mod tests {
                     BridgeStyle::Wooden | BridgeStyle::OldWooden => {
                         assert_eq!(wall, None, "{}", circuit.name)
                     }
+                    // A toy track's own borders.
+                    BridgeStyle::SlotTrack => assert_eq!(wall, Some(WallStyle::SlotBorder)),
+                    BridgeStyle::OrangeTrack => assert_eq!(wall, Some(WallStyle::OrangeEdge)),
+                    BridgeStyle::Slide => assert_eq!(wall, Some(WallStyle::ChuteSide)),
                 }
                 // Off the bridge, the walls are back.
                 let off = wall_style(scenery, lap, span.to + 20.0, Side::Left);

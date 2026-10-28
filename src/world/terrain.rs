@@ -20,7 +20,7 @@ use super::sky::MEDITERRANEAN_SUN;
 use super::structures::{TUNNEL_SHELL, Tunnels};
 use super::textures::WorldTextures;
 use crate::geometry::{fbm, smoothstep, value_noise};
-use crate::track::{Nearest, Track, WALL_DISTANCE, closed_curve};
+use crate::track::{BASE_ELEVATION, Nearest, Track, WALL_DISTANCE, closed_curve};
 
 pub const SEA_LEVEL: f32 = -1.0;
 /// Hasta esta distancia de la línea central, el terreno es la prolongación de
@@ -47,6 +47,9 @@ const SAND_TILE: f32 = 8.5;
 const ROCK_TILE: f32 = 20.0;
 /// Size (m) of each repetition of the checkerboard earth: two by two squares.
 const SOIL_TILE: f32 = 7.0;
+/// Size (m) of each repetition of a room's floorboards indoors (see
+/// [`Soil::Floor`]).
+const FLOOR_TILE: f32 = 12.8;
 /// Las caras más inclinadas que esto son roca.
 pub const CLIFF_NORMAL_Y: f32 = 0.8;
 /// Por debajo de esta altura, cerca del mar, hay arena.
@@ -201,8 +204,11 @@ impl Terrain {
                         return shaper.height_at(point, None);
                     }
                     // Under the road that passes over a tunnel, the ground
-                    // stays down at the tunnel, under its rock.
-                    if let Some(tunnel) = tunnels.beneath(track, point, BURIED) {
+                    // stays down at the tunnel, under its rock (indoors, what
+                    // passes over stands on its own, and the floor is flat).
+                    if scenery.soil != Soil::Floor
+                        && let Some(tunnel) = tunnels.beneath(track, point, BURIED)
+                    {
                         return track.height_beside(&tunnel) - UNDER_ROAD;
                     }
                     shaper.height_at(point, Some(&track.nearest(point)))
@@ -519,6 +525,7 @@ impl Terrain {
     pub fn ground_color(&self, ground: Ground, p: Vec3, normal: Vec3) -> [f32; 4] {
         let earth = self.soil == Soil::Lunar && is_earth_realm(Vec2::new(p.x, p.z));
         match (self.soil, ground) {
+            (Soil::Floor, _) => floor_vertex_color(p),
             (Soil::Mine, _) => canyon_vertex_color(ground, p, normal),
             (Soil::Lunar, _) if !earth => lunar_vertex_color(ground, p, normal),
             (Soil::Checkered, Ground::Rock) => soil_vertex_color(p, normal),
@@ -612,6 +619,8 @@ impl Terrain {
                                 let hollow =
                                     blend(indices.map(|index| Vec3::splat(self.hollow[index]))).x;
                                 let uv = match shared {
+                                    // Floorboards lie straight.
+                                    true if self.soil == Soil::Floor => Vec2::new(p.x, p.z),
                                     true => {
                                         let warp = Vec2::new(
                                             fbm(Vec2::new(p.x, p.z) * 0.035, 2) - 0.5,
@@ -668,6 +677,7 @@ impl Terrain {
                                         style == Realm::Earth
                                     });
                                 let color = match (self.soil, ground_type, flowers) {
+                                    (Soil::Floor, ..) => floor_vertex_color(p),
                                     (_, _, Some(kind)) => self.meadow_color(p, normal, kind),
                                     (Soil::Checkered, Ground::Rock, _) => {
                                         soil_vertex_color(p, normal)
@@ -787,8 +797,12 @@ impl Terrain {
             meadows,
         } = joined;
         let rock_tile = match self.soil {
-            Soil::Rock | Soil::Mine | Soil::Granite | Soil::Lunar => ROCK_TILE,
+            Soil::Rock | Soil::Mine | Soil::Granite | Soil::Lunar | Soil::Floor => ROCK_TILE,
             Soil::Checkered => SOIL_TILE,
+        };
+        let grass_tile = match self.soil {
+            Soil::Floor => FLOOR_TILE,
+            _ => GRASS_TILE,
         };
         let layers = style.map(|style| match side {
             Some(side) if side != style => style.beyond_layers(),
@@ -801,7 +815,7 @@ impl Terrain {
             layers: layers.clone(),
         };
         let mut meshes = vec![
-            ground(Ground::Grass, None, grass.build(GRASS_TILE)),
+            ground(Ground::Grass, None, grass.build(grass_tile)),
             ground(Ground::Sand, None, sand.build(SAND_TILE)),
             ground(Ground::Rock, None, rock.build(rock_tile)),
             ground(Ground::Snow, None, snow.build(GRASS_TILE)),
@@ -873,9 +887,13 @@ pub fn ground_look(
     match (ground, soil) {
         // In a desert canyon the flat ground is dry dust.
         (Ground::Grass, Soil::Mine) => (Some(&textures.sand), 0.95, 0.15),
+        // Indoors, varnished floorboards.
+        (Ground::Grass, Soil::Floor) => (Some(&textures.floor), 0.6, 0.35),
         (Ground::Grass, _) => (Some(&textures.grass), 0.90, 0.18),
         (Ground::Sand, _) => (Some(&textures.sand), 0.88, 0.28),
-        (Ground::Rock, Soil::Rock | Soil::Mine | Soil::Lunar) => (Some(&textures.rock), 0.78, 0.42),
+        (Ground::Rock, Soil::Rock | Soil::Mine | Soil::Lunar | Soil::Floor) => {
+            (Some(&textures.rock), 0.78, 0.42)
+        }
         (Ground::Rock, Soil::Checkered) => (Some(&textures.soil), 0.92, 0.2),
         (Ground::Rock, Soil::Granite) => (Some(&textures.granite), 0.82, 0.4),
         // Snow, white but for its shading (see `ground_vertex_color`).
@@ -1268,6 +1286,9 @@ impl<'a> Shaper<'a> {
     /// Altura del terreno en un punto. `nearest` es la carretera más cercana,
     /// o `None` si está tan lejos que no importa.
     fn height_at(&self, point: Vec2, nearest: Option<&Nearest>) -> f32 {
+        if self.scenery.soil == Soil::Floor {
+            return self.floor(nearest);
+        }
         let mountains = (self.scenery.mountains)(point);
         let Some(nearest) = nearest else {
             let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
@@ -1369,6 +1390,39 @@ impl<'a> Shaper<'a> {
         }
         height
     }
+}
+
+impl Shaper<'_> {
+    /// Indoors (see [`Soil::Floor`]), the floor: flat all over the room, but
+    /// for following a road that lies on it a little way past its walls,
+    /// just under its asphalt, so that a bump of the road (where it banks,
+    /// or eases into a ramp) does not sink into it. What runs over it, on
+    /// furniture or on pillars, is a bridge, under which it stays flat.
+    fn floor(&self, nearest: Option<&Nearest>) -> f32 {
+        let floor = BASE_ELEVATION - UNDER_ROAD;
+        let Some(nearest) = nearest else {
+            return floor;
+        };
+        let along = self.track.along(nearest);
+        let on_a_bridge = self
+            .scenery
+            .bridges
+            .iter()
+            .any(|bridge| bridge.span.contains(along, self.lap));
+        if on_a_bridge || nearest.road != 0 {
+            return floor;
+        }
+        let road = self.track.height_beside(nearest) - UNDER_ROAD;
+        floor.lerp(road, 1.0 - smoothstep(FLAT, FLAT + 6.0, nearest.distance))
+    }
+}
+
+/// The colour of a room's floorboards at `p` (linear RGBA), over their
+/// texture: a little lighter or darker here and there, as a floor worn and
+/// lit unevenly.
+fn floor_vertex_color(p: Vec3) -> [f32; 4] {
+    let v = 0.9 + 0.12 * (fbm(Vec2::new(p.x, p.z) / 60.0, 2) - 0.5);
+    [v, v, v, 1.0]
 }
 
 /// The ground of an open pit `land` metres from the water (see [`Pit`]),
@@ -2136,8 +2190,13 @@ mod tests {
                     assert!(earth - road.y <= EARTH_RISE, "{} {index}", circuit.name);
                 }
             }
-            // Next to the rock faces, the earth comes in before the walls.
-            assert!(inside > 0, "{}", circuit.name);
+            // Next to the rock faces, the earth comes in before the walls;
+            // indoors, on a flat floor, there is none.
+            assert!(
+                inside > 0 || circuit.scenery.soil == Soil::Floor,
+                "{}",
+                circuit.name
+            );
         }
     }
 

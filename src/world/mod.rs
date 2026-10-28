@@ -32,6 +32,7 @@ mod space;
 pub(crate) mod structures;
 mod terrain;
 mod textures;
+mod toys;
 mod trees;
 mod tufts;
 
@@ -112,6 +113,7 @@ impl Plugin for WorldPlugin {
                     desert::tumble,
                     space::turn_dishes,
                     space::spin_portals,
+                    toys::run_trains,
                     japan::turn_wheels,
                     japan::drift_petals,
                     spawn_prepared_circuit,
@@ -1029,6 +1031,10 @@ fn build(
             for (mesh, material) in lakes {
                 world.spawn((Mesh3d(mesh), MeshMaterial3d(material), NotShadowCaster));
             }
+            // Indoors, the room's walls and ceiling round it all.
+            if let Some(store) = &scenery.toys {
+                toys::spawn_room(world, store, &mut assets);
+            }
             for (mesh, material) in pieces {
                 // What is see-through or glows (light, dust) casts no
                 // shadow.
@@ -1389,9 +1395,12 @@ mod tests {
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Tracks);
         app.update();
-        // The last circuit, chosen at once: shown first, its rest (its
+        // Fellowship Road, chosen at once: shown first, its rest (its
         // houses, trees, props, grass and flowers) still to come.
-        let last = CIRCUITS.len() - 1;
+        let last = CIRCUITS
+            .iter()
+            .position(|circuit| circuit.name == "Fellowship Road")
+            .expect("Fellowship Road is a circuit");
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
         app.update();
         let started = std::time::Instant::now();

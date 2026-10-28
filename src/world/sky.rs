@@ -62,6 +62,10 @@ const HAZE: (f32, f32) = (320.0, 6800.0);
 /// The haze of a Mediterranean summer: it begins nearer than on most days
 /// and thickens slowly, so the island's far side is already veiled.
 const MEDITERRANEAN_FOG: (f32, f32) = (300.0, 4200.0);
+/// Indoors, the colour of the far walls of the room, and a faint haze down
+/// it: the room is a few hundred metres long.
+const INDOOR_HAZE: Color = Color::srgb(0.84, 0.8, 0.74);
+const INDOOR_FOG: (f32, f32) = (260.0, 3200.0);
 
 /// The light of a track ([`SkyStyle`]): the sky's colours, where the sun
 /// is and the colour of its light, the light of the sky on the shade, and
@@ -293,6 +297,36 @@ impl Palette {
                     exposure: 0.1,
                     warmth: -0.004,
                     highlight_saturation: 0.85,
+                },
+            },
+            // Indoors, under the lamps of a shop's ceiling: no sky to see
+            // (the room's walls and ceiling hide it; what is left of it is
+            // the colour of the far walls, as the fog is), no sun, no
+            // clouds; the light from high overhead, warm white, casting
+            // short shadows, and a lot of it filling the shade, as so many
+            // lamps do; a faint haze far off down the room; and the toys'
+            // bright colours a little brighter.
+            SkyStyle::Indoor => Self {
+                zenith: INDOOR_HAZE,
+                above_horizon: INDOOR_HAZE,
+                horizon: INDOOR_HAZE,
+                glow: 0.0,
+                glow_color: Color::WHITE,
+                sun_azimuth: 0.6 * std::f32::consts::PI,
+                sun_elevation: 1.2,
+                sun_disc: Color::NONE,
+                sunlight: Color::srgb(1.0, 0.96, 0.9),
+                sunlight_strength: 0.7,
+                ambient: Color::srgb(1.0, 0.95, 0.88),
+                ambient_brightness: 950.0,
+                clouds: Color::srgba(1.0, 1.0, 1.0, 0.0),
+                fog: INDOOR_FOG,
+                grade: Grade {
+                    saturation: 1.06,
+                    contrast: 1.08,
+                    exposure: 0.1,
+                    warmth: 0.003,
+                    highlight_saturation: 0.9,
                 },
             },
         }

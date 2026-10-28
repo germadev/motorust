@@ -103,6 +103,11 @@ pub fn structure_pieces(
     let lap = track.lap_length();
     let wanted = |span: &Span| within.is_none_or(|stretch| span.overlaps(&stretch, lap));
     for tunnel in scenery.tunnels.iter().filter(|tunnel| wanted(tunnel)) {
+        // Indoors, a tunnel is only a stretch under something else (a table,
+        // another stretch of the road), which draws itself.
+        if scenery.soil == Soil::Floor {
+            continue;
+        }
         // A mine's tunnels are its excavation, and Moria's its halls.
         if let Some(halls) = scenery.excavation() {
             let (cavern, lanterns) =
@@ -126,7 +131,7 @@ pub fn structure_pieces(
             layers: None,
         }));
         let rock = match scenery.soil {
-            Soil::Rock | Soil::Mine => StandardMaterial {
+            Soil::Rock | Soil::Mine | Soil::Floor => StandardMaterial {
                 base_color: Color::srgb(0.85, 0.75, 0.6),
                 base_color_texture: Some(textures.rock.clone()),
                 perceptual_roughness: 0.9,
@@ -154,7 +159,7 @@ pub fn structure_pieces(
         // earth, a cave of it; in a lunar station, pressurized metallic hull
         // panels lit by cool cyan-white strips.
         let lining = match scenery.soil {
-            Soil::Rock | Soil::Mine | Soil::Granite => StandardMaterial {
+            Soil::Rock | Soil::Mine | Soil::Granite | Soil::Floor => StandardMaterial {
                 base_color: Color::srgb(0.95, 0.78, 0.52),
                 base_color_texture: Some(textures.panels.clone()),
                 emissive: LinearRgba::rgb(0.12, 0.08, 0.035),
@@ -249,8 +254,15 @@ pub fn structure_pieces(
         pieces.extend(super::dam::dam_pieces(track, terrain, scenery, textures));
     }
     for bridge in scenery.bridges.iter().filter(|bridge| wanted(&bridge.span)) {
-        // A dam's crest is the dam (see `dam`).
-        if bridge.style == BridgeStyle::Dam {
+        // A dam's crest is the dam (see `dam`), and a toy track's deck and
+        // supports are the toy store's (see `toys`).
+        if matches!(
+            bridge.style,
+            BridgeStyle::Dam
+                | BridgeStyle::SlotTrack
+                | BridgeStyle::OrangeTrack
+                | BridgeStyle::Slide
+        ) {
             continue;
         }
         let indices = indices(track, bridge.span, lap);
@@ -298,6 +310,10 @@ pub fn structure_pieces(
                 ..default()
             },
         ));
+    }
+    if let Some(store) = &scenery.toys {
+        pieces.extend(super::toys::bridge_pieces(track, scenery, store, within));
+        pieces.extend(super::toys::store_pieces(track, scenery, store, textures));
     }
     (pieces, lamps, ground)
 }
@@ -1497,7 +1513,11 @@ mod tests {
             for bridge in scenery.bridges {
                 let indices = indices(&track, bridge.span, lap);
                 let (deck, _) = match bridge.style {
-                    BridgeStyle::Wooden | BridgeStyle::OldWooden => continue,
+                    BridgeStyle::Wooden
+                    | BridgeStyle::OldWooden
+                    | BridgeStyle::SlotTrack
+                    | BridgeStyle::OrangeTrack
+                    | BridgeStyle::Slide => continue,
                     BridgeStyle::RedArches => bridge_meshes(&track, &terrain, &indices),
                     BridgeStyle::Truss => truss_bridge_meshes(&track, &terrain, &indices),
                     // A dam's crest is the dam's own concrete.

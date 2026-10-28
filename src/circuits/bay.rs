@@ -233,6 +233,7 @@ pub const BAY: Circuit = Circuit {
         japan: None,
         middle_earth: None,
         space: None,
+        toys: None,
     },
 };
 
