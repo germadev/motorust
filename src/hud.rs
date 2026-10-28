@@ -22,7 +22,7 @@ use crate::sound::music::FreeMusic;
 use crate::speedometer::{SpeedometerPlugin, spawn_speedometer};
 use crate::ui::{InputDevice, UiIcons, current_active_device};
 use crate::welcome::GameMode;
-use crate::world::detail::{Detail, in_use};
+use crate::world::detail::{Detail, TwoSamples, in_use};
 use crate::world::relief::{Look, ReliefShown};
 
 pub struct HudPlugin;
@@ -202,6 +202,7 @@ fn show_details(
     detail: Option<Res<Detail>>,
     native: Option<Res<NativeShare>>,
     relief: Option<Res<ReliefShown>>,
+    two_samples: Option<Res<TwoSamples>>,
     mut line: Single<&mut Node, With<HudDetails>>,
     mut pieces: Query<(&HudPiece, &mut TextSpan, &mut TextColor)>,
 ) {
@@ -216,6 +217,7 @@ fn show_details(
     let (smoothing, smoothed) = antialiasing_line(
         settings.antialiasing,
         detail.is_none_or(|detail| detail.msaa),
+        TwoSamples::of(two_samples.as_deref()),
     );
     let resolution = window
         .iter()
@@ -521,15 +523,22 @@ fn update_fps(
 
 /// The smoothing of the edges in use, as the performance HUD says it, and
 /// whether the performance forced has lowered it: the multisampling chosen
-/// given up (`msaa`, see [`Detail::msaa`]) for FXAA.
-pub fn antialiasing_line(chosen: Antialiasing, msaa: bool) -> (&'static str, bool) {
-    let now = in_use(chosen, msaa);
+/// given up (`msaa`, see [`Detail::msaa`]) for FXAA. Two samples are four
+/// where the GPU has not got them (`two_samples`, see [`TwoSamples`]).
+pub fn antialiasing_line(
+    chosen: Antialiasing,
+    msaa: bool,
+    two_samples: bool,
+) -> (&'static str, bool) {
+    let now = in_use(chosen, msaa, two_samples);
     let name = match now {
         Antialiasing::Msaa => "MSAA 4x",
+        Antialiasing::Msaa2 => "MSAA 2x",
+        Antialiasing::Smaa => "SMAA",
         Antialiasing::Fxaa => "FXAA",
         Antialiasing::Off => "No AA",
     };
-    (name, now != chosen)
+    (name, chosen.is_multisampled() && !now.is_multisampled())
 }
 
 /// The ground's relief in use, as the performance HUD says it (with the
@@ -562,13 +571,35 @@ mod tests {
     #[test]
     fn the_hud_says_the_smoothing_and_the_textures_in_use_and_what_was_lowered() {
         assert_eq!(
-            antialiasing_line(Antialiasing::Msaa, true),
+            antialiasing_line(Antialiasing::Msaa, true, true),
             ("MSAA 4x", false)
         );
         // Given up by the performance forced: FXAA, lowered.
-        assert_eq!(antialiasing_line(Antialiasing::Msaa, false), ("FXAA", true));
         assert_eq!(
-            antialiasing_line(Antialiasing::Off, false),
+            antialiasing_line(Antialiasing::Msaa, false, true),
+            ("FXAA", true)
+        );
+        assert_eq!(
+            antialiasing_line(Antialiasing::Msaa2, false, true),
+            ("FXAA", true)
+        );
+        assert_eq!(
+            antialiasing_line(Antialiasing::Msaa2, true, true),
+            ("MSAA 2x", false)
+        );
+        // Four samples for two where the GPU has not got them: not lowered.
+        assert_eq!(
+            antialiasing_line(Antialiasing::Msaa2, true, false),
+            ("MSAA 4x", false)
+        );
+        if !crate::settings::WEB {
+            assert_eq!(
+                antialiasing_line(Antialiasing::Smaa, false, true),
+                ("SMAA", false)
+            );
+        }
+        assert_eq!(
+            antialiasing_line(Antialiasing::Off, false, true),
             ("No AA", false)
         );
         let shown = |relief, flat| ReliefShown {
