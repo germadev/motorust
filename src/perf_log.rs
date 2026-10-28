@@ -31,7 +31,7 @@ use crate::render_scale::{NativeShare, drawn_size, render_percent};
 use crate::settings::Settings;
 use crate::welcome::GameMode;
 use crate::world::Dressed;
-use crate::world::detail::Detail;
+use crate::world::detail::{Detail, TwoSamples};
 
 /// How long each line of the log covers (s), at most.
 const STRETCH: f32 = 5.0;
@@ -551,12 +551,13 @@ fn log_performance(
         Option<Res<SystemInfo>>,
         Query<(&Dressed, &InheritedVisibility)>,
     ),
-    (start, store, entities, detail, native): (
+    (start, store, entities, detail, native, two_samples): (
         Res<FrameStart>,
         Option<Res<DiagnosticsStore>>,
         &Entities,
         Option<Res<Detail>>,
         Option<Res<NativeShare>>,
+        Option<Res<TwoSamples>>,
     ),
     mut log: ResMut<PerfLog>,
 ) {
@@ -606,7 +607,8 @@ fn log_performance(
             settings.antialiasing,
             crate::world::detail::in_use(
                 settings.antialiasing,
-                detail.as_deref().is_none_or(|detail| detail.msaa)
+                detail.as_deref().is_none_or(|detail| detail.msaa),
+                TwoSamples::of(two_samples.as_deref())
             )
         ),
         relief: format!(

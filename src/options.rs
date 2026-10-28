@@ -19,17 +19,17 @@ use crate::pad_art::{PadArt, PadArts, finish_pad_arts};
 use crate::pause::{DebugOptions, ReturnRate, ReverseRate, SteerRate, StickCurve, TurnLimit};
 use crate::render_scale::{NativeShare, drawn_size};
 use crate::settings::{
-    ANTIALIASINGS, Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY,
-    DIFFICULTIES, FALSE_STARTS, FORCE_PERFORMANCES, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS,
-    FpsLimit, GRASS_TILINGS, LIGHTS_HOLDS, RACE_STARTS, RELIEFS, RENDER_SCALES, RESOLUTIONS,
-    RaceStart, SHADOW_QUALITIES, START_LIGHTS, ScreenRate, Settings, ShadowQuality, StartedWith,
-    TRACK_VIEWS, WEB, cycle,
+    Antialiasing, CHOOSE_FULLSCREEN, ControlsTest, DEFAULT_FRAME_LATENCY, DIFFICULTIES,
+    FALSE_STARTS, FORCE_PERFORMANCES, FPS_LIMITS, FRAME_LATENCIES, FULLSCREEN_KINDS, FpsLimit,
+    GRASS_TILINGS, LIGHTS_HOLDS, RACE_STARTS, RELIEFS, RENDER_SCALES, RESOLUTIONS, RaceStart,
+    SHADOW_QUALITIES, START_LIGHTS, ScreenRate, Settings, ShadowQuality, StartedWith, TRACK_VIEWS,
+    WEB, cycle,
 };
 use crate::ui::{
     ActiveDevice, InputDevice, MenuInput, MenuSound, Row, UiIcons, current_active_device,
     text_font, ui_pixels,
 };
-use crate::world::detail::{Detail, Level};
+use crate::world::detail::{Detail, Level, TwoSamples, offered};
 
 /// Height of the panel (px), the same on every tab: a tab with more options
 /// than it holds scrolls them (see [`ListScroll`]).
@@ -912,6 +912,7 @@ fn use_options_menu(
     mut gamepads: ResMut<Gamepads>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
+    two_samples: Option<Res<TwoSamples>>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
     let request = input.read();
@@ -1172,7 +1173,8 @@ fn use_options_menu(
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Antialiasing if change != 0 => {
-                    settings.antialiasing = cycle(&ANTIALIASINGS, settings.antialiasing, change);
+                    let offered = offered(TwoSamples::of(two_samples.as_deref()));
+                    settings.antialiasing = cycle(&offered, settings.antialiasing, change);
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Relief if change != 0 => {
@@ -1824,6 +1826,8 @@ fn show_options_menu(
                     GraphicsItem::Antialiasing => {
                         let name = match (settings.antialiasing, lang) {
                             (Antialiasing::Msaa, _) => "MSAA 4×",
+                            (Antialiasing::Msaa2, _) => "MSAA 2×",
+                            (Antialiasing::Smaa, _) => "SMAA",
                             (Antialiasing::Fxaa, _) => "FXAA",
                             (Antialiasing::Off, Language::Spanish) => "No",
                             (Antialiasing::Off, Language::English) => "Off",

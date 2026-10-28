@@ -144,6 +144,13 @@ pub struct Terrain {
     lakes: Vec<DamGround>,
 }
 
+/// A piece of the ground in the world: one of its meshes, each over the
+/// whole circuit (see [`Terrain::meshes`]). The benchmark takes it out of
+/// the sun's shadows for a turn, to see what drawing all of it into every
+/// cascade costs (see [`crate::bench`]).
+#[derive(Component)]
+pub struct GroundPiece;
+
 /// A mesh of the ground and what it is drawn as: a kind of ground and, on
 /// grass in a field of flowers, the flowers (see [`Terrain::meshes`]).
 pub struct GroundMesh {
@@ -863,6 +870,7 @@ pub fn spawn_terrain(
             _ => ground_look(ground, terrain.soil, textures),
         };
         let mut piece = world.spawn((
+            GroundPiece,
             Mesh3d(meshes.add(mesh)),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color_texture: texture.cloned(),
