@@ -1657,6 +1657,20 @@ pub enum ToyKind {
     Pegasus,
     /// A monster truck made as a crocodile (Meshy's).
     CrocCar,
+    /// A garage playset, its storeys stacked up a tower, yellow ramps
+    /// spiralling down its side (Meshy's).
+    Garage,
+    /// A toy railway station, its platform under a canopy along its front
+    /// (Meshy's).
+    Station,
+    /// A toy railway's mountain, a tunnel through it along its front and
+    /// back (Meshy's): a train's track runs through it, along it, its
+    /// middle on its tunnel.
+    TunnelMountain,
+    /// A rocking horse, white with a red saddle (Meshy's).
+    RockingHorse,
+    /// A nutcracker soldier standing guard (Meshy's).
+    Nutcracker,
 }
 
 #[cfg(test)]

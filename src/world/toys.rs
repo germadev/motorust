@@ -1659,7 +1659,12 @@ fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32, 
         | ToyKind::Dollhouse
         | ToyKind::FireTruck
         | ToyKind::Pegasus
-        | ToyKind::CrocCar => {}
+        | ToyKind::CrocCar
+        | ToyKind::Garage
+        | ToyKind::Station
+        | ToyKind::TunnelMountain
+        | ToyKind::RockingHorse
+        | ToyKind::Nutcracker => {}
     }
 }
 
@@ -1679,6 +1684,11 @@ fn model_of(kind: ToyKind) -> Option<&'static str> {
         ToyKind::FireTruck => Some("fire_truck"),
         ToyKind::Pegasus => Some("mech_pegasus"),
         ToyKind::CrocCar => Some("croc_car"),
+        ToyKind::Garage => Some("garage_playset"),
+        ToyKind::Station => Some("train_station"),
+        ToyKind::TunnelMountain => Some("tunnel_mountain"),
+        ToyKind::RockingHorse => Some("rocking_horse"),
+        ToyKind::Nutcracker => Some("nutcracker"),
         ToyKind::Blocks | ToyKind::Ball | ToyKind::Tyres => None,
     }
 }
@@ -2353,6 +2363,75 @@ mod tests {
                 assert!(high.y - knot.y < 0.5, "{model}: {knot}");
             }
         }
+    }
+
+    #[test]
+    fn the_trains_run_clear_of_the_toys_but_through_a_tunnel() {
+        // No point of a train's track within a train's half width of the
+        // box round a toy standing on what the train runs on, or round
+        // something built of bricks; but through a tunnel mountain, along
+        // the middle of its tunnel.
+        const HALF_TRAIN: f32 = 1.3;
+        let mut tunnels = 0;
+        for (name, store, _) in stores() {
+            for train in store.trains {
+                let path = closed_curve(train.track, 1.0);
+                let n = path.len();
+                for toy in store.toys.iter().filter(|toy| toy.base == train.height) {
+                    let Some(model) = model_of(toy.kind) else {
+                        continue;
+                    };
+                    let (low, high) = model_bounds(model);
+                    let turn = Quat::from_rotation_y(toy.heading).inverse();
+                    let mut through = 0;
+                    for (k, &point) in path.iter().enumerate() {
+                        let offset = point - toy.position;
+                        let local = turn * Vec3::new(offset.x, 0.0, offset.y) / toy.scale;
+                        let margin = HALF_TRAIN / toy.scale;
+                        let inside = (low.x - margin..=high.x + margin).contains(&local.x)
+                            && (low.z - margin..=high.z + margin).contains(&local.z);
+                        if !inside {
+                            continue;
+                        }
+                        assert_eq!(
+                            toy.kind,
+                            ToyKind::TunnelMountain,
+                            "{name}: a train's track at {point} through the toy at {}",
+                            toy.position
+                        );
+                        // On the middle of its tunnel, and along it from
+                        // one mouth to the other.
+                        assert!(
+                            local.x.abs() * toy.scale < 0.3,
+                            "{name}: {point} off the tunnel"
+                        );
+                        if (low.z..=high.z).contains(&local.z) {
+                            let along = (path[(k + 1) % n] - path[(k + n - 1) % n]).normalize();
+                            let along = turn * Vec3::new(along.x, 0.0, along.y);
+                            assert!(along.x.abs() < 0.03, "{name}: {point} across the tunnel");
+                            through += 1;
+                        }
+                    }
+                    if toy.kind == ToyKind::TunnelMountain {
+                        assert!(through as f32 >= high.z - low.z - 1.0, "{name}: {through}");
+                        tunnels += 1;
+                    }
+                }
+                for built in store
+                    .bricks
+                    .iter()
+                    .filter(|built| built.base == train.height)
+                {
+                    let (low, high) = bricks_bounds(built);
+                    for &point in &path {
+                        let inside = (low.x - HALF_TRAIN..=high.x + HALF_TRAIN).contains(&point.x)
+                            && (low.z - HALF_TRAIN..=high.z + HALF_TRAIN).contains(&point.y);
+                        assert!(!inside, "{name}: a train's track at {point} through bricks");
+                    }
+                }
+            }
+        }
+        assert!(tunnels > 0);
     }
 
     #[test]

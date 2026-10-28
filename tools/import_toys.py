@@ -72,7 +72,8 @@ SIZES = {
     "dump_truck": ("length", 20.0),
     "garage_playset": ("height", 20.0),
     "train_station": ("length", 25.0),
-    "tunnel_mountain": ("length", 36.0),
+    # Its tunnel as wide as a train's and more: 4.4 m.
+    "tunnel_mountain": ("length", 40.0),
     "teepee": ("height", 25.0),
     "trex": ("length", 20.0),
     "rocket": ("height", 25.0),
@@ -103,6 +104,9 @@ TURNED = {
     "fire_truck",
     "croc_car",
 }
+# Those a train runs through, centred on their tunnels (along z) rather
+# than on their boxes.
+TUNNELS = {"tunnel_mountain"}
 # The cells of the big toys the riders pass close by (px); the others' are
 # `CELL`.
 CELLS = {
@@ -117,6 +121,9 @@ CELLS = {
     "helicopter": 1024,
     "fire_truck": 1024,
     "mech_pegasus": 1024,
+    "garage_playset": 1024,
+    "train_station": 1024,
+    "nutcracker": 1024,
 }
 CELL = 512
 # How wide the atlas is (px): four of the big cells, or eight of the others.
@@ -149,6 +156,36 @@ def read_pack(path):
         triangles = take(indices, "<u4", 1).astype(np.uint32)
         pieces.append((name, positions, normals, uvs, triangles))
     return pieces
+
+
+def tunnel_middle(positions, indices, height=1.0, step=0.05):
+    """Where the middle of a tunnel along z through a model is across it
+    (x, m): of the widest stretch across at `height` through which a line
+    along z meets none of its triangles."""
+    triangles = positions[indices.reshape(-1, 3)][:, :, :2]
+    a, b, c = triangles[:, 0], triangles[:, 1], triangles[:, 2]
+
+    def blocked(x):
+        point = np.array([x, height])
+
+        def side(p, q):
+            return (p[:, 0] - point[0]) * (q[:, 1] - point[1]) - (q[:, 0] - point[0]) * (p[:, 1] - point[1])
+
+        d = np.stack([side(a, b), side(b, c), side(c, a)])
+        return bool((~((d < 0).any(axis=0) & (d > 0).any(axis=0))).any())
+
+    xs = np.arange(positions[:, 0].min(), positions[:, 0].max(), step)
+    clear = [not blocked(x) for x in xs]
+    best, start = (0, 0), None
+    for k, open_ in enumerate(clear + [False]):
+        if open_ and start is None:
+            start = k
+        elif not open_ and start is not None:
+            if k - start > best[1] - best[0]:
+                best = (start, k)
+            start = None
+    assert best[1] > best[0], "no tunnel through it"
+    return (xs[best[0]] + xs[best[1] - 1]) / 2.0
 
 
 def quarter_turn(vectors):
@@ -216,6 +253,9 @@ def main():
         if name in TURNED:
             positions, normals = quarter_turn(positions), quarter_turn(normals)
         placed, turned, _, _ = place(positions, normals, SIZES[name])
+        if name in TUNNELS:
+            # Its tunnel on its middle, rather than its box.
+            placed[:, 0] -= tunnel_middle(placed, indices)
         toys[name] = (placed, turned, uvs, indices, color)
 
     names = sorted(toys, key=lambda name: list(SIZES).index(name))

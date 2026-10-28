@@ -65,7 +65,9 @@ The toys of the toy store (`models/toys/`: a big and a small castle of
 bricks, a pirate ship, an electric train's locomotive, coach and freight
 wagon, a teddy bear, a tin robot, a rubber duck, a spinning top, a biplane,
 a helicopter, a plush giraffe, a doll's house, a fire engine, a mechanical
-pegasus and a crocodile monster truck) were made by the project's author with
+pegasus, a crocodile monster truck, a garage playset, a railway station, a
+tunnel mountain, a rocking horse and a nutcracker) were made by the
+project's author with
 [Meshy](https://www.meshy.ai); `tools/import_toys.py` stands them on the
 ground at the game's sizes, turns those made facing sideways and puts their
 colour textures together.

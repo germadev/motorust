@@ -440,15 +440,20 @@ const STORE: ToyStore = ToyStore {
     ],
     trains: &[
         // On its rug in the middle of the floor, by the road coming down
-        // the east side: coaches.
+        // the east side: coaches, past a station and through a tunnel, on
+        // a straight there.
         Train {
             track: &[
                 Vec2::new(158.0, -80.0),
+                Vec2::new(178.0, -80.0),
                 Vec2::new(198.0, -80.0),
+                Vec2::new(218.0, -80.0),
                 Vec2::new(238.0, -80.0),
                 Vec2::new(250.0, -65.0),
                 Vec2::new(238.0, -50.0),
+                Vec2::new(218.0, -50.0),
                 Vec2::new(198.0, -50.0),
+                Vec2::new(178.0, -50.0),
                 Vec2::new(158.0, -50.0),
                 Vec2::new(146.0, -65.0),
             ],
@@ -621,6 +626,53 @@ const STORE: ToyStore = ToyStore {
             heading: -2.0,
             scale: 1.0,
             base: 13.2,
+        },
+        // The floor train's station, its platform along the track, and
+        // its tunnel through a mountain on the other straight.
+        Toy {
+            kind: ToyKind::Station,
+            position: Vec2::new(198.0, -88.8),
+            heading: 0.0,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::TunnelMountain,
+            position: Vec2::new(198.0, -50.0),
+            heading: FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
+        // Two nutcrackers on guard either side of the road where it comes
+        // off the slide; a garage playset by the road down the east side;
+        // a rocking horse by the start straight, side on to it.
+        Toy {
+            kind: ToyKind::Nutcracker,
+            position: Vec2::new(-65.0, -313.0),
+            heading: 0.0,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::Nutcracker,
+            position: Vec2::new(-65.0, -287.0),
+            heading: PI,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::Garage,
+            position: Vec2::new(298.0, -105.0),
+            heading: -FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::RockingHorse,
+            position: Vec2::new(-19.0, 4.0),
+            heading: 0.0,
+            scale: 1.0,
+            base: 0.0,
         },
         // Spinning tops on the first table, among its esses.
         Toy {
