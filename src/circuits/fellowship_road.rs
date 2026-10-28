@@ -159,10 +159,12 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
         length: 179.2,
         loudness: -15.5,
     },
+    pace: 1.0,
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         // Hardly banked where the road splits, as at Ghost Island.
+        wall: WALL_DISTANCE,
         banking: &[
             Banking {
                 from: BREE_SPLIT.0,

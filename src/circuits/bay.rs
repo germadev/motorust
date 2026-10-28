@@ -30,9 +30,11 @@ pub const BAY: Circuit = Circuit {
         length: 178.4,
         loudness: -16.1,
     },
+    pace: 1.0,
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
+        wall: WALL_DISTANCE,
         banking: &[],
         narrows: &[],
         branches: &[],

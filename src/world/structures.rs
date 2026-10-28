@@ -1197,11 +1197,13 @@ fn brake_marker_image(marker: &BrakeMarker) -> Image {
     )
 }
 
-/// Draws the signs of `scenery` ahead (see [`sign_image`]): on the
+/// Draws the signs of `scenery` ahead (see [`sign_image`]), its arches'
+/// over a road whose walls stand `wall` metres from its centre line: on the
 /// threads that prepare the circuits, so the main thread only copies them.
-pub fn draw_signs(scenery: &Scenery) {
+pub fn draw_signs(scenery: &Scenery, wall: f32) {
+    let span = super::road::gantry_span(wall);
     for gantry in scenery.gantries {
-        super::road::gantry_image(gantry);
+        super::road::gantry_image(gantry, span);
     }
     for billboard in scenery.billboards {
         billboard_image(billboard);

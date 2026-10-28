@@ -83,12 +83,14 @@ pass, Lothlórien, where it splits three ways, and down the middle of the
 Anduin between the two kings of the Argonath, past Amon Hen and home again.
 Its own scenery, modelled with Meshy, is on the way.
 
-**Juguetería** ("Toy Store") is a short lap round the inside of a toy shop,
-the bikes as small as toys, under a ceiling of lamps: up a ramp onto a chair
-and on onto a table, across to a diorama of brick castles, up a Hot Wheels
-helix to the top of a tall shelving unit, down a helter-skelter's slide to the
-floor, past electric trains and onto another table and off its edge, crossing
-over and under itself on slot-car, Hot Wheels and slide tracks.
+**Juguetería** ("Toy Store") is a short, twisting lap on a narrow road round
+the inside of a toy shop, the bikes as small as toys, under a ceiling of
+lamps: up a ramp onto a chair and on onto a table, across to a diorama where
+a way splits off through a castle of bricks, up a Hot Wheels helix to the top
+of a tall shelving unit, down a helter-skelter's slide to the floor, where
+another way splits off round a loop of orange track, and onto a train table
+and off its edge, crossing over and under itself on slot-car, Hot Wheels and
+slide tracks.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

@@ -13,7 +13,7 @@ use super::scenery::{BridgeStyle, Gantry, Scenery, Side, Soil, Span, WallStyle};
 use super::terrain::{Terrain, shaded};
 use super::textures::{STONE_WALL, WorldTextures};
 use crate::geometry::{fbm, smoothstep};
-use crate::track::{CURB_WIDTH, SURFACE_Y, Track, WALL_DISTANCE};
+use crate::track::{CURB_WIDTH, SURFACE_Y, Track};
 
 /// Tamaño (m) que cubre cada repetición de la textura del asfalto.
 const ASPHALT_TILE: f32 = 7.0;
@@ -188,6 +188,30 @@ impl<'a> Road<'a> {
             })
     }
 
+    /// Whether it is the road into a loop or out of one.
+    fn leads_to_a_loop(&self) -> bool {
+        self.track
+            .loops()
+            .iter()
+            .any(|looped| looped.approach == self.number || looped.exit == self.number)
+    }
+
+    /// Indoors, which toy track it is at point `index` of its centre line:
+    /// the roads into and out of a loop are Hot Wheels' orange track, as the
+    /// loop is; the others are as the lap beside them says (see
+    /// [`toy_track`]).
+    fn toy_track(&self, scenery: &Scenery, index: usize) -> BridgeStyle {
+        if self.leads_to_a_loop() {
+            BridgeStyle::OrangeTrack
+        } else {
+            toy_track(
+                scenery,
+                self.track.lap_length(),
+                self.line().lap_along_at(index),
+            )
+        }
+    }
+
     /// Whether point `index` of the centre line is in the straight into or
     /// out of a loop.
     fn at_a_loop(&self, index: usize) -> bool {
@@ -306,7 +330,7 @@ fn spawn_surface(
     );
     // Indoors, kerbs only on a slot-car track, as its red and white ones.
     let curbs = |index: usize, corners| {
-        let toy = indoors.then(|| toy_track(scenery, lap, line.lap_along_at(index)));
+        let toy = indoors.then(|| road.toy_track(scenery, index));
         (has_curbs(road, index)
             && clear(corners)
             && !planked(index)
@@ -324,7 +348,16 @@ fn spawn_surface(
 
     // Los muros, cada uno con su aspecto.
     let lap = road.track.lap_length();
-    let style = |index: usize, side: Side| wall_style(scenery, lap, line.lap_along_at(index), side);
+    // Indoors the roads into and out of a loop have Hot Wheels' raised
+    // edges, as the loop.
+    let orange = indoors && road.leads_to_a_loop();
+    let style = |index: usize, side: Side| {
+        if orange {
+            Some(WallStyle::OrangeEdge)
+        } else {
+            wall_style(scenery, lap, line.lap_along_at(index), side)
+        }
+    };
     for (wanted, material) in [
         (
             WallStyle::Stone,
@@ -455,8 +488,7 @@ fn spawn_toy_tracks(
 ) {
     let line = road.line();
     let half = line.half_width();
-    let lap = road.track.lap_length();
-    let style = |index: usize| toy_track(scenery, lap, line.lap_along_at(index));
+    let style = |index: usize| road.toy_track(scenery, index);
     for (wanted, texture, margin, roughness) in [
         (
             BridgeStyle::SlotTrack,
@@ -492,7 +524,8 @@ fn spawn_toy_tracks(
             perceptual_roughness: roughness,
             ..default()
         };
-        for (from, to) in [(half, WALL_DISTANCE + 0.3), (-WALL_DISTANCE - 0.3, -half)] {
+        let border = line.wall() + 0.3;
+        for (from, to) in [(half, border), (-border, -half)] {
             spawn(
                 ribbon(road, from, to, -0.01, 1.0, |index, _| mine(index)),
                 plastic(),
@@ -1187,11 +1220,17 @@ fn finish_line(track: &Track) -> Mesh {
     mesh.build()
 }
 
+/// How far either side of the centre line the posts of an arch over a road
+/// whose walls stand `wall` metres from it stand (m): just past them.
+pub fn gantry_span(wall: f32) -> f32 {
+    wall + 1.2
+}
+
 /// Arco sobre la carretera, con un tablero de ajedrez o un rótulo por
 /// delante y por detrás.
-/// The sign on a gantry with text: white letters on its colour.
-pub fn gantry_image(gantry: &Gantry) -> Option<Image> {
-    let span = WALL_DISTANCE + 1.2;
+/// The sign on a gantry with text, `span` metres either side of the centre
+/// line (see [`gantry_span`]): white letters on its colour.
+pub fn gantry_image(gantry: &Gantry, span: f32) -> Option<Image> {
     gantry.text.map(|text| {
         sign_image(
             text,
@@ -1213,7 +1252,7 @@ fn spawn_gantry(
     let index = track.index_at(gantry.along);
     let (point, heading) = track.pose_at(index);
     let ground = track.surface_point(index, 0.0).y;
-    let span = WALL_DISTANCE + 1.2;
+    let span = gantry_span(track.wall());
     let paint = assets.materials.add(StandardMaterial {
         base_color: gantry.color,
         perceptual_roughness: 0.5,
@@ -1241,7 +1280,7 @@ fn spawn_gantry(
             ),
         ),
         Some(_) => {
-            let image = gantry_image(gantry).expect("a gantry with text has a sign");
+            let image = gantry_image(gantry, span).expect("a gantry with text has a sign");
             (
                 StandardMaterial {
                     base_color_texture: Some(assets.images.add(image)),
@@ -1445,6 +1484,7 @@ fn skid_marks(track: &Track) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::track::WALL_DISTANCE;
 
     #[test]
     fn a_hedge_is_as_dull_as_the_grass_round_it() {

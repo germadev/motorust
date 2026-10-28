@@ -69,11 +69,13 @@ pub const LOOP_ISLAND: Circuit = Circuit {
         length: 176.7,
         loudness: -13.3,
     },
+    pace: 1.0,
     layout: Layout {
         control_points: &CONTROL_POINTS,
         elevation: &ELEVATION,
         // The long right-hander after the tunnel and the last corner,
         // banked like a velodrome.
+        wall: WALL_DISTANCE,
         banking: &[
             Banking {
                 from: 880.0,

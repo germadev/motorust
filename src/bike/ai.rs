@@ -13,7 +13,7 @@ use bevy::prelude::*;
 
 use super::{BikeInput, BikeState, BikeTuning, Race, Ride, move_toward};
 use crate::geometry::{heading_of, wrap_angle};
-use crate::track::{Fork, SAMPLE_SPACING, Track, WALL_DISTANCE};
+use crate::track::{Fork, SAMPLE_SPACING, Track};
 
 /// Distancia a la que mira por delante para apuntar: fija más la que recorre
 /// en este tiempo. Mirar más lejos a más velocidad evita los eses.
@@ -113,7 +113,7 @@ impl Waypoint {
     fn start(track: &Track, state: &BikeState, rival: &Rival) -> Self {
         let lap = track.nearest_index_at(state.position, state.elevation);
         let nearest = track.nearest_at(state.position, state.elevation);
-        let off_lap = state.position.distance(track.centerline()[lap]) > WALL_DISTANCE;
+        let off_lap = state.position.distance(track.centerline()[lap]) > track.wall_at(lap);
         if nearest.road != 0 && (rival.rides(track, nearest.road) || off_lap) {
             Waypoint::Road(nearest.road, nearest.index)
         } else {
@@ -589,7 +589,7 @@ mod tests {
                 } else {
                     &times
                 };
-                let given = CheckpointTimes::on(difficulty);
+                let given = CheckpointTimes::on(difficulty).at(circuit.pace);
                 let mut left = given.starting(&points);
                 for (index, time) in times.iter().enumerate() {
                     let name = circuit.name;
@@ -706,8 +706,9 @@ mod tests {
                             "{name}: off the road at {:?}",
                             state.position
                         );
-                        let parted =
-                            track.road(fork.road).wall_at(nearest.index) < WALL_DISTANCE - 1.0;
+                        // Well away from the lap: past where their walls part.
+                        let lap = track.centerline()[track.nearest_index(state.position)];
+                        let parted = state.position.distance(lap) > 2.0 * track.wall() + 2.0;
                         rode |= nearest.road == fork.road && parted;
                         let along = track.along(&nearest);
                         if (past..past + 100.0).contains(&along) {

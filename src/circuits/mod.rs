@@ -26,6 +26,11 @@ pub struct Circuit {
     pub song: Song,
     /// What its surroundings sound like, choosing the bike.
     pub ambience: Ambience,
+    /// How fast it is ridden against most tracks (1): against the clock,
+    /// the checkpoints of a slower one, narrow and twisting, give their
+    /// seconds at a pace this much slower (see
+    /// [`crate::race::CheckpointTimes::at`]).
+    pub pace: f32,
     pub layout: Layout,
     pub scenery: Scenery,
 }
@@ -130,6 +135,6 @@ mod tests {
             CIRCUITS[6].checkpoints(),
             vec![868.0, 1905.1, 2955.1, 3585.1, 4565.1]
         );
-        assert_eq!(CIRCUITS[7].checkpoints(), vec![1220.0, 2160.0, 3410.0]);
+        assert_eq!(CIRCUITS[7].checkpoints(), vec![635.0, 1378.0, 2300.0]);
     }
 }

@@ -1518,14 +1518,18 @@ pub struct Train {
     pub speed: f32,
 }
 
-/// A castle of plastic bricks, grey with red roofs on its towers: a curtain
-/// wall `size` across round a keep, turned `heading`, standing `base` over
-/// the floor.
+/// A castle of plastic bricks `size` across (x and z before it is turned
+/// `heading`, its front along +z), standing `base` over the floor: Meshy's,
+/// as big as fits; or, if a road runs `through` it, grey bricks with red
+/// roofs on its towers built round the road, which runs along it (the way
+/// `heading` says, as a road's), in under a gatehouse at one end and out
+/// under another at the other, between its walls.
 pub struct Castle {
     pub center: Vec2,
     pub size: Vec2,
     pub heading: f32,
     pub base: f32,
+    pub through: bool,
 }
 
 /// A loop of orange toy track on a blue stand, to look at: standing up,

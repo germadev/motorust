@@ -101,6 +101,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<trees::ModelledTrees>()
             .init_resource::<japan::ModelledProps>()
             .init_resource::<middle_earth::FellowshipProps>()
+            .init_resource::<toys::ToyModels>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_systems(PreUpdate, rebuild_world)
@@ -306,7 +307,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
         )
     });
     let meadows = preview::meadows(&ground, textures);
-    structures::draw_signs(scenery);
+    structures::draw_signs(scenery, track.wall());
     Prepared {
         basis: Basis {
             index,
@@ -933,6 +934,7 @@ struct Builder<'w> {
     textures: Res<'w, textures::WorldTextures>,
     props: Res<'w, japan::ModelledProps>,
     fellowship: Res<'w, middle_earth::FellowshipProps>,
+    toy_models: Res<'w, toys::ToyModels>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
     mirror_materials: ResMut<'w, Assets<mirror::MirrorMaterial>>,
@@ -1003,6 +1005,7 @@ fn build(
         textures: &builder.textures,
         props: &builder.props,
         fellowship: &builder.fellowship,
+        toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -1138,6 +1141,7 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
         textures: &builder.textures,
         props: &builder.props,
         fellowship: &builder.fellowship,
+        toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -1208,6 +1212,8 @@ pub struct Assets3d<'a> {
     /// The props made with Meshy (see [`japan`] and [`middle_earth`]).
     pub props: &'a japan::ModelledProps,
     pub fellowship: &'a middle_earth::FellowshipProps,
+    /// The toys made with Meshy (see [`toys`]).
+    pub toys: &'a toys::ToyModels,
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub images: &'a mut Assets<Image>,

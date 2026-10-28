@@ -19,6 +19,7 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use super::Assets3d;
+use super::japan::{Piece, PropPack};
 use super::quads::MeshBuilder;
 use super::scenery::{
     BridgeStyle, Castle, Furniture, FurnitureKind, Mat, MatKind, Scenery, Span, Tower, Toy,
@@ -27,7 +28,7 @@ use super::scenery::{
 use super::structures::indices;
 use super::textures::{TOY_BOXES, WorldTextures};
 use crate::geometry::random01;
-use crate::track::{BASE_ELEVATION, Track, WALL_DISTANCE, closed_curve};
+use crate::track::{BASE_ELEVATION, LOOP_WALL, Loop, Track, closed_curve};
 
 /// The height over the sea of something `height` over the floor: the
 /// heights of a toy store are the road's, the floor at 0.
@@ -84,9 +85,15 @@ const PILLAR_BLUE: Color = Color::srgb(0.1, 0.32, 0.82);
 const SLIDE_RED: Color = Color::srgb(0.88, 0.12, 0.08);
 const SLIDE_YELLOW: Color = Color::srgb(1.0, 0.8, 0.08);
 const HOT_WHEELS_ORANGE: Color = Color::srgb(1.0, 0.42, 0.04);
-/// How far out the decks of the toy tracks reach from their centre lines
-/// (m): under their borders.
-const DECK_EDGE: f32 = WALL_DISTANCE + 0.8;
+/// How far out the decks of the toy tracks reach past their walls (m):
+/// under their borders.
+const DECK_PAST_WALLS: f32 = 0.8;
+
+/// How far out the decks of `track`'s toy tracks reach from their centre
+/// lines (m).
+fn deck_edge(track: &Track) -> f32 {
+    track.wall() + DECK_PAST_WALLS
+}
 /// Every how many points of the centre line a toy track has a support, and
 /// how big a gap under it must be for one (m).
 const SUPPORT_EVERY: usize = 9;
@@ -145,31 +152,32 @@ pub fn bridge_pieces(
         .collect()
 }
 
-/// A slab under the road along `indices`, out to [`DECK_EDGE`], `depth`
+/// A slab under the road along `indices`, out to [`deck_edge`], `depth`
 /// thick: its underside and its edges (its top is the road's).
 fn deck(mesh: &mut MeshBuilder, track: &Track, indices: &[usize], depth: f32, color: Color) {
     let road = |i: usize, lateral: f32| track.surface_point(i, lateral);
+    let edge = deck_edge(track);
     let down = Vec3::Y * depth;
     for pair in indices.windows(2) {
         let (i, j) = (pair[0], pair[1]);
         mesh.quad(
             [
-                (road(i, -DECK_EDGE) - down, Vec2::ZERO),
-                (road(j, -DECK_EDGE) - down, Vec2::X),
-                (road(j, DECK_EDGE) - down, Vec2::ONE),
-                (road(i, DECK_EDGE) - down, Vec2::Y),
+                (road(i, -edge) - down, Vec2::ZERO),
+                (road(j, -edge) - down, Vec2::X),
+                (road(j, edge) - down, Vec2::ONE),
+                (road(i, edge) - down, Vec2::Y),
             ],
             Vec3::NEG_Y,
             color.mix(&Color::BLACK, 0.25),
         );
         for side in [-1.0, 1.0] {
-            let out = (road(i, side * DECK_EDGE) - road(i, 0.0)).normalize_or_zero();
+            let out = (road(i, side * edge) - road(i, 0.0)).normalize_or_zero();
             mesh.quad(
                 [
-                    (road(i, side * DECK_EDGE), Vec2::ZERO),
-                    (road(j, side * DECK_EDGE), Vec2::X),
-                    (road(j, side * DECK_EDGE) - down, Vec2::ONE),
-                    (road(i, side * DECK_EDGE) - down, Vec2::Y),
+                    (road(i, side * edge), Vec2::ZERO),
+                    (road(j, side * edge), Vec2::X),
+                    (road(j, side * edge) - down, Vec2::ONE),
+                    (road(i, side * edge) - down, Vec2::Y),
                 ],
                 out,
                 color,
@@ -188,10 +196,12 @@ fn support(
     index: usize,
     depth: f32,
 ) {
-    let laterals: &[f32] = match style {
-        BridgeStyle::OrangeTrack => &[0.0],
-        BridgeStyle::Slide => &[-9.0, 9.0],
-        _ => &[-7.0, 7.0],
+    // Under the middle, or in pairs under the lanes, in from the walls.
+    let wall = track.wall();
+    let laterals: Vec<f32> = match style {
+        BridgeStyle::OrangeTrack => vec![0.0],
+        BridgeStyle::Slide => vec![-(wall - 2.5), wall - 2.5],
+        _ => vec![-(wall - 4.5), wall - 4.5],
     };
     // Round a tower, a spiral hangs off it on brackets.
     let at = track.centerline()[index];
@@ -208,7 +218,7 @@ fn support(
         bracket(mesh, track, tower, index, depth, color);
         return;
     }
-    for &lateral in laterals {
+    for &lateral in &laterals {
         let top = track.surface_point(index, lateral) - Vec3::Y * depth;
         let ground = Vec2::new(top.x, top.z);
         let foot = y(ground_under(store, ground, top.y - BASE_ELEVATION));
@@ -220,7 +230,8 @@ fn support(
             BridgeStyle::OrangeTrack => {
                 // A square pillar, and a cradle across under the deck.
                 mesh.beam(base, top, 2.4, 2.4, PILLAR_BLUE);
-                let across = track.surface_point(index, 8.0) - track.surface_point(index, -8.0);
+                let across = track.surface_point(index, wall - 3.5)
+                    - track.surface_point(index, -(wall - 3.5));
                 let half = across / 2.0;
                 let under = top - Vec3::Y * 0.6;
                 mesh.beam(under - half, under + half, 1.2, 1.2, PILLAR_BLUE);
@@ -238,7 +249,7 @@ fn on_a_road_below(track: &Track, point: Vec2, foot: f32, top: f32) -> bool {
     let mut height = foot;
     while height < top - 1.0 {
         let nearest = track.nearest_at(point, height);
-        if nearest.distance < WALL_DISTANCE + 2.0
+        if nearest.distance < track.road(nearest.road).wall_at(nearest.index) + 2.0
             && (track.height_beside(&nearest) - height).abs() < 2.5
         {
             return true;
@@ -301,7 +312,7 @@ fn bracket(
     // one: on a banked spiral the near one is the lower.
     let under = |lateral: f32| track.surface_point(index, lateral) - Vec3::Y * (depth + 0.5);
     let flat = |p: Vec3| Vec2::new(p.x, p.z);
-    let (left, right) = (under(DECK_EDGE), under(-DECK_EDGE));
+    let (left, right) = (under(deck_edge(track)), under(-deck_edge(track)));
     let (near, far) = if flat(left).distance(tower.center) < flat(right).distance(tower.center) {
         (left, right)
     } else {
@@ -650,9 +661,9 @@ pub fn store_pieces(
     wall_shelves(&mut solid, &mut boxes, store);
     for (index, furniture) in store.furniture.iter().enumerate() {
         match furniture.kind {
-            FurnitureKind::Table => table(&mut solid, furniture),
+            FurnitureKind::Table => table(&mut solid, furniture, track),
             FurnitureKind::Diorama => {
-                table(&mut solid, furniture);
+                table(&mut solid, furniture, track);
                 baseplate(&mut baseplates, furniture);
             }
             FurnitureKind::Chair => chair(&mut solid, furniture),
@@ -664,11 +675,16 @@ pub fn store_pieces(
     for tower in store.towers {
         self::tower(&mut solid, tower);
     }
-    for castle in store.castles {
-        self::castle(&mut solid, castle);
+    // The castles a road runs through; the others are Meshy's (see
+    // `spawn_models`).
+    for castle in store.castles.iter().filter(|castle| castle.through) {
+        self::castle(&mut solid, castle, track.wall());
     }
     for toy_loop in store.loops {
         self::toy_loop(&mut solid, toy_loop);
+    }
+    for looped in track.loops() {
+        loop_stand(&mut solid, looped);
     }
     for mat in store.mats {
         self::mat(&mut solid, &mut foam, mat);
@@ -862,9 +878,15 @@ const LEG_INSET: f32 = 4.0;
 /// How far apart a long table's legs are at most (m).
 const LEGS_EVERY: f32 = 140.0;
 
+/// How far a leg moves along its table's side at a time, off a road under
+/// the table (m).
+const LEG_SHIFT: f32 = 4.0;
+
 /// Where a table's legs stand (x, z): at its corners, and along its long
-/// sides as far apart as [`LEGS_EVERY`] at most.
-pub fn table_legs(furniture: &Furniture) -> Vec<Vec2> {
+/// sides as far apart as [`LEGS_EVERY`] at most; each standing on a road of
+/// `track` under the table moved along its side towards the middle until it
+/// is clear of it, or left out if it never is.
+pub fn table_legs(furniture: &Furniture, track: &Track) -> Vec<Vec2> {
     let half = furniture.size / 2.0 - Vec2::splat(LEG_INSET);
     let along = |extent: f32| {
         let count = (2.0 * extent / LEGS_EVERY).ceil().max(1.0) as usize;
@@ -875,16 +897,47 @@ pub fn table_legs(furniture: &Furniture) -> Vec<Vec2> {
     let mut legs = Vec::new();
     for x in along(half.x) {
         for z in along(half.y) {
-            if x.abs() >= half.x - 0.01 || z.abs() >= half.y - 0.01 {
-                legs.push(furniture.world(Vec2::new(x, z)));
+            if x.abs() < half.x - 0.01 && z.abs() < half.y - 0.01 {
+                continue;
             }
+            // On a side along x (at either end of z) it moves along x, and
+            // on one along z along z.
+            let (start, toward) = if z.abs() >= half.y - 0.01 {
+                (Vec2::new(x, z), Vec2::new(-x.signum(), 0.0))
+            } else {
+                (Vec2::new(x, z), Vec2::new(0.0, -z.signum()))
+            };
+            let reach = (start * toward.abs()).length();
+            let clear = (0..)
+                .map(|k| start + toward * (k as f32 * LEG_SHIFT))
+                .take_while(|local| (*local - start).length() <= reach)
+                .map(|local| furniture.world(local))
+                .find(|&at| !on_a_road_under(track, at, furniture.top));
+            legs.extend(clear);
         }
     }
     legs
 }
 
-/// A table: its top, an apron under its edges and its legs.
-fn table(mesh: &mut MeshBuilder, furniture: &Furniture) {
+/// Whether a leg standing at `point` (x, z) under a top `top` over the
+/// floor would stand on a road running under it, or right by one.
+fn on_a_road_under(track: &Track, point: Vec2, top: f32) -> bool {
+    (0..=track.side_roads().len()).any(|number| {
+        let road = track.road(number);
+        road.centerline()
+            .iter()
+            .zip(road.elevations())
+            .enumerate()
+            .any(|(index, (&at, &elevation))| {
+                elevation - BASE_ELEVATION < top - 1.0
+                    && at.distance(point) < road.wall_at(index) + TABLE_LEG + 1.0
+            })
+    })
+}
+
+/// A table: its top, an apron under its edges and its legs, off the roads
+/// of `track` running under it (see [`table_legs`]).
+fn table(mesh: &mut MeshBuilder, furniture: &Furniture, track: &Track) {
     let center = |up: f32| Vec3::new(furniture.center.x, y(up), furniture.center.y);
     let half = furniture.size / 2.0;
     let top = furniture.top;
@@ -922,7 +975,7 @@ fn table(mesh: &mut MeshBuilder, furniture: &Furniture) {
         );
     }
     let leg = (top - TABLE_TOP) / 2.0;
-    for at in table_legs(furniture) {
+    for at in table_legs(furniture, track) {
         cuboid(
             mesh,
             Vec3::new(at.x, y(leg), at.y),
@@ -1086,10 +1139,11 @@ fn tower(mesh: &mut MeshBuilder, tower: &Tower) {
 const BRICK_GREY: Color = Color::srgb(0.62, 0.64, 0.66);
 const ROOF_RED: Color = Color::srgb(0.8, 0.12, 0.1);
 
-/// A castle of plastic bricks: a curtain wall with battlements round a
-/// keep, a round tower at each corner under a red pointed roof, a gate in
-/// its front.
-fn castle(mesh: &mut MeshBuilder, castle: &Castle) {
+/// A castle of plastic bricks a road runs through: a curtain wall with
+/// battlements, a round tower at each corner under a red pointed roof, and
+/// a gate in each end wall (as wide as the road's walls, `road_wall` from
+/// its middle, stand apart, and a little more) under a gatehouse.
+fn castle(mesh: &mut MeshBuilder, castle: &Castle, road_wall: f32) {
     let (x, z) = axes(castle.heading);
     let place = |local: Vec2, up: f32| {
         let ground = castle.center + x * local.x + z * local.y;
@@ -1098,12 +1152,16 @@ fn castle(mesh: &mut MeshBuilder, castle: &Castle) {
     let half = castle.size / 2.0;
     const WALL: f32 = 6.0;
     const THICK: f32 = 1.0;
-    for (a, b) in [
-        (Vec2::new(-half.x, -half.y), Vec2::new(half.x, -half.y)),
+    let gate = road_wall + 1.5;
+    let mut walls = vec![
         (Vec2::new(half.x, -half.y), Vec2::new(half.x, half.y)),
-        (Vec2::new(half.x, half.y), Vec2::new(-half.x, half.y)),
         (Vec2::new(-half.x, half.y), Vec2::new(-half.x, -half.y)),
-    ] {
+    ];
+    for end in [-half.y, half.y] {
+        walls.push((Vec2::new(-half.x, end), Vec2::new(-gate, end)));
+        walls.push((Vec2::new(gate, end), Vec2::new(half.x, end)));
+    }
+    for (a, b) in walls {
         let middle = (a + b) / 2.0;
         let along = (b - a) / 2.0;
         let extent = Vec3::new(
@@ -1131,31 +1189,84 @@ fn castle(mesh: &mut MeshBuilder, castle: &Castle) {
             );
         }
     }
-    // The gate, dark in the middle of the front wall.
-    cuboid(
-        mesh,
-        place(Vec2::new(0.0, half.y), 2.0),
-        Vec3::new(2.2, 2.0, THICK + 0.05),
-        castle.heading,
-        Color::srgb(0.25, 0.18, 0.12),
-    );
     for (sx, sz) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
         let at = place(Vec2::new(sx * half.x, sz * half.y), 0.0);
         cylinder(mesh, at, 3.0, WALL + 4.0, 10, |_| BRICK_GREY);
         cone(mesh, at + Vec3::Y * (WALL + 4.0), 3.8, 5.0, 10, ROOF_RED);
     }
-    // The keep, with a tower on it.
-    let keep = (half * 0.45).min(Vec2::splat(7.0));
-    cuboid(
-        mesh,
-        place(Vec2::ZERO, 6.0),
-        Vec3::new(keep.x, 6.0, keep.y),
-        castle.heading,
-        BRICK_GREY.mix(&Color::WHITE, 0.1),
-    );
-    let top = place(Vec2::ZERO, 12.0);
-    cylinder(mesh, top, 2.6, 5.0, 10, |_| BRICK_GREY);
-    cone(mesh, top + Vec3::Y * 5.0, 3.4, 5.5, 10, ROOF_RED);
+    gatehouses(mesh, castle, gate, &place);
+}
+
+/// Over each gate of a castle a road runs through (`gate` either side of the
+/// road's middle), a gatehouse: a tall round tower either side, under a red
+/// roof, and a battlemented bridge between them, high over the riders.
+fn gatehouses(
+    mesh: &mut MeshBuilder,
+    castle: &Castle,
+    gate: f32,
+    place: &impl Fn(Vec2, f32) -> Vec3,
+) {
+    const TOWER: f32 = 3.2;
+    const TALL: f32 = 15.0;
+    const ARCH: f32 = 10.0;
+    const BRIDGE: f32 = 2.5;
+    let half = castle.size / 2.0;
+    for end in [-half.y, half.y] {
+        for side in [-1.0, 1.0] {
+            let at = place(Vec2::new(side * (gate + TOWER), end), 0.0);
+            cylinder(mesh, at, TOWER, TALL, 12, |_| BRICK_GREY);
+            cone(mesh, at + Vec3::Y * TALL, TOWER + 0.8, 6.0, 12, ROOF_RED);
+        }
+        cuboid(
+            mesh,
+            place(Vec2::new(0.0, end), ARCH + BRIDGE / 2.0),
+            Vec3::new(gate + TOWER, BRIDGE / 2.0, 1.6),
+            castle.heading,
+            BRICK_GREY.mix(&Color::WHITE, 0.1),
+        );
+        let count = ((2.0 * gate) / 2.4).floor() as usize;
+        for k in 0..count {
+            let across = -gate + 2.0 * gate * (k as f32 + 0.5) / count as f32;
+            for face in [-1.2, 1.2] {
+                cuboid(
+                    mesh,
+                    place(Vec2::new(across, end + face), ARCH + BRIDGE + 0.6),
+                    Vec3::new(0.6, 0.6, 0.4),
+                    castle.heading,
+                    BRICK_GREY,
+                );
+            }
+        }
+    }
+}
+
+/// The blue stand of a loop the bikes ride (see
+/// [`super::landmarks::spawn_ridden_loops`]), as a toy loop's: a post
+/// either side of it, beyond its edges (its running surface drifts from the
+/// way in to the way out), up to its middle, on a foot, and a bar across
+/// between them through its middle.
+fn loop_stand(mesh: &mut MeshBuilder, looped: &Loop) {
+    const POST: f32 = 1.6;
+    let left = looped.left();
+    let reach = LOOP_WALL + 2.0;
+    let middle = looped.height + looped.radius;
+    let feet = [
+        looped.mouth + left * (looped.shift.min(0.0) - reach),
+        looped.mouth + left * (looped.shift.max(0.0) + reach),
+    ];
+    let top = |foot: Vec2| Vec3::new(foot.x, middle, foot.y);
+    for foot in feet {
+        let base = Vec3::new(foot.x, y(0.0), foot.y);
+        mesh.beam(base, top(foot), POST, POST, PILLAR_BLUE);
+        cuboid(
+            mesh,
+            base + Vec3::Y * 0.4,
+            Vec3::new(3.0, 0.4, 5.0),
+            looped.heading,
+            PILLAR_BLUE,
+        );
+    }
+    mesh.beam(top(feet[0]), top(feet[1]), 1.0, 1.0, PILLAR_BLUE);
 }
 
 /// A loop of orange track standing on a blue stand, facing along its
@@ -1839,6 +1950,53 @@ pub struct TrainCar {
 const CAR_LENGTH: f32 = 7.0;
 const CAR_GAP: f32 = 1.2;
 
+/// The toys made with Meshy (see `tools/import_toys.py`).
+#[derive(Resource)]
+pub struct ToyModels(PropPack);
+
+impl FromWorld for ToyModels {
+    fn from_world(world: &mut World) -> Self {
+        Self(PropPack::load(
+            world,
+            include_bytes!("../../assets/models/toys/props.bin"),
+            include_bytes!("../../assets/models/toys/color.jpg"),
+        ))
+    }
+}
+
+/// The castle of bricks Meshy made, its gate on its front (+Z).
+const CASTLE_MODEL: &str = "castle_big";
+
+/// How `piece` stands to fill a box `size` across (x and z before it is
+/// turned), turned `heading` (its front, +Z, where the box's +z is), on the
+/// ground at `at` (x, z) `base` over the floor: as big as fits.
+fn fitted(piece: &Piece, size: Vec2, heading: f32, at: Vec2, base: f32) -> Transform {
+    let made = piece.high - piece.low;
+    let scale = (size.x / made.x).min(size.y / made.z);
+    Transform::from_xyz(at.x, y(base), at.y)
+        .with_rotation(Quat::from_rotation_y(heading))
+        .with_scale(Vec3::splat(scale))
+}
+
+/// The toys of a toy store Meshy made: the castles no road runs through.
+pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &mut Assets3d) {
+    let pack = &assets.toys.0;
+    let piece = pack.piece(CASTLE_MODEL);
+    for castle in store.castles.iter().filter(|castle| !castle.through) {
+        world.spawn((
+            Mesh3d(piece.mesh.clone()),
+            MeshMaterial3d(pack.material.clone()),
+            fitted(
+                piece,
+                castle.size,
+                castle.heading,
+                castle.center,
+                castle.base,
+            ),
+        ));
+    }
+}
+
 /// The electric trains, each a locomotive and its wagons, put on their
 /// tracks to go round them.
 pub fn spawn_trains(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &mut Assets3d) {
@@ -2020,14 +2178,16 @@ mod tests {
             .collect()
     }
 
-    /// The points of `track`'s centre line, each with its height over the
-    /// floor.
+    /// The points of the centre lines of `track`'s roads (the lap and those
+    /// off it), each with its height over the floor.
     fn road(track: &Track) -> impl Iterator<Item = (Vec2, f32)> + '_ {
-        track
-            .centerline()
-            .iter()
-            .zip(track.elevations())
-            .map(|(&point, &elevation)| (point, elevation - BASE_ELEVATION))
+        (0..=track.side_roads().len()).flat_map(move |number| {
+            let line = track.road(number);
+            line.centerline()
+                .iter()
+                .zip(line.elevations())
+                .map(|(&point, &elevation)| (point, elevation - BASE_ELEVATION))
+        })
     }
 
     /// How far `point` (x, z) is from the nearest point of the centre line
@@ -2071,10 +2231,12 @@ mod tests {
                     FurnitureKind::Table | FurnitureKind::Diorama
                 )
             }) {
-                for leg in table_legs(furniture) {
+                let legs = table_legs(furniture, &track);
+                assert!(legs.len() >= 4, "{name}: a table on {} legs", legs.len());
+                for leg in legs {
                     let distance = road_near(&track, leg, -1.0, furniture.top);
                     assert!(
-                        distance > WALL_DISTANCE + TABLE_LEG,
+                        distance > track.wall() + TABLE_LEG,
                         "{name}: a table's leg at {leg} is {distance} m from a road under it"
                     );
                 }
@@ -2134,7 +2296,7 @@ mod tests {
             // floor comes within `reach` of `point` (x, z), its walls'
             // width aside.
             let clear = |point: Vec2, reach: f32, low: f32, high: f32| {
-                road_near(&track, point, low, high) > WALL_DISTANCE + reach
+                road_near(&track, point, low, high) > track.wall() + reach
             };
             for train in store.trains {
                 for point in closed_curve(train.track, 2.0) {
@@ -2144,7 +2306,7 @@ mod tests {
                     );
                 }
             }
-            for castle in store.castles {
+            for castle in store.castles.iter().filter(|castle| !castle.through) {
                 assert!(
                     clear(
                         castle.center,
@@ -2188,6 +2350,50 @@ mod tests {
                     toy.position
                 );
             }
+        }
+    }
+
+    #[test]
+    fn a_road_runs_through_the_castle_built_round_it() {
+        let mut castles = 0;
+        for (name, store, track) in stores() {
+            for castle in store.castles.iter().filter(|castle| castle.through) {
+                // A road along it, through its middle, on what it stands on,
+                // its walls well inside the castle's.
+                let nearest = track.nearest_at(castle.center, y(castle.base) + 1.0);
+                assert!(nearest.distance < 1.0, "{name}: {}", nearest.distance);
+                let (_, heading) = track.pose_beside(&nearest, 0.0);
+                assert!(
+                    (heading - castle.heading).sin().abs() < 0.1,
+                    "{name}: {heading}"
+                );
+                let wall = track.road(nearest.road).wall_at(nearest.index);
+                assert!(castle.size.x / 2.0 > wall + 4.0, "{name}");
+                let over = track.height_beside(&nearest) - y(castle.base);
+                assert!((0.2..1.5).contains(&over), "{name}: {over} m over its base");
+                castles += 1;
+            }
+        }
+        assert!(castles > 0);
+    }
+
+    #[test]
+    fn every_toy_meshy_made_is_in_the_pack_on_the_ground_and_light() {
+        let pack = crate::bike::model::imported::read(include_bytes!(
+            "../../assets/models/toys/props.bin"
+        ));
+        assert!(
+            pack.meshes.iter().any(|piece| piece.name == CASTLE_MODEL),
+            "no {CASTLE_MODEL} in the pack"
+        );
+        for piece in &pack.meshes {
+            let name = &piece.name;
+            let (low, high) = super::super::japan::bounds(&piece.mesh);
+            assert!(low.y.abs() < 1e-3, "{name} stands on the ground");
+            assert!((low.x + high.x).abs() < 0.05 * (high.x - low.x), "{name}");
+            assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");
+            let triangles = piece.mesh.indices().unwrap().len() / 3;
+            assert!(triangles < 8_000, "{name}: {triangles} triangles");
         }
     }
 
