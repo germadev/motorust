@@ -74,6 +74,11 @@ const DIGITAL_STEER_SPEEDS: (f32, f32) = (15.0, 70.0);
 /// the ones seen.
 const CURVE_LEAN_SPEED: f32 = 15.0;
 const CURVE_LEAN_FOLLOW: f32 = 40.0;
+/// The lean shown soft, about 80 ms behind (1/s); smooth, a critically
+/// damped spring (1/s) whose lean is about three quarters there in 150 ms,
+/// with no jolt starting or stopping (see [`curves::LeanLook`]).
+const SOFT_LEAN_FOLLOW: f32 = 12.5;
+const SMOOTH_LEAN_SPRING: f32 = 13.3;
 /// Lo que tarda la hierba en frenar del todo (s), y la parte de ese tiempo
 /// en la que apenas se nota: pisarla un momento casi no frena. Al volver al
 /// asfalto se recupera el doble de rápido.
@@ -351,6 +356,9 @@ pub struct BikeInput {
     /// rivals', whose steering does not reckon with it (with it they turn
     /// in tighter than they mean to off the brakes).
     pub plain_grip: bool,
+    /// How the lean shown follows `lean`, from the curves of the keys or
+    /// the stick steering.
+    pub look: curves::LeanLook,
 }
 
 /// Estado físico de la moto. Solo cambia en los pasos fijos de la simulación.
@@ -399,6 +407,8 @@ pub struct BikeState {
     pub ride: Option<Ride>,
     /// Whether its lean is going over to the other side (see [`swinging`]).
     pub swinging: bool,
+    /// How fast the lean shown changes (rad/s), for the smooth look.
+    pub lean_rate: f32,
     /// With the gears on, the gear it is in (0 the first) and how long the
     /// change up it is in still lasts (s).
     pub gear: usize,
@@ -424,6 +434,7 @@ impl BikeState {
             chassis: Chassis::default(),
             ride: None,
             swinging: false,
+            lean_rate: 0.0,
             gear: 0,
             shift: 0.0,
         }
@@ -754,6 +765,21 @@ pub fn step(
         1.0
     };
 
+    // The lean shown: by the curves, as their look says; else as always.
+    let (lean, new_lean_rate) = match (input.lean, input.look) {
+        (Some(_), curves::LeanLook::Soft) => {
+            (approach(state.lean, target_lean, SOFT_LEAN_FOLLOW, dt), 0.0)
+        }
+        (Some(_), curves::LeanLook::Smooth) => {
+            let spring = SMOOTH_LEAN_SPRING;
+            let accel =
+                spring * spring * (target_lean - state.lean) - 2.0 * spring * state.lean_rate;
+            let rate = state.lean_rate + accel * dt;
+            (state.lean + rate * dt, rate)
+        }
+        _ => (approach(state.lean, target_lean, lean_rate, dt), 0.0),
+    };
+
     let target_pitch = if state.grounded {
         ground.grade.atan()
     } else {
@@ -783,7 +809,8 @@ pub fn step(
         steer_rate,
         steer_direct,
         grass,
-        lean: approach(state.lean, target_lean, lean_rate, dt),
+        lean,
+        lean_rate: new_lean_rate,
         swinging,
         gear,
         shift,
@@ -1342,6 +1369,7 @@ fn read_controller_binding(
                 pivot_slowing: keys.pivot_slowing,
                 lean: keys.lean,
                 plain_grip: false,
+                look: keys.look,
             }
         }
         ControllerBinding::Arrows => {
@@ -1385,6 +1413,7 @@ fn read_controller_binding(
                 pivot_slowing: keys.pivot_slowing,
                 lean: keys.lean,
                 plain_grip: false,
+                look: keys.look,
             }
         }
         ControllerBinding::Gamepad(entity) => {
@@ -1446,6 +1475,11 @@ fn read_controller_binding(
                     pivot_slowing: keys.pivot_slowing,
                     lean: keys.lean.or(stick.lean),
                     plain_grip: false,
+                    look: if keys.lean.is_some() {
+                        keys.look
+                    } else {
+                        stick.look
+                    },
                 }
             } else {
                 BikeInput::default()
@@ -1623,6 +1657,11 @@ fn read_player_input(
             pivot_slowing: keys.pivot_slowing,
             lean: keys.lean.or(stick.lean),
             plain_grip: false,
+            look: if keys.lean.is_some() {
+                keys.look
+            } else {
+                stick.look
+            },
         };
         if throttle > 0.0 && !race.started && !race.lights {
             info!(
@@ -1783,6 +1822,7 @@ struct KeyTurn {
     steer: f32,
     pivot_slowing: f32,
     lean: Option<f32>,
+    look: curves::LeanLook,
 }
 
 impl KeySteer {
@@ -1807,6 +1847,7 @@ impl KeySteer {
                     pivot_slowing: 0.0,
                     // Upright with no key held, the stick (if any) leans it.
                     lean: (pressed != 0.0 || lean != 0.0).then_some(lean),
+                    look: curves.look,
                 }
             }
             None => {
@@ -1822,6 +1863,7 @@ impl KeySteer {
                     steer,
                     pivot_slowing: options.keyboard_reverse.slowing(steer),
                     lean: None,
+                    look: curves::LeanLook::Real,
                 }
             }
         }
@@ -1865,6 +1907,7 @@ struct StickTurn {
     steer: f32,
     direct: f32,
     lean: Option<f32>,
+    look: curves::LeanLook,
 }
 
 impl StickSteer {
@@ -1891,6 +1934,7 @@ impl StickSteer {
                     steer: 0.0,
                     direct: curves.turn_at(lean, speed / top_speed),
                     lean: (asked != 0.0 || lean != 0.0).then_some(lean),
+                    look: curves.look,
                 }
             }
             None => {
@@ -1900,6 +1944,7 @@ impl StickSteer {
                     steer: self.analog.update(raw, dt),
                     direct: 0.0,
                     lean: None,
+                    look: curves::LeanLook::Real,
                 }
             }
         }
@@ -2830,6 +2875,46 @@ mod tests {
             state.speed,
             plain.speed
         );
+    }
+
+    #[test]
+    fn the_lean_shown_follows_the_one_felt_as_its_look_says() {
+        let tuning = BikeTuning::default();
+        let ground = Ground::flat(Surface::Asphalt);
+        // Upright, asked half the lean at once: how far the lean shown is
+        // after `seconds`, as a share of it.
+        let shown = |look: curves::LeanLook, seconds: f32| {
+            let mut state = BikeState {
+                speed: 40.0,
+                lean: 0.0,
+                ..parked()
+            };
+            let input = BikeInput {
+                throttle: 1.0,
+                steer_direct: 0.5,
+                lean: Some(0.5),
+                look,
+                ..default()
+            };
+            for _ in 0..(seconds / DT).round() as usize {
+                state = step(&state, &input, &ground, &tuning, DT);
+            }
+            state.lean / (0.5 * tuning.max_lean)
+        };
+        use curves::LeanLook::{Real, Smooth, Soft};
+        // Real: there in a few hundredths; soft, about 80 ms behind (two
+        // thirds there by then); smooth, slower still at first, about three
+        // quarters there by 150 ms, and never past it.
+        assert!(shown(Real, 0.08) > 0.95);
+        let soft = shown(Soft, 0.08);
+        assert!((0.55..0.72).contains(&soft), "{soft}");
+        assert!(shown(Smooth, 0.04) < shown(Soft, 0.04));
+        let smooth = shown(Smooth, 0.15);
+        assert!((0.6..0.85).contains(&smooth), "{smooth}");
+        for seconds in [0.3, 0.6, 1.0] {
+            assert!(shown(Smooth, seconds) <= 1.0 + 1e-3);
+        }
+        assert!(shown(Smooth, 1.0) > 0.99 && shown(Soft, 1.0) > 0.99);
     }
 
     #[test]

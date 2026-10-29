@@ -475,6 +475,7 @@ pub fn decide(
         lean: None,
         // Its steering does not reckon with the front's extra grip braking.
         plain_grip: true,
+        look: super::curves::LeanLook::Real,
     }
 }
 

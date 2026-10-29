@@ -75,6 +75,8 @@ pub struct KeyboardCurves {
     /// to `top_speed_turn` at top speed, for the share of top speed.
     pub turn_speed: Bezier,
     pub top_speed_turn: f32,
+    /// How the lean shown follows the one felt.
+    pub look: LeanLook,
     /// R, the stick's: the lean asked for how far it is pushed past its
     /// dead zone.
     pub response: Bezier,
@@ -299,6 +301,33 @@ impl LearnLine {
     }
 }
 
+/// How the lean shown follows the lean felt, the one the curves give and
+/// the bike turns by: as it is (within a few hundredths of a second), soft
+/// (about 80 ms behind) or smooth (about 150 ms, and eased in and out, so
+/// that going over to the other side is gentle too). Only what is seen:
+/// the turn, the learning and the panel go by the lean felt.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum LeanLook {
+    #[default]
+    Real,
+    Soft,
+    Smooth,
+}
+
+pub const LEAN_LOOKS: [LeanLook; 3] = [LeanLook::Real, LeanLook::Soft, LeanLook::Smooth];
+
+impl LeanLook {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (LeanLook::Real, _) => "Real",
+            (LeanLook::Soft, Language::Spanish) => "Suave",
+            (LeanLook::Soft, Language::English) => "Soft",
+            (LeanLook::Smooth, Language::Spanish) => "Muy suave",
+            (LeanLook::Smooth, Language::English) => "Smooth",
+        }
+    }
+}
+
 /// The keyboard's curves as Options > Control > Keyboard behaviour chooses
 /// them in Bézier (or the stick's, as Stick behaviour does, `stick`: with
 /// R, its response, too), saved with the settings: each curve's shape, the
@@ -329,6 +358,9 @@ pub struct KeyboardShapes {
     /// the bike strays (the key of free ride changes it, see
     /// [`super::learning`]).
     pub correct: bool,
+    /// How the lean shown follows the one the curves give, which turns the
+    /// bike: as it is, or smoothed (see [`LeanLook`]).
+    pub look: LeanLook,
 }
 
 impl Default for KeyboardShapes {
@@ -362,6 +394,7 @@ impl KeyboardShapes {
             top_speed_turn: 1.0,
             learn: LearnLine::Off,
             correct: false,
+            look: LeanLook::Real,
         }
     }
 
@@ -576,6 +609,7 @@ impl KeyboardShapes {
             turn: self.bezier(CurveKind::Turn),
             turn_speed: self.bezier(CurveKind::TurnSpeed),
             top_speed_turn: number(CurveKind::TurnSpeed),
+            look: self.look,
             response: self.bezier(CurveKind::Response),
         }
     }

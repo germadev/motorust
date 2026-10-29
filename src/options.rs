@@ -6,7 +6,7 @@ use bevy::ui::{UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
 use crate::bike::curves::{
-    CurveKind, CurveShape, KEYBOARD_MODES, KeyboardMode, KeyboardShapes, LEARN_LINES,
+    CurveKind, CurveShape, KEYBOARD_MODES, KeyboardMode, KeyboardShapes, LEAN_LOOKS, LEARN_LINES,
 };
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
@@ -463,6 +463,8 @@ enum ControlItem {
     CurveShape(CurveKind),
     CurveCustom(CurveKind),
     CurveScale(CurveKind),
+    /// How the lean shown follows the lean felt.
+    LeanLook,
     /// Whether the game learns every curve from how the player rides.
     Learning,
     ShowLegend,
@@ -558,12 +560,13 @@ fn starts_group(
     index: usize,
     shapes: &KeyboardShapes,
 ) -> bool {
-    // On the keyboard's curves, each curve (with its rows) and learning.
+    // On the keyboard's (or the stick's) curves, each curve with its rows,
+    // and the lean shown with learning.
     if matches!(page, Some(Page::KeyboardCurves | Page::StickCurves)) {
         return index > 0
             && matches!(
                 control_items(page, shapes).get(index),
-                Some(ControlItem::CurveShape(_) | ControlItem::Learning)
+                Some(ControlItem::CurveShape(_) | ControlItem::LeanLook)
             );
     }
     if page.is_some() {
@@ -627,6 +630,7 @@ fn control_items(page: Option<Page>, shapes: &KeyboardShapes) -> Vec<ControlItem
                     items.push(ControlItem::CurveScale(kind));
                 }
             }
+            items.push(ControlItem::LeanLook);
             items.push(ControlItem::Learning);
             items
         }
@@ -1339,6 +1343,11 @@ fn use_options_menu(
                     shapes_mut(&mut settings, page).step_scale(kind, change);
                     sounds.write(MenuSound::Move);
                 }
+                ControlItem::LeanLook if change != 0 => {
+                    let shapes = shapes_mut(&mut settings, page);
+                    shapes.look = cycle(&LEAN_LOOKS, shapes.look, change);
+                    sounds.write(MenuSound::Move);
+                }
                 ControlItem::Learning if change != 0 => {
                     let shapes = shapes_mut(&mut settings, page);
                     shapes.set_learn(cycle(&LEARN_LINES, shapes.learn, change));
@@ -2005,6 +2014,16 @@ fn show_options_menu(
                         ),
                     )
                     .automatic(shapes_of(&settings, options_menu.page).learning()),
+                    ControlItem::LeanLook => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Tumbada visible",
+                            Language::English => "Lean shown",
+                        },
+                        format!(
+                            "<  {}  >",
+                            shapes_of(&settings, options_menu.page).look.name(lang)
+                        ),
+                    ),
                     ControlItem::Learning => Row::with_value(
                         match lang {
                             Language::Spanish => "Auto-aprendizaje",
@@ -3083,14 +3102,14 @@ mod tests {
         let page = Some(Page::StickCurves);
         let items = control_items(page, shapes_of(&stick, page));
         assert_eq!(items[0], ControlItem::CurveShape(CurveKind::Response));
-        assert_eq!(items.len(), 7 + 5 + 1);
+        assert_eq!(items.len(), 7 + 5 + 2);
         assert!(shapes_of(&stick, page).stick);
         assert!(!shapes_of(&stick, Some(Page::KeyboardCurves)).stick);
         // Each curve's shape, under it a custom one's numbers and its time
         // (but E's), and learning at the end.
         let mut shapes = KeyboardShapes::default();
         let curves = |shapes: &KeyboardShapes| control_items(Some(Page::KeyboardCurves), shapes);
-        assert_eq!(curves(&shapes).len(), 6 + 5 + 1);
+        assert_eq!(curves(&shapes).len(), 6 + 5 + 2);
         assert_eq!(
             curves(&shapes)[0],
             ControlItem::CurveShape(CurveKind::LeanIn)
