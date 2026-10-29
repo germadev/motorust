@@ -71,6 +71,9 @@ pub struct KeyboardCurves {
     pub top_speed_lean: f32,
     /// E: the share of the bike's turn for the share of its lean.
     pub turn: Bezier,
+    /// R, the stick's: the lean asked for how far it is pushed past its
+    /// dead zone.
+    pub response: Bezier,
 }
 
 impl Default for KeyboardCurves {
@@ -94,6 +97,9 @@ pub const TOP_SPEED_LEAN: (f32, f32) = (0.3, 1.0);
 /// the other way; its limit with speed two thirds of the way from all of
 /// it to 0.8.
 const CLASSIC_SECONDS: [f32; 3] = [0.385, 0.883, 0.0];
+/// The classic stick's: leaning in at 3.8 a second, standing up at 12 (see
+/// `AnalogSteer`), upright at once the other way.
+const CLASSIC_STICK_SECONDS: [f32; 3] = [1.0 / 3.8, 1.0 / 12.0, 0.0];
 const CLASSIC_TOP_SPEED_LEAN: f32 = 1.0 - (1.0 - 0.8) * 2.0 / 3.0;
 
 impl KeyboardCurves {
@@ -105,7 +111,14 @@ impl KeyboardCurves {
             CurveKind::Unwind => self.unwind.curve,
             CurveKind::Speed => self.speed,
             CurveKind::Turn => self.turn,
+            CurveKind::Response => self.response,
         }
+    }
+
+    /// The lean the stick asks for pushed `travel` past its dead zone (0 to
+    /// 1, either way): R, on the side it is pushed to.
+    pub fn lean_asked(&self, travel: f32) -> f32 {
+        self.response.ease(travel.abs()).copysign(travel) * f32::from(travel != 0.0)
     }
 
     /// The most the bike leans over (a share of all it can) going at
@@ -158,13 +171,20 @@ impl CurveShape {
     /// with speed, the smoothstep from 15 to 70 m/s, comes close as an
     /// easing with both control points at 0.56 across; it unwinds at once
     /// (any curve) and turns as far as it leans.
-    pub fn fixed(self, kind: CurveKind) -> Option<Bezier> {
+    ///
+    /// The classic stick's (`stick`) leans in and stands up at a steady
+    /// rate (`AnalogSteer`), straight lines, and its response, the travel
+    /// past its dead zone to the power of 1.35, comes within 0.006 of
+    /// control points on the thirds across at 0.14 and 0.56 up.
+    pub fn fixed(self, kind: CurveKind, stick: bool) -> Option<Bezier> {
         let third = 1.0 / 3.0;
         Some(match self {
             CurveShape::Classic => match kind {
+                CurveKind::LeanIn | CurveKind::StandUp if stick => Bezier::LINEAR,
                 CurveKind::LeanIn => Bezier::new(third, 0.2406, 2.0 * third, 0.5739),
                 CurveKind::StandUp => Bezier::new(third, 0.0736, 2.0 * third, 0.4069),
                 CurveKind::Speed => Bezier::new(0.56, 0.0, 0.56, 1.0),
+                CurveKind::Response => Bezier::new(third, 0.14, 2.0 * third, 0.56),
                 CurveKind::Unwind | CurveKind::Turn => Bezier::LINEAR,
             },
             CurveShape::Linear => Bezier::LINEAR,
@@ -206,11 +226,14 @@ pub struct CurveChoice {
 }
 
 impl CurveChoice {
-    /// Classic, its custom numbers the classic ones to start from.
-    fn classic(kind: CurveKind) -> Self {
+    /// Classic (the keyboard's or the `stick`'s), its custom numbers the
+    /// classic ones to start from.
+    fn classic(kind: CurveKind, stick: bool) -> Self {
         Self {
             shape: CurveShape::Classic,
-            custom: CurveShape::Classic.fixed(kind).unwrap_or(Bezier::LINEAR),
+            custom: CurveShape::Classic
+                .fixed(kind, stick)
+                .unwrap_or(Bezier::LINEAR),
             learned: None,
         }
     }
@@ -218,7 +241,7 @@ impl CurveChoice {
 
 impl Default for CurveChoice {
     fn default() -> Self {
-        Self::classic(CurveKind::Turn)
+        Self::classic(CurveKind::Turn, false)
     }
 }
 
@@ -249,13 +272,16 @@ impl LearnLine {
 }
 
 /// The keyboard's curves as Options > Control > Keyboard behaviour chooses
-/// them in Bézier, saved with the settings: each curve's shape, the times
-/// of A, B and C, the lean D keeps at top speed, and whether the game is
-/// learning them all from how the player rides (then every curve is the
+/// them in Bézier (or the stick's, as Stick behaviour does, `stick`: with
+/// R, its response, too), saved with the settings: each curve's shape, the
+/// times of A, B and C, the lean D keeps at top speed, and whether the game
+/// is learning them all from how the player rides (then every curve is the
 /// learnt one, whatever its shape).
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeyboardShapes {
+    pub stick: bool,
+    pub response: CurveChoice,
     pub lean_in: CurveChoice,
     pub stand_up: CurveChoice,
     pub unwind: CurveChoice,
@@ -276,25 +302,49 @@ pub struct KeyboardShapes {
 
 impl Default for KeyboardShapes {
     fn default() -> Self {
+        Self::classic(false)
+    }
+}
+
+impl KeyboardShapes {
+    /// The classic curves of the keyboard, or of the `stick`.
+    pub fn classic(stick: bool) -> Self {
+        let classic = |kind| CurveChoice::classic(kind, stick);
+        let [lean_in_seconds, stand_up_seconds, unwind_seconds] = if stick {
+            CLASSIC_STICK_SECONDS
+        } else {
+            CLASSIC_SECONDS
+        };
         Self {
-            lean_in: CurveChoice::classic(CurveKind::LeanIn),
-            stand_up: CurveChoice::classic(CurveKind::StandUp),
-            unwind: CurveChoice::classic(CurveKind::Unwind),
-            speed: CurveChoice::classic(CurveKind::Speed),
-            turn: CurveChoice::classic(CurveKind::Turn),
-            lean_in_seconds: CLASSIC_SECONDS[0],
-            stand_up_seconds: CLASSIC_SECONDS[1],
-            unwind_seconds: CLASSIC_SECONDS[2],
+            stick,
+            response: classic(CurveKind::Response),
+            lean_in: classic(CurveKind::LeanIn),
+            stand_up: classic(CurveKind::StandUp),
+            unwind: classic(CurveKind::Unwind),
+            speed: classic(CurveKind::Speed),
+            turn: classic(CurveKind::Turn),
+            lean_in_seconds,
+            stand_up_seconds,
+            unwind_seconds,
             top_speed_lean: CLASSIC_TOP_SPEED_LEAN,
             learn: LearnLine::Off,
             correct: false,
         }
     }
-}
 
-impl KeyboardShapes {
+    /// Its curves, in the order the options and the panel show them: the
+    /// stick's response first.
+    pub fn kinds(&self) -> &'static [CurveKind] {
+        if self.stick {
+            &STICK_CURVE_KINDS
+        } else {
+            &CURVE_KINDS
+        }
+    }
+
     pub fn choice(&self, kind: CurveKind) -> &CurveChoice {
         match kind {
+            CurveKind::Response => &self.response,
             CurveKind::LeanIn => &self.lean_in,
             CurveKind::StandUp => &self.stand_up,
             CurveKind::Unwind => &self.unwind,
@@ -305,6 +355,7 @@ impl KeyboardShapes {
 
     pub fn choice_mut(&mut self, kind: CurveKind) -> &mut CurveChoice {
         match kind {
+            CurveKind::Response => &mut self.response,
             CurveKind::LeanIn => &mut self.lean_in,
             CurveKind::StandUp => &mut self.stand_up,
             CurveKind::Unwind => &mut self.unwind,
@@ -330,7 +381,7 @@ impl KeyboardShapes {
         match self.shape(kind) {
             CurveShape::Custom => choice.custom,
             CurveShape::Learned => choice.learned.unwrap_or(choice.custom),
-            shape => shape.fixed(kind).unwrap_or(Bezier::LINEAR),
+            shape => shape.fixed(kind, self.stick).unwrap_or(Bezier::LINEAR),
         }
     }
 
@@ -355,7 +406,7 @@ impl KeyboardShapes {
     /// its shape.
     pub fn set_learn(&mut self, line: LearnLine) {
         if line != LearnLine::Off && !self.learning() {
-            for kind in CURVE_KINDS {
+            for &kind in self.kinds() {
                 let was = self.bezier(kind);
                 let choice = self.choice_mut(kind);
                 choice.learned.get_or_insert(was);
@@ -365,7 +416,8 @@ impl KeyboardShapes {
     }
 
     /// Corrects the learnt curve `kind` a little for the bike having gone
-    /// `wide` (or inside) on it: A and C quicker for going wide, D keeping
+    /// `wide` (or inside) on it: A and C quicker, R asking for more lean and
+    /// E more turn for the lean, for going wide, D keeping
     /// more lean, E less turn for the lean for cutting inside, B quicker for
     /// standing up too slowly (inside) and slower for too quickly (wide).
     /// The curve only rises or falls, both control points together, within
@@ -373,9 +425,10 @@ impl KeyboardShapes {
     /// the key always turns the bike.
     pub fn correct_for(&mut self, kind: CurveKind, wide: bool) {
         let up = match (kind, wide) {
-            (CurveKind::LeanIn | CurveKind::Unwind, true) => 1.0,
+            (CurveKind::LeanIn | CurveKind::Unwind | CurveKind::Response, true) => 1.0,
             (CurveKind::Speed, true) => -1.0,
             (CurveKind::Turn, false) => -1.0,
+            (CurveKind::Turn, true) => 1.0,
             (CurveKind::StandUp, false) => 1.0,
             (CurveKind::StandUp, true) => -1.0,
             _ => return,
@@ -403,7 +456,7 @@ impl KeyboardShapes {
             CurveKind::StandUp => Some(self.stand_up_seconds),
             CurveKind::Unwind => Some(self.unwind_seconds),
             CurveKind::Speed => Some(self.top_speed_lean),
-            CurveKind::Turn => None,
+            CurveKind::Turn | CurveKind::Response => None,
         }
     }
 
@@ -430,7 +483,7 @@ impl KeyboardShapes {
             CurveKind::Speed => {
                 self.top_speed_lean = stepped(self.top_speed_lean, TOP_SPEED_LEAN);
             }
-            CurveKind::Turn => {}
+            CurveKind::Turn | CurveKind::Response => {}
         }
     }
 
@@ -447,6 +500,7 @@ impl KeyboardShapes {
             speed: self.bezier(CurveKind::Speed),
             top_speed_lean: self.top_speed_lean,
             turn: self.bezier(CurveKind::Turn),
+            response: self.bezier(CurveKind::Response),
         }
     }
 }
@@ -460,9 +514,21 @@ pub enum CurveKind {
     Unwind,
     Speed,
     Turn,
+    /// The stick's only: the lean asked for how far it is pushed.
+    Response,
 }
 
 pub const CURVE_KINDS: [CurveKind; 5] = [
+    CurveKind::LeanIn,
+    CurveKind::StandUp,
+    CurveKind::Unwind,
+    CurveKind::Speed,
+    CurveKind::Turn,
+];
+
+/// The stick's curves: its response, then the keyboard's.
+pub const STICK_CURVE_KINDS: [CurveKind; 6] = [
+    CurveKind::Response,
     CurveKind::LeanIn,
     CurveKind::StandUp,
     CurveKind::Unwind,
@@ -479,6 +545,7 @@ impl CurveKind {
             CurveKind::Unwind => 'C',
             CurveKind::Speed => 'D',
             CurveKind::Turn => 'E',
+            CurveKind::Response => 'R',
         }
     }
 
@@ -494,6 +561,8 @@ impl CurveKind {
             (CurveKind::Speed, Language::English) => "Lean for speed",
             (CurveKind::Turn, Language::Spanish) => "Giro según tumbada",
             (CurveKind::Turn, Language::English) => "Turn for lean",
+            (CurveKind::Response, Language::Spanish) => "Respuesta del stick",
+            (CurveKind::Response, Language::English) => "Stick response",
         }
     }
 
@@ -510,6 +579,8 @@ impl CurveKind {
             (CurveKind::Speed, Language::English) => "Speed",
             (CurveKind::Turn, Language::Spanish) => "Giro",
             (CurveKind::Turn, Language::English) => "Turn",
+            (CurveKind::Response, Language::Spanish) => "Respuesta",
+            (CurveKind::Response, Language::English) => "Response",
         }
     }
 
@@ -525,6 +596,8 @@ impl CurveKind {
             (CurveKind::Speed, Language::English) => ("speed", "reduction"),
             (CurveKind::Turn, Language::Spanish) => ("tumbada", "giro"),
             (CurveKind::Turn, Language::English) => ("lean", "turn"),
+            (CurveKind::Response, Language::Spanish) => ("stick", "tumbada"),
+            (CurveKind::Response, Language::English) => ("stick", "lean"),
         }
     }
 
@@ -578,32 +651,40 @@ pub struct CurveLean {
 }
 
 impl CurveLean {
-    /// Goes on `dt` seconds with `pressed` held (-1, 0 or 1) at
-    /// `speed_share` of the top speed. Each curve is followed from wherever
-    /// the lean is (the first point of it at that height), so going from
-    /// one to another never jumps. Returns the lean.
+    /// Goes on `dt` seconds asking for the lean `target` (a share of all
+    /// the bike can, positive to the left: -1, 0 or 1 from the keys, any
+    /// from the stick) at `speed_share` of the top speed. Short of it on
+    /// its side, the lean leans in as A says, up to it or D's limit; past
+    /// it (or with nothing asked), stands back up to it as B says; on the
+    /// other side, comes upright first as C says. Each curve is followed
+    /// from wherever the lean is (the first point of it at that height),
+    /// so going from one to another never jumps. Returns the lean.
     pub fn update(
         &mut self,
-        pressed: f32,
+        target: f32,
         curves: &KeyboardCurves,
         speed_share: f32,
         dt: f32,
     ) -> f32 {
-        let pressed = pressed.clamp(-1.0, 1.0).round();
+        let target = target.clamp(-1.0, 1.0);
+        let asked = target.abs();
+        let side = if asked < 1e-4 { 0.0 } else { target.signum() };
         let limit = curves.lean_limit(speed_share);
         let mut dt = dt.max(0.0);
         // At most twice round: unwinding may end within the step and lean
         // in with what is left of it.
         for _ in 0..2 {
             let over = self.lean.abs();
-            let phase = if pressed == 0.0 {
+            let phase = if side == 0.0 {
                 if over > 0.0 {
                     Phase::StandingUp
                 } else {
                     Phase::Upright
                 }
-            } else if self.lean * pressed < 0.0 {
+            } else if self.lean * side < 0.0 {
                 Phase::Unwinding
+            } else if over > asked + 1e-4 {
+                Phase::StandingUp
             } else {
                 Phase::LeaningIn
             };
@@ -622,8 +703,8 @@ impl CurveLean {
                 Phase::LeaningIn => lean,
                 _ => 1.0 - lean,
             };
-            if phase != self.phase || pressed != self.held {
-                (self.phase, self.held) = (phase, pressed);
+            if phase != self.phase || side != self.held {
+                (self.phase, self.held) = (phase, side);
                 self.progress = curve.curve.first_reaching(height(over));
             }
             if phase == Phase::Unwinding && curve.seconds <= 0.0 {
@@ -638,18 +719,20 @@ impl CurveLean {
             let shape = curve.curve.ease(self.progress);
             match phase {
                 Phase::LeaningIn => {
-                    let lean = shape.min(limit);
-                    if shape > limit {
-                        // Held where the limit is, to go on from there if
-                        // the limit rises.
-                        self.progress = curve.curve.first_reaching(limit);
+                    let most = asked.min(limit);
+                    if shape > most {
+                        // Held where it is asked (or the limit is), to go on
+                        // from there if more is asked or the limit rises.
+                        self.progress = curve.curve.first_reaching(most);
                     }
-                    self.lean = lean * pressed;
+                    self.lean = shape.min(most) * side;
                     return self.lean;
                 }
                 Phase::StandingUp => {
-                    self.lean = ((1.0 - shape).min(over)).copysign(self.lean);
-                    if self.progress >= 1.0 {
+                    // Down to what is asked on this side, if anything.
+                    let floor = if self.lean * side > 0.0 { asked } else { 0.0 };
+                    self.lean = (1.0 - shape).min(over).max(floor).copysign(self.lean);
+                    if self.progress >= 1.0 && floor == 0.0 {
                         *self = Self::default();
                     }
                     return self.lean;
@@ -676,8 +759,13 @@ impl CurveLean {
 /// speed), D's limit there and the turn E gives.
 #[derive(Resource, Clone, Copy, Default, Debug, PartialEq)]
 pub struct CurveProbe {
-    /// Whether the curves are steering a player's bike now.
+    /// Whether the curves are steering a player's bike now, and whether
+    /// the stick's (with how far it is pushed past its dead zone and the
+    /// lean that asks for) or the keyboard's.
     pub live: bool,
+    pub stick: bool,
+    pub travel: f32,
+    pub asked: f32,
     pub lean: CurveLean,
     pub speed_share: f32,
     pub limit: f32,
@@ -782,11 +870,65 @@ mod tests {
         }
         let e = shapes.bezier(CurveKind::Turn);
         assert_eq!((e.y1, e.y2), TURN_FLOOR);
+        // E: more turn for going wide.
+        shapes.correct_for(CurveKind::Turn, true);
+        assert!(shapes.bezier(CurveKind::Turn).y2 > TURN_FLOOR.1);
         // What does not point at a curve changes nothing.
         let before = shapes;
-        shapes.correct_for(CurveKind::Turn, true);
         shapes.correct_for(CurveKind::LeanIn, false);
+        shapes.correct_for(CurveKind::Speed, false);
         assert_eq!(shapes, before);
+    }
+
+    #[test]
+    fn the_stick_has_its_response_first_and_its_classic_curves_are_the_stick_s() {
+        let (keys, stick) = (KeyboardShapes::default(), KeyboardShapes::classic(true));
+        assert_eq!(keys.kinds(), CURVE_KINDS);
+        assert_eq!(stick.kinds(), STICK_CURVE_KINDS);
+        // Its classic response: as the stick's, the travel to the power of
+        // 1.35, within a hundredth.
+        let curves = stick.curves();
+        for k in 0..=20 {
+            let travel = k as f32 / 20.0;
+            let asked = curves.lean_asked(travel);
+            assert!(
+                (asked - travel.powf(1.35)).abs() < 0.01,
+                "{travel}: {asked}"
+            );
+            assert_eq!(curves.lean_asked(-travel), -asked);
+        }
+        // Leaning in at the stick's 3.8 a second, straight.
+        let values = run(&curves, 0.0, 0.2, |_| 1.0);
+        assert!(
+            (at(&values, 0.1) - 0.38).abs() < 0.01,
+            "{}",
+            at(&values, 0.1)
+        );
+        assert!((at(&values, 0.2) - 0.76).abs() < 0.01);
+    }
+
+    #[test]
+    fn with_the_stick_the_lean_goes_to_what_it_asks_and_back_to_less() {
+        let curves = KeyboardShapes::classic(true).curves();
+        // Half way over asked: half way over, held there.
+        let values = run(&curves, 0.0, 2.0, |t| {
+            if t < 0.6 {
+                0.5
+            } else if t < 1.2 {
+                0.2
+            } else {
+                0.0
+            }
+        });
+        assert!((at(&values, 0.6) - 0.5).abs() < 1e-3);
+        // Less asked: back up to it, not upright.
+        assert!((at(&values, 1.2) - 0.2).abs() < 1e-3);
+        assert!(values[72..144].iter().all(|&v| v >= 0.2 - 1e-4));
+        // Nothing: upright.
+        assert_eq!(at(&values, 2.0), 0.0);
+        // The other way: through upright, over to the right.
+        let flip = run(&curves, 0.0, 1.0, |t| if t < 0.5 { 0.6 } else { -0.6 });
+        assert!((at(&flip, 1.0) + 0.6).abs() < 1e-3);
     }
 
     #[test]

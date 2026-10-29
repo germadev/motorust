@@ -20,14 +20,22 @@
 //!
 //! and on the straight after a corner, standing up, B: inside (back towards
 //! the corner) if it stands up too slowly, wide if too quickly.
+//!
+//! Going off the road in a corner or just after it (onto the grass, into a
+//! wall, or down) is an outing, noted the same way and counting for
+//! [`OUTING_WEIGHT`] corrections; but going wide with the bike already
+//! turning all it can is the bike's limit, not the curves': it is counted
+//! apart and corrects nothing (the corner wants less speed). Going wide
+//! held at the lean's limit corrects D and E both: more lean at that speed,
+//! more turn for it.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::Indices;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
-use super::curves::{CurveKind, CurveProbe, KeyboardMode, LearnLine, Phase};
-use super::{BikeState, Player};
+use super::curves::{CurveKind, CurveProbe, KeyboardMode, KeyboardShapes, LearnLine, Phase};
+use super::{BikeState, CrashState, Player};
 use crate::menu::GameState;
 use crate::race::{Mode, Rules};
 use crate::settings::Settings;
@@ -59,6 +67,15 @@ impl Plugin for LearningPlugin {
 /// ride while learning: T on the keyboard, up on the d-pad.
 pub const CORRECT_KEY: KeyCode = KeyCode::KeyT;
 pub const CORRECT_BUTTON: GamepadButton = GamepadButton::DPadUp;
+
+/// How many corrections an outing counts for.
+pub const OUTING_WEIGHT: usize = 3;
+/// From how much of all its turn the bike is turning all it can.
+const ALL_ITS_TURN: f32 = 0.98;
+/// How far past the asphalt's edge counts as off the road (m: past its
+/// curbs), and how near a wall counts as against it.
+const OFF_THE_ROAD: f32 = 1.0;
+const WALL_TOUCH: f32 = 0.6;
 
 /// How far from the line counts as straying from it (m).
 pub const STRAY: f32 = 1.5;
@@ -96,20 +113,94 @@ pub struct LearningLog {
     pub active: bool,
     pub stray: f32,
     pub in_corner: bool,
-    pub notes: [[u32; 2]; 5],
+    pub notes: [[u32; 2]; 6],
     pub last: Option<(CurveKind, Side, f32)>,
+    /// How many times the bike went off the road in a corner, and how many
+    /// of those turning all it could; whether it was off in the step
+    /// before, and whether the last note was an outing.
+    pub outings: u32,
+    pub at_limit: u32,
+    pub(crate) was_off: bool,
+    pub last_outing: bool,
     /// The bend of the last corner (1/m, positive to the left) and when it
     /// was last in it (s), for its way out; how far to the left of the line
     /// the bike was in the step before; when each curve was last noted.
     pub(crate) corner: Option<(f32, f32)>,
     pub(crate) was: f32,
-    pub(crate) noted: [f32; 5],
+    pub(crate) noted: [f32; 6],
 }
 
 impl LearningLog {
     /// How many times curve `kind` went `side`.
     pub fn count(&self, kind: CurveKind, side: Side) -> u32 {
         self.notes[kind as usize][side as usize]
+    }
+
+    /// The curve the lean was on going `side` round a corner, as `probe`
+    /// says, if any: wide while leaning in short of what is asked is A,
+    /// held where the stick asks short of the limit R, at the limit D,
+    /// unwinding C, standing up B; inside is E.
+    fn blame(side: Side, probe: &CurveProbe) -> Option<CurveKind> {
+        let lean = probe.lean;
+        if side == Side::Inside {
+            return Some(CurveKind::Turn);
+        }
+        match lean.phase {
+            Phase::LeaningIn if lean.lean.abs() < probe.asked.min(probe.limit) - 0.02 => {
+                Some(CurveKind::LeanIn)
+            }
+            Phase::LeaningIn if probe.stick && probe.asked < probe.limit - 0.02 => {
+                Some(CurveKind::Response)
+            }
+            Phase::LeaningIn => Some(CurveKind::Speed),
+            Phase::Unwinding => Some(CurveKind::Unwind),
+            Phase::StandingUp => Some(CurveKind::StandUp),
+            Phase::Upright => None,
+        }
+    }
+
+    /// The bike going off the road (`off`) `stray` m left of the line, at
+    /// `now`: in a corner bending `bend` (or on the way out of the last
+    /// one), an outing on the curve to blame, noted whatever came just
+    /// before; turning all it can, out wide, the bike's limit instead.
+    /// Returns the curve and the side, to correct.
+    pub fn went_off(
+        &mut self,
+        off: bool,
+        stray: f32,
+        bend: f32,
+        probe: &CurveProbe,
+        now: f32,
+    ) -> Option<(CurveKind, Side)> {
+        let fresh = off && !self.was_off;
+        self.was_off = off;
+        if !fresh {
+            return None;
+        }
+        let bend = if bend.abs() > CORNER {
+            bend
+        } else {
+            match self.corner {
+                Some((corner, left)) if now - left < WAY_OUT => corner,
+                _ => return None,
+            }
+        };
+        let side = if -stray * bend.signum() > 0.0 {
+            Side::Wide
+        } else {
+            Side::Inside
+        };
+        self.outings += 1;
+        if side == Side::Wide && probe.turn.abs() >= ALL_ITS_TURN {
+            self.at_limit += 1;
+            return None;
+        }
+        let kind = Self::blame(side, probe)?;
+        self.notes[kind as usize][side as usize] += 1;
+        self.noted[kind as usize] = now;
+        self.last = Some((kind, side, now));
+        self.last_outing = true;
+        Some((kind, side))
     }
 
     /// Notes curve `kind` going `side` at `now` (s), if not noted just
@@ -122,6 +213,7 @@ impl LearningLog {
         self.noted[at] = now;
         self.notes[at][side as usize] += 1;
         self.last = Some((kind, side, now));
+        self.last_outing = false;
     }
 
     /// Goes on with the bike `stray` m to the left of the line where the
@@ -142,13 +234,11 @@ impl LearningLog {
         if in_corner {
             let (out, leaving) = round(bend);
             if leaving && out > 0.0 {
-                match lean.phase {
-                    Phase::LeaningIn if lean.lean.abs() < probe.limit - 0.02 => {
-                        self.note(CurveKind::LeanIn, Side::Wide, now);
-                    }
-                    Phase::LeaningIn => self.note(CurveKind::Speed, Side::Wide, now),
-                    Phase::Unwinding => self.note(CurveKind::Unwind, Side::Wide, now),
-                    _ => {}
+                // Standing up or upright in a corner, wide: not the lean's.
+                if matches!(lean.phase, Phase::LeaningIn | Phase::Unwinding)
+                    && let Some(kind) = Self::blame(Side::Wide, probe)
+                {
+                    self.note(kind, Side::Wide, now);
                 }
             } else if leaving {
                 self.note(CurveKind::Turn, Side::Inside, now);
@@ -193,20 +283,33 @@ impl TargetLine {
     }
 }
 
-/// The line the self-learning watches now, if it is: with the keyboard in
-/// Bézier and learning, one player in free ride.
+/// The line the self-learning watches now, if it is: with the keyboard or
+/// the stick in Bézier and learning, one player in free ride. If both are
+/// learning, the keyboard's line.
 pub fn learning_line(
     settings: &Settings,
     rules: Option<&Rules>,
     mode: GameMode,
 ) -> Option<LearnLine> {
-    let shapes = &settings.keyboard_shapes;
     let free = rules.is_some_and(|rules| rules.mode == Mode::Free);
-    (settings.keyboard_mode == KeyboardMode::Bezier
-        && shapes.learning()
-        && free
-        && mode == GameMode::SinglePlayer)
-        .then_some(shapes.learn)
+    if !free || mode != GameMode::SinglePlayer {
+        return None;
+    }
+    let learning = |mode: KeyboardMode, shapes: &KeyboardShapes| {
+        (mode == KeyboardMode::Bezier && shapes.learning()).then_some(shapes.learn)
+    };
+    learning(settings.keyboard_mode, &settings.keyboard_shapes)
+        .or_else(|| learning(settings.stick_mode, &settings.stick_shapes))
+}
+
+/// The curves the self-learning works on: the stick's while it leans the
+/// bike, the keyboard's otherwise.
+pub fn learnt_shapes(settings: &mut Settings, stick: bool) -> &mut KeyboardShapes {
+    if stick {
+        &mut settings.stick_shapes
+    } else {
+        &mut settings.keyboard_shapes
+    }
 }
 
 /// A new race, a new log.
@@ -308,12 +411,13 @@ fn toggle_correction(
     gamepads: Query<&Gamepad>,
     pause: Res<crate::pause::Pause>,
     target: Res<TargetLine>,
+    probe: Res<CurveProbe>,
     mut settings: ResMut<Settings>,
 ) {
     let pressed = keyboard.just_pressed(CORRECT_KEY)
         || gamepads.iter().any(|pad| pad.just_pressed(CORRECT_BUTTON));
     if pressed && target.line.is_some() && !pause.is_open() {
-        let shapes = &mut settings.keyboard_shapes;
+        let shapes = learnt_shapes(&mut settings, probe.stick);
         shapes.correct = !shapes.correct;
     }
 }
@@ -326,7 +430,7 @@ fn watch_the_line(
     target: Res<TargetLine>,
     track: Res<Track>,
     probe: Res<CurveProbe>,
-    player: Query<&BikeState, With<Player>>,
+    player: Query<(&BikeState, &CrashState), With<Player>>,
     mut log: ResMut<LearningLog>,
     mut settings: ResMut<Settings>,
 ) {
@@ -334,31 +438,66 @@ fn watch_the_line(
     if log.active != active {
         log.active = active;
     }
-    let Ok(state) = player.single() else {
+    let Ok((state, crash)) = player.single() else {
         return;
     };
-    if !active || !state.grounded || state.speed < 5.0 {
+    if !active {
         return;
     }
     let nearest = track.nearest_at(state.position, state.elevation);
     if nearest.road != 0 {
         return;
     }
+    let now = time.elapsed_secs();
+    // Off the road: past the asphalt and its curbs, against a wall, or
+    // down.
+    let off = crash.is_down()
+        || nearest.distance > track.half_width_beside(&nearest) + OFF_THE_ROAD
+        || nearest.distance + WALL_TOUCH >= track.edge_beside(&nearest);
     let stray = nearest.lateral - target.at(nearest.index, nearest.t);
     let bend = (-BEND_WINDOW..=BEND_WINDOW)
         .map(|k| track.curvature((nearest.index as isize + k).max(0) as usize))
         .sum::<f32>()
         / (2 * BEND_WINDOW + 1) as f32;
+    if let Some((kind, side)) = log.went_off(off, stray, bend, &probe, now) {
+        if correcting(&settings, probe.stick) {
+            for _ in 0..OUTING_WEIGHT {
+                correct(&mut settings, probe.stick, kind, side);
+            }
+        }
+        return;
+    }
+    if crash.is_down() || !state.grounded || state.speed < 5.0 {
+        return;
+    }
     let before = log.last;
-    log.watch(stray, bend, &probe, time.elapsed_secs());
-    // Read without touching the settings, which are saved when they change.
+    log.watch(stray, bend, &probe, now);
     if log.last != before
-        && settings.keyboard_shapes.correct
+        && correcting(&settings, probe.stick)
         && let Some((kind, side, _)) = log.last
     {
-        settings
-            .keyboard_shapes
-            .correct_for(kind, side == Side::Wide);
+        correct(&mut settings, probe.stick, kind, side);
+    }
+}
+
+/// Whether the curves of the stick (or the keyboard) are being corrected,
+/// read without touching the settings, which are saved when they change.
+fn correcting(settings: &Settings, stick: bool) -> bool {
+    if stick {
+        settings.stick_shapes.correct
+    } else {
+        settings.keyboard_shapes.correct
+    }
+}
+
+/// Corrects curve `kind` of the stick's (or the keyboard's) for going
+/// `side`: at the lean's limit, wide, D and E both.
+fn correct(settings: &mut Settings, stick: bool, kind: CurveKind, side: Side) {
+    let shapes = learnt_shapes(settings, stick);
+    let wide = side == Side::Wide;
+    shapes.correct_for(kind, wide);
+    if kind == CurveKind::Speed && wide {
+        shapes.correct_for(CurveKind::Turn, true);
     }
 }
 
@@ -373,10 +512,23 @@ mod tests {
         (following.lean, following.phase, following.progress) = (lean, phase, 0.5);
         CurveProbe {
             live: true,
+            stick: false,
+            travel: 0.0,
+            asked: 1.0,
             lean: following,
             speed_share: 0.5,
             limit,
             turn: lean,
+        }
+    }
+
+    /// The same, the stick's, pushed asking for `asked`.
+    fn stick_probe(phase: Phase, lean: f32, asked: f32, limit: f32) -> CurveProbe {
+        CurveProbe {
+            stick: true,
+            travel: asked,
+            asked,
+            ..probe(phase, lean, limit)
         }
     }
 
@@ -425,6 +577,23 @@ mod tests {
             9.0,
         );
         assert_eq!(log.count(CurveKind::Unwind, Side::Wide), 1);
+    }
+
+    #[test]
+    fn with_the_stick_going_wide_held_where_it_asks_is_its_response() {
+        let mut log = LearningLog::default();
+        // Held at the lean the stick asks, short of the limit: R.
+        let held = stick_probe(Phase::LeaningIn, 0.5, 0.5, 0.9);
+        ride(&mut log, 0.0, -3.0, LEFT, &held, 1.0);
+        assert_eq!(log.count(CurveKind::Response, Side::Wide), 1);
+        // Still leaning in towards it: A.
+        let leaning = stick_probe(Phase::LeaningIn, 0.3, 0.5, 0.9);
+        ride(&mut log, 0.0, -3.0, LEFT, &leaning, 5.0);
+        assert_eq!(log.count(CurveKind::LeanIn, Side::Wide), 1);
+        // Pushed all the way, at the limit: D.
+        let full = stick_probe(Phase::LeaningIn, 0.9, 1.0, 0.9);
+        ride(&mut log, 0.0, -3.0, LEFT, &full, 9.0);
+        assert_eq!(log.count(CurveKind::Speed, Side::Wide), 1);
     }
 
     #[test]
@@ -495,6 +664,54 @@ mod tests {
     }
 
     #[test]
+    fn going_off_in_a_corner_is_an_outing_on_the_curve_to_blame() {
+        let mut log = LearningLog::default();
+        // Leaning in, short of the limit, off wide in a left-hander: A.
+        let leaning = probe(Phase::LeaningIn, 0.5, 0.9);
+        assert_eq!(
+            log.went_off(true, -6.0, LEFT, &leaning, 1.0),
+            Some((CurveKind::LeanIn, Side::Wide))
+        );
+        assert!(log.last_outing && log.outings == 1);
+        // Still off: nothing more; back on and off again inside: E.
+        assert_eq!(log.went_off(true, -6.0, LEFT, &leaning, 1.1), None);
+        assert_eq!(log.went_off(false, 0.0, LEFT, &leaning, 1.2), None);
+        assert_eq!(
+            log.went_off(true, 6.0, LEFT, &leaning, 1.3),
+            Some((CurveKind::Turn, Side::Inside))
+        );
+        // At the lean's limit, wide: D (the correction raises E too).
+        log.went_off(false, 0.0, LEFT, &leaning, 2.0);
+        let held = probe(Phase::LeaningIn, 0.9, 0.9);
+        assert_eq!(
+            log.went_off(true, -6.0, LEFT, &held, 2.1),
+            Some((CurveKind::Speed, Side::Wide))
+        );
+        // Turning all it can: the bike's limit, no curve to blame.
+        log.went_off(false, 0.0, LEFT, &leaning, 3.0);
+        let all = CurveProbe { turn: 1.0, ..held };
+        assert_eq!(log.went_off(true, -6.0, LEFT, &all, 3.1), None);
+        assert_eq!((log.outings, log.at_limit), (4, 1));
+        // On a straight, long after any corner: not an outing.
+        log.went_off(false, 0.0, 0.0, &leaning, 9.0);
+        assert_eq!(log.went_off(true, -6.0, 0.0, &leaning, 9.1), None);
+        assert_eq!(log.outings, 4);
+    }
+
+    #[test]
+    fn going_wide_at_the_lean_s_limit_corrects_d_and_e() {
+        let mut settings = Settings::default();
+        settings.keyboard_shapes.set_learn(LearnLine::Centre);
+        let before = settings.keyboard_shapes;
+        correct(&mut settings, false, CurveKind::Speed, Side::Wide);
+        let after = settings.keyboard_shapes;
+        assert!(after.bezier(CurveKind::Speed).y2 < before.bezier(CurveKind::Speed).y2);
+        assert!(after.bezier(CurveKind::Turn).y2 > before.bezier(CurveKind::Turn).y2);
+        // The stick's, untouched.
+        assert_eq!(settings.stick_shapes, KeyboardShapes::classic(true));
+    }
+
+    #[test]
     fn a_curve_is_noted_once_a_second_at_most() {
         let mut log = LearningLog::default();
         let leaning = probe(Phase::LeaningIn, 0.4, 0.9);
@@ -529,6 +746,14 @@ mod tests {
         };
         let one = GameMode::SinglePlayer;
         assert_eq!(learning_line(&settings, Some(&free), one), None);
+        // The stick's learning.
+        settings.stick_mode = KeyboardMode::Bezier;
+        settings.stick_shapes.set_learn(LearnLine::Centre);
+        assert_eq!(
+            learning_line(&settings, Some(&free), one),
+            Some(LearnLine::Centre)
+        );
+        // Both: the keyboard's line.
         settings.keyboard_mode = KeyboardMode::Bezier;
         settings.keyboard_shapes.set_learn(LearnLine::Race);
         assert_eq!(

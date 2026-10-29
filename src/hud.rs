@@ -427,7 +427,10 @@ fn show_race_legend(
     icons: Res<UiIcons>,
     shown: Query<Entity, With<Legend>>,
     mut last: Local<Option<Vec<KeyPrompt>>>,
-    learning: Option<Res<crate::bike::learning::TargetLine>>,
+    (learning, probe): (
+        Option<Res<crate::bike::learning::TargetLine>>,
+        Option<Res<crate::bike::curves::CurveProbe>>,
+    ),
 ) {
     let active_dev = current_active_device(
         device.as_deref().copied().unwrap_or_default(),
@@ -447,7 +450,13 @@ fn show_race_legend(
     }
     // Learning the keyboard's curves: only noting, or correcting.
     if learning.is_some_and(|target| target.line.is_some()) {
-        let correcting = settings.keyboard_shapes.correct;
+        let stick = probe.is_some_and(|probe| probe.stick);
+        let shapes = if stick {
+            &settings.stick_shapes
+        } else {
+            &settings.keyboard_shapes
+        };
+        let correcting = shapes.correct;
         wanted
             .get_or_insert_default()
             .push(correction_prompt(active_dev, lang, correcting));

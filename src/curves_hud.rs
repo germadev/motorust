@@ -15,30 +15,34 @@ use bevy::{
 };
 
 use crate::bike::curves::{
-    CURVE_KINDS, CurveKind, CurveProbe, CurveShape, KeyboardCurves, KeyboardShapes, Phase,
+    CurveKind, CurveProbe, CurveShape, KeyboardCurves, KeyboardMode, KeyboardShapes, Phase,
+    STICK_CURVE_KINDS,
 };
 use crate::bike::learning::{LearningLog, Side};
 use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::options::{OptionsMenu, OptionsTab, Page};
 use crate::settings::Settings;
-use crate::ui::text_font;
+use crate::ui::{InputDevice, text_font};
 
 pub struct CurvesHudPlugin;
 
 impl Plugin for CurvesHudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_panel).add_systems(
-            Update,
-            (
-                show_panel,
-                draw_curves,
-                place_dots,
-                label_cards,
-                show_learning,
-            )
-                .chain(),
-        );
+        app.init_resource::<ShownSet>()
+            .add_systems(Startup, spawn_panel)
+            .add_systems(
+                Update,
+                (
+                    choose_set,
+                    show_panel,
+                    draw_curves,
+                    place_dots,
+                    label_cards,
+                    show_learning,
+                )
+                    .chain(),
+            );
     }
 }
 
@@ -96,12 +100,81 @@ const NOTE_LIT: f32 = 1.5;
 /// The images the curves are drawn in, and the curves drawn in them.
 #[derive(Resource)]
 struct CurveImages {
-    images: [Handle<Image>; 5],
+    images: [Handle<Image>; 6],
     drawn: Option<KeyboardShapes>,
 }
 
+/// Which curves the panel shows: the stick's or the keyboard's.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+struct ShownSet {
+    stick: bool,
+}
+
+/// A curve's place in the panel, its label, frame and notes: hidden for
+/// the stick's response when the keyboard's curves are shown.
+#[derive(Component)]
+struct CurveBox(CurveKind);
+
+/// The curves the panel shows: those being edited in the options; else
+/// the ones the bike follows now; else those of the device in use, if it
+/// steers by curves; else the keyboard's (or the stick's, if only it
+/// does).
+fn shown_stick(settings: &Settings, menu: &OptionsMenu, probe: &CurveProbe, gamepad: bool) -> bool {
+    if menu.is_open && menu.tab == OptionsTab::Control {
+        match menu.page {
+            Some(Page::StickCurves) => return true,
+            Some(Page::KeyboardCurves) => return false,
+            _ => {}
+        }
+    }
+    if probe.live {
+        return probe.stick;
+    }
+    let (keys, stick) = (
+        settings.keyboard_mode == KeyboardMode::Bezier,
+        settings.stick_mode == KeyboardMode::Bezier,
+    );
+    if gamepad {
+        stick || !keys
+    } else {
+        stick && !keys
+    }
+}
+
+fn choose_set(
+    settings: Res<Settings>,
+    menu: Res<OptionsMenu>,
+    probe: Res<CurveProbe>,
+    device: Option<Res<InputDevice>>,
+    mut shown: ResMut<ShownSet>,
+    mut boxes: Query<(&CurveBox, &mut Node)>,
+) {
+    let gamepad = device.is_some_and(|device| *device == InputDevice::Gamepad);
+    let stick = shown_stick(&settings, &menu, &probe, gamepad);
+    shown.set_if_neq(ShownSet { stick });
+    for (curve, mut node) in &mut boxes {
+        let display = if curve.0 == CurveKind::Response && !stick {
+            Display::None
+        } else {
+            Display::Flex
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+}
+
+/// The curves shown, as `shown` says.
+fn shown_shapes(settings: &Settings, shown: ShownSet) -> &KeyboardShapes {
+    if shown.stick {
+        &settings.stick_shapes
+    } else {
+        &settings.keyboard_shapes
+    }
+}
+
 fn spawn_panel(mut commands: Commands, font: Res<UiFont>, mut images: ResMut<Assets<Image>>) {
-    let images: [Handle<Image>; 5] = std::array::from_fn(|_| images.add(blank()));
+    let images: [Handle<Image>; 6] = std::array::from_fn(|_| images.add(blank()));
     commands
         .spawn((
             CurvesPanel,
@@ -120,13 +193,16 @@ fn spawn_panel(mut commands: Commands, font: Res<UiFont>, mut images: ResMut<Ass
             },
         ))
         .with_children(|panel| {
-            for (kind, image) in CURVE_KINDS.into_iter().zip(&images) {
+            for (kind, image) in STICK_CURVE_KINDS.into_iter().zip(&images) {
                 panel
-                    .spawn(Node {
-                        flex_direction: FlexDirection::Column,
-                        row_gap: px(2),
-                        ..default()
-                    })
+                    .spawn((
+                        CurveBox(kind),
+                        Node {
+                            flex_direction: FlexDirection::Column,
+                            row_gap: px(2),
+                            ..default()
+                        },
+                    ))
                     .with_children(|card| {
                         card.spawn((
                             CurveLabel(kind),
@@ -220,18 +296,20 @@ fn show_panel(settings: Res<Settings>, mut panel: Single<&mut Node, With<CurvesP
 /// Each curve drawn again when the curves change.
 fn draw_curves(
     settings: Res<Settings>,
+    shown: Res<ShownSet>,
     mut drawn: ResMut<CurveImages>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let shapes = settings.keyboard_shapes;
+    let shapes = *shown_shapes(&settings, *shown);
     if !settings.show_keyboard_curves || drawn.drawn == Some(shapes) {
         return;
     }
     let curves = shapes.curves();
-    for (kind, handle) in CURVE_KINDS.into_iter().zip(&drawn.images) {
+    let classic = KeyboardShapes::classic(shapes.stick).curves();
+    for (kind, handle) in STICK_CURVE_KINDS.into_iter().zip(&drawn.images) {
         let learned = shapes.shape(kind) == CurveShape::Learned;
         images
-            .insert(handle, draw(kind, &curves, learned))
+            .insert(handle, draw(kind, &curves, &classic, learned))
             .expect("the image of a curve is still there");
     }
     drawn.drawn = Some(shapes);
@@ -254,6 +332,7 @@ fn dot_on(kind: CurveKind, probe: &CurveProbe) -> Option<Vec2> {
         CurveKind::Unwind => following(Phase::Unwinding),
         CurveKind::Speed => Some(Vec2::new(probe.speed_share.min(1.0), probe.limit)),
         CurveKind::Turn => (lean.lean != 0.0).then(|| Vec2::new(lean.lean.abs(), probe.turn.abs())),
+        CurveKind::Response => probe.stick.then(|| Vec2::new(probe.travel, probe.asked)),
     }
 }
 
@@ -298,6 +377,7 @@ fn place_dots(
 /// edited in the options edged in the colour of Control.
 fn label_cards(
     settings: Res<Settings>,
+    shown: Res<ShownSet>,
     menu: Res<OptionsMenu>,
     mut labels: Query<(&CurveLabel, &mut Text)>,
     mut cards: Query<(&CurveCard, &mut BorderColor)>,
@@ -306,7 +386,7 @@ fn label_cards(
         return;
     }
     let lang = settings.language;
-    let curves = &settings.keyboard_shapes;
+    let curves = shown_shapes(&settings, *shown);
     for (label, mut text) in &mut labels {
         let kind = label.0;
         let number = curves
@@ -320,7 +400,7 @@ fn label_cards(
     }
     let editing = (menu.is_open
         && menu.tab == OptionsTab::Control
-        && menu.page == Some(Page::KeyboardCurves))
+        && matches!(menu.page, Some(Page::KeyboardCurves | Page::StickCurves)))
     .then_some(menu.curve);
     for (card, mut border) in &mut cards {
         let edge = if editing == Some(card.0) {
@@ -338,6 +418,7 @@ fn label_cards(
 fn show_learning(
     settings: Res<Settings>,
     log: Res<LearningLog>,
+    shown: Res<ShownSet>,
     time: Res<Time>,
     mut notes: Query<(&CurveNotes, &mut Text, &mut TextColor, &mut Node), Without<LearningStatus>>,
     mut status: Single<(&mut Text, &mut Node), With<LearningStatus>>,
@@ -374,7 +455,7 @@ fn show_learning(
     if node.display != display {
         node.display = display;
     }
-    let words = status_text(&log, settings.keyboard_shapes.correct, lang);
+    let words = status_text(&log, shown_shapes(&settings, *shown).correct, lang);
     if text.0 != words {
         text.0 = words;
     }
@@ -409,9 +490,18 @@ fn status_text(log: &LearningLog, correcting: bool, lang: Language) -> String {
         (false, Language::English) => "noting only",
         (true, Language::English) => "correcting",
     };
+    // The outings, and how many of them at the bike's limit (the corner
+    // wanting less speed, not other curves).
+    let outings = match (log.outings, log.at_limit, lang) {
+        (0, _, _) => String::new(),
+        (n, 0, Language::Spanish) => format!(" · salidas {n}"),
+        (n, 0, Language::English) => format!(" · outings {n}"),
+        (n, limit, Language::Spanish) => format!(" · salidas {n} (al límite {limit})"),
+        (n, limit, Language::English) => format!(" · outings {n} (at the limit {limit})"),
+    };
     match lang {
-        Language::Spanish => format!("Desvío {metres:.1} m {side} · {doing}"),
-        Language::English => format!("Off the line {metres:.1} m {side} · {doing}"),
+        Language::Spanish => format!("Desvío {metres:.1} m {side}{outings} · {doing}"),
+        Language::English => format!("Off the line {metres:.1} m {side}{outings} · {doing}"),
     }
 }
 
@@ -444,7 +534,7 @@ fn image(pixels: Vec<[f32; 4]>) -> Image {
 /// to what is kept at top speed.
 fn shown_height(kind: CurveKind, curves: &KeyboardCurves, y: f32) -> f32 {
     match kind {
-        CurveKind::LeanIn | CurveKind::Turn => y,
+        CurveKind::LeanIn | CurveKind::Turn | CurveKind::Response => y,
         CurveKind::StandUp | CurveKind::Unwind => 1.0 - y,
         CurveKind::Speed => 1.0 - (1.0 - curves.top_speed_lean) * y,
     }
@@ -465,7 +555,12 @@ fn shown_curve(kind: CurveKind, curves: &KeyboardCurves) -> Vec<Vec2> {
 /// Curve `kind` of `curves`, drawn (in amber if `learned`): the grid, the
 /// classic curve in
 /// grey, the arms to its control points and the curve itself.
-pub fn draw(kind: CurveKind, curves: &KeyboardCurves, learned: bool) -> Image {
+pub fn draw(
+    kind: CurveKind,
+    curves: &KeyboardCurves,
+    classic: &KeyboardCurves,
+    learned: bool,
+) -> Image {
     let mut canvas = Canvas::new();
     for k in 0..=4 {
         let share = k as f32 / 4.0;
@@ -484,8 +579,7 @@ pub fn draw(kind: CurveKind, curves: &KeyboardCurves, learned: bool) -> Image {
             false,
         );
     }
-    let classic = KeyboardCurves::default();
-    canvas.polyline(&shown_curve(kind, &classic), 1.6, CLASSIC);
+    canvas.polyline(&shown_curve(kind, classic), 1.6, CLASSIC);
     // The control points, each with its arm from the end it pulls on.
     let bezier = curves.bezier(kind);
     let shown = |x: f32, y: f32| Vec2::new(x, shown_height(kind, curves, y));
@@ -588,7 +682,7 @@ mod tests {
             active: true,
             stray: -2.04,
             in_corner: true,
-            notes: [[0, 0], [1, 2], [0, 0], [0, 0], [0, 0]],
+            notes: [[0, 0], [1, 2], [0, 0], [0, 0], [0, 0], [0, 0]],
             ..default()
         };
         assert_eq!(
@@ -603,6 +697,43 @@ mod tests {
             status_text(&log, true, Language::English),
             "Off the line 2.0 m inside · correcting"
         );
+        let out = LearningLog {
+            outings: 3,
+            at_limit: 1,
+            ..log
+        };
+        assert_eq!(
+            status_text(&out, false, Language::Spanish),
+            "Desvío 2.0 m dentro · salidas 3 (al límite 1) · solo detección"
+        );
+    }
+
+    #[test]
+    fn the_panel_shows_the_curves_edited_else_followed_else_of_the_device_in_use() {
+        let mut settings = Settings::default();
+        let mut menu = OptionsMenu::default();
+        let idle = CurveProbe::default();
+        // Neither steers by curves: the keyboard's, or the stick's on a pad.
+        assert!(!shown_stick(&settings, &menu, &idle, false));
+        assert!(shown_stick(&settings, &menu, &idle, true));
+        // Only the stick does: its, whatever the device.
+        settings.stick_mode = KeyboardMode::Bezier;
+        assert!(shown_stick(&settings, &menu, &idle, false));
+        // Both: the device's.
+        settings.keyboard_mode = KeyboardMode::Bezier;
+        assert!(!shown_stick(&settings, &menu, &idle, false));
+        assert!(shown_stick(&settings, &menu, &idle, true));
+        // Those the bike follows.
+        let keys = CurveProbe {
+            live: true,
+            ..default()
+        };
+        assert!(!shown_stick(&settings, &menu, &keys, true));
+        // Those being edited.
+        menu.open(crate::options::OptionsReturn::Welcome);
+        menu.tab = OptionsTab::Control;
+        menu.page = Some(Page::StickCurves);
+        assert!(shown_stick(&settings, &menu, &keys, false));
     }
 
     #[test]
@@ -630,7 +761,7 @@ mod tests {
         assert_eq!(start, Vec2::Y);
         assert!((end.y - curves.top_speed_lean).abs() < 1e-6);
         // Drawn: some pixels in the colour of the curve.
-        let image = draw(CurveKind::LeanIn, &curves, false);
+        let image = draw(CurveKind::LeanIn, &curves, &curves, false);
         let data = image.data.unwrap();
         assert!(
             data.chunks(4)
@@ -647,6 +778,9 @@ mod tests {
         }
         let probe = CurveProbe {
             live: true,
+            stick: false,
+            travel: 0.0,
+            asked: 1.0,
             lean,
             speed_share: 0.5,
             limit: curves.lean_limit(0.5),
@@ -658,8 +792,24 @@ mod tests {
         assert!(dot_on(CurveKind::Unwind, &probe).is_none());
         assert_eq!(dot_on(CurveKind::Speed, &probe).unwrap().x, 0.5);
         assert!(dot_on(CurveKind::Turn, &probe).is_some());
+        // R only for the stick, where it is pushed and the lean it asks.
+        assert!(dot_on(CurveKind::Response, &probe).is_none());
+        let stick = CurveProbe {
+            stick: true,
+            travel: 0.6,
+            asked: 0.5,
+            ..probe
+        };
+        assert_eq!(
+            dot_on(CurveKind::Response, &stick),
+            Some(Vec2::new(0.6, 0.5))
+        );
         // With the curves off, none.
         let off = CurveProbe::default();
-        assert!(CURVE_KINDS.iter().all(|&kind| dot_on(kind, &off).is_none()));
+        assert!(
+            STICK_CURVE_KINDS
+                .iter()
+                .all(|&kind| dot_on(kind, &off).is_none())
+        );
     }
 }

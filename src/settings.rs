@@ -167,6 +167,10 @@ pub struct Settings {
     /// The curves' shapes and numbers (saved under a name of their own: the
     /// first ones, saved as a single set of curves, are not read).
     pub keyboard_shapes: crate::bike::curves::KeyboardShapes,
+    /// The same for the stick (Options > Control > Advanced and Stick
+    /// behaviour), with its response.
+    pub stick_mode: crate::bike::curves::KeyboardMode,
+    pub stick_shapes: crate::bike::curves::KeyboardShapes,
     /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
     /// Settings tried out and not to be kept (the benchmark's, see
@@ -408,6 +412,8 @@ impl Default for Settings {
             keyboard_mode: crate::bike::curves::KeyboardMode::Classic,
             show_keyboard_curves: false,
             keyboard_shapes: crate::bike::curves::KeyboardShapes::default(),
+            stick_mode: crate::bike::curves::KeyboardMode::Classic,
+            stick_shapes: crate::bike::curves::KeyboardShapes::classic(true),
             records: crate::race::Records::default(),
             transient: false,
         }

@@ -6,7 +6,7 @@ use bevy::ui::{UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
 use crate::bike::curves::{
-    CURVE_KINDS, CurveKind, CurveShape, KEYBOARD_MODES, KeyboardMode, KeyboardShapes, LEARN_LINES,
+    CurveKind, CurveShape, KEYBOARD_MODES, KeyboardMode, KeyboardShapes, LEARN_LINES,
 };
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
@@ -291,6 +291,8 @@ pub enum Page {
     Keyboard,
     /// The keyboard's page with its behaviour on Bézier: its curves.
     KeyboardCurves,
+    /// The stick's page with its behaviour on Bézier: its curves.
+    StickCurves,
     ControlAdvanced,
     PerformanceHud,
     Advanced,
@@ -301,7 +303,7 @@ impl Page {
     fn row(self) -> usize {
         let at = |items: Vec<_>, row| items.iter().position(|&item| item == row);
         match self {
-            Page::Stick => at(
+            Page::Stick | Page::StickCurves => at(
                 control_items(None, &KeyboardShapes::default()),
                 ControlItem::StickBehaviour,
             ),
@@ -326,7 +328,7 @@ impl Page {
     /// As the panel's title says it, after "OPCIONES >".
     fn title(self, lang: Language) -> &'static str {
         match (self, lang) {
-            (Page::Stick, _) => "STICK",
+            (Page::Stick | Page::StickCurves, _) => "STICK",
             (Page::Keyboard | Page::KeyboardCurves, Language::Spanish) => "TECLADO",
             (Page::Keyboard | Page::KeyboardCurves, Language::English) => "KEYBOARD",
             (Page::Advanced | Page::ControlAdvanced, Language::Spanish) => "AVANZADO",
@@ -450,8 +452,10 @@ enum ControlItem {
     KeyboardReverseRate,
     /// The page of the advanced options: how the keyboard behaves.
     Advanced,
-    /// Classic or by the curves, below (on the keyboard's page then).
+    /// Classic or by the curves, below (on the keyboard's page then), and
+    /// the same for the stick.
     KeyboardMode,
+    StickMode,
     /// A curve's shape; under it, when custom, its four numbers on one
     /// line, and its time (or for D the lean at top speed).
     CurveShape(CurveKind),
@@ -552,7 +556,7 @@ fn starts_group(
     shapes: &KeyboardShapes,
 ) -> bool {
     // On the keyboard's curves, each curve (with its rows) and learning.
-    if page == Some(Page::KeyboardCurves) {
+    if matches!(page, Some(Page::KeyboardCurves | Page::StickCurves)) {
         return index > 0
             && matches!(
                 control_items(page, shapes).get(index),
@@ -587,8 +591,9 @@ fn shortcuts_after(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
 
 /// Control's options: the mapping of the controls, the pages of how the
 /// stick and the keyboard steer and of the advanced options, the legend;
-/// or, with a page open, its own (the keyboard's curves as `shapes` has
-/// them: a custom one's numbers only while it is custom).
+/// or, with a page open, its own (the keyboard's or the stick's curves as
+/// `shapes` has them, see [`shapes_of`]: a custom one's numbers only while
+/// it is custom).
 fn control_items(page: Option<Page>, shapes: &KeyboardShapes) -> Vec<ControlItem> {
     match page {
         // (Graphics' pages are not Control's.)
@@ -607,10 +612,10 @@ fn control_items(page: Option<Page>, shapes: &KeyboardShapes) -> Vec<ControlItem
             ControlItem::KeyboardReturnRate,
             ControlItem::KeyboardReverseRate,
         ],
-        Some(Page::ControlAdvanced) => vec![ControlItem::KeyboardMode],
-        Some(Page::KeyboardCurves) => {
+        Some(Page::ControlAdvanced) => vec![ControlItem::KeyboardMode, ControlItem::StickMode],
+        Some(Page::KeyboardCurves | Page::StickCurves) => {
             let mut items = Vec::new();
-            for kind in CURVE_KINDS {
+            for &kind in shapes.kinds() {
                 items.push(ControlItem::CurveShape(kind));
                 if shapes.shape(kind) == CurveShape::Custom {
                     items.push(ControlItem::CurveCustom(kind));
@@ -824,6 +829,33 @@ fn keyboard_page(mode: KeyboardMode) -> Page {
     }
 }
 
+/// The same for the stick: its limit and response as always, or its
+/// curves in Bézier.
+fn stick_page(mode: KeyboardMode) -> Page {
+    match mode {
+        KeyboardMode::Classic => Page::Stick,
+        KeyboardMode::Bezier => Page::StickCurves,
+    }
+}
+
+/// The curves `page` is about: the stick's on its page of curves, the
+/// keyboard's otherwise.
+fn shapes_of(settings: &Settings, page: Option<Page>) -> &KeyboardShapes {
+    if page == Some(Page::StickCurves) {
+        &settings.stick_shapes
+    } else {
+        &settings.keyboard_shapes
+    }
+}
+
+fn shapes_mut(settings: &mut Settings, page: Option<Page>) -> &mut KeyboardShapes {
+    if page == Some(Page::StickCurves) {
+        &mut settings.stick_shapes
+    } else {
+        &mut settings.keyboard_shapes
+    }
+}
+
 /// A coordinate of a control point of the keyboard's curves, `step` steps
 /// of 0.05 on, kept within the square and on the hundredths.
 fn step_point(value: f32, step: i32) -> f32 {
@@ -885,8 +917,12 @@ fn section_is_default(
         (OptionsTab::Control, Some(Page::KeyboardCurves)) => {
             return settings.keyboard_shapes == first.keyboard_shapes;
         }
+        (OptionsTab::Control, Some(Page::StickCurves)) => {
+            return settings.stick_shapes == first.stick_shapes;
+        }
         (OptionsTab::Control, Some(Page::ControlAdvanced)) => {
-            return settings.keyboard_mode == first.keyboard_mode;
+            return (settings.keyboard_mode, settings.stick_mode)
+                == (first.keyboard_mode, first.stick_mode);
         }
         (OptionsTab::Graphics, Some(Page::Advanced)) => {
             return advanced(settings) == advanced(first);
@@ -924,6 +960,8 @@ fn section_is_default(
             steering(debug) == steering(&DebugOptions::default())
                 && settings.keyboard_mode == first.keyboard_mode
                 && settings.keyboard_shapes == first.keyboard_shapes
+                && settings.stick_mode == first.stick_mode
+                && settings.stick_shapes == first.stick_shapes
         }
         OptionsTab::Sound => {
             (
@@ -987,8 +1025,13 @@ fn reset_section(
             settings.keyboard_shapes = first.keyboard_shapes;
             return;
         }
+        (OptionsTab::Control, Some(Page::StickCurves)) => {
+            settings.stick_shapes = first.stick_shapes;
+            return;
+        }
         (OptionsTab::Control, Some(Page::ControlAdvanced)) => {
             settings.keyboard_mode = first.keyboard_mode;
+            settings.stick_mode = first.stick_mode;
             return;
         }
         (OptionsTab::Graphics, Some(Page::Advanced)) => {
@@ -1017,6 +1060,8 @@ fn reset_section(
             *debug = DebugOptions::default();
             settings.keyboard_mode = first.keyboard_mode;
             settings.keyboard_shapes = first.keyboard_shapes;
+            settings.stick_mode = first.stick_mode;
+            settings.stick_shapes = first.stick_shapes;
         }
         OptionsTab::Sound => {
             settings.fx_volume = first.fx_volume;
@@ -1114,10 +1159,8 @@ fn use_options_menu(
             options_menu.point = Some((point as i32 + request.side).clamp(0, 3) as usize);
             sounds.write(MenuSound::Move);
         } else if request.step != 0 {
-            let curve = &mut settings
-                .keyboard_shapes
-                .choice_mut(options_menu.curve)
-                .custom;
+            let shapes = shapes_mut(&mut settings, options_menu.page);
+            let curve = &mut shapes.choice_mut(options_menu.curve).custom;
             let value = point_mut(curve, point);
             *value = step_point(*value, -request.step);
             sounds.write(MenuSound::Move);
@@ -1149,7 +1192,7 @@ fn use_options_menu(
 
     // Up and down through the row of sections and the options; across on
     // the row of sections, another section.
-    let count = tab_items_count(options_menu.tab, page, &settings.keyboard_shapes);
+    let count = tab_items_count(options_menu.tab, page, shapes_of(&settings, page));
     let on_tabs = options_menu.on_tabs;
     if options_menu.navigate(request.step, request.side, request.confirm, count) {
         sounds.write(MenuSound::Move);
@@ -1159,7 +1202,7 @@ fn use_options_menu(
         }
         // On the keyboard's curves, the curve of the row chosen.
         if options_menu.tab == OptionsTab::Control && !options_menu.on_tabs {
-            let items = control_items(options_menu.page, &settings.keyboard_shapes);
+            let items = control_items(options_menu.page, shapes_of(&settings, options_menu.page));
             if let Some(kind) = items.get(options_menu.selected).copied().and_then(curve_of) {
                 options_menu.curve = kind;
             }
@@ -1236,7 +1279,7 @@ fn use_options_menu(
             }
         }
         OptionsTab::Control => {
-            let items = control_items(page, &settings.keyboard_shapes);
+            let items = control_items(page, shapes_of(&settings, page));
             let item = items[options_menu.selected.min(items.len() - 1)];
             match item {
                 ControlItem::Mapping if request.confirm => {
@@ -1251,7 +1294,7 @@ fn use_options_menu(
                     if request.confirm || request.side > 0 =>
                 {
                     options_menu.page = Some(match item {
-                        ControlItem::StickBehaviour => Page::Stick,
+                        ControlItem::StickBehaviour => stick_page(settings.stick_mode),
                         ControlItem::KeyboardBehaviour => keyboard_page(settings.keyboard_mode),
                         _ => Page::ControlAdvanced,
                     });
@@ -1262,11 +1305,15 @@ fn use_options_menu(
                     settings.keyboard_mode = cycle(&KEYBOARD_MODES, settings.keyboard_mode, change);
                     sounds.write(MenuSound::Move);
                 }
+                ControlItem::StickMode if change != 0 => {
+                    settings.stick_mode = cycle(&KEYBOARD_MODES, settings.stick_mode, change);
+                    sounds.write(MenuSound::Move);
+                }
                 // While the game learns them, the curves are its own.
                 ControlItem::CurveShape(kind)
-                    if change != 0 && !settings.keyboard_shapes.learning() =>
+                    if change != 0 && !shapes_of(&settings, page).learning() =>
                 {
-                    settings.keyboard_shapes.step_shape(kind, change);
+                    shapes_mut(&mut settings, page).step_shape(kind, change);
                     sounds.write(MenuSound::Move);
                 }
                 // Into its four numbers, from the first (or across from
@@ -1276,11 +1323,11 @@ fn use_options_menu(
                     sounds.write(MenuSound::Confirm);
                 }
                 ControlItem::CurveScale(kind) if change != 0 => {
-                    settings.keyboard_shapes.step_scale(kind, change);
+                    shapes_mut(&mut settings, page).step_scale(kind, change);
                     sounds.write(MenuSound::Move);
                 }
                 ControlItem::Learning if change != 0 => {
-                    let shapes = &mut settings.keyboard_shapes;
+                    let shapes = shapes_mut(&mut settings, page);
                     shapes.set_learn(cycle(&LEARN_LINES, shapes.learn, change));
                     sounds.write(MenuSound::Move);
                 }
@@ -1805,148 +1852,168 @@ fn show_options_menu(
                 ),
             })
             .collect(),
-        OptionsTab::Control => control_items(options_menu.page, &settings.keyboard_shapes)
-            .into_iter()
-            .map(|item| match item {
-                ControlItem::StickBehaviour => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Comportamiento Stick",
-                        Language::English => "Stick behaviour",
-                    },
-                    ">",
-                ),
-                ControlItem::KeyboardBehaviour => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Comportamiento Teclado",
-                        Language::English => "Keyboard behaviour",
-                    },
-                    match settings.keyboard_mode {
-                        KeyboardMode::Classic => ">".to_string(),
-                        mode => format!("{}   >", mode.name(lang)),
-                    },
-                ),
-                ControlItem::Mapping => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Asignación",
-                        Language::English => "Mapping",
-                    },
-                    match lang {
-                        Language::Spanish => "Teclado y mando   >",
-                        Language::English => "Keyboard and gamepad   >",
-                    },
-                ),
-                ControlItem::StickTurnLimit => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Limitar giro con velocidad",
-                        Language::English => "Turn limit with speed",
-                    },
-                    format!("<  {}  >", debug_options.stick_limit.name(lang)),
-                ),
-                ControlItem::StickCurve => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Respuesta del stick",
-                        Language::English => "Stick response",
-                    },
-                    format!("<  {}  >", debug_options.stick_curve.name(lang)),
-                ),
-                ControlItem::KeyboardTurnLimit => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Limitar giro con velocidad",
-                        Language::English => "Turn limit with speed",
-                    },
-                    format!("<  {}  >", debug_options.keyboard_limit.name(lang)),
-                ),
-                ControlItem::KeyboardTurnRate => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Rapidez de giro sostenido",
-                        Language::English => "Sustained turn rate",
-                    },
-                    format!("<  {}  >", debug_options.keyboard_rate.name(lang)),
-                ),
-                ControlItem::KeyboardReturnRate => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Rapidez al soltar giro",
-                        Language::English => "Return rate released",
-                    },
-                    format!("<  {}  >", debug_options.keyboard_return.name(lang)),
-                ),
-                ControlItem::KeyboardReverseRate => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Rapidez de cambio de sentido",
-                        Language::English => "Turning the other way",
-                    },
-                    format!("<  {}  >", debug_options.keyboard_reverse.name(lang)),
-                ),
-                ControlItem::Advanced => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Avanzado",
-                        Language::English => "Advanced",
-                    },
-                    ">",
-                ),
-                ControlItem::KeyboardMode => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Comportamiento de teclado",
-                        Language::English => "Keyboard behaviour",
-                    },
-                    format!("<  {}  >", settings.keyboard_mode.name(lang)),
-                ),
-                // A learnt curve, while the game learns them all, in the
-                // amber of what changes by itself.
-                ControlItem::CurveShape(kind) => {
-                    let shapes = &settings.keyboard_shapes;
-                    Row::with_value(
-                        format!("{} · {}", kind.letter(), kind.name(lang)),
-                        format!("<  {}  >", shapes.shape(kind).name(lang)),
-                    )
-                    .automatic(shapes.learning())
-                }
-                ControlItem::CurveCustom(kind) => {
-                    let editing = options_menu.point.filter(|_| options_menu.curve == kind);
-                    Row::with_value(
-                        match editing {
-                            Some(point) => format!("      {}", point_name(point, kind, lang)),
-                            None => "      cubic-bezier".to_string(),
+        OptionsTab::Control => {
+            control_items(options_menu.page, shapes_of(&settings, options_menu.page))
+                .into_iter()
+                .map(|item| match item {
+                    ControlItem::StickBehaviour => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Comportamiento Stick",
+                            Language::English => "Stick behaviour",
                         },
-                        custom_line(settings.keyboard_shapes.choice(kind).custom, editing),
-                    )
-                }
-                ControlItem::CurveScale(kind) => Row::with_value(
-                    format!("      {}", kind.scale_name(lang)),
-                    format!(
-                        "<  {}  >",
-                        kind.scale_text(
-                            settings.keyboard_shapes.scale(kind).unwrap_or_default(),
-                            lang
-                        )
+                        match settings.stick_mode {
+                            KeyboardMode::Classic => ">".to_string(),
+                            mode => format!("{}   >", mode.name(lang)),
+                        },
                     ),
-                ),
-                ControlItem::Learning => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Auto-aprendizaje",
-                        Language::English => "Self-learning",
-                    },
-                    format!("<  {}  >", settings.keyboard_shapes.learn.name(lang)),
-                )
-                .automatic(settings.keyboard_shapes.learning()),
-                ControlItem::ShowLegend => {
-                    Row::check(lang.show_legend(), debug_options.show_legend)
-                }
-                ControlItem::RescanGamepads => {
-                    if now < options_menu.rescan_msg_until {
+                    ControlItem::KeyboardBehaviour => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Comportamiento Teclado",
+                            Language::English => "Keyboard behaviour",
+                        },
+                        match settings.keyboard_mode {
+                            KeyboardMode::Classic => ">".to_string(),
+                            mode => format!("{}   >", mode.name(lang)),
+                        },
+                    ),
+                    ControlItem::Mapping => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Asignación",
+                            Language::English => "Mapping",
+                        },
+                        match lang {
+                            Language::Spanish => "Teclado y mando   >",
+                            Language::English => "Keyboard and gamepad   >",
+                        },
+                    ),
+                    ControlItem::StickTurnLimit => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Limitar giro con velocidad",
+                            Language::English => "Turn limit with speed",
+                        },
+                        format!("<  {}  >", debug_options.stick_limit.name(lang)),
+                    ),
+                    ControlItem::StickCurve => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Respuesta del stick",
+                            Language::English => "Stick response",
+                        },
+                        format!("<  {}  >", debug_options.stick_curve.name(lang)),
+                    ),
+                    ControlItem::KeyboardTurnLimit => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Limitar giro con velocidad",
+                            Language::English => "Turn limit with speed",
+                        },
+                        format!("<  {}  >", debug_options.keyboard_limit.name(lang)),
+                    ),
+                    ControlItem::KeyboardTurnRate => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Rapidez de giro sostenido",
+                            Language::English => "Sustained turn rate",
+                        },
+                        format!("<  {}  >", debug_options.keyboard_rate.name(lang)),
+                    ),
+                    ControlItem::KeyboardReturnRate => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Rapidez al soltar giro",
+                            Language::English => "Return rate released",
+                        },
+                        format!("<  {}  >", debug_options.keyboard_return.name(lang)),
+                    ),
+                    ControlItem::KeyboardReverseRate => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Rapidez de cambio de sentido",
+                            Language::English => "Turning the other way",
+                        },
+                        format!("<  {}  >", debug_options.keyboard_reverse.name(lang)),
+                    ),
+                    ControlItem::Advanced => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Avanzado",
+                            Language::English => "Advanced",
+                        },
+                        ">",
+                    ),
+                    ControlItem::KeyboardMode => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Comportamiento de teclado",
+                            Language::English => "Keyboard behaviour",
+                        },
+                        format!("<  {}  >", settings.keyboard_mode.name(lang)),
+                    ),
+                    ControlItem::StickMode => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Comportamiento del stick",
+                            Language::English => "Stick behaviour",
+                        },
+                        format!("<  {}  >", settings.stick_mode.name(lang)),
+                    ),
+                    // A learnt curve, while the game learns them all, in the
+                    // amber of what changes by itself.
+                    ControlItem::CurveShape(kind) => {
+                        let shapes = shapes_of(&settings, options_menu.page);
                         Row::with_value(
-                            lang.rescan_gamepads(),
-                            match lang {
-                                Language::Spanish => "Mandos actualizados",
-                                Language::English => "Controllers updated",
-                            },
+                            format!("{} · {}", kind.letter(), kind.name(lang)),
+                            format!("<  {}  >", shapes.shape(kind).name(lang)),
                         )
-                    } else {
-                        Row::new(lang.rescan_gamepads())
+                        .automatic(shapes.learning())
                     }
-                }
-            })
-            .collect(),
+                    ControlItem::CurveCustom(kind) => {
+                        let editing = options_menu.point.filter(|_| options_menu.curve == kind);
+                        Row::with_value(
+                            match editing {
+                                Some(point) => format!("      {}", point_name(point, kind, lang)),
+                                None => "      cubic-bezier".to_string(),
+                            },
+                            custom_line(
+                                shapes_of(&settings, options_menu.page).choice(kind).custom,
+                                editing,
+                            ),
+                        )
+                    }
+                    ControlItem::CurveScale(kind) => Row::with_value(
+                        format!("      {}", kind.scale_name(lang)),
+                        format!(
+                            "<  {}  >",
+                            kind.scale_text(
+                                shapes_of(&settings, options_menu.page)
+                                    .scale(kind)
+                                    .unwrap_or_default(),
+                                lang
+                            )
+                        ),
+                    ),
+                    ControlItem::Learning => Row::with_value(
+                        match lang {
+                            Language::Spanish => "Auto-aprendizaje",
+                            Language::English => "Self-learning",
+                        },
+                        format!(
+                            "<  {}  >",
+                            shapes_of(&settings, options_menu.page).learn.name(lang)
+                        ),
+                    )
+                    .automatic(shapes_of(&settings, options_menu.page).learning()),
+                    ControlItem::ShowLegend => {
+                        Row::check(lang.show_legend(), debug_options.show_legend)
+                    }
+                    ControlItem::RescanGamepads => {
+                        if now < options_menu.rescan_msg_until {
+                            Row::with_value(
+                                lang.rescan_gamepads(),
+                                match lang {
+                                    Language::Spanish => "Mandos actualizados",
+                                    Language::English => "Controllers updated",
+                                },
+                            )
+                        } else {
+                            Row::new(lang.rescan_gamepads())
+                        }
+                    }
+                })
+                .collect()
+        }
         OptionsTab::Sound => sound_items()
             .into_iter()
             .map(|item| match item {
@@ -2557,7 +2624,7 @@ fn show_options_menu(
                                                         options_menu.tab,
                                                         options_menu.page,
                                                         index,
-                                                        &settings.keyboard_shapes,
+                                                        shapes_of(&settings, options_menu.page),
                                                     ) {
                                                         UiRect::top(px(GROUP_GAP))
                                                     } else {
@@ -2972,7 +3039,7 @@ mod tests {
         let advanced = Some(Page::ControlAdvanced);
         assert_eq!(
             control_items(advanced, &KeyboardShapes::default()),
-            [ControlItem::KeyboardMode]
+            [ControlItem::KeyboardMode, ControlItem::StickMode]
         );
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
@@ -2987,6 +3054,17 @@ mod tests {
         // both back on its row.
         assert_eq!(keyboard_page(KeyboardMode::Classic), Page::Keyboard);
         assert_eq!(keyboard_page(KeyboardMode::Bezier), Page::KeyboardCurves);
+        assert_eq!(stick_page(KeyboardMode::Classic), Page::Stick);
+        assert_eq!(stick_page(KeyboardMode::Bezier), Page::StickCurves);
+        assert_eq!(Page::StickCurves.row(), Page::Stick.row());
+        // The stick's curves: its response first, then the keyboard's.
+        let stick = Settings::default();
+        let page = Some(Page::StickCurves);
+        let items = control_items(page, shapes_of(&stick, page));
+        assert_eq!(items[0], ControlItem::CurveShape(CurveKind::Response));
+        assert_eq!(items.len(), 6 + 4 + 1);
+        assert!(shapes_of(&stick, page).stick);
+        assert!(!shapes_of(&stick, Some(Page::KeyboardCurves)).stick);
         // Each curve's shape, under it a custom one's numbers and its time
         // (but E's), and learning at the end.
         let mut shapes = KeyboardShapes::default();
