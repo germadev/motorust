@@ -34,8 +34,9 @@ use synth::{Controls, Mix, REDLINE, VOICES, pan};
 
 /// Volumen general.
 const MASTER: f32 = 0.8;
-/// Velocidad (m/s) a la que cada marcha llega al corte de inyección.
-const GEARS: [f32; 6] = [26.0, 38.0, 49.0, 60.0, 71.0, 94.0];
+/// Velocidad (m/s) a la que cada marcha llega al corte de inyección: the
+/// bikes' own, which they change through with the gears on.
+use crate::bike::GEARS;
 /// Ralentí (alto, como el de una moto de carreras), cambio a la marcha de
 /// arriba y a la de abajo (rpm): en carrera el motor va siempre alto.
 const IDLE: f32 = 3000.0;

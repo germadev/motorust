@@ -433,6 +433,8 @@ enum GameItem {
     CentreResults,
     /// Whether the race's whole time is shown under the lap's.
     TotalTime,
+    /// Whether the bikes change gears.
+    Gears,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -540,6 +542,7 @@ fn game_items() -> Vec<GameItem> {
         GameItem::FalseStarts,
         GameItem::CentreResults,
         GameItem::TotalTime,
+        GameItem::Gears,
     ]
 }
 
@@ -952,6 +955,7 @@ fn section_is_default(
                 settings.false_starts,
                 settings.centre_results,
                 settings.show_total_time,
+                settings.gears,
             ) == (
                 first.language,
                 first.difficulty,
@@ -962,6 +966,7 @@ fn section_is_default(
                 first.false_starts,
                 first.centre_results,
                 first.show_total_time,
+                first.gears,
             )
         }
         OptionsTab::Control => {
@@ -1063,6 +1068,7 @@ fn reset_section(
             settings.false_starts = first.false_starts;
             settings.centre_results = first.centre_results;
             settings.show_total_time = first.show_total_time;
+            settings.gears = first.gears;
         }
         OptionsTab::Control => {
             *debug = DebugOptions::default();
@@ -1281,6 +1287,10 @@ fn use_options_menu(
                 }
                 GameItem::TotalTime if change != 0 => {
                     settings.show_total_time = !settings.show_total_time;
+                    sounds.write(MenuSound::Move);
+                }
+                GameItem::Gears if change != 0 => {
+                    settings.gears = !settings.gears;
                     sounds.write(MenuSound::Move);
                 }
                 _ => {}
@@ -1862,6 +1872,13 @@ fn show_options_menu(
                         Language::English => "Show the total time",
                     },
                     settings.show_total_time,
+                ),
+                GameItem::Gears => Row::check(
+                    match lang {
+                        Language::Spanish => "Marchas (cambio automático)",
+                        Language::English => "Gears (automatic)",
+                    },
+                    settings.gears,
                 ),
             })
             .collect(),

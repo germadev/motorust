@@ -473,6 +473,8 @@ pub fn decide(
         wheelie: 0.0,
         pivot_slowing: 0.0,
         lean: None,
+        // Its steering does not reckon with the front's extra grip braking.
+        plain_grip: true,
     }
 }
 

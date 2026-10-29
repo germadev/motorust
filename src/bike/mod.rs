@@ -104,6 +104,24 @@ const CORNER_GRIP: std::ops::Range<f32> = 0.6..1.4;
 const CORNER_LOSS_FROM: f32 = 0.85;
 const CORNER_POWER_CUT: f32 = 0.6;
 const CORNER_SCRUB: f32 = 35.0;
+/// How much more the front grips loaded by the braking (a share of the
+/// grip, with the fork dived all it can; see [`Chassis::front_load`]).
+const BRAKE_GRIP: f32 = 0.15;
+/// With the gears on (Options > Game), the speed each gear runs up to
+/// (m/s, the engine's sound has the same), how long changing up takes
+/// with no drive (s), and how far below the gear under it the bike goes
+/// down to it (a share of that gear's top).
+pub const GEARS: [f32; 6] = [26.0, 38.0, 49.0, 60.0, 71.0, 94.0];
+const GEAR_SHIFT_TIME: f32 = 0.12;
+const GEAR_DOWN: f32 = 0.7;
+/// Changing up from this share of a gear's top speed.
+const GEAR_UP: f32 = 0.97;
+/// How much more the engine drives at its strongest in a gear (at
+/// [`TORQUE_PEAK`] of the gear's top), less on either side.
+const TORQUE_BOOST: f32 = 0.2;
+const TORQUE_PEAK: f32 = 0.8;
+const TORQUE_SPREAD: f32 = 0.35;
+
 /// How hard a booster drives a bike on (m/s²): through one at the speed
 /// bikes take a toy track's bends, up to its speed or nearly.
 const BOOSTER_ACCEL: f32 = 60.0;
@@ -129,6 +147,7 @@ impl Plugin for BikePlugin {
         .add_message::<RecallToGrid>()
         .init_resource::<SplitChoices>()
         .add_systems(OnEnter(GameState::Race), spawn_grid)
+        .add_systems(Update, follow_gears)
         .add_systems(
             FixedUpdate,
             (
@@ -328,6 +347,10 @@ pub struct BikeInput {
     /// Advanced), while the
     /// keyboard or the d-pad steer (see [`curves`]).
     pub lean: Option<f32>,
+    /// Without the front's extra grip braking (see [`BRAKE_GRIP`]): the
+    /// rivals', whose steering does not reckon with it (with it they turn
+    /// in tighter than they mean to off the brakes).
+    pub plain_grip: bool,
 }
 
 /// Estado físico de la moto. Solo cambia en los pasos fijos de la simulación.
@@ -376,6 +399,10 @@ pub struct BikeState {
     pub ride: Option<Ride>,
     /// Whether its lean is going over to the other side (see [`swinging`]).
     pub swinging: bool,
+    /// With the gears on, the gear it is in (0 the first) and how long the
+    /// change up it is in still lasts (s).
+    pub gear: usize,
+    pub shift: f32,
 }
 
 impl BikeState {
@@ -397,6 +424,8 @@ impl BikeState {
             chassis: Chassis::default(),
             ride: None,
             swinging: false,
+            gear: 0,
+            shift: 0.0,
         }
     }
 
@@ -497,6 +526,10 @@ pub struct BikeTuning {
     pub lean_in_response: f32,
     /// Rapidez con la que se levanta (1/s): más suave.
     pub lean_response: f32,
+    /// Whether the bikes change gears (Options > Game): none while changing
+    /// up, and each gear strongest at the revs it pulls best (see
+    /// [`gearbox`]). Off, the engine drives as if it had none.
+    pub gears: bool,
 }
 
 impl Default for BikeTuning {
@@ -518,6 +551,7 @@ impl Default for BikeTuning {
             max_lean: 55f32.to_radians(),
             lean_in_response: 16.0,
             lean_response: 7.0,
+            gears: false,
         }
     }
 }
@@ -534,6 +568,40 @@ impl BikeTuning {
         let v = speed.abs();
         (v / self.min_turn_radius).min(self.max_lateral_accel * grip / v)
     }
+}
+
+/// The bikes change gears as Options > Game says.
+fn follow_gears(settings: Res<Settings>, mut tuning: ResMut<BikeTuning>) {
+    if tuning.gears != settings.gears {
+        tuning.gears = settings.gears;
+    }
+}
+
+/// The gears after `dt` seconds in gear `gear` (still changing up for
+/// `shift` s) at `speed` (m/s) with `throttle`: up near the gear's top
+/// with the throttle open (no drive for [`GEAR_SHIFT_TIME`]), down well
+/// below the gear under it. Also how much the engine drives there: none
+/// while changing up, and in a gear more at the revs it pulls best (see
+/// [`TORQUE_BOOST`]), as much as without gears at either end.
+pub fn gearbox(gear: usize, shift: f32, speed: f32, throttle: f32, dt: f32) -> (usize, f32, f32) {
+    let speed = speed.max(0.0);
+    let mut gear = gear.min(GEARS.len() - 1);
+    let mut shift = (shift - dt).max(0.0);
+    if gear + 1 < GEARS.len() && speed >= GEARS[gear] * GEAR_UP && throttle > 0.0 {
+        gear += 1;
+        shift = GEAR_SHIFT_TIME;
+    }
+    while gear > 0 && speed < GEARS[gear - 1] * GEAR_DOWN {
+        gear -= 1;
+    }
+    let revs = speed / GEARS[gear];
+    let pull = (1.0 - ((revs - TORQUE_PEAK) / TORQUE_SPREAD).powi(2)).max(0.0);
+    let drive = if shift > 0.0 {
+        0.0
+    } else {
+        1.0 + TORQUE_BOOST * pull
+    };
+    (gear, shift, drive)
 }
 
 /// Avanza la moto un paso de `dt` segundos. Es una función pura: no toca el
@@ -573,9 +641,17 @@ pub fn step(
     let corner_power = 1.0 + CORNER_DRIVE * (steer / CORNER_GRIP_FROM).min(1.0) * (1.0 - at_limit)
         - CORNER_POWER_CUT * at_limit;
     // Con un caballito empuja algo más.
+    // With the gears: none while changing up, and each gear stronger at the
+    // revs it pulls best.
+    let (gear, shift, drive) = if tuning.gears {
+        gearbox(state.gear, state.shift, state.speed, throttle, dt)
+    } else {
+        (0, 0.0, 1.0)
+    };
     let power = throttle
         * (1.0 - speed_ratio * speed_ratio)
         * corner_power
+        * drive
         * (1.0 + state.chassis.wheelie_drive());
     let mut accel = power * tuning.engine_accel;
     // Freno: frena mientras avanza; parada (o casi), da marcha atrás.
@@ -622,7 +698,14 @@ pub fn step(
     let extra_grip = CORNER_GRIP
         .start
         .lerp(CORNER_GRIP.end, smoothstep(25.0, 60.0, speed.abs()));
-    let corner_grip = 1.0 + extra_grip * smoothstep(CORNER_GRIP_FROM, 1.0, steer.abs());
+    // Braking, and a moment after, the front is loaded and grips more: the
+    // bike turns tighter turning in off the brakes.
+    let corner_grip = (1.0 + extra_grip * smoothstep(CORNER_GRIP_FROM, 1.0, steer.abs()))
+        * if input.plain_grip {
+            1.0
+        } else {
+            1.0 + BRAKE_GRIP * state.chassis.front_load()
+        };
     let max_yaw_rate = tuning.max_yaw_rate_with_grip(speed, corner_grip);
     // Con una rueda en el aire apenas se puede girar.
     let grip = state.chassis.steering_grip();
@@ -702,6 +785,8 @@ pub fn step(
         grass,
         lean: approach(state.lean, target_lean, lean_rate, dt),
         swinging,
+        gear,
+        shift,
         pitch: approach(state.pitch, target_pitch, PITCH_RESPONSE, dt),
         accel,
         chassis,
@@ -1256,6 +1341,7 @@ fn read_controller_binding(
                 wheelie,
                 pivot_slowing: keys.pivot_slowing,
                 lean: keys.lean,
+                plain_grip: false,
             }
         }
         ControllerBinding::Arrows => {
@@ -1298,6 +1384,7 @@ fn read_controller_binding(
                 wheelie,
                 pivot_slowing: keys.pivot_slowing,
                 lean: keys.lean,
+                plain_grip: false,
             }
         }
         ControllerBinding::Gamepad(entity) => {
@@ -1364,6 +1451,7 @@ fn read_controller_binding(
                     wheelie,
                     pivot_slowing: keys.pivot_slowing,
                     lean: keys.lean.or(stick.lean),
+                    plain_grip: false,
                 }
             } else {
                 BikeInput::default()
@@ -1541,6 +1629,7 @@ fn read_player_input(
             wheelie,
             pivot_slowing: keys.pivot_slowing,
             lean: keys.lean.or(stick.lean),
+            plain_grip: false,
         };
         if throttle > 0.0 && !race.started && !race.lights {
             info!(
@@ -2742,6 +2831,112 @@ mod tests {
         assert_eq!(slow.signum(), track.curvature(sharpest).signum());
         // Parked: nothing.
         assert_eq!(corner_turn(&track, &riding(0.0), &tuning), 0.0);
+    }
+
+    #[test]
+    fn braking_loads_the_front_and_the_bike_turns_tighter_for_a_moment() {
+        let tuning = BikeTuning::default();
+        let ground = Ground::flat(Surface::Asphalt);
+        let turning = |state: &BikeState| {
+            let input = BikeInput {
+                steer_direct: 1.0,
+                ..default()
+            };
+            let next = step(state, &input, &ground, &tuning, DT);
+            wrap_angle(next.heading - state.heading) / DT
+        };
+        let cruising = BikeState {
+            speed: 40.0,
+            ..parked()
+        };
+        // Braking hard for half a second: the fork dives.
+        let mut braked = cruising;
+        for _ in 0..60 {
+            braked = step(
+                &braked,
+                &BikeInput {
+                    brake: 1.0,
+                    ..default()
+                },
+                &ground,
+                &tuning,
+                DT,
+            );
+        }
+        assert!(
+            braked.chassis.front_load() > 0.5,
+            "{}",
+            braked.chassis.front_load()
+        );
+        // At the same speed, nose down as it is, it turns tighter loaded
+        // than with the fork up.
+        let same = BikeState {
+            chassis: Chassis {
+                squat: 0.0,
+                squat_rate: 0.0,
+                ..braked.chassis
+            },
+            ..braked
+        };
+        assert!(turning(&braked) > 1.05 * turning(&same));
+        assert!(turning(&braked) <= (1.0 + BRAKE_GRIP) * 1.001 * turning(&same));
+        // A moment after letting go, most of the load is gone (the engine
+        // braking keeps a little).
+        let mut after = braked;
+        for _ in 0..120 {
+            after = step(&after, &BikeInput::default(), &ground, &tuning, DT);
+        }
+        let (was, now) = (braked.chassis.front_load(), after.chassis.front_load());
+        assert!(now < 0.5 * was, "{was} -> {now}");
+    }
+
+    #[test]
+    fn the_gears_change_up_near_their_top_and_drive_most_at_their_best_revs() {
+        // Up at the first gear's top, with a moment with no drive.
+        let (gear, shift, pulling) = gearbox(0, 0.0, GEARS[0] * 0.98, 1.0, DT);
+        assert_eq!((gear, pulling), (1, 0.0));
+        assert!(shift > 0.0);
+        // Not with the throttle shut.
+        assert_eq!(gearbox(0, 0.0, GEARS[0] * 0.98, 0.0, DT).0, 0);
+        // Down well below the gear under it, all the way.
+        assert_eq!(gearbox(4, 0.0, 10.0, 0.0, DT).0, 0);
+        // Strongest at its best revs, as without gears at either end.
+        let at = |share: f32| gearbox(2, 0.0, GEARS[2] * share, 1.0, DT).2;
+        assert!((at(TORQUE_PEAK) - (1.0 + TORQUE_BOOST)).abs() < 1e-4);
+        assert!(at(0.6) < at(0.8) && at(0.95) < at(0.8));
+        assert_eq!(at(0.2), 1.0);
+        // From standing, flat out, the bike goes up through them.
+        let tuning = BikeTuning {
+            gears: true,
+            ..default()
+        };
+        let mut state = parked();
+        let mut gears = Vec::new();
+        for _ in 0..(20.0 / DT) as usize {
+            state = step(
+                &state,
+                &full_throttle(),
+                &Ground::flat(Surface::Asphalt),
+                &tuning,
+                DT,
+            );
+            if gears.last() != Some(&state.gear) {
+                gears.push(state.gear);
+            }
+        }
+        assert!(
+            gears.len() >= 5 && gears.windows(2).all(|w| w[1] == w[0] + 1),
+            "{gears:?}"
+        );
+        assert_eq!(gears[0], 0);
+        // About as quick to top speed as without them.
+        let plain = drive(full_throttle(), Surface::Asphalt, 20.0, parked());
+        assert!(
+            (state.speed - plain.speed).abs() < 3.0,
+            "{} {}",
+            state.speed,
+            plain.speed
+        );
     }
 
     #[test]

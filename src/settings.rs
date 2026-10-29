@@ -160,6 +160,10 @@ pub struct Settings {
     /// behaviour, leaning the bike over and turning it with the lean (see
     /// [`crate::bike::curves`]).
     pub keyboard_mode: crate::bike::curves::KeyboardMode,
+    /// Whether the bikes change gears, automatically: none while changing
+    /// up, each gear strongest at the revs it pulls best (see
+    /// [`crate::bike::gearbox`]), and the gear on the speedometer.
+    pub gears: bool,
     /// Whether those curves are drawn under the performance HUD (Options >
     /// Graphics > Performance HUD), with where the first player's bike is
     /// on them (see [`crate::curves_hud`]).
@@ -410,6 +414,7 @@ impl Default for Settings {
             cartoon_water: false,
             frame_latency: DEFAULT_FRAME_LATENCY,
             keyboard_mode: crate::bike::curves::KeyboardMode::Classic,
+            gears: false,
             show_keyboard_curves: false,
             keyboard_shapes: crate::bike::curves::KeyboardShapes::default(),
             stick_mode: crate::bike::curves::KeyboardMode::Classic,
