@@ -1703,6 +1703,13 @@ pub enum ToyKind {
     /// A giant robot standing guard at the shop's door, as tall as the
     /// glass beside it is (Meshy's).
     GiantRobot,
+    /// The shop's checkout counter: its till and card reader on top, sweets
+    /// and drinks on shelves along its front, for those queueing (Meshy's).
+    CheckoutCounter,
+    /// A shopping trolley, red-handled; in a row of them, nested (Meshy's).
+    ShoppingCart,
+    /// A potted plant, a leafy tree in a white pot (Meshy's).
+    PottedPlant,
 }
 
 #[cfg(test)]

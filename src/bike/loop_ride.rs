@@ -120,6 +120,7 @@ pub fn ride(
         surface: Surface::Asphalt,
         grade: 0.0,
         crest: -round * round / looped.radius,
+        booster: 0.0,
     };
     let mut next = step(state, &input, &ground, tuning, dt);
     // The tyres grip as hard as the surface presses on them, up to as hard
@@ -244,6 +245,7 @@ mod tests {
             exit: 2,
             fork: 0,
             join: 0,
+            boosters: false,
         }
     }
 

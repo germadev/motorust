@@ -478,6 +478,10 @@ pub(super) fn toy_track(scenery: &Scenery, lap: f32, along: f32) -> BridgeStyle 
         .unwrap_or(BridgeStyle::SlotTrack)
 }
 
+/// In how many strips across a toy track's lanes are laid (see
+/// [`ribbon_in_strips`]): its slots run straight through its banked esses.
+const LANE_STRIPS: usize = 6;
+
 /// Indoors, the road as a toy track (see [`toy_track`]): its lanes, and its
 /// plastic on out under its borders.
 fn spawn_toy_tracks(
@@ -505,7 +509,15 @@ fn spawn_toy_tracks(
         (BridgeStyle::Slide, &textures.chute, SLIDE_YELLOW, 0.22),
     ] {
         let mine = |index: usize| (style(index) == wanted).then_some(Color::WHITE);
-        let lanes = ribbon(road, -half, half, 0.0, ASPHALT_TILE, |index, _| mine(index));
+        let lanes = ribbon_in_strips(
+            road,
+            -half,
+            half,
+            0.0,
+            ASPHALT_TILE,
+            LANE_STRIPS,
+            |index, _| mine(index),
+        );
         if lanes.count_vertices() == 0 {
             continue;
         }
@@ -595,6 +607,23 @@ fn ribbon(
     tile: f32,
     paint: impl Fn(usize, [Vec2; 4]) -> Option<Color>,
 ) -> Mesh {
+    ribbon_in_strips(road, from, to, lift, tile, 1, paint)
+}
+
+/// A ribbon as [`ribbon`], in `strips` strips side by side across it:
+/// where the road's banking changes quickly, each of its pieces is twisted
+/// (one side rising more than the other), and two triangles across it all
+/// fold along their diagonal, bending what is painted along it this way and
+/// that, piece after piece; narrower, each is twisted the less.
+fn ribbon_in_strips(
+    road: Road,
+    from: f32,
+    to: f32,
+    lift: f32,
+    tile: f32,
+    strips: usize,
+    paint: impl Fn(usize, [Vec2; 4]) -> Option<Color>,
+) -> Mesh {
     debug_assert!(from < to, "la cinta va de derecha a izquierda");
     let line = road.line();
     let step = line.step_length();
@@ -613,17 +642,21 @@ fn ribbon(
             road.surface_point(i, lateral) + Vec3::Y * (SURFACE_Y + lift + road.lift())
         };
         let (v0, v1) = (index as f32 * step / tile, (index + 1) as f32 * step / tile);
-        let (u0, u1) = (0.0, (to - from) / tile);
-        mesh.quad(
-            [
-                (at(index, from), Vec2::new(u0, v0)),
-                (at(index + 1, from), Vec2::new(u0, v1)),
-                (at(index + 1, to), Vec2::new(u1, v1)),
-                (at(index, to), Vec2::new(u1, v0)),
-            ],
-            Vec3::Y,
-            color,
-        );
+        for strip in 0..strips {
+            let across = |k: usize| from + (to - from) * k as f32 / strips as f32;
+            let (a, b) = (across(strip), across(strip + 1));
+            let (u0, u1) = ((a - from) / tile, (b - from) / tile);
+            mesh.quad(
+                [
+                    (at(index, a), Vec2::new(u0, v0)),
+                    (at(index + 1, a), Vec2::new(u0, v1)),
+                    (at(index + 1, b), Vec2::new(u1, v1)),
+                    (at(index, b), Vec2::new(u1, v0)),
+                ],
+                Vec3::Y,
+                color,
+            );
+        }
     }
     mesh.build()
 }

@@ -2352,7 +2352,10 @@ fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32, 
         | ToyKind::ToyChest
         | ToyKind::JackInBox
         | ToyKind::Xylophone
-        | ToyKind::GiantRobot => {}
+        | ToyKind::GiantRobot
+        | ToyKind::CheckoutCounter
+        | ToyKind::ShoppingCart
+        | ToyKind::PottedPlant => {}
     }
 }
 
@@ -2385,6 +2388,9 @@ fn model_of(kind: ToyKind) -> Option<&'static str> {
         ToyKind::JackInBox => Some("jack_in_box"),
         ToyKind::Xylophone => Some("xylophone"),
         ToyKind::GiantRobot => Some("giant_robot"),
+        ToyKind::CheckoutCounter => Some("checkout_counter"),
+        ToyKind::ShoppingCart => Some("shopping_cart"),
+        ToyKind::PottedPlant => Some("potted_plant"),
         ToyKind::Blocks | ToyKind::Ball | ToyKind::Tyres => None,
     }
 }
@@ -2415,6 +2421,13 @@ fn block_walls(mesh: &mut MeshBuilder, track: &Track, scenery: &Scenery) {
     let lap = track.lap_length();
     for index in 0..track.sample_count() {
         let along = index as f32 * track.step_length();
+        // None where a booster's pods stand on the wall's line.
+        let booster = track.boosters().iter().any(|booster| {
+            booster.road == 0 && (booster.from - 2.0..booster.to + 2.0).contains(&along)
+        });
+        if booster {
+            continue;
+        }
         for side in [super::scenery::Side::Left, super::scenery::Side::Right] {
             if super::road::wall_style(scenery, lap, along, side)
                 != Some(super::scenery::WallStyle::Blocks)

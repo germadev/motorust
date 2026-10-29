@@ -120,6 +120,7 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 height: 5.5,
                 radius: 16.0,
                 shift: -16.0,
+                boosters: false,
             }),
             // On north-east, round to the right (200 m radius), straight on
             // towards the lap, and onto it in a last long right-hander

@@ -63,6 +63,35 @@ CHAIR, T0, T1, TOP, T2 = 5.5, 14.0, 14.0, 39.0, 9.0
 # (m), and the straight leads into it and out of it the game lays (m, as
 # `LOOP_LEAD` in `src/track.rs`), two each.
 LOOP_RADIUS, LOOP_SHIFT, LOOP_LEAD = 14.0, 14.0, 25.0
+# How far along the north wall the way round the loop runs beside the lap
+# (m, from its fork to its join); how far the two run together from the fork
+# before parting; and how far to the left (north, toward the wall) the lap
+# swings away while the way to the loop goes straight on into it, so that it
+# makes no detour to it: as far as the row of blocks along the lap's left
+# leaves room for before the shelves.
+LOOP_SPAN, LOOP_PARTING, LOOP_SWING = 242.0, 10.0, 16.0
+# The bends either side of the swing, and how far round each turns (°).
+SWING_BEND = 80.0
+SWING_ANGLE = math.degrees(math.acos(1 - LOOP_SWING / (2 * SWING_BEND)))
+# How far to the right (south) the way to the loop drifts off the lap's
+# line, in two wide bends, for its walls to part from the lap's (2 m apart):
+# all but straight.
+LOOP_DRIFT, DRIFT_BEND = 2.5, 200.0
+DRIFT_ANGLE = math.degrees(math.acos(1 - LOOP_DRIFT / (2 * DRIFT_BEND)))
+# The bends the way out of the loop comes back onto the lap's line by,
+# from the way out's side: how far round each turns (°).
+LOOP_BACK_BEND = 40.0
+LOOP_BACK_ANGLE = math.degrees(
+    math.acos(1 - (LOOP_SHIFT + LOOP_DRIFT) / (2 * LOOP_BACK_BEND))
+)
+# How far along from the fork the loop's mouth is: as far as leaves room
+# after the way out for its lead out, its bends back and a last straight.
+LOOP_MOUTH_AT = (
+    LOOP_SPAN
+    - 10.0
+    - 2 * LOOP_BACK_BEND * math.sin(math.radians(LOOP_BACK_ANGLE))
+    - 2 * LOOP_LEAD
+)
 # The radius of the Hot Wheels helix (m): wide enough for a pack to climb it
 # side by side.
 HELIX_RADIUS = 36.0
@@ -83,9 +112,14 @@ def forward(heading):
 
 class Turtle:
     """Walks the centre line: `S` straight on, `L` and `R` round an arc to
-    the left or the right, `at` marks the road's height where it stands."""
+    the left or the right, `at` marks the road's height where it stands.
+    A point every `every` metres round an arc, twice as far apart on a
+    straight: close enough that the curve the game draws through them
+    (centripetal Catmull-Rom, its tangent smooth but not its bending) keeps
+    to the arcs, with no wobble between points where they lie unevenly (as
+    they did 12 m apart, the road snaking in the train table's esses)."""
 
-    def __init__(self, every=12.0):
+    def __init__(self, every=6.0):
         self.p = np.zeros(2)
         self.h = 0.0
         self.points = [tuple(self.p)]
@@ -149,9 +183,12 @@ def lap():
     t.S(50).at(CHAIR, "chair")
     t.S(20).at(CHAIR, "chair end")
     t.S(8).at(CHAIR + 0.8)
-    t.S(60).at(T0 - 1.2, "T0")
-    t.S(14).at(T0 - 0.3)
-    t.S(12).at(T0)
+    # Short of the top before the table, as the lift of the esses on it,
+    # eased in up the ramp, steepens it; and over the top gently, no crest
+    # to take off over into them.
+    t.S(60).at(T0 - 1.5, "T0")
+    t.S(14).at(T0 - 0.6)
+    t.S(12).at(T0 - 0.15)
     t.S(12).at(T0)
     # Esses across it and a hairpin round its far end.
     t.L(35, 40).at(T0)
@@ -193,14 +230,16 @@ def lap():
         t.R(30, 90).at(TOP - 2.0 - (TOP - 4.5) * (k + 1) / 9)
     t.S(30).at(0.3, "floor")
     t.S(36).at(0)
-    # East along the north wall, swinging out a little where the way to
-    # the loop leaves it (see `loop_way`).
+    # East along the north wall, swinging out toward it while the way to
+    # the loop goes straight on into it (see `loop_way`), and back.
     t.keep("loop fork")
-    t.S(40).at(0, "loop fork")
-    t.L(80, 18).at(0)
-    t.R(80, 36).at(0)
-    t.L(80, 18).at(0)
-    t.S(242 - 40 - 4 * 80 * math.sin(math.radians(18))).at(0, "loop join")
+    t.S(LOOP_PARTING).at(0, "loop fork")
+    t.L(SWING_BEND, SWING_ANGLE).at(0)
+    t.R(SWING_BEND, SWING_ANGLE).at(0)
+    swing = 4 * SWING_BEND * math.sin(math.radians(SWING_ANGLE))
+    t.S(LOOP_SPAN - LOOP_PARTING - swing).at(0)
+    t.R(SWING_BEND, SWING_ANGLE).at(0)
+    t.L(SWING_BEND, SWING_ANGLE).at(0, "loop join")
     t.keep("loop join")
     t.S(40).at(0, "north wall end")
     t.R(32, 90).at(0)
@@ -243,7 +282,12 @@ def castle_way(t):
     points (the first and last on the lap left to the game) and the ends of
     its straight through the castle."""
     b = branch_from(t, "castle fork")
-    b.S(CASTLE_LEAD)
+    # Its leads off the lap and back onto it in short pieces, so that the
+    # game's curve keeps them straight: it sets which way the way leaves
+    # and joins the lap by the lap's points 20 m off, which past the join
+    # are already round its next bend.
+    for _ in range(3):
+        b.S(CASTLE_LEAD / 3)
     b.L(CASTLE_BEND, CASTLE_ANGLE)
     b.R(CASTLE_BEND, CASTLE_ANGLE)
     gate = np.array(b.p)
@@ -251,21 +295,25 @@ def castle_way(t):
     through = (gate, np.array(b.p))
     b.R(CASTLE_BEND, CASTLE_ANGLE)
     b.L(CASTLE_BEND, CASTLE_ANGLE)
-    b.S(CASTLE_LEAD)
+    for _ in range(3):
+        b.S(CASTLE_LEAD / 3)
     return np.array(b.points[1:-1]), through
 
 
 def loop_way(t):
-    """The way round the loop: from its fork out to the south of the lap and
-    straight into the loop's mouth, and from its way out (to the right of the
-    mouth) straight on and back onto the lap at its join. The control
-    points of the road in (the last of them where the game's straight lead
-    into the mouth begins) and out (the first where its lead out ends), the
-    mouth and the heading."""
+    """The way round the loop: from its fork on along the lap's line,
+    drifting a little off it (the lap swinging away to the north), into the
+    loop's mouth, and
+    from its way out (to the right of the mouth) straight on and back onto
+    the lap at its join. The control points of the road in (the last of
+    them where the game's straight lead into the mouth begins) and out (the
+    first where its lead out ends), the mouth and the heading."""
     b = branch_from(t, "loop fork")
-    b.S(15)
-    b.R(40, 40)
-    b.L(40, 40)
+    b.S(LOOP_PARTING)
+    b.R(DRIFT_BEND, DRIFT_ANGLE)
+    b.L(DRIFT_BEND, DRIFT_ANGLE)
+    drift = 2 * DRIFT_BEND * math.sin(math.radians(DRIFT_ANGLE))
+    b.S(LOOP_MOUTH_AT - 2 * LOOP_LEAD - LOOP_PARTING - drift)
     approach = np.array(b.points[1:-1])
     b.S(2 * LOOP_LEAD)
     mouth, heading = np.array(b.p), b.h
@@ -273,10 +321,8 @@ def loop_way(t):
     e = Turtle()
     e.p, e.h = way_out + forward(heading) * 2 * LOOP_LEAD, heading
     e.points = [tuple(e.p)]
-    off = abs(np.dot(way_out - t.kept["loop join"][0], forward(heading + math.pi / 2)))
-    angle = math.degrees(math.acos(1 - off / 80))
-    e.L(40, angle)
-    e.R(40, angle)
+    e.L(LOOP_BACK_BEND, LOOP_BACK_ANGLE)
+    e.R(LOOP_BACK_BEND, LOOP_BACK_ANGLE)
     e.S(10)
     exit_ = np.array(e.points[1:-1])
     return approach, mouth, (heading + math.pi) % (2 * math.pi) - math.pi, exit_
@@ -507,11 +553,13 @@ def check_branches(t, line):
 
 
 def emit(points, profile):
-    """`CONTROL_POINTS` and `ELEVATION` as Rust."""
+    """`CONTROL_POINTS` and `ELEVATION` as Rust: the points to the
+    centimetre (to the decimetre, 6 m apart, they would bend the curve
+    through them out of true)."""
     number = lambda v: "0.0" if f"{v:.1f}" == "-0.0" else f"{v:.1f}"
     print(f"const CONTROL_POINTS: [Vec2; {len(points)}] = [")
     for x, z in points:
-        print(f"    Vec2::new({number(x)}, {number(z)}),")
+        print(f"    Vec2::new({centimetres(x)}, {centimetres(z)}),")
     print("];\n")
     print(f"const ELEVATION: [(f32, f32); {len(profile)}] = [")
     for along, height, name in profile:
@@ -520,12 +568,19 @@ def emit(points, profile):
     print("];")
 
 
+def centimetres(v):
+    """`v` (m) as Rust, to the centimetre."""
+    text = f"{v:.2f}".rstrip("0")
+    text = text + "0" if text.endswith(".") else text
+    return "0.0" if text == "-0.0" else text
+
+
 def emit_branches(t, line, step):
     """The branches' spans, control points and loop as Rust."""
     number = lambda v: "0.0" if f"{v:.1f}" == "-0.0" else f"{v:.1f}"
     points = lambda name, array: (
         f"const {name}: [Vec2; {len(array)}] = [\n"
-        + "".join(f"    Vec2::new({number(x)}, {number(z)}),\n" for x, z in array)
+        + "".join(f"    Vec2::new({centimetres(x)}, {centimetres(z)}),\n" for x, z in array)
         + "];"
     )
     way, through = castle_way(t)

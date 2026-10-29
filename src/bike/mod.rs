@@ -93,6 +93,9 @@ const CORNER_GRIP: std::ops::Range<f32> = 0.6..1.4;
 const CORNER_LOSS_FROM: f32 = 0.85;
 const CORNER_POWER_CUT: f32 = 0.6;
 const CORNER_SCRUB: f32 = 35.0;
+/// How hard a booster drives a bike on (m/s²): through one at the speed
+/// bikes take a toy track's bends, up to its speed or nearly.
+const BOOSTER_ACCEL: f32 = 60.0;
 
 /// Inclinación de la moto en parado con el pie derecho en el suelo (rad).
 pub const STOPPED_LEAN: f32 = -0.12;
@@ -414,6 +417,9 @@ pub struct Ground {
     pub grade: f32,
     /// Curvatura vertical (1/m): positiva en lo alto de una loma.
     pub crest: f32,
+    /// The speed a booster under the bike drives it on to (m/s), or nought
+    /// (see [`crate::track::Track::booster_beside`]).
+    pub booster: f32,
 }
 
 impl Ground {
@@ -423,6 +429,7 @@ impl Ground {
             surface,
             grade: 0.0,
             crest: 0.0,
+            booster: 0.0,
         }
     }
 }
@@ -574,6 +581,10 @@ pub fn step(
     }
     resistance += CORNER_SCRUB * at_limit * smoothstep(25.0, 60.0, speed) * contact;
     speed = move_toward(speed, 0.0, resistance * dt);
+    // A booster under it drives it on, hard, up to its speed; never slows it.
+    if ground.booster > 0.0 && state.grounded {
+        speed = speed.max(move_toward(speed, ground.booster, BOOSTER_ACCEL * dt));
+    }
     let speed = speed.clamp(-tuning.reverse_max_speed, top_speed.max(tuning.max_speed));
     let accel = (speed - state.speed) / dt + GRAVITY * slope_sine * contact;
 
@@ -748,6 +759,7 @@ pub fn advance_hitting_walls(
         surface: track.surface_beside(&nearest),
         grade: track.grade(state.position, forward(state.heading), state.elevation),
         crest: track.crest(&nearest),
+        booster: track.booster_beside(&nearest),
     };
     let mut next = step(state, input, &ground, tuning, dt);
     let wall = hit_walls(&mut next, track);
@@ -2850,6 +2862,44 @@ mod tests {
         let braked = drive(braking, Surface::Asphalt, 0.5, moving);
         assert!(braked.accel < -20.0);
         assert!(braked.chassis.squat < -0.04, "morro hundido");
+    }
+
+    #[test]
+    fn a_booster_drives_the_bike_on_up_to_its_speed_on_the_ground() {
+        let tuning = BikeTuning::default();
+        let boosted = Ground {
+            booster: 75.0,
+            ..Ground::flat(Surface::Asphalt)
+        };
+        let flat = Ground::flat(Surface::Asphalt);
+        let moving = BikeState {
+            speed: 30.0,
+            ..parked()
+        };
+        let ride = |ground: &Ground, input: BikeInput, state: BikeState, seconds: f32| {
+            (0..(seconds / DT) as usize)
+                .fold(state, |state, _| step(&state, &input, ground, &tuning, DT))
+        };
+        let plain = ride(&flat, full_throttle(), moving, 0.2).speed;
+        let pushed = ride(&boosted, full_throttle(), moving, 0.2).speed;
+        assert!(pushed > plain + 0.15 * BOOSTER_ACCEL, "{pushed} {plain}");
+        // Coasting on it, it holds the bike at its speed, no faster.
+        let held = ride(&boosted, BikeInput::default(), moving, 3.0).speed;
+        assert!((74.0..=75.01).contains(&held), "{held}");
+        // What goes faster it does not slow.
+        let fast = BikeState {
+            speed: 78.0,
+            ..parked()
+        };
+        let through = ride(&boosted, full_throttle(), fast, 0.2).speed;
+        assert!(through >= ride(&flat, full_throttle(), fast, 0.2).speed - 1e-3);
+        // In the air it does nothing.
+        let flying = BikeState {
+            grounded: false,
+            ..moving
+        };
+        let next = step(&flying, &full_throttle(), &boosted, &tuning, DT);
+        assert!(next.speed <= flying.speed);
     }
 
     #[test]

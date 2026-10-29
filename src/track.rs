@@ -99,6 +99,10 @@ pub struct VerticalLoop {
     /// way in (m): the running surface drifts sideways as it goes round, so
     /// that it does not run into itself.
     pub shift: f32,
+    /// Whether it has Hot Wheels' boosters, driving the bikes on: one on
+    /// its straight lead in, and one on the lap beside it as far along, so
+    /// that neither way gains by them (see [`Track::boosters`]).
+    pub boosters: bool,
 }
 
 /// A branch without a loop (see [`Branch`]), as the bikes ride it.
@@ -121,6 +125,8 @@ pub struct Fork {
 /// its outside raised on supports: its inside wall stays where it would be
 /// level (on the table or the floor it lies on), and the rest of it rises,
 /// instead of the road turning about its middle (see [`Track::lift`]).
+/// Where its `factor` is nought, the road lies level, and so do the roads
+/// off it beside it, alike.
 pub struct Banking {
     pub from: f32,
     pub to: f32,
@@ -252,6 +258,9 @@ pub struct Track {
     /// Whether each point of the lap's centre line banks raised. Empty:
     /// none do.
     raised: Vec<bool>,
+    /// Whether each point of the lap's centre line is set level (its
+    /// banking's factor nought). Empty: none is.
+    level: Vec<bool>,
     half_width: f32,
     /// Distancia entre puntos de la línea central (ver [`Self::step_length`]).
     step: f32,
@@ -283,6 +292,8 @@ pub struct Track {
     /// road back. Numbered from 1 in [`Nearest::road`]; the lap is 0.
     side_roads: Vec<Track>,
     loops: Vec<Loop>,
+    /// The boosters on its roads (see [`Self::boosters`]).
+    boosters: Vec<Booster>,
     forks: Vec<Fork>,
     /// This road's segments by where they are, to find the nearest without
     /// going through them all (see [`Self::nearest_at`]). Empty until the
@@ -325,7 +336,25 @@ pub struct Loop {
     /// where the road out joins it.
     pub fork: usize,
     pub join: usize,
+    /// Whether it has boosters on its leads (see [`VerticalLoop::boosters`]).
+    pub boosters: bool,
 }
+
+/// A booster on a road (see [`VerticalLoop::boosters`]): from `from` to
+/// `to` along it (m from its start), all across it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Booster {
+    pub road: usize,
+    pub from: f32,
+    pub to: f32,
+}
+
+/// The speed a booster drives a bike on up to (m/s, about 270 km/h, near
+/// its top speed: it always pushes), how long it is (m), and where on a
+/// loop's lead in it is (m before the mouth, where the lead begins).
+pub const BOOSTER_SPEED: f32 = 75.0;
+pub const BOOSTER_LENGTH: f32 = 12.0;
+const BOOSTER_INTO: f32 = 2.0 * LOOP_LEAD - 6.0;
 
 impl Loop {
     /// Unit vector to the left of the way in, on the ground: across the
@@ -403,7 +432,30 @@ impl Track {
             track.add_branch(branch);
         }
         track.make_grids();
+        track.boosters = track.lay_boosters();
         track
+    }
+
+    /// The boosters of the loops that have them (see
+    /// [`VerticalLoop::boosters`]): on the lead in, and on the lap beside
+    /// it, from the point of the lap nearest where the other begins.
+    fn lay_boosters(&self) -> Vec<Booster> {
+        self.loops
+            .iter()
+            .filter(|looped| looped.boosters)
+            .flat_map(|looped| {
+                let approach = self.road(looped.approach);
+                let from = approach.length() - BOOSTER_INTO;
+                let at = approach.centerline[(from / approach.step).round() as usize];
+                let beside = self.project_on_lap(at);
+                let lap_from = (beside.index as f32 + beside.t) * self.step;
+                [(looped.approach, from), (0, lap_from)].map(|(road, from)| Booster {
+                    road,
+                    from,
+                    to: from + BOOSTER_LENGTH,
+                })
+            })
+            .collect()
     }
 
     /// The grids of the lap and of the roads off it, once they are all laid.
@@ -425,6 +477,7 @@ impl Track {
             bank: Vec::new(),
             lift: Vec::new(),
             raised: Vec::new(),
+            level: Vec::new(),
             half_width: (TRACK_WIDTH / 2.0).min(layout.wall - NARROW_MARGIN),
             step: 0.0,
             edges: Vec::new(),
@@ -436,6 +489,7 @@ impl Track {
             apart: Vec::new(),
             side_roads: Vec::new(),
             loops: Vec::new(),
+            boosters: Vec::new(),
             forks: Vec::new(),
             grid: SegmentGrid::default(),
         };
@@ -487,6 +541,7 @@ impl Track {
                 })
                 .collect();
         }
+        track.level = (0..n).map(|i| factor(i) == 0.0).collect();
         // Where it banks raised, its middle goes up by as much as its inside
         // wall would sink, eased in and out.
         track.raised = (0..n)
@@ -538,6 +593,7 @@ impl Track {
             exit: self.side_roads.len() + 2,
             fork: self.index_at(branch.from),
             join: self.index_at(branch.to),
+            boosters: spec.boosters,
         };
         let lap_point = |along: f32| self.centerline[self.index_at(along)];
         // The last stretch into the loop and the first out of it are
@@ -639,6 +695,7 @@ impl Track {
             bank: Vec::new(),
             lift: Vec::new(),
             raised: Vec::new(),
+            level: Vec::new(),
             half_width: SIDE_HALF_WIDTH,
             step,
             edges: Vec::new(),
@@ -650,6 +707,7 @@ impl Track {
             apart: Vec::new(),
             side_roads: Vec::new(),
             loops: Vec::new(),
+            boosters: Vec::new(),
             forks: Vec::new(),
             grid: SegmentGrid::default(),
         };
@@ -731,7 +789,8 @@ impl Track {
         };
         // It banks for its own curves, but not in the straight into or out
         // of the loop, nor where the lap beside it banks raised (a toy
-        // track's, on supports): there it lies level.
+        // track's, on supports), nor where the lap is set level beside it:
+        // there it lies level, as the lap.
         let level_into_loop = |i: usize| smoothstep(LOOP_LEAD, LOOP_LEAD + 30.0, from_loop(i));
         let bank = (0..n)
             .map(|i| {
@@ -742,7 +801,8 @@ impl Track {
                     (i as isize - BANK_SMOOTHING as isize)..=(i as isize + BANK_SMOOTHING as isize);
                 let count = window.clone().count() as f32;
                 let curvature = window.map(|j| road.curvature(road.wrap(j))).sum::<f32>() / count;
-                let own_bank = if self.raised.get(on.index).copied().unwrap_or(false) {
+                let flat = |of: &[bool]| of.get(on.index).copied().unwrap_or(false);
+                let own_bank = if flat(&self.raised) || flat(&self.level) {
                     0.0
                 } else {
                     (curvature * BANK_PER_CURVATURE).clamp(-MAX_BANK, MAX_BANK)
@@ -872,6 +932,25 @@ impl Track {
     /// lap.
     pub fn length(&self) -> f32 {
         self.segment_count() as f32 * self.step
+    }
+
+    /// The boosters on the roads (see [`VerticalLoop::boosters`]): on the
+    /// leads into the loops that have them, and on the lap beside them.
+    pub fn boosters(&self) -> &[Booster] {
+        &self.boosters
+    }
+
+    /// The speed a booster under a point already found drives a bike on to
+    /// (m/s, see [`BOOSTER_SPEED`]), or nought where there is none.
+    pub fn booster_beside(&self, nearest: &Nearest) -> f32 {
+        let road = self.road(nearest.road);
+        let along = (nearest.index as f32 + nearest.t) * road.step;
+        let on = self.boosters.iter().any(|booster| {
+            booster.road == nearest.road
+                && (booster.from..booster.to).contains(&along)
+                && nearest.lateral.abs() < road.wall_at(nearest.index)
+        });
+        if on { BOOSTER_SPEED } else { 0.0 }
     }
 
     /// How far along the lap point `index` of the centre line counts as (m
@@ -2167,6 +2246,57 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_boosted_loop_has_a_booster_on_its_lead_in_and_one_beside_it_on_the_lap() {
+        let mut boosted = 0;
+        for (name, track) in every_track() {
+            let loops: Vec<&Loop> = track.loops().iter().filter(|l| l.boosters).collect();
+            assert_eq!(track.boosters().len(), 2 * loops.len(), "{name}");
+            for looped in loops {
+                boosted += 1;
+                let on = |road: usize| {
+                    *track
+                        .boosters()
+                        .iter()
+                        .find(|booster| booster.road == road)
+                        .unwrap_or_else(|| panic!("{name}: none on road {road}"))
+                };
+                let (into, beside) = (on(looped.approach), on(0));
+                // On the straight lead into the loop, all of it.
+                let approach = track.road(looped.approach);
+                let length = approach.length();
+                assert!(into.from >= length - 2.0 * LOOP_LEAD && into.to <= length - LOOP_LEAD);
+                // Driving the bikes on there, across the road, and not
+                // before nor after; and on the lap as far along.
+                let middle = |booster: Booster| {
+                    let road = track.road(booster.road);
+                    let index = ((booster.from + booster.to) / 2.0 / road.step) as usize;
+                    road.centerline[index]
+                };
+                for (booster, road) in [(into, approach), (beside, &track)] {
+                    let index = ((booster.from + booster.to) / 2.0 / road.step) as usize;
+                    for lateral in [-3.0, 0.0, 3.0] {
+                        let point = road.offset_point(index, lateral);
+                        let nearest = track.nearest_at(point, road.elevation[index]);
+                        assert_eq!(track.booster_beside(&nearest), BOOSTER_SPEED, "{name}");
+                    }
+                    for off in [-10.0, 10.0 + BOOSTER_LENGTH] {
+                        let index = ((booster.from + off) / road.step) as usize;
+                        let point = road.centerline[index];
+                        let nearest = track.nearest_at(point, road.elevation[index]);
+                        assert_eq!(track.booster_beside(&nearest), 0.0, "{name}: {off}");
+                    }
+                }
+                let along = |booster: Booster| {
+                    let nearest = track.project_on_lap(middle(booster));
+                    (nearest.index as f32 + nearest.t) * track.step
+                };
+                assert!((along(into) - along(beside)).abs() < 3.0, "{name}");
+            }
+        }
+        assert!(boosted > 0);
     }
 
     #[test]

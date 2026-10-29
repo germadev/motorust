@@ -68,7 +68,8 @@ a helicopter, a plush giraffe, a doll's house, a fire engine, a mechanical
 pegasus, a crocodile monster truck, a garage playset, a railway station, a
 tunnel mountain, a rocking horse, a nutcracker, and in `models/toys2/` a
 dump truck, a teepee, a tyrannosaurus, a rocket, a toy chest, a
-jack-in-the-box, a xylophone and a giant robot) were made
+jack-in-the-box, a xylophone, a giant robot, a checkout counter, a
+shopping trolley and a potted plant) were made
 by the project's author with
 [Meshy](https://www.meshy.ai); `tools/import_toys.py` stands them on the
 ground at the game's sizes, turns those made facing sideways and puts their

@@ -786,6 +786,65 @@ mod tests {
     }
 
     #[test]
+    fn round_a_loop_is_about_as_quick_as_the_lap_beside_it() {
+        // A rival round the loop and one on the lap beside it take about as
+        // long from before the fork to after the join: the way round the
+        // loop goes straight to it, the lap swings away, and each has a
+        // booster, if they have any.
+        for circuit in &crate::circuits::CIRCUITS {
+            let track = Track::new(&circuit.layout);
+            let Some(&looped) = track.loops().first() else {
+                continue;
+            };
+            let step = track.step_length();
+            let tuning = BikeTuning::default();
+            let dt = 1.0 / 120.0;
+            let from = looped.fork as f32 * step - 60.0;
+            let to = looped.join as f32 * step + 50.0;
+            let times: Vec<f32> = [true, false]
+                .into_iter()
+                .map(|loops| {
+                    let rival = Rival {
+                        skill: 1.0,
+                        lane: 0.0,
+                        loops,
+                    };
+                    let start = track.index_at(from - 150.0);
+                    let mut state = BikeState::parked_on(&track, track.pose_at(start));
+                    let (mut time, mut started) = (0.0, None);
+                    for _ in 0..(60.0 / dt) as usize {
+                        let input = decide(&rival, 0.0, f32::INFINITY, &state, &track, &tuning);
+                        state = advance(&state, &input, &track, &tuning, dt);
+                        time += dt;
+                        if state.ride.is_some() {
+                            continue;
+                        }
+                        let nearest = track.nearest_at(state.position, state.elevation);
+                        let along = track.along(&nearest);
+                        if started.is_none() && (from..from + 50.0).contains(&along) {
+                            started = Some(time);
+                        }
+                        if let Some(start) = started
+                            && nearest.road == 0
+                            && (to..to + 50.0).contains(&along)
+                        {
+                            return time - start;
+                        }
+                    }
+                    panic!("{}: never got through (loops {loops})", circuit.name)
+                })
+                .collect();
+            assert!(
+                times[0] < 1.05 * times[1] && times[1] < 1.05 * times[0],
+                "{}: round the loop {} s, the lap {} s",
+                circuit.name,
+                times[0],
+                times[1]
+            );
+        }
+    }
+
+    #[test]
     fn out_of_a_loop_the_road_back_keeps_the_wheels_on_the_ground() {
         for circuit in &crate::circuits::CIRCUITS {
             let track = Track::new(&circuit.layout);

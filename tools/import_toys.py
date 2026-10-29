@@ -130,8 +130,8 @@ SIZES = {
     "kids_table": ("length", 16.0),
 }
 # Those Meshy made facing -X (a ship's bow, a locomotive's chimney, a
-# plane's nose, a truck's cab), turned a quarter turn to face +Z as the
-# others.
+# plane's nose, a truck's cab, a shopping trolley's basket), turned a
+# quarter turn to face +Z as the others.
 TURNED = {
     "pirate_ship",
     "locomotive",
@@ -142,6 +142,7 @@ TURNED = {
     "fire_truck",
     "croc_car",
     "dump_truck",
+    "shopping_cart",
 }
 # Those a train runs through, centred on their tunnels (along z) rather
 # than on their boxes.
@@ -169,6 +170,7 @@ CELLS = {
     "rocket": 1024,
     "toy_chest": 1024,
     "giant_robot": 1024,
+    "checkout_counter": 1024,
 }
 CELL = 512
 # How wide the atlas is (px): four of the big cells, or eight of the others.
