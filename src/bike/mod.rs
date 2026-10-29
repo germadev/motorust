@@ -1299,7 +1299,7 @@ fn read_controller_binding(
     gamepads: &Query<(Entity, &Gamepad)>,
     options: &DebugOptions,
     curves: SteerCurves,
-    (speed, corner): (f32, f32),
+    speed: f32,
     dt: f32,
     digital: &mut KeySteer,
     analog: &mut StickSteer,
@@ -1332,7 +1332,7 @@ fn read_controller_binding(
             } else {
                 0.0
             };
-            let keys = digital.update(left - right, speed, dt, options, curves.keys(), corner);
+            let keys = digital.update(left - right, speed, dt, options, curves.keys());
             BikeInput {
                 throttle,
                 brake,
@@ -1375,7 +1375,7 @@ fn read_controller_binding(
             } else {
                 0.0
             };
-            let keys = digital.update(left - right, speed, dt, options, curves.keys(), corner);
+            let keys = digital.update(left - right, speed, dt, options, curves.keys());
             BikeInput {
                 throttle,
                 brake,
@@ -1425,14 +1425,8 @@ fn read_controller_binding(
                 } else {
                     0.0f32
                 };
-                let keys = digital.update(
-                    dpad_left - dpad_right,
-                    speed,
-                    dt,
-                    options,
-                    curves.keys(),
-                    corner,
-                );
+                let keys =
+                    digital.update(dpad_left - dpad_right, speed, dt, options, curves.keys());
 
                 // B, or the trigger and A at once. Not the stick pulled back:
                 // steering, it is easy to pull it a little without meaning to.
@@ -1480,7 +1474,7 @@ fn read_player_input(
     mut analog: Local<[StickSteer; 2]>,
     mut arming: Local<PadArming>,
     names: Query<&Name, With<Gamepad>>,
-    (tuning, mut probe, track): (Res<BikeTuning>, ResMut<CurveProbe>, Res<Track>),
+    (tuning, mut probe): (Res<BikeTuning>, ResMut<CurveProbe>),
 ) {
     let (input, state, autopilot) = player.into_inner();
     // The keyboard's and the stick's curves, when they are on, and the top
@@ -1515,7 +1509,7 @@ fn read_player_input(
                 &gamepads,
                 &options,
                 curves,
-                (state.speed, corner_turn(&track, state, &tuning)),
+                state.speed,
                 dt,
                 digital_p1,
                 analog_p1,
@@ -1530,7 +1524,7 @@ fn read_player_input(
                     &gamepads,
                     &options,
                     curves,
-                    (p2_state.speed, corner_turn(&track, p2_state, &tuning)),
+                    p2_state.speed,
                     dt,
                     digital_p2,
                     analog_p2,
@@ -1618,8 +1612,7 @@ fn read_player_input(
         }
 
         let stick = analog_p1.update(steer, travel, state.speed, dt, &options, curves.stick());
-        let corner = corner_turn(&track, state, &tuning);
-        let keys = digital_p1.update(pressed, state.speed, dt, &options, curves.keys(), corner);
+        let keys = digital_p1.update(pressed, state.speed, dt, &options, curves.keys());
 
         *input = BikeInput {
             throttle,
@@ -1785,10 +1778,7 @@ struct KeyTurn {
 impl KeySteer {
     /// Goes on `dt` seconds with `pressed` held (left less right) at `speed`
     /// (m/s): as Options > Control > Keyboard says, or by `curves` (with the
-    /// bike's top speed) when they are on. In a corner needing `corner` of
-    /// the bike's turn (positive to the left, nought out of corners), with
-    /// no key held and the turn hold on, the lean stands up only to what
-    /// gives that turn, and never leans further for it.
+    /// bike's top speed) when they are on.
     fn update(
         &mut self,
         pressed: f32,
@@ -1796,19 +1786,12 @@ impl KeySteer {
         dt: f32,
         options: &DebugOptions,
         curves: Option<(&KeyboardCurves, f32)>,
-        corner: f32,
     ) -> KeyTurn {
         let pressed = pressed.clamp(-1.0, 1.0);
         match curves {
             Some((curves, top_speed)) => {
                 self.digital = DigitalSteer::default();
-                let was = self.curves.lean;
-                let asked = if pressed == 0.0 && curves.hold && was * corner > 0.0 {
-                    curves.held_lean(corner).abs().min(was.abs()).copysign(was)
-                } else {
-                    pressed
-                };
-                let lean = self.curves.update(asked, curves, speed / top_speed, dt);
+                let lean = self.curves.update(pressed, curves, speed / top_speed, dt);
                 KeyTurn {
                     steer: curves.turn_for(lean),
                     pivot_slowing: 0.0,
@@ -1833,31 +1816,6 @@ impl KeySteer {
             }
         }
     }
-}
-
-/// How many points of the centre line either way a corner's bend is
-/// measured over (about 2 m apart), for the keyboard's turn hold.
-const HOLD_BEND_WINDOW: isize = 6;
-
-/// The share of its turn (positive to the left) the bike riding `state`
-/// needs to follow the road's bend where it is, at its speed: nought out
-/// of corners (gentler than [`learning::CORNER`]), slow, in the air or
-/// round a loop. What the keyboard's turn hold keeps the lean for.
-fn corner_turn(track: &Track, state: &BikeState, tuning: &BikeTuning) -> f32 {
-    let speed = state.speed;
-    if speed < 5.0 || !state.grounded || state.ride.is_some() {
-        return 0.0;
-    }
-    let nearest = track.nearest_at(state.position, state.elevation);
-    let road = track.road(nearest.road);
-    let bend = (-HOLD_BEND_WINDOW..=HOLD_BEND_WINDOW)
-        .map(|k| road.curvature((nearest.index as isize + k).max(0) as usize))
-        .sum::<f32>()
-        / (2 * HOLD_BEND_WINDOW + 1) as f32;
-    if bend.abs() <= learning::CORNER {
-        return 0.0;
-    }
-    (bend * speed / tuning.max_yaw_rate(speed)).clamp(-1.0, 1.0)
 }
 
 /// The curves the keys and the stick steer by, each when it does, and the
@@ -2691,7 +2649,7 @@ mod tests {
         );
         for frame in 0..90 {
             let pressed = if frame < 50 { 1.0 } else { 0.0 };
-            let turn = keys.update(pressed, 30.0, DT, &options, None, 0.0);
+            let turn = keys.update(pressed, 30.0, DT, &options, None);
             assert_eq!(turn.steer, digital.update(pressed, reach, rate, back, DT));
             assert_eq!(turn.lean, None);
         }
@@ -2701,7 +2659,7 @@ mod tests {
         let mut digital = DigitalSteer::default();
         for frame in 0..90 {
             let pressed = if frame < 50 { 1.0 } else { 0.0 };
-            let turn = by_curves.update(pressed, 30.0, DT, &options, Some((&curves, 80.0)), 0.0);
+            let turn = by_curves.update(pressed, 30.0, DT, &options, Some((&curves, 80.0)));
             let classic = digital.update(pressed, reach, rate, back, DT);
             // Let go short of all the way over (the limit at speed), the
             // curve goes on from where it is that high, a little ahead of
@@ -2718,7 +2676,7 @@ mod tests {
         }
         // Upright with no key held, the lean is left to the turn.
         let mut idle = KeySteer::default();
-        let turn = idle.update(0.0, 30.0, DT, &options, Some((&curves, 80.0)), 0.0);
+        let turn = idle.update(0.0, 30.0, DT, &options, Some((&curves, 80.0)));
         assert_eq!((turn.steer, turn.lean), (0.0, None));
     }
 
@@ -2756,81 +2714,6 @@ mod tests {
             assert!((turn.direct - was).abs() < 0.03, "{} {was}", turn.direct);
             assert!((turn.lean.unwrap() - turn.direct).abs() < 1e-4);
         }
-    }
-
-    #[test]
-    fn with_the_turn_hold_letting_go_in_a_corner_keeps_the_lean_it_needs() {
-        let options = DebugOptions::default();
-        let curves = KeyboardCurves::default();
-        let mut keys = KeySteer::default();
-        let on = Some((&curves, 80.0));
-        // Held left all the way over, then let go in a left-hander needing
-        // 40 % of the turn: back up to 40 %, held there.
-        for _ in 0..60 {
-            keys.update(1.0, 30.0, DT, &options, on, 0.4);
-        }
-        let mut turn = 0.0;
-        for _ in 0..240 {
-            turn = keys.update(0.0, 30.0, DT, &options, on, 0.4).steer;
-        }
-        assert!((turn - 0.4).abs() < 0.01, "{turn}");
-        // Needing more than it has: it leans no further.
-        let more = keys.update(0.0, 30.0, DT, &options, on, 0.8).steer;
-        assert!((more - turn).abs() < 1e-3);
-        // Out of the corner: upright.
-        for _ in 0..240 {
-            turn = keys.update(0.0, 30.0, DT, &options, on, 0.0).steer;
-        }
-        assert_eq!(turn, 0.0);
-        // A corner the other way: nothing held.
-        let mut other = KeySteer::default();
-        for _ in 0..60 {
-            other.update(1.0, 30.0, DT, &options, on, -0.4);
-        }
-        for _ in 0..240 {
-            turn = other.update(0.0, 30.0, DT, &options, on, -0.4).steer;
-        }
-        assert_eq!(turn, 0.0);
-        // Without the hold: upright too.
-        let free = KeyboardCurves {
-            hold: false,
-            ..curves
-        };
-        let mut keys = KeySteer::default();
-        for _ in 0..60 {
-            keys.update(1.0, 30.0, DT, &options, Some((&free, 80.0)), 0.4);
-        }
-        for _ in 0..240 {
-            turn = keys
-                .update(0.0, 30.0, DT, &options, Some((&free, 80.0)), 0.4)
-                .steer;
-        }
-        assert_eq!(turn, 0.0);
-    }
-
-    #[test]
-    fn the_turn_hold_reads_the_bend_where_the_bike_is_at_its_speed() {
-        let track = Track::default();
-        let tuning = BikeTuning::default();
-        // The sharpest point of the lap.
-        let sharpest = (0..track.sample_count())
-            .max_by(|&a, &b| {
-                track
-                    .smoothed_curvature(a, 6)
-                    .total_cmp(&track.smoothed_curvature(b, 6))
-            })
-            .unwrap();
-        let (position, heading) = track.pose_at(sharpest);
-        let riding = |speed: f32| BikeState {
-            speed,
-            ..BikeState::parked_on(&track, (position, heading))
-        };
-        let slow = corner_turn(&track, &riding(15.0), &tuning);
-        let fast = corner_turn(&track, &riding(35.0), &tuning);
-        assert!(slow != 0.0 && fast.abs() > slow.abs(), "{slow} {fast}");
-        assert_eq!(slow.signum(), track.curvature(sharpest).signum());
-        // Parked: nothing.
-        assert_eq!(corner_turn(&track, &riding(0.0), &tuning), 0.0);
     }
 
     #[test]

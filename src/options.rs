@@ -463,8 +463,6 @@ enum ControlItem {
     CurveShape(CurveKind),
     CurveCustom(CurveKind),
     CurveScale(CurveKind),
-    /// The keyboard's turn hold: let go in a corner, the lean it needs.
-    TurnHold,
     /// Whether the game learns every curve from how the player rides.
     Learning,
     ShowLegend,
@@ -560,16 +558,13 @@ fn starts_group(
     index: usize,
     shapes: &KeyboardShapes,
 ) -> bool {
-    // On the keyboard's (or the stick's) curves, each curve with its
-    // rows, and the assists: the turn hold and learning (the stick's,
-    // learning alone).
+    // On the keyboard's curves, each curve (with its rows) and learning.
     if matches!(page, Some(Page::KeyboardCurves | Page::StickCurves)) {
         return index > 0
-            && match control_items(page, shapes).get(index) {
-                Some(ControlItem::CurveShape(_) | ControlItem::TurnHold) => true,
-                Some(ControlItem::Learning) => shapes.stick,
-                _ => false,
-            };
+            && matches!(
+                control_items(page, shapes).get(index),
+                Some(ControlItem::CurveShape(_) | ControlItem::Learning)
+            );
     }
     if page.is_some() {
         return false;
@@ -631,9 +626,6 @@ fn control_items(page: Option<Page>, shapes: &KeyboardShapes) -> Vec<ControlItem
                 if shapes.scale(kind).is_some() {
                     items.push(ControlItem::CurveScale(kind));
                 }
-            }
-            if !shapes.stick {
-                items.push(ControlItem::TurnHold);
             }
             items.push(ControlItem::Learning);
             items
@@ -1344,11 +1336,6 @@ fn use_options_menu(
                     shapes_mut(&mut settings, page).step_scale(kind, change);
                     sounds.write(MenuSound::Move);
                 }
-                ControlItem::TurnHold if change != 0 => {
-                    let shapes = shapes_mut(&mut settings, page);
-                    shapes.hold = !shapes.hold;
-                    sounds.write(MenuSound::Move);
-                }
                 ControlItem::Learning if change != 0 => {
                     let shapes = shapes_mut(&mut settings, page);
                     shapes.set_learn(cycle(&LEARN_LINES, shapes.learn, change));
@@ -2013,13 +2000,6 @@ fn show_options_menu(
                                 lang
                             )
                         ),
-                    ),
-                    ControlItem::TurnHold => Row::check(
-                        match lang {
-                            Language::Spanish => "Asistencia de giro",
-                            Language::English => "Turn hold",
-                        },
-                        shapes_of(&settings, options_menu.page).hold,
                     ),
                     ControlItem::Learning => Row::with_value(
                         match lang {
@@ -3106,8 +3086,7 @@ mod tests {
         // (but E's), and learning at the end.
         let mut shapes = KeyboardShapes::default();
         let curves = |shapes: &KeyboardShapes| control_items(Some(Page::KeyboardCurves), shapes);
-        // (The turn hold before learning.)
-        assert_eq!(curves(&shapes).len(), 5 + 4 + 2);
+        assert_eq!(curves(&shapes).len(), 5 + 4 + 1);
         assert_eq!(
             curves(&shapes)[0],
             ControlItem::CurveShape(CurveKind::LeanIn)
