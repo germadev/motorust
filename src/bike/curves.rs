@@ -766,6 +766,9 @@ pub struct CurveProbe {
     pub stick: bool,
     pub travel: f32,
     pub asked: f32,
+    /// The share of its turn the lean asked would give (E of it, before D's
+    /// limit): the turn the player wants.
+    pub wanted: f32,
     pub lean: CurveLean,
     pub speed_share: f32,
     pub limit: f32,

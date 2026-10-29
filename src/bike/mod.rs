@@ -1571,6 +1571,17 @@ fn read_player_input(
                 } else {
                     1.0
                 },
+                wanted: if stick {
+                    shaped.turn_for(shaped.lean_asked(travel))
+                } else if matches!(
+                    digital_p1.curves.phase,
+                    curves::Phase::LeaningIn | curves::Phase::Unwinding
+                ) {
+                    // A key held: all the turn.
+                    shaped.turn_for(1.0)
+                } else {
+                    0.0
+                },
                 lean,
                 speed_share,
                 limit: shaped.lean_limit(speed_share),

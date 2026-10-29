@@ -1,5 +1,6 @@
 //! Cámara de persecución: detrás y por encima de la moto, siguiendo sus giros
-//! con algo de retraso, quedándose atrás al acelerar y abriendo el ángulo de
+//! con algo de retraso (and in a tight corner turning into it, ahead of the
+//! bike, to show the way out), quedándose atrás al acelerar y abriendo el ángulo de
 //! visión con la velocidad. El stick derecho del mando dice hacia dónde mira
 //! respecto a la moto: arriba, hacia delante como siempre; a un lado, a ese
 //! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante. It
@@ -55,6 +56,20 @@ const GLIDE_TIME: f32 = 1.2;
 /// How fast the camera comes back upright after leaving a loop the wrong
 /// way, falling off it (1/s).
 const UPRIGHT_RESPONSE: f32 = 6.0;
+/// In a tight corner the camera turns into it, ahead of the bike, to show
+/// its way out: not at all turning slower than the first (rad/s), all of
+/// [`CORNER_LEAD`] (rad) from the second on, eased in and out at
+/// [`LEAD_RESPONSE`] (1/s). A gentle bend, ridden at any speed, turns the
+/// bike slower than that.
+const LEAD_TURNS: Range<f32> = 0.5..1.4;
+const CORNER_LEAD: f32 = 0.25;
+const LEAD_RESPONSE: f32 = 3.0;
+
+/// How far the camera turns into a corner (rad, on the side it turns to)
+/// for the bike turning `yaw_rate` (rad/s, positive to the left).
+fn corner_lead(yaw_rate: f32) -> f32 {
+    CORNER_LEAD * smoothstep(LEAD_TURNS.start, LEAD_TURNS.end, yaw_rate.abs()) * yaw_rate.signum()
+}
 
 pub struct ChaseCameraPlugin;
 
@@ -126,6 +141,11 @@ struct ChaseCamera {
     tilt: Option<Quat>,
     /// The bike it watches come in, if it is not the player's.
     watched: Option<Entity>,
+    /// How far it turns into a tight corner ahead of the bike (rad,
+    /// positive to the left), and the bike's heading in the frame before,
+    /// for how fast it turns.
+    lead: f32,
+    last_yaw: Option<f32>,
 }
 
 /// El stick derecho del mando que más se esté moviendo (x a la derecha, y
@@ -538,6 +558,19 @@ fn follow_player(
         };
         chase.yaw = Some(yaw);
 
+        // Into a tight corner, ahead of the bike; not while it tumbles.
+        let dt_turn = time.delta_secs().max(1e-4);
+        let yaw_rate = chase
+            .last_yaw
+            .map_or(0.0, |last| wrap_angle(bike_yaw - last) / dt_turn);
+        chase.last_yaw = Some(bike_yaw);
+        let lead = if down || state.ride.is_some() {
+            0.0
+        } else {
+            corner_lead(yaw_rate)
+        };
+        chase.lead = approach(chase.lead, lead, LEAD_RESPONSE, time.delta_secs());
+
         // Stick derecho: la cámara mira hacia donde apunta, y al soltarlo
         // vuelve a mirar hacia delante; at once, as the stick moves.
         let dt = time.delta_secs();
@@ -574,7 +607,7 @@ fn follow_player(
         };
         let (position, look_at, up) = tilted_chase_view(
             bike_transform.translation,
-            yaw + chase.look,
+            yaw + chase.look + chase.lead,
             distance,
             chase.tilt.unwrap_or(Quat::IDENTITY),
         );
@@ -592,6 +625,20 @@ mod tests {
     use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
     use super::*;
+
+    #[test]
+    fn the_camera_turns_into_tight_corners_only() {
+        // A gentle bend at any speed: nothing.
+        assert_eq!(corner_lead(0.3), 0.0);
+        assert_eq!(corner_lead(-0.5), 0.0);
+        // A hairpin: all of it, into the corner's side.
+        assert_eq!(corner_lead(2.0), CORNER_LEAD);
+        assert_eq!(corner_lead(-2.0), -CORNER_LEAD);
+        // In between, some, growing with the turn.
+        let some = corner_lead(0.9);
+        assert!(some > 0.0 && some < CORNER_LEAD);
+        assert!(corner_lead(1.1) > some);
+    }
 
     #[test]
     fn from_the_road_the_menus_cut_and_from_above_they_glide() {

@@ -499,9 +499,39 @@ fn status_text(log: &LearningLog, correcting: bool, lang: Language) -> String {
         (n, limit, Language::Spanish) => format!(" · salidas {n} (al límite {limit})"),
         (n, limit, Language::English) => format!(" · outings {n} (at the limit {limit})"),
     };
+    // Braking late into corners, and the speed to brake to while too fast.
+    let late = match (log.late, lang) {
+        (0, _) => String::new(),
+        (n, Language::Spanish) => format!(" · frenadas tardías {n}"),
+        (n, Language::English) => format!(" · late braking {n}"),
+    };
+    let brake = match (log.too_fast, lang) {
+        (None, _) => String::new(),
+        (Some(plan), Language::Spanish) => format!(" · ¡frena a {:.0} km/h!", plan * 3.6),
+        (Some(plan), Language::English) => format!(" · brake to {:.0} km/h!", plan * 3.6),
+    };
+    // In a corner, the turn given against the one needed.
+    let turn = match (log.needed, lang) {
+        (None, _) => String::new(),
+        (Some(needed), Language::Spanish) => format!(
+            " · giro {:.0} % / necesita {:.0} %",
+            log.given * 100.0,
+            needed * 100.0
+        ),
+        (Some(needed), Language::English) => format!(
+            " · turn {:.0} % / needs {:.0} %",
+            log.given * 100.0,
+            needed * 100.0
+        ),
+    };
+    let side = format!("{side}{turn}");
     match lang {
-        Language::Spanish => format!("Desvío {metres:.1} m {side}{outings} · {doing}"),
-        Language::English => format!("Off the line {metres:.1} m {side}{outings} · {doing}"),
+        Language::Spanish => {
+            format!("Desvío {metres:.1} m {side}{outings}{late}{brake} · {doing}")
+        }
+        Language::English => {
+            format!("Off the line {metres:.1} m {side}{outings}{late}{brake} · {doing}")
+        }
     }
 }
 
@@ -706,6 +736,15 @@ mod tests {
             status_text(&out, false, Language::Spanish),
             "Desvío 2.0 m dentro · salidas 3 (al límite 1) · solo detección"
         );
+        let late = LearningLog {
+            late: 2,
+            too_fast: Some(25.0),
+            ..log
+        };
+        assert_eq!(
+            status_text(&late, false, Language::Spanish),
+            "Desvío 2.0 m dentro · frenadas tardías 2 · ¡frena a 90 km/h! · solo detección"
+        );
     }
 
     #[test]
@@ -781,6 +820,7 @@ mod tests {
             stick: false,
             travel: 0.0,
             asked: 1.0,
+            wanted: 1.0,
             lean,
             speed_share: 0.5,
             limit: curves.lean_limit(0.5),

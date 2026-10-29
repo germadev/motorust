@@ -60,6 +60,73 @@ pub fn racing_line(centerline: &[Vec2], half_width: impl Fn(usize) -> f32) -> Ve
     lateral
 }
 
+/// How sharp a closed path through `points` bends at each (1/m, without
+/// its sign), from the turn between one point and the next, averaged over
+/// `window` points either side (one point's alone is noisy).
+pub fn path_curvature(points: &[Vec2], window: usize) -> Vec<f32> {
+    let n = points.len();
+    if n < 3 {
+        return vec![0.0; n];
+    }
+    let at = |index: isize| points[index.rem_euclid(n as isize) as usize];
+    let bend: Vec<f32> = (0..n as isize)
+        .map(|i| {
+            let (a, b) = (at(i) - at(i - 1), at(i + 1) - at(i));
+            let length = 0.5 * (a.length() + b.length());
+            if length < 1e-4 {
+                0.0
+            } else {
+                a.angle_to(b).abs() / length
+            }
+        })
+        .collect();
+    let window = window as isize;
+    (0..n as isize)
+        .map(|i| {
+            (i - window..=i + window)
+                .map(|k| bend[k.rem_euclid(n as isize) as usize])
+                .sum::<f32>()
+                / (2 * window + 1) as f32
+        })
+        .collect()
+}
+
+/// The fastest a bike can ride each point of a closed lap bending
+/// `curvature` (1/m), `step` m apart: no faster than `top` (m/s), than
+/// `grip` (m/s² across) lets it round the bend there, nor than it can brake
+/// down from (`braking`, m/s²) to the next point's. And whether each point
+/// is in a braking zone: slower than its own bend allows, for one ahead.
+pub fn speed_plan(
+    curvature: &[f32],
+    step: f32,
+    top: f32,
+    grip: f32,
+    braking: f32,
+) -> (Vec<f32>, Vec<bool>) {
+    let n = curvature.len();
+    let own: Vec<f32> = curvature
+        .iter()
+        .map(|&bend| {
+            if bend > 1e-5 {
+                (grip / bend).sqrt().min(top)
+            } else {
+                top
+            }
+        })
+        .collect();
+    let mut speed = own.clone();
+    // Backwards round the lap, twice: the braking for a corner reaches back
+    // past the line.
+    for _ in 0..2 {
+        for i in (0..n).rev() {
+            let next = speed[(i + 1) % n];
+            speed[i] = speed[i].min((next * next + 2.0 * braking * step).sqrt());
+        }
+    }
+    let zone = (0..n).map(|i| speed[i] < own[i] - 0.5).collect();
+    (speed, zone)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +244,32 @@ mod tests {
                 line[sharpest]
             );
         }
+    }
+
+    #[test]
+    fn the_speed_plan_brakes_before_each_corner_down_to_what_it_allows() {
+        let lap = stadium(200.0, 40.0);
+        let bend = path_curvature(&lap, 3);
+        // Round the half circles, about one over the radius; nothing on the
+        // straights' middle.
+        let steps = 100;
+        let arc = (TAU / 2.0 * 40.0 / 2.0).round() as usize;
+        assert!((bend[steps + arc / 2] - 1.0 / 40.0).abs() < 0.003);
+        assert!(bend[steps / 2] < 1e-4);
+        let (top, grip, braking) = (80.0, 65.0, 16.8);
+        let (speed, zone) = speed_plan(&bend, 2.0, top, grip, braking);
+        let corner = (grip * 40.0f32).sqrt();
+        assert!((speed[steps + arc / 2] - corner).abs() < 1.5);
+        // On the straight before it, braking down to it: in the zone, and
+        // never faster than it can brake from.
+        assert!(zone[steps - 5] && speed[steps - 5] < top);
+        for i in 0..lap.len() {
+            let next = speed[(i + 1) % lap.len()];
+            assert!(speed[i] * speed[i] <= next * next + 2.0 * braking * 2.0 + 1e-2);
+        }
+        // Out of the corner, flat out again: not in it.
+        assert!(!zone[steps + arc + 30]);
+        assert!(!zone[steps + arc / 2]);
     }
 
     #[test]

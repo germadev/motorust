@@ -21,8 +21,18 @@
 //! and on the straight after a corner, standing up, B: inside (back towards
 //! the corner) if it stands up too slowly, wide if too quickly.
 //!
-//! Going off the road in a corner or just after it (onto the grass, into a
-//! wall, or down) is an outing, noted the same way and counting for
+//! In a corner, the turn the bike gives is also set against the one the
+//! line's bend needs at its speed: asking for at least that much and
+//! getting less for a moment, the curve to blame is noted before the bike
+//! strays (see [`LearningLog::compare_turn`]).
+//!
+//! How fast the line can be ridden is planned as the rivals plan their
+//! braking (see [`speed_plan`]), and drawn: red where it wants braking.
+//! Going into a corner faster than that is braking late: counted, and
+//! straying or going off wide then is the speed's, not the curves'.
+//!
+//! Going off the road in a corner or just after it (a wheel past the curb
+//! onto the shoulder, into a wall, or down) is an outing, noted the same way and counting for
 //! [`OUTING_WEIGHT`] corrections; but going wide with the bike already
 //! turning all it can is the bike's limit, not the curves': it is counted
 //! apart and corrects nothing (the corner wants less speed). Going wide
@@ -35,11 +45,12 @@ use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
 use super::curves::{CurveKind, CurveProbe, KeyboardMode, KeyboardShapes, LearnLine, Phase};
-use super::{BikeState, CrashState, Player};
+use super::{BikeState, BikeTuning, CrashState, Player};
 use crate::menu::GameState;
 use crate::race::{Mode, Rules};
 use crate::settings::Settings;
-use crate::track::{SURFACE_Y, Track, racing_line::racing_line};
+use crate::track::racing_line::{path_curvature, racing_line, speed_plan};
+use crate::track::{CURB_WIDTH, SURFACE_Y, Track};
 use crate::welcome::GameMode;
 
 pub struct LearningPlugin;
@@ -68,14 +79,29 @@ impl Plugin for LearningPlugin {
 pub const CORRECT_KEY: KeyCode = KeyCode::KeyT;
 pub const CORRECT_BUTTON: GamepadButton = GamepadButton::DPadUp;
 
+/// Short of the turn a corner needs by this share of all the bike's (or
+/// past it by this, going this far inside the line, m), for this long (s):
+/// the curves turn too little (or too much).
+const TURN_SHORT: f32 = 0.08;
+const TURN_OVER: f32 = 0.15;
+const TURN_INSIDE: f32 = 0.5;
+const TURN_HOLD: f32 = 0.3;
+
 /// How many corrections an outing counts for.
 pub const OUTING_WEIGHT: usize = 3;
 /// From how much of all its turn the bike is turning all it can.
 const ALL_ITS_TURN: f32 = 0.98;
-/// How far past the asphalt's edge counts as off the road (m: past its
-/// curbs), and how near a wall counts as against it.
-const OFF_THE_ROAD: f32 = 1.0;
+/// Half the width of a tyre's tread (m): a wheel is on the shoulder once
+/// its edge is past the curb, and how near a wall counts as against it.
+const TYRE_HALF_WIDTH: f32 = 0.1;
 const WALL_TOUCH: f32 = 0.6;
+
+/// Whether a bike `distance` m from the centre line is off the road: a
+/// wheel past the asphalt (`half_width` m either side) and its curbs onto
+/// the shoulder, against the solid edge (`edge` m away), or `down`.
+fn off_the_road(distance: f32, half_width: f32, edge: f32, down: bool) -> bool {
+    down || distance + TYRE_HALF_WIDTH > half_width + CURB_WIDTH || distance + WALL_TOUCH >= edge
+}
 
 /// How far from the line counts as straying from it (m).
 pub const STRAY: f32 = 1.5;
@@ -94,6 +120,15 @@ const WAY_OUT: f32 = 1.5;
 const LINE_WIDTH: f32 = 0.4;
 const LINE_LIFT: f32 = 0.04;
 const LINE_COLOR: Color = Color::srgba(1.0, 0.72, 0.2, 0.75);
+/// Where the line wants braking, red.
+const BRAKE_COLOR: Color = Color::srgba(1.0, 0.18, 0.12, 0.85);
+/// How much of the brakes the line's speeds are planned with: as the
+/// rivals plan theirs, with room (see [`super::ai`]).
+const PLANNED_BRAKING: f32 = 0.6;
+/// Faster than the line's speed by this share and this much more (m/s) is
+/// too fast for the corner: braking late.
+const TOO_FAST_SHARE: f32 = 1.1;
+const TOO_FAST_MARGIN: f32 = 2.0;
 
 /// Which way the bike strayed from the line, round the corner: out wide or
 /// in towards its inside.
@@ -120,6 +155,19 @@ pub struct LearningLog {
     /// before, and whether the last note was an outing.
     pub outings: u32,
     pub at_limit: u32,
+    /// How many corners the bike went into faster than the line can be
+    /// ridden there (braking late), and, while it is too fast, the speed
+    /// it should be going (m/s).
+    pub late: u32,
+    pub too_fast: Option<f32>,
+    pub(crate) was_late: bool,
+    /// In a corner, the share of its turn the bike gives and the share the
+    /// line's bend needs at its speed; since when it has given too little
+    /// (or too much), for all the turn asked.
+    pub given: f32,
+    pub needed: Option<f32>,
+    pub(crate) short_since: Option<f32>,
+    pub(crate) over_since: Option<f32>,
     pub(crate) was_off: bool,
     pub last_outing: bool,
     /// The bend of the last corner (1/m, positive to the left) and when it
@@ -134,6 +182,55 @@ impl LearningLog {
     /// How many times curve `kind` went `side`.
     pub fn count(&self, kind: CurveKind, side: Side) -> u32 {
         self.notes[kind as usize][side as usize]
+    }
+
+    /// The bike going `speed` where the line can be ridden at `plan` (m/s),
+    /// in a corner (`in_corner`) or not: too fast for it, by
+    /// [`TOO_FAST_SHARE`] and [`TOO_FAST_MARGIN`], is braking late, counted
+    /// once a corner. Straying while too fast is the speed's, not the
+    /// curves'.
+    pub fn pace(&mut self, speed: f32, plan: f32, in_corner: bool) {
+        let fast = speed > plan * TOO_FAST_SHARE + TOO_FAST_MARGIN;
+        self.too_fast = fast.then_some(plan);
+        let late = fast && in_corner;
+        if late && !self.was_late {
+            self.late += 1;
+        }
+        if late || !in_corner {
+            self.was_late = late;
+        }
+    }
+
+    /// In a corner (`needed` the share of its turn the line's bend asks of
+    /// the bike at its speed, if in one), how much the bike turns against
+    /// it: asking at least that much (`probe.wanted`) and getting less for
+    /// [`TURN_HOLD`] s, it will go wide, on the curve to blame; getting more
+    /// and going inside (`out` m wide of the line, negative inside), E. Not
+    /// while too fast: then no turn would do. Notes it at `now`.
+    pub fn compare_turn(&mut self, needed: Option<f32>, out: f32, probe: &CurveProbe, now: f32) {
+        self.needed = needed;
+        self.given = probe.turn.abs();
+        let Some(needed) = needed.filter(|_| self.too_fast.is_none()) else {
+            (self.short_since, self.over_since) = (None, None);
+            return;
+        };
+        let short = probe.wanted >= needed && self.given < needed - TURN_SHORT;
+        let over = self.given > needed + TURN_OVER && out < -TURN_INSIDE;
+        let held = |since: &mut Option<f32>, on: bool| {
+            if !on {
+                *since = None;
+                return false;
+            }
+            now - *since.get_or_insert(now) >= TURN_HOLD
+        };
+        if held(&mut self.short_since, short)
+            && let Some(kind) = Self::blame(Side::Wide, probe)
+        {
+            self.note(kind, Side::Wide, now);
+        }
+        if held(&mut self.over_since, over) {
+            self.note(CurveKind::Turn, Side::Inside, now);
+        }
     }
 
     /// The curve the lean was on going `side` round a corner, as `probe`
@@ -191,7 +288,7 @@ impl LearningLog {
             Side::Inside
         };
         self.outings += 1;
-        if side == Side::Wide && probe.turn.abs() >= ALL_ITS_TURN {
+        if side == Side::Wide && (probe.turn.abs() >= ALL_ITS_TURN || self.too_fast.is_some()) {
             self.at_limit += 1;
             return None;
         }
@@ -234,8 +331,10 @@ impl LearningLog {
         if in_corner {
             let (out, leaving) = round(bend);
             if leaving && out > 0.0 {
-                // Standing up or upright in a corner, wide: not the lean's.
-                if matches!(lean.phase, Phase::LeaningIn | Phase::Unwinding)
+                // Standing up or upright in a corner, wide, or too fast for
+                // it: not the lean's.
+                if self.too_fast.is_none()
+                    && matches!(lean.phase, Phase::LeaningIn | Phase::Unwinding)
                     && let Some(kind) = Self::blame(Side::Wide, probe)
                 {
                     self.note(kind, Side::Wide, now);
@@ -268,9 +367,35 @@ impl LearningLog {
 pub struct TargetLine {
     pub line: Option<LearnLine>,
     pub lateral: Vec<f32>,
+    /// The fastest the line can be ridden at each point (m/s), and whether
+    /// each is in a braking zone (see [`speed_plan`]).
+    pub speed: Vec<f32>,
+    pub braking: Vec<bool>,
+    /// How sharp it bends at each point (1/m, without its sign).
+    pub bend: Vec<f32>,
 }
 
 impl TargetLine {
+    /// The fastest the line can be ridden between points `index` and the
+    /// next, `t` of the way (m/s; without a plan, no limit).
+    pub fn bend_at(&self, index: usize, t: f32) -> f32 {
+        let n = self.bend.len();
+        if n == 0 {
+            return 0.0;
+        }
+        let (a, b) = (self.bend[index % n], self.bend[(index + 1) % n]);
+        a + (b - a) * t
+    }
+
+    pub fn plan_at(&self, index: usize, t: f32) -> f32 {
+        let n = self.speed.len();
+        if n == 0 {
+            return f32::INFINITY;
+        }
+        let (a, b) = (self.speed[index % n], self.speed[(index + 1) % n]);
+        a + (b - a) * t
+    }
+
     /// How far to the left of the centre line the line is between points
     /// `index` and the next, `t` of the way.
     pub fn at(&self, index: usize, t: f32) -> f32 {
@@ -323,6 +448,7 @@ fn follow_target_line(
     rules: Option<Res<Rules>>,
     mode: Res<GameMode>,
     track: Res<Track>,
+    tuning: Res<BikeTuning>,
     mut target: ResMut<TargetLine>,
 ) {
     let line = learning_line(&settings, rules.as_deref(), *mode);
@@ -334,6 +460,18 @@ fn follow_target_line(
         Some(LearnLine::Race) => racing_line(track.centerline(), |i| track.half_width_at(i)),
         _ => vec![0.0; n],
     };
+    // How fast it can be ridden: braking as the rivals plan to, with room.
+    let points: Vec<Vec2> = (0..n)
+        .map(|i| track.offset_point(i, target.lateral[i]))
+        .collect();
+    target.bend = path_curvature(&points, BEND_WINDOW as usize);
+    (target.speed, target.braking) = speed_plan(
+        &target.bend,
+        track.step_length(),
+        tuning.max_speed,
+        tuning.max_lateral_accel,
+        tuning.brake_decel * PLANNED_BRAKING,
+    );
     target.line = line;
 }
 
@@ -362,9 +500,10 @@ fn show_target_line(
     commands.spawn((
         DrawnLine,
         DespawnOnExit(GameState::Race),
-        Mesh3d(meshes.add(line_mesh(&track, &target.lateral))),
+        Mesh3d(meshes.add(line_mesh(&track, &target.lateral, &target.braking))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: LINE_COLOR,
+            // Each stretch in its own colour (see `line_mesh`).
+            base_color: Color::WHITE,
             alpha_mode: AlphaMode::Blend,
             unlit: true,
             depth_bias: 50.0,
@@ -378,14 +517,22 @@ fn show_target_line(
 }
 
 /// A strip `LINE_WIDTH` wide all round the lap, `lateral` m to the left of
-/// each point of the centre line, just over the road.
-fn line_mesh(track: &Track, lateral: &[f32]) -> Mesh {
+/// each point of the centre line, just over the road: amber, and red where
+/// it is `braking`.
+fn line_mesh(track: &Track, lateral: &[f32], braking: &[bool]) -> Mesh {
     let n = lateral.len();
     let mut positions = Vec::with_capacity(2 * n);
+    let mut colors = Vec::with_capacity(2 * n);
     for (index, &left) in lateral.iter().enumerate() {
+        let color = if braking.get(index).copied().unwrap_or(false) {
+            BRAKE_COLOR
+        } else {
+            LINE_COLOR
+        };
         for side in [-0.5, 0.5] {
             let point = track.surface_point(index, left + side * LINE_WIDTH);
             positions.push(point + Vec3::Y * (SURFACE_Y + LINE_LIFT));
+            colors.push(color.to_linear().to_f32_array());
         }
     }
     let mut indices = Vec::with_capacity(6 * n);
@@ -401,6 +548,7 @@ fn line_mesh(track: &Track, lateral: &[f32]) -> Mesh {
     )
     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
     .with_inserted_indices(Indices::U32(indices))
 }
 
@@ -430,6 +578,7 @@ fn watch_the_line(
     target: Res<TargetLine>,
     track: Res<Track>,
     probe: Res<CurveProbe>,
+    tuning: Res<BikeTuning>,
     player: Query<(&BikeState, &CrashState), With<Player>>,
     mut log: ResMut<LearningLog>,
     mut settings: ResMut<Settings>,
@@ -449,16 +598,19 @@ fn watch_the_line(
         return;
     }
     let now = time.elapsed_secs();
-    // Off the road: past the asphalt and its curbs, against a wall, or
-    // down.
-    let off = crash.is_down()
-        || nearest.distance > track.half_width_beside(&nearest) + OFF_THE_ROAD
-        || nearest.distance + WALL_TOUCH >= track.edge_beside(&nearest);
+    let off = off_the_road(
+        nearest.distance,
+        track.half_width_beside(&nearest),
+        track.edge_beside(&nearest),
+        crash.is_down(),
+    );
     let stray = nearest.lateral - target.at(nearest.index, nearest.t);
     let bend = (-BEND_WINDOW..=BEND_WINDOW)
         .map(|k| track.curvature((nearest.index as isize + k).max(0) as usize))
         .sum::<f32>()
         / (2 * BEND_WINDOW + 1) as f32;
+    let plan = target.plan_at(nearest.index, nearest.t);
+    log.pace(state.speed.abs(), plan, bend.abs() > CORNER);
     if let Some((kind, side)) = log.went_off(off, stray, bend, &probe, now) {
         if correcting(&settings, probe.stick) {
             for _ in 0..OUTING_WEIGHT {
@@ -471,6 +623,11 @@ fn watch_the_line(
         return;
     }
     let before = log.last;
+    // The turn the line's bend asks of the bike at its speed.
+    let speed = state.speed.abs();
+    let needed = (bend.abs() > CORNER)
+        .then(|| target.bend_at(nearest.index, nearest.t) * speed / tuning.max_yaw_rate(speed));
+    log.compare_turn(needed, -stray * bend.signum(), &probe, now);
     log.watch(stray, bend, &probe, now);
     if log.last != before
         && correcting(&settings, probe.stick)
@@ -515,6 +672,7 @@ mod tests {
             stick: false,
             travel: 0.0,
             asked: 1.0,
+            wanted: 1.0,
             lean: following,
             speed_share: 0.5,
             limit,
@@ -712,6 +870,83 @@ mod tests {
     }
 
     #[test]
+    fn a_wheel_past_the_curb_is_off_the_road() {
+        let (half, edge) = (7.0, 11.5);
+        // On the asphalt, and on the curb with the whole tyre: on the road.
+        assert!(!off_the_road(6.0, half, edge, false));
+        assert!(!off_the_road(half + CURB_WIDTH - 0.15, half, edge, false));
+        // The tyre's edge past the curb, onto the shoulder: off.
+        assert!(off_the_road(half + CURB_WIDTH - 0.05, half, edge, false));
+        // Against the wall, or down: off.
+        assert!(off_the_road(5.0, half, 5.4, false));
+        assert!(off_the_road(0.0, half, edge, true));
+    }
+
+    #[test]
+    fn going_into_a_corner_too_fast_is_braking_late_not_the_curves() {
+        let mut log = LearningLog::default();
+        let leaning = probe(Phase::LeaningIn, 0.5, 0.9);
+        // On the straight, too fast for the corner ahead: told the speed,
+        // not yet late.
+        log.pace(50.0, 30.0, false);
+        assert_eq!((log.too_fast, log.late), (Some(30.0), 0));
+        // Into the corner still too fast: late, once.
+        for _ in 0..10 {
+            log.pace(50.0, 30.0, true);
+        }
+        assert_eq!(log.late, 1);
+        // Going wide then: nothing blamed; off wide: the limit.
+        ride(&mut log, 0.0, -3.0, LEFT, &leaning, 1.0);
+        assert_eq!(log.notes.iter().flatten().sum::<u32>(), 0);
+        assert_eq!(log.went_off(true, -6.0, LEFT, &leaning, 3.0), None);
+        assert_eq!(log.at_limit, 1);
+        // Slow enough: nothing.
+        log.pace(31.0, 30.0, true);
+        assert_eq!(log.too_fast, None);
+        // The next corner, too fast again: late again.
+        log.pace(31.0, 30.0, false);
+        log.pace(50.0, 30.0, true);
+        assert_eq!(log.late, 2);
+    }
+
+    #[test]
+    fn turning_less_than_the_corner_needs_for_all_the_turn_asked_is_noted() {
+        let mut log = LearningLog::default();
+        // At the lean's limit, giving 60 % for the 80 % the corner needs,
+        // asking for all of it: D, after a moment.
+        let held = CurveProbe {
+            turn: 0.6,
+            wanted: 1.0,
+            ..probe(Phase::LeaningIn, 0.9, 0.9)
+        };
+        log.compare_turn(Some(0.8), 0.0, &held, 1.0);
+        assert_eq!(log.count(CurveKind::Speed, Side::Wide), 0);
+        log.compare_turn(Some(0.8), 0.0, &held, 1.4);
+        assert_eq!(log.count(CurveKind::Speed, Side::Wide), 1);
+        assert_eq!((log.given, log.needed), (0.6, Some(0.8)));
+        // Asking less than it needs: the player's choice, nothing.
+        let mut log = LearningLog::default();
+        let shy = CurveProbe {
+            wanted: 0.5,
+            ..held
+        };
+        log.compare_turn(Some(0.8), 0.0, &shy, 1.0);
+        log.compare_turn(Some(0.8), 0.0, &shy, 1.5);
+        assert_eq!(log.notes.iter().flatten().sum::<u32>(), 0);
+        // Turning more than it needs and going inside: E.
+        let sharp = CurveProbe { turn: 0.9, ..held };
+        log.compare_turn(Some(0.5), -1.0, &sharp, 2.0);
+        log.compare_turn(Some(0.5), -1.0, &sharp, 2.4);
+        assert_eq!(log.count(CurveKind::Turn, Side::Inside), 1);
+        // Too fast: no turn would do, nothing.
+        let mut log = LearningLog::default();
+        log.pace(50.0, 30.0, true);
+        log.compare_turn(Some(0.8), 0.0, &held, 1.0);
+        log.compare_turn(Some(0.8), 0.0, &held, 1.5);
+        assert_eq!(log.notes.iter().flatten().sum::<u32>(), 0);
+    }
+
+    #[test]
     fn a_curve_is_noted_once_a_second_at_most() {
         let mut log = LearningLog::default();
         let leaning = probe(Phase::LeaningIn, 0.4, 0.9);
@@ -730,6 +965,7 @@ mod tests {
         let target = TargetLine {
             line: Some(LearnLine::Race),
             lateral: vec![0.0, 2.0, 4.0],
+            ..default()
         };
         assert_eq!(target.at(0, 0.5), 1.0);
         // Round the end of the lap, back to the first.
