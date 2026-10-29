@@ -74,6 +74,9 @@ pub struct KeyboardCurves {
     /// R, the stick's: the lean asked for how far it is pushed past its
     /// dead zone.
     pub response: Bezier,
+    /// The keyboard's turn hold: let go in a corner, the lean stands up
+    /// only to what the corner needs (see [`Self::held_lean`]).
+    pub hold: bool,
 }
 
 impl Default for KeyboardCurves {
@@ -113,6 +116,16 @@ impl KeyboardCurves {
             CurveKind::Turn => self.turn,
             CurveKind::Response => self.response,
         }
+    }
+
+    /// The lean that turns the bike `turn` (a share of all it can, positive
+    /// to the left) through E: what the keyboard's turn hold keeps in a
+    /// corner needing that turn. All the lean for more than all the turn.
+    pub fn held_lean(&self, turn: f32) -> f32 {
+        if turn == 0.0 {
+            return 0.0;
+        }
+        self.turn.first_reaching(turn.abs().min(1.0)).copysign(turn)
     }
 
     /// The lean the stick asks for pushed `travel` past its dead zone (0 to
@@ -294,6 +307,9 @@ pub struct KeyboardShapes {
     /// The line the game learns them from, if it is learning them: then
     /// every curve is the learnt one.
     pub learn: LearnLine,
+    /// The keyboard's turn hold (on at first; not the stick's, which holds
+    /// where it is pushed).
+    pub hold: bool,
     /// Whether learning corrects the learnt curves, or only notes where
     /// the bike strays (the key of free ride changes it, see
     /// [`super::learning`]).
@@ -328,6 +344,7 @@ impl KeyboardShapes {
             unwind_seconds,
             top_speed_lean: CLASSIC_TOP_SPEED_LEAN,
             learn: LearnLine::Off,
+            hold: !stick,
             correct: false,
         }
     }
@@ -501,6 +518,7 @@ impl KeyboardShapes {
             top_speed_lean: self.top_speed_lean,
             turn: self.bezier(CurveKind::Turn),
             response: self.bezier(CurveKind::Response),
+            hold: self.hold && !self.stick,
         }
     }
 }
@@ -932,6 +950,19 @@ mod tests {
         // The other way: through upright, over to the right.
         let flip = run(&curves, 0.0, 1.0, |t| if t < 0.5 { 0.6 } else { -0.6 });
         assert!((at(&flip, 1.0) + 0.6).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_turn_hold_keeps_the_lean_that_gives_the_turn_a_corner_needs() {
+        let curves = KeyboardCurves::default();
+        assert!(curves.hold);
+        // E straight: as much lean as turn, on its side.
+        assert!((curves.held_lean(0.4) - 0.4).abs() < 1e-3);
+        assert!((curves.held_lean(-0.4) + 0.4).abs() < 1e-3);
+        assert_eq!(curves.held_lean(0.0), 0.0);
+        assert_eq!(curves.held_lean(1.5), 1.0);
+        // The stick's: no hold.
+        assert!(!KeyboardShapes::classic(true).curves().hold);
     }
 
     #[test]
