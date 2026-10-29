@@ -1332,7 +1332,10 @@ fn use_options_menu(
                     options_menu.point = Some(if request.side < 0 { 3 } else { 0 });
                     sounds.write(MenuSound::Confirm);
                 }
-                ControlItem::CurveScale(kind) if change != 0 => {
+                // Learnt while the game learns them.
+                ControlItem::CurveScale(kind)
+                    if change != 0 && !shapes_of(&settings, page).learning() =>
+                {
                     shapes_mut(&mut settings, page).step_scale(kind, change);
                     sounds.write(MenuSound::Move);
                 }
@@ -2000,7 +2003,8 @@ fn show_options_menu(
                                 lang
                             )
                         ),
-                    ),
+                    )
+                    .automatic(shapes_of(&settings, options_menu.page).learning()),
                     ControlItem::Learning => Row::with_value(
                         match lang {
                             Language::Spanish => "Auto-aprendizaje",
@@ -3079,14 +3083,14 @@ mod tests {
         let page = Some(Page::StickCurves);
         let items = control_items(page, shapes_of(&stick, page));
         assert_eq!(items[0], ControlItem::CurveShape(CurveKind::Response));
-        assert_eq!(items.len(), 6 + 4 + 1);
+        assert_eq!(items.len(), 7 + 5 + 1);
         assert!(shapes_of(&stick, page).stick);
         assert!(!shapes_of(&stick, Some(Page::KeyboardCurves)).stick);
         // Each curve's shape, under it a custom one's numbers and its time
         // (but E's), and learning at the end.
         let mut shapes = KeyboardShapes::default();
         let curves = |shapes: &KeyboardShapes| control_items(Some(Page::KeyboardCurves), shapes);
-        assert_eq!(curves(&shapes).len(), 5 + 4 + 1);
+        assert_eq!(curves(&shapes).len(), 6 + 5 + 1);
         assert_eq!(
             curves(&shapes)[0],
             ControlItem::CurveShape(CurveKind::LeanIn)

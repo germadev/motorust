@@ -148,7 +148,7 @@ pub struct LearningLog {
     pub active: bool,
     pub stray: f32,
     pub in_corner: bool,
-    pub notes: [[u32; 2]; 6],
+    pub notes: [[u32; 2]; 7],
     pub last: Option<(CurveKind, Side, f32)>,
     /// How many times the bike went off the road in a corner, and how many
     /// of those turning all it could; whether it was off in the step
@@ -175,7 +175,7 @@ pub struct LearningLog {
     /// the bike was in the step before; when each curve was last noted.
     pub(crate) corner: Option<(f32, f32)>,
     pub(crate) was: f32,
-    pub(crate) noted: [f32; 6],
+    pub(crate) noted: [f32; 7],
 }
 
 impl LearningLog {
@@ -249,7 +249,7 @@ impl LearningLog {
             Phase::LeaningIn if probe.stick && probe.asked < probe.limit - 0.02 => {
                 Some(CurveKind::Response)
             }
-            Phase::LeaningIn => Some(CurveKind::Speed),
+            Phase::LeaningIn => Some(CurveKind::TurnSpeed),
             Phase::Unwinding => Some(CurveKind::Unwind),
             Phase::StandingUp => Some(CurveKind::StandUp),
             Phase::Upright => None,
@@ -614,7 +614,7 @@ fn watch_the_line(
     if let Some((kind, side)) = log.went_off(off, stray, bend, &probe, now) {
         if correcting(&settings, probe.stick) {
             for _ in 0..OUTING_WEIGHT {
-                correct(&mut settings, probe.stick, kind, side);
+                correct(&mut settings, probe.stick, kind, side, probe.speed_share);
             }
         }
         return;
@@ -633,7 +633,7 @@ fn watch_the_line(
         && correcting(&settings, probe.stick)
         && let Some((kind, side, _)) = log.last
     {
-        correct(&mut settings, probe.stick, kind, side);
+        correct(&mut settings, probe.stick, kind, side, probe.speed_share);
     }
 }
 
@@ -648,13 +648,15 @@ fn correcting(settings: &Settings, stick: bool) -> bool {
 }
 
 /// Corrects curve `kind` of the stick's (or the keyboard's) for going
-/// `side`: at the lean's limit, wide, D and E both.
-fn correct(settings: &mut Settings, stick: bool, kind: CurveKind, side: Side) {
+/// `side` at `speed_share` of the top speed: at the lean's limit, wide (F),
+/// D and E too, more lean and more turn for it.
+fn correct(settings: &mut Settings, stick: bool, kind: CurveKind, side: Side, speed_share: f32) {
     let shapes = learnt_shapes(settings, stick);
     let wide = side == Side::Wide;
-    shapes.correct_for(kind, wide);
-    if kind == CurveKind::Speed && wide {
-        shapes.correct_for(CurveKind::Turn, true);
+    shapes.correct_for(kind, wide, speed_share);
+    if kind == CurveKind::TurnSpeed && wide {
+        shapes.correct_for(CurveKind::Speed, true, speed_share);
+        shapes.correct_for(CurveKind::Turn, true, speed_share);
     }
 }
 
@@ -677,6 +679,7 @@ mod tests {
             speed_share: 0.5,
             limit,
             turn: lean,
+            turn_limit: 1.0,
         }
     }
 
@@ -724,7 +727,7 @@ mod tests {
             &probe(Phase::LeaningIn, 0.9, 0.9),
             5.0,
         );
-        assert_eq!(log.count(CurveKind::Speed, Side::Wide), 1);
+        assert_eq!(log.count(CurveKind::TurnSpeed, Side::Wide), 1);
         // Unwinding: C.
         ride(
             &mut log,
@@ -751,7 +754,7 @@ mod tests {
         // Pushed all the way, at the limit: D.
         let full = stick_probe(Phase::LeaningIn, 0.9, 1.0, 0.9);
         ride(&mut log, 0.0, -3.0, LEFT, &full, 9.0);
-        assert_eq!(log.count(CurveKind::Speed, Side::Wide), 1);
+        assert_eq!(log.count(CurveKind::TurnSpeed, Side::Wide), 1);
     }
 
     #[test]
@@ -843,7 +846,7 @@ mod tests {
         let held = probe(Phase::LeaningIn, 0.9, 0.9);
         assert_eq!(
             log.went_off(true, -6.0, LEFT, &held, 2.1),
-            Some((CurveKind::Speed, Side::Wide))
+            Some((CurveKind::TurnSpeed, Side::Wide))
         );
         // Turning all it can: the bike's limit, no curve to blame.
         log.went_off(false, 0.0, LEFT, &leaning, 3.0);
@@ -857,14 +860,23 @@ mod tests {
     }
 
     #[test]
-    fn going_wide_at_the_lean_s_limit_corrects_d_and_e() {
+    fn going_wide_at_the_lean_s_limit_corrects_f_d_and_e() {
         let mut settings = Settings::default();
         settings.keyboard_shapes.set_learn(LearnLine::Centre);
         let before = settings.keyboard_shapes;
-        correct(&mut settings, false, CurveKind::Speed, Side::Wide);
+        // Near top speed: the shares at top speed rise too.
+        correct(&mut settings, false, CurveKind::TurnSpeed, Side::Wide, 0.9);
         let after = settings.keyboard_shapes;
-        assert!(after.bezier(CurveKind::Speed).y2 < before.bezier(CurveKind::Speed).y2);
+        for kind in [CurveKind::TurnSpeed, CurveKind::Speed] {
+            assert!(after.bezier(kind).y2 < before.bezier(kind).y2, "{kind:?}");
+        }
         assert!(after.bezier(CurveKind::Turn).y2 > before.bezier(CurveKind::Turn).y2);
+        let top = |shapes: &KeyboardShapes| shapes.scale(CurveKind::Speed).unwrap();
+        assert!(top(&after) > top(&before));
+        // Slow, the shapes only.
+        let at = after;
+        correct(&mut settings, false, CurveKind::TurnSpeed, Side::Wide, 0.3);
+        assert_eq!(top(&settings.keyboard_shapes), top(&at));
         // The stick's, untouched.
         assert_eq!(settings.stick_shapes, KeyboardShapes::classic(true));
     }
@@ -920,9 +932,9 @@ mod tests {
             ..probe(Phase::LeaningIn, 0.9, 0.9)
         };
         log.compare_turn(Some(0.8), 0.0, &held, 1.0);
-        assert_eq!(log.count(CurveKind::Speed, Side::Wide), 0);
+        assert_eq!(log.count(CurveKind::TurnSpeed, Side::Wide), 0);
         log.compare_turn(Some(0.8), 0.0, &held, 1.4);
-        assert_eq!(log.count(CurveKind::Speed, Side::Wide), 1);
+        assert_eq!(log.count(CurveKind::TurnSpeed, Side::Wide), 1);
         assert_eq!((log.given, log.needed), (0.6, Some(0.8)));
         // Asking less than it needs: the player's choice, nothing.
         let mut log = LearningLog::default();

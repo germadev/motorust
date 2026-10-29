@@ -71,6 +71,10 @@ pub struct KeyboardCurves {
     pub top_speed_lean: f32,
     /// E: the share of the bike's turn for the share of its lean.
     pub turn: Bezier,
+    /// F: how much of that turn is kept, from all of it standing still down
+    /// to `top_speed_turn` at top speed, for the share of top speed.
+    pub turn_speed: Bezier,
+    pub top_speed_turn: f32,
     /// R, the stick's: the lean asked for how far it is pushed past its
     /// dead zone.
     pub response: Bezier,
@@ -90,6 +94,13 @@ pub const TURN_FLOOR: (f32, f32) = (0.1, 0.3);
 /// Bounds of what the curves' numbers can be set to.
 pub const SECONDS: (f32, f32) = (0.05, 1.5);
 pub const TOP_SPEED_LEAN: (f32, f32) = (0.3, 1.0);
+pub const TOP_SPEED_TURN: (f32, f32) = (0.3, 1.0);
+/// How much a correction moves a learnt time (a share of it), and a
+/// learnt share at top speed (D's lean, F's turn), only from this share of
+/// top speed on.
+pub const NUDGE_TIME: f32 = 0.03;
+pub const NUDGE_TOP: f32 = 0.01;
+pub const NEAR_TOP_SPEED: f32 = 0.75;
 
 /// The classic keyboard's times and its lean at top speed: as
 /// `DigitalSteer` at medium, held 1.875 t + 1.875 t² up to all of it
@@ -111,8 +122,22 @@ impl KeyboardCurves {
             CurveKind::Unwind => self.unwind.curve,
             CurveKind::Speed => self.speed,
             CurveKind::Turn => self.turn,
+            CurveKind::TurnSpeed => self.turn_speed,
             CurveKind::Response => self.response,
         }
+    }
+
+    /// The share of the turn E gives that is kept going at `speed_share` of
+    /// the top speed: F.
+    pub fn turn_limit(&self, speed_share: f32) -> f32 {
+        1.0 - (1.0 - self.top_speed_turn) * self.turn_speed.ease(speed_share.abs())
+    }
+
+    /// The share of its turn the bike makes leaning `lean` at
+    /// `speed_share` of its top speed: E for the lean, times F for the
+    /// speed.
+    pub fn turn_at(&self, lean: f32, speed_share: f32) -> f32 {
+        self.turn_for(lean) * self.turn_limit(speed_share)
     }
 
     /// The lean the stick asks for pushed `travel` past its dead zone (0 to
@@ -183,7 +208,7 @@ impl CurveShape {
                 CurveKind::LeanIn | CurveKind::StandUp if stick => Bezier::LINEAR,
                 CurveKind::LeanIn => Bezier::new(third, 0.2406, 2.0 * third, 0.5739),
                 CurveKind::StandUp => Bezier::new(third, 0.0736, 2.0 * third, 0.4069),
-                CurveKind::Speed => Bezier::new(0.56, 0.0, 0.56, 1.0),
+                CurveKind::Speed | CurveKind::TurnSpeed => Bezier::new(0.56, 0.0, 0.56, 1.0),
                 CurveKind::Response => Bezier::new(third, 0.14, 2.0 * third, 0.56),
                 CurveKind::Unwind | CurveKind::Turn => Bezier::LINEAR,
             },
@@ -223,6 +248,8 @@ pub struct CurveChoice {
     pub shape: CurveShape,
     pub custom: Bezier,
     pub learned: Option<Bezier>,
+    /// Its number (time or share at top speed) as learnt, if anything.
+    pub learned_number: Option<f32>,
 }
 
 impl CurveChoice {
@@ -235,6 +262,7 @@ impl CurveChoice {
                 .fixed(kind, stick)
                 .unwrap_or(Bezier::LINEAR),
             learned: None,
+            learned_number: None,
         }
     }
 }
@@ -287,10 +315,13 @@ pub struct KeyboardShapes {
     pub unwind: CurveChoice,
     pub speed: CurveChoice,
     pub turn: CurveChoice,
+    pub turn_speed: CurveChoice,
     pub lean_in_seconds: f32,
     pub stand_up_seconds: f32,
     pub unwind_seconds: f32,
     pub top_speed_lean: f32,
+    /// F's share of the turn kept at top speed (all of it at first).
+    pub top_speed_turn: f32,
     /// The line the game learns them from, if it is learning them: then
     /// every curve is the learnt one.
     pub learn: LearnLine,
@@ -323,10 +354,12 @@ impl KeyboardShapes {
             unwind: classic(CurveKind::Unwind),
             speed: classic(CurveKind::Speed),
             turn: classic(CurveKind::Turn),
+            turn_speed: classic(CurveKind::TurnSpeed),
             lean_in_seconds,
             stand_up_seconds,
             unwind_seconds,
             top_speed_lean: CLASSIC_TOP_SPEED_LEAN,
+            top_speed_turn: 1.0,
             learn: LearnLine::Off,
             correct: false,
         }
@@ -350,6 +383,7 @@ impl KeyboardShapes {
             CurveKind::Unwind => &self.unwind,
             CurveKind::Speed => &self.speed,
             CurveKind::Turn => &self.turn,
+            CurveKind::TurnSpeed => &self.turn_speed,
         }
     }
 
@@ -361,6 +395,7 @@ impl KeyboardShapes {
             CurveKind::Unwind => &mut self.unwind,
             CurveKind::Speed => &mut self.speed,
             CurveKind::Turn => &mut self.turn,
+            CurveKind::TurnSpeed => &mut self.turn_speed,
         }
     }
 
@@ -407,33 +442,40 @@ impl KeyboardShapes {
     pub fn set_learn(&mut self, line: LearnLine) {
         if line != LearnLine::Off && !self.learning() {
             for &kind in self.kinds() {
-                let was = self.bezier(kind);
+                let (was, number) = (self.bezier(kind), self.own_scale(kind));
                 let choice = self.choice_mut(kind);
                 choice.learned.get_or_insert(was);
+                if let Some(number) = number {
+                    choice.learned_number.get_or_insert(number);
+                }
             }
         }
         self.learn = line;
     }
 
     /// Corrects the learnt curve `kind` a little for the bike having gone
-    /// `wide` (or inside) on it: A and C quicker, R asking for more lean and
-    /// E more turn for the lean, for going wide, D keeping
-    /// more lean, E less turn for the lean for cutting inside, B quicker for
-    /// standing up too slowly (inside) and slower for too quickly (wide).
-    /// The curve only rises or falls, both control points together, within
-    /// the square; E never comes down below [`TURN_FLOOR`], so a touch of
-    /// the key always turns the bike.
-    pub fn correct_for(&mut self, kind: CurveKind, wide: bool) {
+    /// `wide` (or inside) on it at `speed_share` of its top speed, and its
+    /// learnt number with it: A and C quicker (rising sooner, and shorter),
+    /// R asking for more lean, E more turn for the lean, D keeping more lean
+    /// and F more turn (and, near top speed, more of each at top speed),
+    /// for going wide; E less turn for the lean for cutting inside; B
+    /// quicker (and shorter) for standing up too slowly (inside), slower
+    /// (and longer) for too quickly (wide). The curve only rises or falls,
+    /// both control points together, within the square; E never comes down
+    /// below [`TURN_FLOOR`], so a touch of the key always turns the bike;
+    /// the numbers stay within the options' bounds, and C at once stays so.
+    pub fn correct_for(&mut self, kind: CurveKind, wide: bool, speed_share: f32) {
         let up = match (kind, wide) {
             (CurveKind::LeanIn | CurveKind::Unwind | CurveKind::Response, true) => 1.0,
-            (CurveKind::Speed, true) => -1.0,
+            (CurveKind::Speed | CurveKind::TurnSpeed, true) => -1.0,
             (CurveKind::Turn, false) => -1.0,
             (CurveKind::Turn, true) => 1.0,
             (CurveKind::StandUp, false) => 1.0,
             (CurveKind::StandUp, true) => -1.0,
             _ => return,
         };
-        let Some(curve) = self.choice_mut(kind).learned.as_mut() else {
+        let choice = self.choice_mut(kind);
+        let Some(curve) = choice.learned.as_mut() else {
             return;
         };
         let floor = if kind == CurveKind::Turn {
@@ -446,18 +488,46 @@ impl KeyboardShapes {
         };
         curve.y1 = moved(curve.y1, floor.0);
         curve.y2 = moved(curve.y2, floor.1);
+        // Its number: a time shorter for quicker, longer for slower; a
+        // share at top speed higher for more, near top speed only.
+        let Some(number) = choice.learned_number.as_mut() else {
+            return;
+        };
+        let rounded = |value: f32| (value * 1000.0).round() / 1000.0;
+        match kind {
+            CurveKind::LeanIn | CurveKind::StandUp | CurveKind::Unwind if *number > 0.0 => {
+                *number = rounded((*number * (1.0 - up * NUDGE_TIME)).clamp(SECONDS.0, SECONDS.1));
+            }
+            CurveKind::Speed | CurveKind::TurnSpeed if speed_share >= NEAR_TOP_SPEED => {
+                *number = rounded((*number + NUDGE_TOP).min(1.0));
+            }
+            _ => {}
+        }
     }
 
-    /// The number curve `kind` is scaled by, if it has one: the seconds of
-    /// A, B and C, the lean kept at top speed of D.
-    pub fn scale(&self, kind: CurveKind) -> Option<f32> {
+    /// The number curve `kind` is scaled by, as set, if it has one: the
+    /// seconds of A, B and C, the lean kept at top speed of D, the turn
+    /// kept at top speed of F.
+    pub fn own_scale(&self, kind: CurveKind) -> Option<f32> {
         match kind {
             CurveKind::LeanIn => Some(self.lean_in_seconds),
             CurveKind::StandUp => Some(self.stand_up_seconds),
             CurveKind::Unwind => Some(self.unwind_seconds),
             CurveKind::Speed => Some(self.top_speed_lean),
+            CurveKind::TurnSpeed => Some(self.top_speed_turn),
             CurveKind::Turn | CurveKind::Response => None,
         }
+    }
+
+    /// The number curve `kind` is scaled by now: as learnt while the game
+    /// learns them (until anything is, as set), as set otherwise.
+    pub fn scale(&self, kind: CurveKind) -> Option<f32> {
+        let own = self.own_scale(kind)?;
+        Some(if self.learning() {
+            self.choice(kind).learned_number.unwrap_or(own)
+        } else {
+            own
+        })
     }
 
     /// Steps the number curve `kind` is scaled by (`step` steps of 0.05),
@@ -483,23 +553,29 @@ impl KeyboardShapes {
             CurveKind::Speed => {
                 self.top_speed_lean = stepped(self.top_speed_lean, TOP_SPEED_LEAN);
             }
+            CurveKind::TurnSpeed => {
+                self.top_speed_turn = stepped(self.top_speed_turn, TOP_SPEED_TURN);
+            }
             CurveKind::Turn | CurveKind::Response => {}
         }
     }
 
     /// The curves the bike follows.
     pub fn curves(&self) -> KeyboardCurves {
-        let timed = |kind, seconds| TimedCurve {
+        let number = |kind| self.scale(kind).unwrap_or_default();
+        let timed = |kind| TimedCurve {
             curve: self.bezier(kind),
-            seconds,
+            seconds: number(kind),
         };
         KeyboardCurves {
-            lean_in: timed(CurveKind::LeanIn, self.lean_in_seconds),
-            stand_up: timed(CurveKind::StandUp, self.stand_up_seconds),
-            unwind: timed(CurveKind::Unwind, self.unwind_seconds),
+            lean_in: timed(CurveKind::LeanIn),
+            stand_up: timed(CurveKind::StandUp),
+            unwind: timed(CurveKind::Unwind),
             speed: self.bezier(CurveKind::Speed),
-            top_speed_lean: self.top_speed_lean,
+            top_speed_lean: number(CurveKind::Speed),
             turn: self.bezier(CurveKind::Turn),
+            turn_speed: self.bezier(CurveKind::TurnSpeed),
+            top_speed_turn: number(CurveKind::TurnSpeed),
             response: self.bezier(CurveKind::Response),
         }
     }
@@ -516,24 +592,28 @@ pub enum CurveKind {
     Turn,
     /// The stick's only: the lean asked for how far it is pushed.
     Response,
+    /// F: the turn kept for the speed.
+    TurnSpeed,
 }
 
-pub const CURVE_KINDS: [CurveKind; 5] = [
+pub const CURVE_KINDS: [CurveKind; 6] = [
     CurveKind::LeanIn,
     CurveKind::StandUp,
     CurveKind::Unwind,
     CurveKind::Speed,
     CurveKind::Turn,
+    CurveKind::TurnSpeed,
 ];
 
 /// The stick's curves: its response, then the keyboard's.
-pub const STICK_CURVE_KINDS: [CurveKind; 6] = [
+pub const STICK_CURVE_KINDS: [CurveKind; 7] = [
     CurveKind::Response,
     CurveKind::LeanIn,
     CurveKind::StandUp,
     CurveKind::Unwind,
     CurveKind::Speed,
     CurveKind::Turn,
+    CurveKind::TurnSpeed,
 ];
 
 impl CurveKind {
@@ -546,6 +626,7 @@ impl CurveKind {
             CurveKind::Speed => 'D',
             CurveKind::Turn => 'E',
             CurveKind::Response => 'R',
+            CurveKind::TurnSpeed => 'F',
         }
     }
 
@@ -561,6 +642,8 @@ impl CurveKind {
             (CurveKind::Speed, Language::English) => "Lean for speed",
             (CurveKind::Turn, Language::Spanish) => "Giro según tumbada",
             (CurveKind::Turn, Language::English) => "Turn for lean",
+            (CurveKind::TurnSpeed, Language::Spanish) => "Giro según velocidad",
+            (CurveKind::TurnSpeed, Language::English) => "Turn for speed",
             (CurveKind::Response, Language::Spanish) => "Respuesta del stick",
             (CurveKind::Response, Language::English) => "Stick response",
         }
@@ -579,6 +662,8 @@ impl CurveKind {
             (CurveKind::Speed, Language::English) => "Speed",
             (CurveKind::Turn, Language::Spanish) => "Giro",
             (CurveKind::Turn, Language::English) => "Turn",
+            (CurveKind::TurnSpeed, Language::Spanish) => "Giro vel.",
+            (CurveKind::TurnSpeed, Language::English) => "Turn speed",
             (CurveKind::Response, Language::Spanish) => "Respuesta",
             (CurveKind::Response, Language::English) => "Response",
         }
@@ -596,6 +681,8 @@ impl CurveKind {
             (CurveKind::Speed, Language::English) => ("speed", "reduction"),
             (CurveKind::Turn, Language::Spanish) => ("tumbada", "giro"),
             (CurveKind::Turn, Language::English) => ("lean", "turn"),
+            (CurveKind::TurnSpeed, Language::Spanish) => ("velocidad", "recorte"),
+            (CurveKind::TurnSpeed, Language::English) => ("speed", "reduction"),
             (CurveKind::Response, Language::Spanish) => ("stick", "tumbada"),
             (CurveKind::Response, Language::English) => ("stick", "lean"),
         }
@@ -606,6 +693,8 @@ impl CurveKind {
         match (self, lang) {
             (CurveKind::Speed, Language::Spanish) => "Tumbada a toda velocidad",
             (CurveKind::Speed, Language::English) => "Lean at top speed",
+            (CurveKind::TurnSpeed, Language::Spanish) => "Giro a toda velocidad",
+            (CurveKind::TurnSpeed, Language::English) => "Turn at top speed",
             (_, Language::Spanish) => "Duración",
             (_, Language::English) => "Duration",
         }
@@ -615,7 +704,7 @@ impl CurveKind {
     /// share of the lean.
     pub fn scale_text(self, value: f32, lang: Language) -> String {
         match self {
-            CurveKind::Speed => format!("{:.0} %", value * 100.0),
+            CurveKind::Speed | CurveKind::TurnSpeed => format!("{:.0} %", value * 100.0),
             CurveKind::Unwind if value <= 0.0 => match lang {
                 Language::Spanish => "al momento".to_string(),
                 Language::English => "at once".to_string(),
@@ -773,6 +862,8 @@ pub struct CurveProbe {
     pub speed_share: f32,
     pub limit: f32,
     pub turn: f32,
+    /// F's share of the turn kept at that speed.
+    pub turn_limit: f32,
 }
 
 #[cfg(test)]
@@ -855,31 +946,31 @@ mod tests {
     fn corrections_move_a_learnt_curve_the_way_it_strayed_within_bounds() {
         let mut shapes = KeyboardShapes::default();
         // Nothing learnt yet: nothing to correct.
-        shapes.correct_for(CurveKind::LeanIn, true);
+        shapes.correct_for(CurveKind::LeanIn, true, 0.5);
         assert_eq!(shapes, KeyboardShapes::default());
         shapes.set_learn(LearnLine::Centre);
         let was = shapes.bezier(CurveKind::LeanIn);
-        shapes.correct_for(CurveKind::LeanIn, true);
+        shapes.correct_for(CurveKind::LeanIn, true, 0.5);
         let now = shapes.bezier(CurveKind::LeanIn);
         assert!((now.y1 - was.y1 - NUDGE).abs() < 1e-3 && (now.y2 - was.y2 - NUDGE).abs() < 1e-3);
         assert_eq!((now.x1, now.x2), (was.x1, was.x2));
         // D: more lean (less reduction) for going wide.
         let d = shapes.bezier(CurveKind::Speed);
-        shapes.correct_for(CurveKind::Speed, true);
+        shapes.correct_for(CurveKind::Speed, true, 0.5);
         assert!(shapes.bezier(CurveKind::Speed).y2 < d.y2);
         // E: less turn for cutting inside, never below its floor.
         for _ in 0..200 {
-            shapes.correct_for(CurveKind::Turn, false);
+            shapes.correct_for(CurveKind::Turn, false, 0.5);
         }
         let e = shapes.bezier(CurveKind::Turn);
         assert_eq!((e.y1, e.y2), TURN_FLOOR);
         // E: more turn for going wide.
-        shapes.correct_for(CurveKind::Turn, true);
+        shapes.correct_for(CurveKind::Turn, true, 0.5);
         assert!(shapes.bezier(CurveKind::Turn).y2 > TURN_FLOOR.1);
         // What does not point at a curve changes nothing.
         let before = shapes;
-        shapes.correct_for(CurveKind::LeanIn, false);
-        shapes.correct_for(CurveKind::Speed, false);
+        shapes.correct_for(CurveKind::LeanIn, false, 0.5);
+        shapes.correct_for(CurveKind::Speed, false, 0.5);
         assert_eq!(shapes, before);
     }
 
@@ -932,6 +1023,68 @@ mod tests {
         // The other way: through upright, over to the right.
         let flip = run(&curves, 0.0, 1.0, |t| if t < 0.5 { 0.6 } else { -0.6 });
         assert!((at(&flip, 1.0) + 0.6).abs() < 1e-3);
+    }
+
+    #[test]
+    fn f_keeps_a_share_of_the_turn_for_the_speed_and_e_and_f_combine() {
+        let mut shapes = KeyboardShapes::default();
+        // Classic: all the turn at any speed.
+        let curves = shapes.curves();
+        for share in [0.0, 0.5, 1.0] {
+            assert_eq!(curves.turn_limit(share), 1.0);
+        }
+        shapes.top_speed_turn = 0.7;
+        let curves = shapes.curves();
+        assert_eq!(curves.turn_limit(0.0), 1.0);
+        assert!((curves.turn_limit(1.0) - 0.7).abs() < 1e-5);
+        // E for the lean times F for the speed, on the lean's side.
+        let (lean, share) = (0.6, 1.0);
+        let turn = curves.turn_at(-lean, share);
+        assert!((turn + curves.turn_for(lean) * 0.7).abs() < 1e-5);
+        // F in both sets, last.
+        assert_eq!(*shapes.kinds().last().unwrap(), CurveKind::TurnSpeed);
+        assert_eq!(
+            *KeyboardShapes::classic(true).kinds().last().unwrap(),
+            CurveKind::TurnSpeed
+        );
+    }
+
+    #[test]
+    fn learning_learns_the_numbers_too_apart_from_the_ones_set() {
+        let mut shapes = KeyboardShapes::default();
+        let own = shapes.own_scale(CurveKind::LeanIn).unwrap();
+        shapes.set_learn(LearnLine::Race);
+        // A wide: quicker, so shorter.
+        shapes.correct_for(CurveKind::LeanIn, true, 0.5);
+        let learnt = shapes.scale(CurveKind::LeanIn).unwrap();
+        assert!((learnt - own * (1.0 - NUDGE_TIME)).abs() < 1e-3);
+        assert_eq!(shapes.curves().lean_in.seconds, learnt);
+        // B wide: slower, so longer.
+        let b = shapes.scale(CurveKind::StandUp).unwrap();
+        shapes.correct_for(CurveKind::StandUp, true, 0.5);
+        assert!(shapes.scale(CurveKind::StandUp).unwrap() > b);
+        // C at once stays at once.
+        shapes.correct_for(CurveKind::Unwind, true, 0.5);
+        assert_eq!(shapes.scale(CurveKind::Unwind), Some(0.0));
+        // D: more lean at top speed, only near it.
+        let d = shapes.scale(CurveKind::Speed).unwrap();
+        shapes.correct_for(CurveKind::Speed, true, 0.3);
+        assert_eq!(shapes.scale(CurveKind::Speed).unwrap(), d);
+        shapes.correct_for(CurveKind::Speed, true, 0.9);
+        assert!((shapes.scale(CurveKind::Speed).unwrap() - (d + NUDGE_TOP)).abs() < 1e-3);
+        // F at all of it: no further.
+        shapes.correct_for(CurveKind::TurnSpeed, true, 0.9);
+        assert_eq!(shapes.scale(CurveKind::TurnSpeed), Some(1.0));
+        // Never past the bounds.
+        for _ in 0..200 {
+            shapes.correct_for(CurveKind::LeanIn, true, 0.5);
+        }
+        assert_eq!(shapes.scale(CurveKind::LeanIn), Some(SECONDS.0));
+        // Off: the numbers as set; learning again, the learnt ones.
+        shapes.set_learn(LearnLine::Off);
+        assert_eq!(shapes.scale(CurveKind::LeanIn), Some(own));
+        shapes.set_learn(LearnLine::Centre);
+        assert_eq!(shapes.scale(CurveKind::LeanIn), Some(SECONDS.0));
     }
 
     #[test]

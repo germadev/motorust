@@ -1462,7 +1462,7 @@ fn read_player_input(
     settings: Res<Settings>,
     game_mode: Res<GameMode>,
     local_players: Res<LocalPlayersConfig>,
-    active_controller: Option<ResMut<crate::gamepads::ActiveController>>,
+    mut active_controller: Option<ResMut<crate::gamepads::ActiveController>>,
     mut race: ResMut<Race>,
     options: Res<DebugOptions>,
     player: Single<(&mut BikeInput, &BikeState, Has<Autopilot>), With<Player>>,
@@ -1601,7 +1601,7 @@ fn read_player_input(
             wheelie = wheelie.max(p_wheelie);
         }
 
-        if let Some(mut ac) = active_controller {
+        if let Some(ac) = active_controller.as_mut() {
             if let Some(pad_ent) = active_pad_entity {
                 ac.gamepad = Some(pad_ent);
             } else if keyboard.get_pressed().next().is_some() {
@@ -1635,9 +1635,18 @@ fn read_player_input(
     // Where the first player's bike is on the curves, for the panel that
     // draws them: the stick's while it leans the bike, else the keyboard's
     // if it steers by them, else the stick's if it does.
+    // Whichever leans the bike; upright, the device last used (a gamepad
+    // in use: its stick), so that the panel and the learning do not
+    // flick to the other's while the stick rests in the middle.
     let stick_leans = analog_p1.curves.lean != 0.0 || analog_p1.travel != 0.0;
+    let keys_lean = digital_p1.curves.lean != 0.0;
+    let pad_in_use = active_controller
+        .as_ref()
+        .is_some_and(|controller| controller.gamepad.is_some());
     let on = match (curves.keys, curves.stick) {
         (_, Some(stick)) if stick_leans => Some((stick, true)),
+        (Some(keys), _) if keys_lean => Some((keys, false)),
+        (_, Some(stick)) if pad_in_use => Some((stick, true)),
         (Some(keys), _) => Some((keys, false)),
         (None, Some(stick)) => Some((stick, true)),
         (None, None) => None,
@@ -1661,20 +1670,21 @@ fn read_player_input(
                     1.0
                 },
                 wanted: if stick {
-                    shaped.turn_for(shaped.lean_asked(travel))
+                    shaped.turn_at(shaped.lean_asked(travel), speed_share)
                 } else if matches!(
                     digital_p1.curves.phase,
                     curves::Phase::LeaningIn | curves::Phase::Unwinding
                 ) {
                     // A key held: all the turn.
-                    shaped.turn_for(1.0)
+                    shaped.turn_at(1.0, speed_share)
                 } else {
                     0.0
                 },
                 lean,
                 speed_share,
                 limit: shaped.lean_limit(speed_share),
-                turn: shaped.turn_for(lean.lean),
+                turn: shaped.turn_at(lean.lean, speed_share),
+                turn_limit: shaped.turn_limit(speed_share),
             }
         }
         None => CurveProbe::default(),
@@ -1793,7 +1803,7 @@ impl KeySteer {
                 self.digital = DigitalSteer::default();
                 let lean = self.curves.update(pressed, curves, speed / top_speed, dt);
                 KeyTurn {
-                    steer: curves.turn_for(lean),
+                    steer: curves.turn_at(lean, speed / top_speed),
                     pivot_slowing: 0.0,
                     // Upright with no key held, the stick (if any) leans it.
                     lean: (pressed != 0.0 || lean != 0.0).then_some(lean),
@@ -1879,7 +1889,7 @@ impl StickSteer {
                 let lean = self.curves.update(asked, curves, speed / top_speed, dt);
                 StickTurn {
                     steer: 0.0,
-                    direct: curves.turn_for(lean),
+                    direct: curves.turn_at(lean, speed / top_speed),
                     lean: (asked != 0.0 || lean != 0.0).then_some(lean),
                 }
             }

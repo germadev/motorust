@@ -100,7 +100,7 @@ const NOTE_LIT: f32 = 1.5;
 /// The images the curves are drawn in, and the curves drawn in them.
 #[derive(Resource)]
 struct CurveImages {
-    images: [Handle<Image>; 6],
+    images: [Handle<Image>; 7],
     drawn: Option<KeyboardShapes>,
 }
 
@@ -174,7 +174,7 @@ fn shown_shapes(settings: &Settings, shown: ShownSet) -> &KeyboardShapes {
 }
 
 fn spawn_panel(mut commands: Commands, font: Res<UiFont>, mut images: ResMut<Assets<Image>>) {
-    let images: [Handle<Image>; 6] = std::array::from_fn(|_| images.add(blank()));
+    let images: [Handle<Image>; 7] = std::array::from_fn(|_| images.add(blank()));
     commands
         .spawn((
             CurvesPanel,
@@ -333,6 +333,7 @@ fn dot_on(kind: CurveKind, probe: &CurveProbe) -> Option<Vec2> {
         CurveKind::Speed => Some(Vec2::new(probe.speed_share.min(1.0), probe.limit)),
         CurveKind::Turn => (lean.lean != 0.0).then(|| Vec2::new(lean.lean.abs(), probe.turn.abs())),
         CurveKind::Response => probe.stick.then(|| Vec2::new(probe.travel, probe.asked)),
+        CurveKind::TurnSpeed => Some(Vec2::new(probe.speed_share.min(1.0), probe.turn_limit)),
     }
 }
 
@@ -567,6 +568,7 @@ fn shown_height(kind: CurveKind, curves: &KeyboardCurves, y: f32) -> f32 {
         CurveKind::LeanIn | CurveKind::Turn | CurveKind::Response => y,
         CurveKind::StandUp | CurveKind::Unwind => 1.0 - y,
         CurveKind::Speed => 1.0 - (1.0 - curves.top_speed_lean) * y,
+        CurveKind::TurnSpeed => 1.0 - (1.0 - curves.top_speed_turn) * y,
     }
 }
 
@@ -712,7 +714,7 @@ mod tests {
             active: true,
             stray: -2.04,
             in_corner: true,
-            notes: [[0, 0], [1, 2], [0, 0], [0, 0], [0, 0], [0, 0]],
+            notes: [[0, 0], [1, 2], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
             ..default()
         };
         assert_eq!(
@@ -825,6 +827,7 @@ mod tests {
             speed_share: 0.5,
             limit: curves.lean_limit(0.5),
             turn: curves.turn_for(lean.lean),
+            turn_limit: 1.0,
         };
         let on_a = dot_on(CurveKind::LeanIn, &probe).unwrap();
         assert!((on_a.y - lean.lean).abs() < 1e-6);
