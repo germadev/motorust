@@ -1664,7 +1664,12 @@ fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32, 
         | ToyKind::Station
         | ToyKind::TunnelMountain
         | ToyKind::RockingHorse
-        | ToyKind::Nutcracker => {}
+        | ToyKind::Nutcracker
+        | ToyKind::DumpTruck
+        | ToyKind::Teepee
+        | ToyKind::Trex
+        | ToyKind::Rocket
+        | ToyKind::ToyChest => {}
     }
 }
 
@@ -1689,6 +1694,11 @@ fn model_of(kind: ToyKind) -> Option<&'static str> {
         ToyKind::TunnelMountain => Some("tunnel_mountain"),
         ToyKind::RockingHorse => Some("rocking_horse"),
         ToyKind::Nutcracker => Some("nutcracker"),
+        ToyKind::DumpTruck => Some("dump_truck"),
+        ToyKind::Teepee => Some("teepee"),
+        ToyKind::Trex => Some("trex"),
+        ToyKind::Rocket => Some("rocket"),
+        ToyKind::ToyChest => Some("toy_chest"),
         ToyKind::Blocks | ToyKind::Ball | ToyKind::Tyres => None,
     }
 }
@@ -1803,17 +1813,35 @@ const CAR_GAP: f32 = 0.5;
 /// How high the tops of a train's rails are over what it stands on (m).
 const RAIL_TOP: f32 = 0.6;
 
-/// The toys made with Meshy (see `tools/import_toys.py`).
+/// The toys made with Meshy (see `tools/import_toys.py`), in two packs,
+/// each with its atlas and its material: the first one's is full.
 #[derive(Resource)]
-pub struct ToyModels(PropPack);
+pub struct ToyModels([PropPack; 2]);
 
 impl FromWorld for ToyModels {
     fn from_world(world: &mut World) -> Self {
-        Self(PropPack::load(
-            world,
-            include_bytes!("../../assets/models/toys/props.bin"),
-            include_bytes!("../../assets/models/toys/color.jpg"),
-        ))
+        Self([
+            PropPack::load(
+                world,
+                include_bytes!("../../assets/models/toys/props.bin"),
+                include_bytes!("../../assets/models/toys/color.jpg"),
+            ),
+            PropPack::load(
+                world,
+                include_bytes!("../../assets/models/toys2/props.bin"),
+                include_bytes!("../../assets/models/toys2/color.jpg"),
+            ),
+        ])
+    }
+}
+
+impl ToyModels {
+    /// Meshy's toy `name`, and the material of the pack it is in.
+    fn piece(&self, name: &str) -> (&Piece, &Handle<StandardMaterial>) {
+        self.0
+            .iter()
+            .find_map(|pack| pack.find(name).map(|piece| (piece, &pack.material)))
+            .unwrap_or_else(|| panic!("no {name} in the toys' packs"))
     }
 }
 
@@ -1854,11 +1882,12 @@ fn fitted(piece: &Piece, size: Vec2, heading: f32, at: Vec2, base: f32) -> Trans
 /// ceiling, its underside as high as it says (its strings are with the rest
 /// of the store, see [`toy`]).
 pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &mut Assets3d) {
-    let pack = &assets.toys.0;
-    let mut spawn = |piece: &Piece, transform: Transform| {
+    let models = assets.toys;
+    let mut spawn = |name: &str, transform: Transform| {
+        let (piece, material) = models.piece(name);
         world.spawn((
             Mesh3d(piece.mesh.clone()),
-            MeshMaterial3d(pack.material.clone()),
+            MeshMaterial3d(material.clone()),
             transform,
         ));
     };
@@ -1866,9 +1895,9 @@ pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: 
         let Some(name) = castle_model(castle.kind) else {
             continue;
         };
-        let piece = pack.piece(name);
+        let (piece, _) = models.piece(name);
         spawn(
-            piece,
+            name,
             fitted(
                 piece,
                 castle.size,
@@ -1883,7 +1912,7 @@ pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: 
             continue;
         };
         spawn(
-            pack.piece(name),
+            name,
             Transform::from_xyz(toy.position.x, y(toy.base), toy.position.y)
                 .with_rotation(Quat::from_rotation_y(toy.heading))
                 .with_scale(Vec3::splat(toy.scale)),
@@ -1894,12 +1923,11 @@ pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: 
 /// The electric trains, each Meshy's locomotive and its wagons, put on
 /// their tracks to go round them.
 pub fn spawn_trains(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &mut Assets3d) {
-    let pack = &assets.toys.0;
     for train in store.trains {
         let path = std::sync::Arc::new(closed_curve(train.track, 1.0));
         let mut behind = 0.0;
         for car in 0..=train.wagons {
-            let piece = pack.piece(if car == 0 {
+            let (piece, material) = assets.toys.piece(if car == 0 {
                 LOCOMOTIVE
             } else {
                 wagon_model(train.wagon)
@@ -1907,7 +1935,7 @@ pub fn spawn_trains(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: 
             let length = piece.high.z - piece.low.z;
             world.spawn((
                 Mesh3d(piece.mesh.clone()),
-                MeshMaterial3d(pack.material.clone()),
+                MeshMaterial3d(material.clone()),
                 Transform::default(),
                 TrainCar {
                     path: path.clone(),
@@ -2243,7 +2271,7 @@ mod tests {
                     road_near(&track, built.position, low, high)
                 );
             }
-            for toy in store.toys {
+            for toy in store.toys.iter().filter(|toy| toy.kind != ToyKind::Trex) {
                 // How far it reaches round its middle and how tall it is:
                 // Meshy's as it was made (centred), the others about a
                 // metre.
@@ -2303,10 +2331,12 @@ mod tests {
         super::super::japan::bounds(&mesh.build())
     }
 
-    /// The pieces of Meshy's toys in their pack.
+    /// The pieces of Meshy's toys in their packs.
     fn pack() -> Vec<crate::bike::model::imported::PackedMesh> {
-        crate::bike::model::imported::read(include_bytes!("../../assets/models/toys/props.bin"))
-            .meshes
+        let read = crate::bike::model::imported::read;
+        let mut pieces = read(include_bytes!("../../assets/models/toys/props.bin")).meshes;
+        pieces.extend(read(include_bytes!("../../assets/models/toys2/props.bin")).meshes);
+        pieces
     }
 
     /// The corners of the box round Meshy's toy `name` as it was made.
@@ -2432,6 +2462,45 @@ mod tests {
             }
         }
         assert!(tunnels > 0);
+    }
+
+    #[test]
+    fn the_t_rex_s_head_reaches_over_the_road_well_over_the_bikes() {
+        // Every point of it within a metre of a road's walls well over
+        // the road there, and some of its head within the walls.
+        const OVER_THE_BIKES: f32 = 6.0;
+        let mut over = 0;
+        for (name, store, track) in stores() {
+            for toy in store.toys.iter().filter(|toy| toy.kind == ToyKind::Trex) {
+                let pieces = pack();
+                let piece = pieces.iter().find(|piece| piece.name == "trex").unwrap();
+                let Some(bevy::mesh::VertexAttributeValues::Float32x3(points)) =
+                    piece.mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+                else {
+                    panic!("no positions");
+                };
+                let turn = Quat::from_rotation_y(toy.heading);
+                for &[x, up, z] in points {
+                    let at = turn * (Vec3::new(x, up, z) * toy.scale);
+                    let ground = toy.position + Vec2::new(at.x, at.z);
+                    let height = y(toy.base) + at.y;
+                    let nearest = track.nearest_at(ground, height);
+                    let wall = track.road(nearest.road).wall_at(nearest.index);
+                    if nearest.distance > wall + 1.0 {
+                        continue;
+                    }
+                    let clear = height - track.height_beside(&nearest);
+                    assert!(
+                        clear > OVER_THE_BIKES,
+                        "{name}: the T-rex at {ground} only {clear} m over the road"
+                    );
+                    if nearest.distance < wall {
+                        over += 1;
+                    }
+                }
+            }
+        }
+        assert!(over > 20, "{over} points of the T-rex over the road");
     }
 
     #[test]

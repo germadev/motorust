@@ -1671,6 +1671,17 @@ pub enum ToyKind {
     RockingHorse,
     /// A nutcracker soldier standing guard (Meshy's).
     Nutcracker,
+    /// A yellow toy dump truck (Meshy's).
+    DumpTruck,
+    /// A play teepee of striped canvas on its poles (Meshy's).
+    Teepee,
+    /// A tyrannosaurus (Meshy's), its head reaching out over the road beside
+    /// it, well over the bikes: the one toy that does.
+    Trex,
+    /// A toy rocket standing on its fins, red and white (Meshy's).
+    Rocket,
+    /// A wooden toy chest, its lid open, full of toys (Meshy's).
+    ToyChest,
 }
 
 #[cfg(test)]

@@ -627,6 +627,46 @@ const STORE: ToyStore = ToyStore {
             scale: 1.0,
             base: 13.2,
         },
+        // A tyrannosaurus beside the home straight, its head reaching out
+        // over the road, well over the bikes; a rocket by the road to the
+        // chair; a teepee by the start straight; a dump truck by the north
+        // wall's road, facing the bikes coming; a toy chest by the start
+        // straight, its open front to the road.
+        Toy {
+            kind: ToyKind::Trex,
+            position: Vec2::new(45.0, 99.7),
+            heading: PI,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::Rocket,
+            position: Vec2::new(95.0, -183.0),
+            heading: PI,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::Teepee,
+            position: Vec2::new(-18.0, 62.0),
+            heading: FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::DumpTruck,
+            position: Vec2::new(205.0, -278.0),
+            heading: -FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::ToyChest,
+            position: Vec2::new(19.0, 22.0),
+            heading: -FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
         // The floor train's station, its platform along the track, and
         // its tunnel through a mountain on the other straight.
         Toy {
