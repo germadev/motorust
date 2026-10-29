@@ -1,6 +1,6 @@
 //! Cámara de persecución: detrás y por encima de la moto, siguiendo sus giros
-//! con algo de retraso (and in a tight corner turning into it, ahead of the
-//! bike, to show the way out), quedándose atrás al acelerar y abriendo el ángulo de
+//! con algo de retraso (and, with the curves' handling, in a tight corner
+//! turning into it, ahead of the bike, to show the way out), quedándose atrás al acelerar y abriendo el ángulo de
 //! visión con la velocidad. El stick derecho del mando dice hacia dónde mira
 //! respecto a la moto: arriba, hacia delante como siempre; a un lado, a ese
 //! lado, y abajo, hacia atrás. Al soltarlo vuelve a mirar hacia delante. It
@@ -16,6 +16,7 @@ use bevy::camera::{CameraUpdateSystems, RenderTarget, Viewport};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+use crate::bike::curves::KeyboardMode;
 use crate::bike::{BikeState, BikeTuning, CrashState, Knock, LocalPlayer, Player};
 use crate::geometry::{approach, smoothstep, wrap_angle};
 use crate::lobby::{ControllerBinding, LocalPlayersConfig};
@@ -477,6 +478,7 @@ fn loop_tilt(rotation: Quat, yaw: f32, bike_yaw: f32) -> Quat {
 fn follow_player(
     time: Res<Time>,
     tuning: Res<BikeTuning>,
+    settings: Res<Settings>,
     gamepads: Query<&Gamepad>,
     game_mode: Res<GameMode>,
     local_players: Res<LocalPlayersConfig>,
@@ -506,6 +508,8 @@ fn follow_player(
     )>,
 ) {
     let watched = watching.map(|watching| watching.bike);
+    let curves_steer = settings.keyboard_mode == KeyboardMode::Bezier
+        || settings.stick_mode == KeyboardMode::Bezier;
     for (mut transform, mut projection, mut chase, cam_player) in &mut cameras {
         // Watching another bike, or back on the player's: a cut, the camera
         // right behind it.
@@ -564,7 +568,9 @@ fn follow_player(
             .last_yaw
             .map_or(0.0, |last| wrap_angle(bike_yaw - last) / dt_turn);
         chase.last_yaw = Some(bike_yaw);
-        let lead = if down || state.ride.is_some() {
+        // Only with the curves' handling (Bézier, for the keyboard or the
+        // stick): with the classic controls, the camera as it always was.
+        let lead = if down || state.ride.is_some() || !curves_steer {
             0.0
         } else {
             corner_lead(yaw_rate)

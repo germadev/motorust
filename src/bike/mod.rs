@@ -354,7 +354,9 @@ pub struct BikeInput {
     pub lean: Option<f32>,
     /// Without the front's extra grip braking (see [`BRAKE_GRIP`]): the
     /// rivals', whose steering does not reckon with it (with it they turn
-    /// in tighter than they mean to off the brakes).
+    /// in tighter than they mean to off the brakes), and the players' while
+    /// the classic controls steer (as they always have): it goes with the
+    /// curves' handling.
     pub plain_grip: bool,
     /// How the lean shown follows `lean`, from the curves of the keys or
     /// the stick steering.
@@ -1368,7 +1370,8 @@ fn read_controller_binding(
                 wheelie,
                 pivot_slowing: keys.pivot_slowing,
                 lean: keys.lean,
-                plain_grip: false,
+                // The front's extra grip braking is the curves' handling's.
+                plain_grip: keys.lean.is_none(),
                 look: keys.look,
             }
         }
@@ -1412,7 +1415,8 @@ fn read_controller_binding(
                 wheelie,
                 pivot_slowing: keys.pivot_slowing,
                 lean: keys.lean,
-                plain_grip: false,
+                // The front's extra grip braking is the curves' handling's.
+                plain_grip: keys.lean.is_none(),
                 look: keys.look,
             }
         }
@@ -1474,7 +1478,7 @@ fn read_controller_binding(
                     wheelie,
                     pivot_slowing: keys.pivot_slowing,
                     lean: keys.lean.or(stick.lean),
-                    plain_grip: false,
+                    plain_grip: keys.lean.is_none() && stick.lean.is_none(),
                     look: if keys.lean.is_some() {
                         keys.look
                     } else {
@@ -1656,7 +1660,9 @@ fn read_player_input(
             wheelie,
             pivot_slowing: keys.pivot_slowing,
             lean: keys.lean.or(stick.lean),
-            plain_grip: false,
+            // The front's extra grip braking is the curves' handling's: in
+            // the classic one the bike turns as it always has.
+            plain_grip: keys.lean.is_none() && stick.lean.is_none(),
             look: if keys.lean.is_some() {
                 keys.look
             } else {
@@ -1939,7 +1945,7 @@ impl StickSteer {
             }
             None => {
                 self.curves = CurveLean::default();
-                let raw = classic.clamp(-1.0, 1.0) * reach_with(options.stick_limit, speed);
+                let raw = classic * reach_with(options.stick_limit, speed);
                 StickTurn {
                     steer: self.analog.update(raw, dt),
                     direct: 0.0,
@@ -2826,6 +2832,18 @@ mod tests {
         }
         let (was, now) = (braked.chassis.front_load(), after.chassis.front_load());
         assert!(now < 0.5 * was, "{was} -> {now}");
+        // With the classic controls (plain grip), as it always has: loaded
+        // or not, the same turn.
+        let plain = |state: &BikeState| {
+            let input = BikeInput {
+                steer_direct: 1.0,
+                plain_grip: true,
+                ..default()
+            };
+            let next = step(state, &input, &ground, &tuning, DT);
+            wrap_angle(next.heading - state.heading) / DT
+        };
+        assert_eq!(plain(&braked), plain(&same));
     }
 
     #[test]
