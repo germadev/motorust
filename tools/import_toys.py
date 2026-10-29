@@ -116,6 +116,8 @@ SIZES = {
     "toy_chest": ("length", 16.0),
     "jack_in_box": ("height", 10.0),
     "xylophone": ("length", 12.0),
+    # A shop's display robot, towering over the riders.
+    "giant_robot": ("height", 26.0),
     # Hanging from the ceiling.
     "biplane": ("length", 16.0),
     "helicopter": ("length", 14.0),
@@ -166,6 +168,7 @@ CELLS = {
     "trex": 1024,
     "rocket": 1024,
     "toy_chest": 1024,
+    "giant_robot": 1024,
 }
 CELL = 512
 # How wide the atlas is (px): four of the big cells, or eight of the others.

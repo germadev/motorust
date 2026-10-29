@@ -1466,6 +1466,19 @@ pub struct ToyStore {
     pub mats: &'static [Mat],
     pub toys: &'static [Toy],
     pub bricks: &'static [Bricks],
+    /// Its way in, if it is seen: a front of glass in a wall, the car park
+    /// outside it.
+    pub entrance: Option<Entrance>,
+}
+
+/// A shop's way in, in the wall of its room at the greatest z: a front of
+/// glass from `from` to `to` along it (x), sliding doors in it round
+/// `doors` (x), out onto a car park in the daylight (see
+/// `world::shopfront`).
+pub struct Entrance {
+    pub from: f32,
+    pub to: f32,
+    pub doors: f32,
 }
 
 /// A piece of furniture: a box `size` across (x and z before it is turned
@@ -1682,6 +1695,14 @@ pub enum ToyKind {
     Rocket,
     /// A wooden toy chest, its lid open, full of toys (Meshy's).
     ToyChest,
+    /// A jack-in-the-box, its clown sprung out of it (Meshy's).
+    JackInBox,
+    /// A xylophone lying on the floor, its bars in the colours of the
+    /// rainbow, its two mallets beside them (Meshy's).
+    Xylophone,
+    /// A giant robot standing guard at the shop's door, as tall as the
+    /// glass beside it is (Meshy's).
+    GiantRobot,
 }
 
 #[cfg(test)]

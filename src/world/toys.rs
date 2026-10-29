@@ -26,7 +26,10 @@ use super::scenery::{
     Toy, ToyKind, ToyLoop, ToyStore, Train, Wagon,
 };
 use super::structures::indices;
-use super::textures::{TOY_BOXES, WorldTextures};
+use super::textures::{
+    CARTON, DOLL_BOXES, DOTTED_BOX, GAME_BOX, JIGSAW_BOX, SPACE_BOX, TOY_BOXES, WHITE_BOX,
+    WorldTextures,
+};
 use crate::geometry::random01;
 use crate::track::{BASE_ELEVATION, LOOP_WALL, Loop, Track, closed_curve};
 
@@ -487,6 +490,12 @@ pub fn spawn_room(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &m
         Color::srgb(1.0, 0.78, 0.15),
         Color::srgb(0.25, 0.7, 0.35),
     ];
+    // The south wall's opening for the shop's front of glass, if it has
+    // one: where along it (x) and how high.
+    let opening = store
+        .entrance
+        .as_ref()
+        .map(|entrance| (entrance.from, entrance.to, y(super::shopfront::GLASS_TOP)));
     for (a, b) in [
         (Vec2::new(min.x, min.y), Vec2::new(max.x, min.y)),
         (Vec2::new(max.x, min.y), Vec2::new(max.x, max.y)),
@@ -496,24 +505,41 @@ pub fn spawn_room(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &m
         let inward = (min + max) / 2.0 - (a + b) / 2.0;
         let facing = Vec3::new(inward.x, 0.0, inward.y).normalize_or_zero();
         let band = |k: usize| y(WALL_SHELF_HEIGHT + 2.0 + 2.0 * k as f32);
-        for (from, to, color) in [
-            (floor, y(3.0), skirting),
-            (y(3.0), band(0), paint),
-            (band(0), band(1), bands[0]),
-            (band(1), band(2), bands[1]),
-            (band(2), band(3), bands[2]),
-            (band(3), top, paint),
-        ] {
-            walls.quad(
-                [
-                    (corner(a.x, a.y, from), Vec2::ZERO),
-                    (corner(b.x, b.y, from), Vec2::X),
-                    (corner(b.x, b.y, to), Vec2::ONE),
-                    (corner(a.x, a.y, to), Vec2::Y),
-                ],
-                facing,
-                color,
-            );
+        // The wall in pieces along it: all of it, or but for the opening
+        // up to its top, if it is the south wall.
+        let mut pieces = vec![(a, b, floor)];
+        if let Some((from, to, high)) = opening.filter(|_| a.y == max.y && b.y == max.y) {
+            let at = |x: f32| Vec2::new(x, max.y);
+            pieces = vec![
+                (a, at(to), floor),
+                (at(to), at(from), high),
+                (at(from), b, floor),
+            ];
+        }
+        for (a, b, least) in pieces {
+            for (from, to, color) in [
+                (floor, y(3.0), skirting),
+                (y(3.0), band(0), paint),
+                (band(0), band(1), bands[0]),
+                (band(1), band(2), bands[1]),
+                (band(2), band(3), bands[2]),
+                (band(3), top, paint),
+            ] {
+                let from = from.max(least);
+                if to <= from {
+                    continue;
+                }
+                walls.quad(
+                    [
+                        (corner(a.x, a.y, from), Vec2::ZERO),
+                        (corner(b.x, b.y, from), Vec2::X),
+                        (corner(b.x, b.y, to), Vec2::ONE),
+                        (corner(a.x, a.y, to), Vec2::Y),
+                    ],
+                    facing,
+                    color,
+                );
+            }
         }
     }
     let mut ceiling = MeshBuilder::default();
@@ -743,12 +769,25 @@ fn ball(
     yaw: f32,
     color: impl Fn(Vec3) -> Color,
 ) {
-    const RINGS: usize = 8;
-    const SEGMENTS: usize = 12;
+    ball_of(mesh, center, radius, scale, yaw, (8, 12), color);
+}
+
+/// A ball as [`ball`], in as many faces as `detail` says: rings from pole
+/// to pole, and segments round.
+pub(super) fn ball_of(
+    mesh: &mut MeshBuilder,
+    center: Vec3,
+    radius: f32,
+    scale: Vec3,
+    yaw: f32,
+    detail: (usize, usize),
+    color: impl Fn(Vec3) -> Color,
+) {
+    let (rings, segments) = detail;
     let rotation = Quat::from_rotation_y(yaw);
     let unit = |ring: usize, segment: usize| {
-        let polar = ring as f32 / RINGS as f32 * PI;
-        let angle = segment as f32 / SEGMENTS as f32 * TAU;
+        let polar = ring as f32 / rings as f32 * PI;
+        let angle = segment as f32 / segments as f32 * TAU;
         Vec3::new(
             polar.sin() * angle.cos(),
             polar.cos(),
@@ -756,8 +795,8 @@ fn ball(
         )
     };
     let at = |n: Vec3| center + rotation * (n * radius * scale);
-    for ring in 0..RINGS {
-        for segment in 0..SEGMENTS {
+    for ring in 0..rings {
+        for segment in 0..segments {
             let corners = [
                 unit(ring, segment),
                 unit(ring + 1, segment),
@@ -767,7 +806,7 @@ fn ball(
             let middle = corners.iter().sum::<Vec3>().normalize_or_zero();
             let paint = color(middle);
             let facing = rotation * (middle / scale).normalize_or_zero();
-            if ring == 0 || ring == RINGS - 1 {
+            if ring == 0 || ring == rings - 1 {
                 // A triangle at each pole.
                 let [a, b, c, d] = corners.map(at);
                 let (p, q, r) = if ring == 0 { (a, b, c) } else { (a, b, d) };
@@ -799,12 +838,13 @@ pub fn store_pieces(
     textures: &WorldTextures,
 ) -> Vec<(Mesh, StandardMaterial)> {
     let mut solid = MeshBuilder::default();
+    let mut fabric = MeshBuilder::default();
     let mut boxes = MeshBuilder::default();
     let mut baseplates = MeshBuilder::default();
     let mut foam = MeshBuilder::default();
     let mut blocks = MeshBuilder::default();
     let mut bricks = MeshBuilder::default();
-    wall_shelves(&mut solid, &mut boxes, store);
+    wall_shelves(&mut solid, &mut fabric, &mut boxes, store);
     for (index, furniture) in store.furniture.iter().enumerate() {
         match furniture.kind {
             FurnitureKind::Table => table(&mut solid, furniture, track),
@@ -813,9 +853,15 @@ pub fn store_pieces(
                 baseplate(&mut baseplates, furniture);
             }
             FurnitureKind::Chair => chair(&mut solid, furniture),
-            FurnitureKind::Shelves => {
-                shelving_unit(&mut solid, &mut boxes, furniture, index as u32)
-            }
+            FurnitureKind::Shelves => shelving_unit(
+                &mut Stock {
+                    solid: &mut solid,
+                    fabric: &mut fabric,
+                    boxes: &mut boxes,
+                },
+                furniture,
+                index as u32,
+            ),
         }
     }
     for tower in store.towers {
@@ -857,6 +903,7 @@ pub fn store_pieces(
     };
     [
         (solid, plastic(0.45)),
+        (fabric, plastic(0.95)),
         (boxes, textured(&textures.toy_boxes, 0.55)),
         (baseplates, textured(&textures.baseplate, 0.4)),
         (foam, textured(&textures.foam, 0.85)),
@@ -872,18 +919,51 @@ pub fn store_pieces(
 /// How deep the shelves round the walls are (m), how tall, and how high
 /// each shelf over the one under it.
 const WALL_SHELF_DEPTH: f32 = 9.0;
-const WALL_SHELF_HEIGHT: f32 = 43.0;
+pub(super) const WALL_SHELF_HEIGHT: f32 = 43.0;
 const SHELF_STEP: f32 = 6.0;
 /// The white of the shelving's frames and boards.
 const SHELF_WHITE: Color = Color::srgb(0.93, 0.93, 0.91);
+/// How long a bay of shelves is at most (m), between two uprights.
+const BAY: f32 = 24.0;
+/// How high the plinth under the shelves is (m): the first boxes stand on
+/// it.
+const PLINTH: f32 = 1.2;
+/// How far the shelves round the walls stop short of a shop's front of
+/// glass (m).
+const SHELVES_OFF_GLASS: f32 = 3.0;
 
-/// Shelves all round the room's walls, full of boxed toys facing in.
-fn wall_shelves(solid: &mut MeshBuilder, boxes: &mut MeshBuilder, store: &ToyStore) {
+/// Shelves all round the room's walls, full of toys facing in, but for
+/// in front of the shop's glass (see [`super::shopfront`]).
+fn wall_shelves(
+    solid: &mut MeshBuilder,
+    fabric: &mut MeshBuilder,
+    boxes: &mut MeshBuilder,
+    store: &ToyStore,
+) {
+    let mut stock = Stock {
+        solid,
+        fabric,
+        boxes,
+    };
+    for (k, (from, to, inward)) in wall_runs(store).into_iter().enumerate() {
+        shelf_run(
+            &mut stock,
+            Run::new(from, to, inward, WALL_SHELF_DEPTH, WALL_SHELF_HEIGHT),
+            k as u32 * 1000,
+            true,
+        );
+    }
+}
+
+/// The runs of shelves round the room's walls: where each starts and ends
+/// along its front (the corners left to the walls either side) and the way
+/// into the room; the south wall's in two, either side of the shop's
+/// glass, if it has any.
+fn wall_runs(store: &ToyStore) -> Vec<(Vec2, Vec2, Vec2)> {
     let (min, max) = store.room;
     let d = WALL_SHELF_DEPTH;
-    // Each wall's run: where it starts and ends (along the wall, the
-    // corners left to the walls either side), and the way into the room.
-    let runs = [
+    let south = max.y - d;
+    let mut runs = vec![
         (
             Vec2::new(min.x, min.y + d),
             Vec2::new(max.x, min.y + d),
@@ -894,133 +974,736 @@ fn wall_shelves(solid: &mut MeshBuilder, boxes: &mut MeshBuilder, store: &ToySto
             Vec2::new(max.x - d, max.y - d),
             -Vec2::X,
         ),
-        (
-            Vec2::new(max.x, max.y - d),
-            Vec2::new(min.x, max.y - d),
-            -Vec2::Y,
-        ),
-        (
-            Vec2::new(min.x + d, max.y - d),
-            Vec2::new(min.x + d, min.y + d),
-            Vec2::X,
-        ),
     ];
-    for (k, (from, to, inward)) in runs.into_iter().enumerate() {
-        shelf_run(
-            solid,
-            boxes,
+    match &store.entrance {
+        Some(entrance) => {
+            for (from, to) in [
+                (max.x, entrance.to + SHELVES_OFF_GLASS),
+                (entrance.from - SHELVES_OFF_GLASS, min.x),
+            ] {
+                if from - to > BAY / 4.0 {
+                    runs.push((Vec2::new(from, south), Vec2::new(to, south), -Vec2::Y));
+                }
+            }
+        }
+        None => runs.push((Vec2::new(max.x, south), Vec2::new(min.x, south), -Vec2::Y)),
+    }
+    runs.push((
+        Vec2::new(min.x + d, max.y - d),
+        Vec2::new(min.x + d, min.y + d),
+        Vec2::X,
+    ));
+    runs
+}
+
+/// The meshes the shelves are built into: their frames, balls and cages
+/// (`solid`), soft toys (`fabric`) and boxes (`boxes`, textured with the
+/// fronts of [`super::textures::toy_boxes`]).
+struct Stock<'a> {
+    solid: &'a mut MeshBuilder,
+    fabric: &'a mut MeshBuilder,
+    boxes: &'a mut MeshBuilder,
+}
+
+/// A run of shelves: from `from` along `along` for `length` (m), along its
+/// front, facing `inward`, `depth` deep back from it and `height` tall.
+#[derive(Clone, Copy, Debug)]
+struct Run {
+    from: Vec2,
+    along: Vec2,
+    inward: Vec2,
+    length: f32,
+    depth: f32,
+    height: f32,
+    /// Which way it faces, as a road's heading: the boxes' fronts are their
+    /// frames' -z.
+    yaw: f32,
+}
+
+impl Run {
+    fn new(from: Vec2, to: Vec2, inward: Vec2, depth: f32, height: f32) -> Self {
+        Self {
             from,
-            to,
+            along: (to - from).normalize_or_zero(),
             inward,
-            d,
-            WALL_SHELF_HEIGHT,
-            k as u32 * 1000,
-        );
+            length: from.distance(to),
+            depth,
+            height,
+            yaw: crate::geometry::heading_of(inward),
+        }
+    }
+
+    /// The point `s` along its front, `back` back from it, `up` over the
+    /// floor.
+    fn at(&self, s: f32, back: f32, up: f32) -> Vec3 {
+        let ground = self.from + self.along * s - self.inward * back;
+        Vec3::new(ground.x, y(up), ground.y)
     }
 }
 
-/// A run of shelves from `from` to `to` along their front, `depth` deep
-/// back from it (against `inward`, the way they face), `height` tall: a
-/// plinth, uprights, boards every [`SHELF_STEP`], a back, and boxed toys on
-/// each board, each a box of its own size and colour.
-#[allow(clippy::too_many_arguments)]
-fn shelf_run(
-    solid: &mut MeshBuilder,
-    boxes: &mut MeshBuilder,
-    from: Vec2,
-    to: Vec2,
-    inward: Vec2,
-    depth: f32,
-    height: f32,
-    seed: u32,
-) {
-    let along = (to - from).normalize_or_zero();
-    let length = from.distance(to);
-    let yaw = crate::geometry::heading_of(inward);
-    let at = |s: f32, back: f32, up: f32| {
-        let ground = from + along * s - inward * back;
-        Vec3::new(ground.x, y(up), ground.y)
-    };
-    // The back panel, the plinth and the top.
-    let middle = |up: f32| at(length / 2.0, depth / 2.0, up);
+/// What a bay of shelves (between two uprights) holds, as a shop's
+/// departments do: each painted its own colour at the back, on its boards'
+/// edges and on the sign over it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Department {
+    /// Boxed toys, a few kinds to a shelf, each in a row of its own boxes.
+    Boxes,
+    /// Dolls, in tall boxes with an arched window, pink and lilac.
+    Dolls,
+    /// Jigsaws and board games, lying flat in piles.
+    Games,
+    /// Big boxes, cartons and playsets, two shelves high.
+    Big,
+    /// Soft toys sitting in rows: bears and rabbits.
+    Plush,
+    /// Balls in rows, and a cage full of them at the bottom.
+    Balls,
+    /// Small toys in blister packs, on hooks off a pegboard, over a shelf
+    /// of boxes.
+    Pegboard,
+}
+
+/// Every department, and its share of the bays.
+const DEPARTMENTS: [(Department, u32); 7] = [
+    (Department::Boxes, 5),
+    (Department::Dolls, 2),
+    (Department::Games, 2),
+    (Department::Big, 2),
+    (Department::Plush, 2),
+    (Department::Balls, 1),
+    (Department::Pegboard, 2),
+];
+
+impl Department {
+    /// Its colour, of its sign and of its boards' edges.
+    fn color(self) -> Color {
+        match self {
+            Department::Boxes => Color::srgb(0.2, 0.5, 0.92),
+            Department::Dolls => Color::srgb(0.95, 0.35, 0.65),
+            Department::Games => Color::srgb(1.0, 0.75, 0.1),
+            Department::Big => Color::srgb(0.25, 0.7, 0.3),
+            Department::Plush => Color::srgb(0.6, 0.4, 0.9),
+            Department::Balls => Color::srgb(1.0, 0.5, 0.1),
+            Department::Pegboard => Color::srgb(0.1, 0.68, 0.7),
+        }
+    }
+
+    /// The colour of its back: its own, paler; a pegboard's grey-white.
+    fn back(self) -> Color {
+        match self {
+            Department::Pegboard => Color::srgb(0.86, 0.86, 0.83),
+            _ => self.color().mix(&Color::WHITE, 0.6),
+        }
+    }
+
+    /// The heights of its boards over the floor, the last its top, in
+    /// shelves `height` tall: every [`SHELF_STEP`]; every other for big
+    /// boxes; the first two steps left open for a cage of balls; for a
+    /// pegboard, one over the plinth's boxes and the top.
+    fn boards(self, height: f32) -> Vec<f32> {
+        let steps = (height / SHELF_STEP).floor().max(2.0) as u32;
+        let top = steps as f32 * SHELF_STEP;
+        let every = |first: u32, by: u32| -> Vec<f32> {
+            (first..steps)
+                .step_by(by as usize)
+                .map(|k| k as f32 * SHELF_STEP)
+                .chain([top])
+                .collect()
+        };
+        match self {
+            Department::Pegboard => vec![SHELF_STEP, top],
+            Department::Big => every(2, 2),
+            Department::Balls => every(2, 1),
+            _ => every(1, 1),
+        }
+    }
+}
+
+/// A number from 0 to 1, the `k`th about the thing numbered `seed`: as
+/// [`random01`], for numbers of any size.
+fn pick(seed: u32, k: u32) -> f32 {
+    random01(seed.wrapping_mul(0x9e37_79b9).wrapping_add(k))
+}
+
+/// The departments of the `bays` bays of a run of shelves, from `seed`:
+/// picked by their shares, no two side by side the same.
+fn departments(seed: u32, bays: u32) -> Vec<Department> {
+    let total: u32 = DEPARTMENTS.iter().map(|(_, share)| share).sum();
+    let mut picked: Vec<Department> = Vec::new();
+    for bay in 0..bays {
+        let mut ticket = (pick(seed, bay) * total as f32) as u32 % total;
+        let mut index = 0;
+        while ticket >= DEPARTMENTS[index].1 {
+            ticket -= DEPARTMENTS[index].1;
+            index += 1;
+        }
+        if picked.last() == Some(&DEPARTMENTS[index].0) {
+            index = (index + 1) % DEPARTMENTS.len();
+        }
+        picked.push(DEPARTMENTS[index].0);
+    }
+    picked
+}
+
+/// How many bays a run of shelves `length` long (m) is in: as few as are
+/// no longer than [`BAY`].
+fn bays(length: f32) -> u32 {
+    (length / BAY).ceil().max(1.0) as u32
+}
+
+/// A run of shelves (see [`Run`]): a plinth, uprights, and between each two
+/// a bay of a department of its own (see [`Department`]): its back, its
+/// boards, what is on them, and if `signs`, a sign over it.
+fn shelf_run(stock: &mut Stock, run: Run, seed: u32, signs: bool) {
     let half = |x: f32, up: f32, back: f32| Vec3::new(x, up, back);
     // In its own frame (yaw), x is across its face and z out of it: the
     // half sizes along the run are its length's.
     cuboid(
-        solid,
-        at(length / 2.0, depth - 0.4, height / 2.0),
-        half(length / 2.0, height / 2.0, 0.4),
-        yaw,
-        Color::srgb(0.98, 0.9, 0.8),
-    );
-    cuboid(
-        solid,
-        middle(0.6),
-        half(length / 2.0, 0.6, depth / 2.0),
-        yaw,
+        stock.solid,
+        run.at(run.length / 2.0, run.depth / 2.0, PLINTH / 2.0),
+        half(run.length / 2.0, PLINTH / 2.0, run.depth / 2.0),
+        run.yaw,
         Color::srgb(0.3, 0.45, 0.85),
     );
-    let boards = (height / SHELF_STEP).floor() as u32;
-    for board in 1..=boards {
-        let up = board as f32 * SHELF_STEP;
+    let bays = bays(run.length);
+    let bay = run.length / bays as f32;
+    for k in 0..=bays {
         cuboid(
-            solid,
-            middle(up - 0.25),
-            half(length / 2.0, 0.25, depth / 2.0),
-            yaw,
+            stock.solid,
+            run.at(k as f32 * bay, run.depth / 2.0, run.height / 2.0),
+            half(0.4, run.height / 2.0, run.depth / 2.0),
+            run.yaw,
             SHELF_WHITE,
         );
     }
-    let uprights = (length / 24.0).ceil().max(1.0) as u32;
-    for k in 0..=uprights {
-        let s = length * k as f32 / uprights as f32;
+    for (k, department) in departments(seed, bays).into_iter().enumerate() {
+        let (start, end) = (k as f32 * bay, (k + 1) as f32 * bay);
+        let middle = (start + end) / 2.0;
+        let width = (end - start) / 2.0;
         cuboid(
-            solid,
-            at(s, depth / 2.0, height / 2.0),
-            half(0.4, height / 2.0, depth / 2.0),
-            yaw,
-            SHELF_WHITE,
+            stock.solid,
+            run.at(middle, run.depth - 0.4, run.height / 2.0),
+            half(width, run.height / 2.0, 0.4),
+            run.yaw,
+            department.back(),
         );
-    }
-    // The boxes on the floor's plinth and on every board but the top one.
-    for shelf in 0..boards {
-        let floor = if shelf == 0 {
-            1.2
-        } else {
-            shelf as f32 * SHELF_STEP
-        };
-        let room = SHELF_STEP - 0.6 - if shelf == 0 { 1.2 } else { 0.0 };
-        let mut s = 0.8;
-        let mut n = seed + shelf * 97;
-        while s < length - 0.8 {
-            n += 1;
-            let width = 3.0 + 3.5 * random01(n * 3);
-            let tall = room * (0.6 + 0.38 * random01(n * 3 + 1));
-            let deep = depth * (0.55 + 0.35 * random01(n * 3 + 2));
-            if s + width > length - 0.8 {
-                break;
-            }
-            let design = (random01(n * 5 + 7) * TOY_BOXES as f32) as u32 % TOY_BOXES;
-            let column = design as f32 / TOY_BOXES as f32;
-            let width_uv = 1.0 / TOY_BOXES as f32;
-            textured_box(
-                boxes,
-                at(s + width / 2.0, deep / 2.0 + 0.3, floor + tall / 2.0),
-                Vec3::new(width / 2.0, tall / 2.0, deep / 2.0),
-                yaw,
-                |normal| {
-                    if normal.z < -0.5 {
-                        // Its front, facing out of the shelves (its frame's
-                        // -z, as a heading's).
-                        (Vec2::new(column, 0.0), Vec2::new(width_uv, 1.0))
-                    } else {
-                        // Its sides and top in its plain colour.
-                        (Vec2::new(column + width_uv * 0.5, 0.93), Vec2::ZERO)
-                    }
-                },
-                |_| Color::WHITE,
+        let boards = department.boards(run.height);
+        for &up in &boards {
+            cuboid(
+                stock.solid,
+                run.at(middle, run.depth / 2.0, up - 0.25),
+                half(width, 0.25, run.depth / 2.0),
+                run.yaw,
+                SHELF_WHITE,
             );
-            s += width + 0.3 + 0.6 * random01(n * 7);
+            // Its edge, the price strip, in the department's colour.
+            cuboid(
+                stock.solid,
+                run.at(middle, 0.0, up - 0.25),
+                half(width - 0.4, 0.32, 0.08),
+                run.yaw,
+                department.color(),
+            );
+        }
+        if signs {
+            // A board over the bay, a white panel across it.
+            let sign = run.height + 1.8;
+            cuboid(
+                stock.solid,
+                run.at(middle, 1.0, sign),
+                half(width - 2.0, 1.6, 0.2),
+                run.yaw,
+                department.color(),
+            );
+            cuboid(
+                stock.solid,
+                run.at(middle, 0.7, sign),
+                half(width - 5.0, 0.6, 0.15),
+                run.yaw,
+                Color::WHITE,
+            );
+        }
+        // What is on the plinth and on each board but the top one.
+        let floors = std::iter::once(PLINTH).chain(boards[..boards.len() - 1].iter().copied());
+        for (row, (floor, above)) in floors.zip(boards.iter().copied()).enumerate() {
+            let shelf = Shelf {
+                run,
+                start: start + 0.8,
+                end: end - 0.8,
+                floor,
+                room: above - 0.6 - floor,
+            };
+            let n = seed
+                .wrapping_mul(7919)
+                .wrapping_add(k as u32 * 131 + row as u32 * 17);
+            match (department, row) {
+                (Department::Boxes, _) | (Department::Pegboard, 0) => {
+                    boxed(stock.boxes, &shelf, n, &BOXED)
+                }
+                (Department::Dolls, _) => boxed(stock.boxes, &shelf, n, &DOLLS),
+                (Department::Big, _) => boxed(stock.boxes, &shelf, n, &BIG),
+                (Department::Games, _) => piles(stock.boxes, &shelf, n),
+                (Department::Plush, _) => plush(stock.fabric, &shelf, n),
+                (Department::Balls, 0) => cage(stock.solid, &shelf, n),
+                (Department::Balls, _) => balls(stock.solid, &shelf, n),
+                (Department::Pegboard, _) => pegs(stock.solid, stock.boxes, &shelf, n),
+            }
+        }
+    }
+}
+
+/// A shelf of a bay, as [`shelf_run`] stocks it: from `start` to `end` along
+/// the run, its board's top `floor` over the floor, `room` up to the board
+/// over it.
+struct Shelf {
+    run: Run,
+    start: f32,
+    end: f32,
+    floor: f32,
+    room: f32,
+}
+
+/// What boxes a shelf of boxed toys is stocked with (see [`boxed`]): their fronts (of
+/// [`super::textures::toy_boxes`]), how wide (m), and how tall and how deep
+/// (of the shelf's room and depth) each kind of box is, between the least
+/// and the most; how many of each kind side by side; and how many of every
+/// hundred places in a row are sold out, empty.
+struct Assortment {
+    designs: &'static [u32],
+    width: (f32, f32),
+    tall: (f32, f32),
+    deep: (f32, f32),
+    facings: (u32, u32),
+    sold_out: f32,
+}
+
+const BOXED: Assortment = Assortment {
+    designs: &[
+        0, 1, 2, 3, 4, 5, 6, 7, WHITE_BOX, WHITE_BOX, SPACE_BOX, DOTTED_BOX,
+    ],
+    width: (3.0, 6.5),
+    tall: (0.55, 0.95),
+    deep: (0.55, 0.9),
+    facings: (2, 5),
+    sold_out: 0.06,
+};
+const DOLLS: Assortment = Assortment {
+    designs: &DOLL_BOXES,
+    width: (2.6, 3.4),
+    tall: (0.86, 0.94),
+    deep: (0.45, 0.55),
+    facings: (3, 6),
+    sold_out: 0.05,
+};
+const BIG: Assortment = Assortment {
+    designs: &[CARTON, CARTON, WHITE_BOX, 1, 4, 7],
+    width: (6.5, 10.5),
+    tall: (0.7, 0.96),
+    deep: (0.75, 0.92),
+    facings: (1, 2),
+    sold_out: 0.0,
+};
+
+/// The colours [`WHITE_BOX`] is tinted with.
+const TINTS: [Color; 6] = [
+    Color::srgb(1.0, 0.45, 0.4),
+    Color::srgb(0.45, 0.7, 1.0),
+    Color::srgb(1.0, 0.85, 0.35),
+    Color::srgb(0.55, 0.9, 0.5),
+    Color::srgb(0.85, 0.6, 1.0),
+    Color::srgb(1.0, 0.65, 0.3),
+];
+
+/// `low` to `high`, by `t` (0 to 1).
+fn between((low, high): (f32, f32), t: f32) -> f32 {
+    low + (high - low) * t
+}
+
+/// The texture of the front of [`super::textures::toy_boxes`]' design
+/// `design` (its least corner and its size), and of a plain stretch of its
+/// colour, along its foot.
+fn design_uv(design: u32) -> ((Vec2, Vec2), (Vec2, Vec2)) {
+    let width = 1.0 / TOY_BOXES as f32;
+    let column = design as f32 * width;
+    (
+        (Vec2::new(column, 0.0), Vec2::new(width, 1.0)),
+        (Vec2::new(column + width * 0.5, 0.95), Vec2::ZERO),
+    )
+}
+
+/// A box on a shelf of `run`: its front's middle `s` along it and `back`
+/// back from its front, standing on `floor`, `size` across, tall and deep,
+/// turned `turn` off square; its front of `front` (the rectangle of the
+/// texture), its top of `top`, its other faces plain, all `tint`.
+#[allow(clippy::too_many_arguments)]
+fn shelf_box(
+    mesh: &mut MeshBuilder,
+    run: &Run,
+    s: f32,
+    back: f32,
+    floor: f32,
+    size: Vec3,
+    turn: f32,
+    (front, top, plain): ((Vec2, Vec2), (Vec2, Vec2), (Vec2, Vec2)),
+    tint: Color,
+) {
+    textured_box(
+        mesh,
+        run.at(s, back + size.z / 2.0, floor + size.y / 2.0),
+        size / 2.0,
+        run.yaw + turn,
+        |normal| {
+            if normal.z < -0.5 {
+                // Its front, facing out of the shelves (its frame's -z, as
+                // a heading's).
+                front
+            } else if normal.y > 0.5 {
+                top
+            } else {
+                plain
+            }
+        },
+        |_| tint,
+    );
+}
+
+/// A shelf of boxed toys, of `assortment`: a few kinds of box, each kind in
+/// a row of its own, standing upright, their fronts out.
+fn boxed(mesh: &mut MeshBuilder, shelf: &Shelf, n: u32, assortment: &Assortment) {
+    let mut s = shelf.start;
+    let mut kind = n.wrapping_mul(977);
+    loop {
+        kind += 1;
+        let r = |k: u32| pick(kind, k);
+        let design = assortment.designs
+            [(r(0) * assortment.designs.len() as f32) as usize % assortment.designs.len()];
+        let size = Vec3::new(
+            between(assortment.width, r(1)),
+            shelf.room * between(assortment.tall, r(2)),
+            shelf.run.depth * between(assortment.deep, r(3)),
+        );
+        let tint = if design == WHITE_BOX {
+            TINTS[(r(4) * TINTS.len() as f32) as usize % TINTS.len()]
+        } else {
+            Color::WHITE
+        };
+        let (front, plain) = design_uv(design);
+        let facings = assortment.facings.0
+            + (r(5) * (assortment.facings.1 - assortment.facings.0 + 1) as f32) as u32;
+        for facing in 0..facings {
+            if s + size.x > shelf.end {
+                return;
+            }
+            let r = |k: u32| pick(kind, 16 + facing * 4 + k);
+            if r(0) >= assortment.sold_out {
+                shelf_box(
+                    mesh,
+                    &shelf.run,
+                    s + size.x / 2.0,
+                    0.3 + 0.5 * r(1),
+                    shelf.floor,
+                    size,
+                    0.06 * (r(2) - 0.5),
+                    (front, plain, plain),
+                    tint,
+                );
+            }
+            s += size.x + 0.2;
+        }
+        s += 0.4 + 0.6 * r(6);
+    }
+}
+
+/// A shelf of jigsaws and board games, lying flat in piles, a pile of each,
+/// a little askew; their edges out, painted as their fronts' tops are, the
+/// lid on top.
+fn piles(mesh: &mut MeshBuilder, shelf: &Shelf, n: u32) {
+    const GAMES: [u32; 4] = [JIGSAW_BOX, GAME_BOX, WHITE_BOX, DOTTED_BOX];
+    let mut s = shelf.start;
+    let mut pile = n.wrapping_mul(613);
+    loop {
+        pile += 1;
+        let r = |k: u32| pick(pile, k);
+        let width = between((4.5, 7.0), r(0));
+        if s + width > shelf.end {
+            return;
+        }
+        let deep = (width * between((0.7, 1.0), r(1))).min(shelf.run.depth * 0.9);
+        let thick = between((0.5, 1.1), r(2));
+        let count = ((shelf.room * between((0.45, 0.95), r(3))) / thick)
+            .floor()
+            .max(1.0) as u32;
+        let design = GAMES[(r(4) * GAMES.len() as f32) as usize % GAMES.len()];
+        let tint = if design == WHITE_BOX {
+            TINTS[(r(5) * TINTS.len() as f32) as usize % TINTS.len()]
+        } else {
+            Color::WHITE
+        };
+        let (lid, plain) = design_uv(design);
+        // Its edge: the band at the top of its lid's picture.
+        let edge = (lid.0, Vec2::new(lid.1.x, 0.18));
+        for level in 0..count {
+            let r = |k: u32| pick(pile, 16 + level * 4 + k);
+            shelf_box(
+                mesh,
+                &shelf.run,
+                s + width / 2.0 + 0.3 * (r(0) - 0.5),
+                0.4 + 0.4 * r(1),
+                shelf.floor + level as f32 * thick,
+                Vec3::new(width, thick, deep),
+                0.1 * (r(2) - 0.5),
+                (edge, lid, plain),
+                tint,
+            );
+        }
+        s += width + 0.5 + 0.8 * r(6);
+    }
+}
+
+/// The colours of soft toys: brown, honey, white, pink, blue, grey,
+/// yellow.
+const PLUSH: [Color; 7] = [
+    Color::srgb(0.55, 0.35, 0.2),
+    Color::srgb(0.85, 0.66, 0.42),
+    Color::srgb(0.95, 0.93, 0.9),
+    Color::srgb(0.98, 0.68, 0.8),
+    Color::srgb(0.58, 0.74, 0.96),
+    Color::srgb(0.68, 0.68, 0.72),
+    Color::srgb(1.0, 0.86, 0.45),
+];
+
+/// A shelf of soft toys sitting in a row, facing out, each a little turned:
+/// bears, round ears and a pale muzzle, and rabbits, long ears; as big as
+/// the shelf has room for.
+fn plush(mesh: &mut MeshBuilder, shelf: &Shelf, n: u32) {
+    // In few faces: there are hundreds of them, seen from the road.
+    const DETAIL: (usize, usize) = (4, 6);
+    const EARS: (usize, usize) = (2, 4);
+    let mut s = shelf.start;
+    let mut toy = n.wrapping_mul(389);
+    loop {
+        toy += 1;
+        let r = |k: u32| pick(toy, k);
+        // As tall as the shelf leaves room for, a rabbit to the tips of
+        // its ears.
+        let rabbit = r(2) < 0.35;
+        let tall = if rabbit { 4.7 } else { 3.6 };
+        let scale = (shelf.room * 0.92 / tall).min(1.4) * between((0.85, 1.0), r(0));
+        let width = 2.5 * scale;
+        if s + width > shelf.end {
+            return;
+        }
+        let color = PLUSH[(r(1) * PLUSH.len() as f32) as usize % PLUSH.len()];
+        let yaw = shelf.run.yaw + 0.5 * (r(3) - 0.5);
+        let rotation = Quat::from_rotation_y(yaw);
+        let base = shelf
+            .run
+            .at(s + width / 2.0, shelf.run.depth * 0.4, shelf.floor);
+        let at = |offset: Vec3| base + rotation * (offset * scale);
+        let paint = |_: Vec3| color;
+        ball_of(
+            mesh,
+            at(Vec3::new(0.0, 1.0, 0.0)),
+            1.1 * scale,
+            Vec3::new(1.0, 0.9, 0.85),
+            yaw,
+            DETAIL,
+            paint,
+        );
+        let head = Vec3::new(0.0, 2.7, 0.0);
+        ball_of(mesh, at(head), 0.85 * scale, Vec3::ONE, yaw, DETAIL, paint);
+        for side in [-1.0, 1.0] {
+            if rabbit {
+                let ear = head + Vec3::new(0.35 * side, 1.25, 0.0);
+                ball_of(
+                    mesh,
+                    at(ear),
+                    0.3 * scale,
+                    Vec3::new(0.6, 2.2, 0.4),
+                    yaw,
+                    EARS,
+                    paint,
+                );
+            } else {
+                let ear = head + Vec3::new(0.62 * side, 0.6, 0.0);
+                ball_of(mesh, at(ear), 0.3 * scale, Vec3::ONE, yaw, EARS, paint);
+            }
+        }
+        if !rabbit {
+            // Its muzzle, out of the front of its head (its frame's -z).
+            let muzzle = color.mix(&Color::WHITE, 0.55);
+            ball_of(
+                mesh,
+                at(head + Vec3::new(0.0, -0.18, -0.72)),
+                0.32 * scale,
+                Vec3::new(1.0, 0.8, 0.7),
+                yaw,
+                EARS,
+                |_| muzzle,
+            );
+        }
+        s += width + 0.3 + 0.4 * r(4);
+    }
+}
+
+/// The colours of balls.
+const BALLS: [Color; 6] = [
+    Color::srgb(0.92, 0.15, 0.12),
+    Color::srgb(0.15, 0.45, 0.92),
+    Color::srgb(1.0, 0.8, 0.1),
+    Color::srgb(0.2, 0.72, 0.3),
+    Color::srgb(1.0, 0.5, 0.08),
+    Color::srgb(0.75, 0.3, 0.9),
+];
+
+/// A ball's paint: plain `color`, banded white round its middle, or a
+/// beach ball's segments, white between.
+fn ball_paint(color: Color, kind: u32) -> impl Fn(Vec3) -> Color {
+    move |normal: Vec3| match kind % 3 {
+        0 => color,
+        1 if normal.y.abs() < 0.3 => Color::WHITE,
+        1 => color,
+        _ => {
+            let segment = ((normal.z.atan2(normal.x) / TAU + 1.0) * 6.0) as u32;
+            if segment.is_multiple_of(2) {
+                color
+            } else {
+                Color::WHITE
+            }
+        }
+    }
+}
+
+/// A shelf of balls in a row, as big as the shelf has room for.
+fn balls(mesh: &mut MeshBuilder, shelf: &Shelf, n: u32) {
+    let radius = (shelf.room * 0.45).min(2.2);
+    let mut s = shelf.start;
+    let mut ball = n.wrapping_mul(211);
+    while s + 2.0 * radius <= shelf.end {
+        ball += 1;
+        let r = |k: u32| pick(ball, k);
+        let color = BALLS[(r(0) * BALLS.len() as f32) as usize % BALLS.len()];
+        let center = shelf
+            .run
+            .at(s + radius, shelf.run.depth * 0.45, shelf.floor + radius);
+        ball_of(
+            mesh,
+            center,
+            radius,
+            Vec3::ONE,
+            TAU * r(1),
+            (5, 8),
+            ball_paint(color, (r(2) * 3.0) as u32),
+        );
+        s += 2.0 * radius + 0.3 + 0.3 * r(3);
+    }
+}
+
+/// A wire cage on the plinth, full of balls heaped in it: their front row
+/// and top, as much as is seen.
+fn cage(mesh: &mut MeshBuilder, shelf: &Shelf, n: u32) {
+    const RADIUS: f32 = 1.45;
+    let wire = Color::srgb(0.72, 0.74, 0.78);
+    let run = &shelf.run;
+    let (back, front) = (run.depth - 1.0, 0.4);
+    let (low, high) = (shelf.floor, shelf.floor + shelf.room * 0.85);
+    let along = (shelf.end - shelf.start) / 2.0;
+    let middle = (shelf.start + shelf.end) / 2.0;
+    // Its rims, round the bottom and the top, and its bars, round its
+    // sides.
+    for up in [low + 0.1, (low + high) / 2.0, high] {
+        for (a, b) in [
+            ((shelf.start, front), (shelf.end, front)),
+            ((shelf.start, back), (shelf.end, back)),
+            ((shelf.start, front), (shelf.start, back)),
+            ((shelf.end, front), (shelf.end, back)),
+        ] {
+            mesh.beam(run.at(a.0, a.1, up), run.at(b.0, b.1, up), 0.15, 0.15, wire);
+        }
+    }
+    let bars = (along / 1.0).floor() as u32;
+    for k in 0..=bars {
+        let s = middle - along + 2.0 * along * k as f32 / bars as f32;
+        mesh.beam(
+            run.at(s, front, low),
+            run.at(s, front, high),
+            0.1,
+            0.1,
+            wire,
+        );
+    }
+    // The balls: a row along its front up to its top, and one along its top
+    // behind it.
+    let across = ((2.0 * along) / (2.0 * RADIUS + 0.1)).floor() as u32;
+    let layers = ((high - low - 2.0 * RADIUS) / (1.9 * RADIUS))
+        .floor()
+        .max(0.0) as u32
+        + 1;
+    let rows = ((back - front) / (2.0 * RADIUS)).floor().max(1.0) as u32;
+    for k in 0..across {
+        for (level, depth) in (0..layers)
+            .map(|level| (level, 0))
+            .chain((1..rows).map(|depth| (layers - 1, depth)))
+        {
+            let m = n.wrapping_add(k * 31 + level * 7 + depth * 3);
+            let r = |j: u32| pick(m, j);
+            let center = run.at(
+                shelf.start + RADIUS + 0.1 + k as f32 * (2.0 * RADIUS + 0.1) + 0.3 * r(0),
+                front + RADIUS + 0.1 + depth as f32 * 2.0 * RADIUS,
+                low + RADIUS + level as f32 * 1.9 * RADIUS,
+            );
+            let color = BALLS[(r(1) * BALLS.len() as f32) as usize % BALLS.len()];
+            ball_of(mesh, center, RADIUS, Vec3::ONE, TAU * r(2), (4, 7), |_| {
+                color
+            });
+        }
+    }
+}
+
+/// The pegboard of a bay over its first shelf: rows of hooks off it, small
+/// toys hanging on them in blister packs, two to a hook, but for a few
+/// hooks left empty.
+fn pegs(solid: &mut MeshBuilder, boxes: &mut MeshBuilder, shelf: &Shelf, n: u32) {
+    const PACKS: [u32; 10] = [0, 1, 2, 3, 4, 5, 6, 7, SPACE_BOX, DOTTED_BOX];
+    const ROW: f32 = 4.6;
+    const COLUMN: f32 = 3.4;
+    let steel = Color::srgb(0.75, 0.76, 0.8);
+    let run = &shelf.run;
+    let columns = ((shelf.end - shelf.start) / COLUMN).floor().max(1.0) as u32;
+    let rows = ((shelf.room - 1.0) / ROW).floor().max(1.0) as u32;
+    let wall = run.depth - 0.8;
+    for row in 0..rows {
+        let up = shelf.floor + shelf.room - 0.6 - row as f32 * ROW;
+        for column in 0..columns {
+            let s =
+                shelf.start + (column as f32 + 0.5) * (shelf.end - shelf.start) / columns as f32;
+            let m = n.wrapping_add(row * 37 + column);
+            let r = |k: u32| pick(m, k);
+            solid.beam(
+                run.at(s, wall, up),
+                run.at(s, wall - 3.4, up),
+                0.14,
+                0.14,
+                steel,
+            );
+            if r(0) < 0.12 {
+                continue;
+            }
+            let design = PACKS[(r(1) * PACKS.len() as f32) as usize % PACKS.len()];
+            let (front, plain) = design_uv(design);
+            for pack in 0..2 {
+                shelf_box(
+                    boxes,
+                    run,
+                    s,
+                    wall - 3.2 + pack as f32 * 0.9,
+                    up - 3.4,
+                    Vec3::new(2.4, 3.2, 0.25),
+                    0.08 * (r(2 + pack) - 0.5),
+                    (front, plain, plain),
+                    Color::WHITE,
+                );
+            }
         }
     }
 }
@@ -1219,12 +1902,7 @@ fn chair(mesh: &mut MeshBuilder, furniture: &Furniture) {
 
 /// A tall shelving unit: shelves of boxed toys on both its long sides, back
 /// to back, under its top.
-fn shelving_unit(
-    solid: &mut MeshBuilder,
-    boxes: &mut MeshBuilder,
-    furniture: &Furniture,
-    seed: u32,
-) {
+fn shelving_unit(stock: &mut Stock, furniture: &Furniture, seed: u32) {
     let half = furniture.size / 2.0;
     // Along its longer side.
     let (length, across) = if half.x > half.y {
@@ -1236,19 +1914,21 @@ fn shelving_unit(
         let front = |s: f32| furniture.world(across * side + length * s);
         let inward = (furniture.world(across * side) - furniture.center).normalize_or_zero();
         shelf_run(
-            solid,
-            boxes,
-            front(-1.0),
-            front(1.0),
-            inward,
-            across.length(),
-            furniture.top,
+            stock,
+            Run::new(
+                front(-1.0),
+                front(1.0),
+                inward,
+                across.length(),
+                furniture.top,
+            ),
             seed * 7919 + if side > 0.0 { 0 } else { 500 },
+            false,
         );
     }
     // Its top, under the road's deck.
     cuboid(
-        solid,
+        stock.solid,
         Vec3::new(
             furniture.center.x,
             y(furniture.top - 0.3),
@@ -1669,7 +2349,10 @@ fn toy(solid: &mut MeshBuilder, blocks: &mut MeshBuilder, toy: &Toy, seed: u32, 
         | ToyKind::Teepee
         | ToyKind::Trex
         | ToyKind::Rocket
-        | ToyKind::ToyChest => {}
+        | ToyKind::ToyChest
+        | ToyKind::JackInBox
+        | ToyKind::Xylophone
+        | ToyKind::GiantRobot => {}
     }
 }
 
@@ -1699,6 +2382,9 @@ fn model_of(kind: ToyKind) -> Option<&'static str> {
         ToyKind::Trex => Some("trex"),
         ToyKind::Rocket => Some("rocket"),
         ToyKind::ToyChest => Some("toy_chest"),
+        ToyKind::JackInBox => Some("jack_in_box"),
+        ToyKind::Xylophone => Some("xylophone"),
+        ToyKind::GiantRobot => Some("giant_robot"),
         ToyKind::Blocks | ToyKind::Ball | ToyKind::Tyres => None,
     }
 }
@@ -2291,6 +2977,80 @@ mod tests {
                     clear(toy.position, reach * toy.scale, low, high),
                     "{name}: the toy at {}",
                     toy.position
+                );
+            }
+            if let Some(entrance) = &store.entrance {
+                // The mat and the alarm's gates inside the doors.
+                let (across, inward) = super::super::shopfront::FITTINGS;
+                let point = Vec2::new(entrance.doors, store.room.1.y - inward / 2.0);
+                let reach = Vec2::new(across, inward / 2.0).length();
+                assert!(clear(point, reach, -1.0, 20.0), "{name}: the shop's doors");
+            }
+        }
+    }
+
+    #[test]
+    fn the_shelves_change_department_from_bay_to_bay() {
+        // No two bays side by side alike, and every department somewhere
+        // round the walls.
+        let mut seen = Vec::new();
+        for (name, store, _) in stores() {
+            for (k, (from, to, _)) in wall_runs(store).into_iter().enumerate() {
+                let departments = departments(k as u32 * 1000, bays(from.distance(to)));
+                assert!(
+                    departments.windows(2).all(|pair| pair[0] != pair[1]),
+                    "{name}: {departments:?}"
+                );
+                seen.extend(departments);
+            }
+        }
+        for (department, _) in DEPARTMENTS {
+            assert!(seen.contains(&department), "{department:?}");
+        }
+    }
+
+    #[test]
+    fn every_department_s_boards_leave_room_for_toys() {
+        for (_, store, _) in stores() {
+            let heights = std::iter::once(WALL_SHELF_HEIGHT).chain(
+                store
+                    .furniture
+                    .iter()
+                    .filter(|furniture| furniture.kind == FurnitureKind::Shelves)
+                    .map(|furniture| furniture.top),
+            );
+            for height in heights {
+                for (department, _) in DEPARTMENTS {
+                    let boards = department.boards(height);
+                    assert!(*boards.last().unwrap() <= height, "{department:?}");
+                    let mut floor = PLINTH;
+                    for &up in &boards {
+                        assert!(
+                            up - 0.6 - floor >= 4.0,
+                            "{department:?} {height} m tall: {boards:?}"
+                        );
+                        floor = up;
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_shelves_leave_the_shop_s_glass_clear() {
+        for (name, store, _) in stores() {
+            let Some(entrance) = &store.entrance else {
+                continue;
+            };
+            let south = store.room.1.y - WALL_SHELF_DEPTH;
+            let along_south = wall_runs(store)
+                .into_iter()
+                .filter(|(from, to, _)| from.y == south && to.y == south);
+            for (from, to, _) in along_south {
+                let (low, high) = (from.x.min(to.x), from.x.max(to.x));
+                assert!(
+                    high < entrance.from || low > entrance.to,
+                    "{name}: shelves from {low} to {high} in front of the glass"
                 );
             }
         }

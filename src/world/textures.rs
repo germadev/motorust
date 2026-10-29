@@ -904,13 +904,39 @@ fn ceiling_tiles() -> Image {
 }
 
 /// How many box fronts [`toy_boxes`] draws side by side.
-pub const TOY_BOXES: u32 = 8;
+pub const TOY_BOXES: u32 = 16;
+/// Which of [`toy_boxes`]' fronts is which: the first eight, windows
+/// showing the toy inside; then two dolls', a jigsaw's, a board game's, a
+/// carton's, a white box's (to be tinted), a space toy's and one in polka
+/// dots.
+pub const DOLL_BOXES: [u32; 2] = [8, 9];
+pub const JIGSAW_BOX: u32 = 10;
+pub const GAME_BOX: u32 = 11;
+pub const CARTON: u32 = 12;
+pub const WHITE_BOX: u32 = 13;
+pub const SPACE_BOX: u32 = 14;
+pub const DOTTED_BOX: u32 = 15;
 
-/// The fronts of boxed toys, [`TOY_BOXES`] side by side, each in its own
-/// bright colour: a white band with a coloured logo at the top, a window in
-/// the middle showing the toy inside (a round head over a body, or a car,
-/// or bricks), a stripe of another colour down one side and a darker
-/// border, as the boxes on a toy shop's shelves look from across the room.
+/// The fronts of boxed toys, [`TOY_BOXES`] side by side, as the boxes on a
+/// toy shop's shelves look from across the room, each over a plain stretch
+/// of its colour along its foot (what its sides and top are painted with):
+///
+/// - the first eight, each in its own bright colour: a white band
+///   with a coloured logo at the top, a window in the middle showing the
+///   toy inside (a round head over a body, or a car, or bricks), a stripe
+///   of another colour down one side and a darker border;
+/// - two dolls' ([`DOLL_BOXES`]), pink and lilac: an arched window, a doll
+///   in it with golden hair and a dress;
+/// - a jigsaw's ([`JIGSAW_BOX`]): hills, a house and the sun under the sky,
+///   cut into pieces, over a blue foot;
+/// - a board game's ([`GAME_BOX`]): its board, four coloured corners round
+///   a white cross, on dark blue;
+/// - a carton ([`CARTON`]), brown cardboard taped shut, a ride-on car
+///   printed on it in black and arrows for the way up;
+/// - a white box ([`WHITE_BOX`]), grey where the others are coloured, a
+///   robot in its window: tinted, it is any colour;
+/// - a space toy's ([`SPACE_BOX`]): a rocket among stars on dark blue;
+/// - polka dots ([`DOTTED_BOX`]), white on blue.
 fn toy_boxes() -> Image {
     const WIDTH: u32 = 64;
     const HEIGHT: u32 = 96;
@@ -924,50 +950,249 @@ fn toy_boxes() -> Image {
         Color::srgb(1.0, 0.5, 0.05),
         Color::srgb(0.1, 0.7, 0.75),
     ];
+    let paint_of = |index: u32| match index {
+        8 => Color::srgb(0.98, 0.45, 0.72),
+        9 => Color::srgb(0.72, 0.52, 0.95),
+        JIGSAW_BOX => Color::srgb(0.15, 0.35, 0.78),
+        GAME_BOX => Color::srgb(0.1, 0.18, 0.5),
+        CARTON => Color::srgb(0.76, 0.58, 0.38),
+        WHITE_BOX => Color::srgb(0.95, 0.95, 0.95),
+        SPACE_BOX => Color::srgb(0.07, 0.09, 0.28),
+        DOTTED_BOX => Color::srgb(0.12, 0.6, 0.88),
+        _ => paints[index as usize % paints.len()],
+    };
     tiling(WIDTH * TOY_BOXES, HEIGHT, |x, y| {
         let index = x / WIDTH;
-        let paint = paints[index as usize % paints.len()];
+        let paint = paint_of(index);
         let accent = paints[(index as usize + 3) % paints.len()];
         let (u, v) = ((x % WIDTH) as f32 / WIDTH as f32, y as f32 / HEIGHT as f32);
+        let shade = 0.92 + 0.08 * value_noise(Vec2::new(x as f32, y as f32) * 0.3);
+        let plain = paint.mix(&Color::BLACK, 1.0 - shade);
         let border = u.min(1.0 - u).min(v.min(1.0 - v) * 1.5);
-        if border < 0.04 {
+        if border < 0.04 && index != CARTON {
             return paint.mix(&Color::BLACK, 0.45);
         }
         // The logo band at the top, with its blob of colour.
-        if v < 0.2 {
-            let logo = Vec2::new((u - 0.5) * 2.2, (v - 0.1) * 6.0).length();
-            return if logo < 0.55 { accent } else { Color::WHITE };
+        let logo = Vec2::new((u - 0.5) * 2.2, (v - 0.1) * 6.0).length() < 0.55;
+        // The foot, plain.
+        if v > 0.9 {
+            return plain;
         }
-        if u < 0.14 {
-            return accent;
-        }
-        // The window, with the toy in it against a pale backing.
-        let (wu, wv) = ((u - 0.2) / 0.72, (v - 0.27) / 0.62);
-        if (0.0..1.0).contains(&wu) && (0.0..1.0).contains(&wv) {
-            let toy = match index % 3 {
-                // A figure: a round head over a body.
-                0 => {
-                    Vec2::new(wu - 0.5, (wv - 0.28) * 1.2).length() < 0.17
-                        || ((wu - 0.5).abs() < 0.2 && (0.45..0.92).contains(&wv))
+        match index {
+            _ if DOLL_BOXES.contains(&index) => {
+                if v < 0.18 {
+                    return if logo { accent } else { Color::WHITE };
                 }
-                // A car: a body on two wheels.
-                1 => {
-                    ((wu - 0.5).abs() < 0.4 && (0.45..0.68).contains(&wv))
-                        || ((wu - 0.5).abs() < 0.22 && (0.3..0.5).contains(&wv))
-                        || Vec2::new((wu - 0.25) * 1.0, wv - 0.72).length() < 0.1
-                        || Vec2::new((wu - 0.75) * 1.0, wv - 0.72).length() < 0.1
+                // The arched window, the doll in it.
+                let (wu, wv) = ((u - 0.15) / 0.7, (v - 0.22) / 0.64);
+                let arch = Vec2::new(wu - 0.5, (wv - 0.3) * 0.9).length() < 0.5;
+                if !(0.0..1.0).contains(&wu) || !(0.0..1.0).contains(&wv) || (wv < 0.3 && !arch) {
+                    return plain;
                 }
-                // Bricks, stacked.
-                _ => wv > 0.25 && (wu * 3.0).fract() > 0.08 && (wv * 4.0).fract() > 0.1,
-            };
-            return if toy {
-                accent.mix(&Color::BLACK, 0.15)
-            } else {
-                Color::srgb(0.92, 0.94, 0.98)
-            };
+                let face = Vec2::new(wu - 0.5, (wv - 0.24) * 0.75).length();
+                if face < 0.13 {
+                    return Color::srgb(0.98, 0.83, 0.72);
+                }
+                if (face < 0.19 && wv < 0.33)
+                    || ((wu - 0.5).abs() < 0.19 && (0.24..0.5).contains(&wv))
+                {
+                    return Color::srgb(0.98, 0.82, 0.3);
+                }
+                if (0.36..0.92).contains(&wv) && (wu - 0.5).abs() < 0.05 + 0.32 * (wv - 0.36) {
+                    return paint.mix(&Color::BLACK, 0.3);
+                }
+                Color::srgb(1.0, 0.92, 0.96)
+            }
+            JIGSAW_BOX => {
+                if v < 0.16 {
+                    return if logo {
+                        Color::srgb(0.95, 0.2, 0.15)
+                    } else {
+                        Color::WHITE
+                    };
+                }
+                let (pu, pv) = ((u - 0.06) / 0.88, (v - 0.18) / 0.68);
+                if !(0.0..1.0).contains(&pu) || !(0.0..1.0).contains(&pv) {
+                    return Color::WHITE;
+                }
+                // Cut into pieces.
+                if (pu * 4.0).fract() < 0.05 || (pv * 4.0).fract() < 0.05 {
+                    return Color::srgb(0.3, 0.32, 0.3);
+                }
+                let hill = 0.55 + 0.08 * (pu * 7.0).sin();
+                if pv > hill + 0.15 {
+                    Color::srgb(0.25, 0.55, 0.22)
+                } else if pv > hill {
+                    if (0.2..0.38).contains(&pu) && pv < hill + 0.12 {
+                        Color::srgb(0.85, 0.2, 0.15)
+                    } else {
+                        Color::srgb(0.4, 0.75, 0.3)
+                    }
+                } else if Vec2::new(pu - 0.75, (pv - 0.25) * 0.75).length() < 0.1 {
+                    Color::srgb(1.0, 0.85, 0.2)
+                } else {
+                    Color::srgb(0.55, 0.78, 0.98)
+                }
+            }
+            GAME_BOX => {
+                if v < 0.2 {
+                    return if logo {
+                        Color::srgb(0.95, 0.2, 0.15)
+                    } else {
+                        Color::srgb(1.0, 0.82, 0.2)
+                    };
+                }
+                let (bu, bv) = ((u - 0.12) / 0.76, (v - 0.28) / 0.52);
+                if !(0.0..1.0).contains(&bu) || !(0.0..1.0).contains(&bv) {
+                    return plain;
+                }
+                if (bu - 0.5).abs() < 0.1 || (bv - 0.5).abs() < 0.1 {
+                    return Color::WHITE;
+                }
+                match (bu < 0.5, bv < 0.5) {
+                    (true, true) => Color::srgb(0.9, 0.15, 0.12),
+                    (false, true) => Color::srgb(0.15, 0.45, 0.92),
+                    (true, false) => Color::srgb(1.0, 0.8, 0.1),
+                    (false, false) => Color::srgb(0.2, 0.7, 0.3),
+                }
+            }
+            CARTON => {
+                let ink = Color::srgb(0.22, 0.15, 0.09);
+                // The tape down its middle, at the top.
+                if v < 0.14 && (u - 0.5).abs() < 0.08 {
+                    return Color::srgb(0.85, 0.72, 0.52);
+                }
+                // The arrows for the way up, in the top corners.
+                for corner in [0.17, 0.83] {
+                    let (au, av) = (u - corner, v - 0.12);
+                    if ((-0.08..-0.02).contains(&av) && au.abs() < av + 0.08)
+                        || (au.abs() < 0.015 && (-0.02..0.05).contains(&av))
+                    {
+                        return ink;
+                    }
+                }
+                // A ride-on car: its body, and its wheels as rings.
+                let body = (u - 0.5).abs() < 0.36 && (0.42..0.62).contains(&v)
+                    || (u - 0.45).abs() < 0.2 && (0.32..0.44).contains(&v);
+                let wheel = |c: f32| Vec2::new(u - c, (v - 0.68) * 0.67).length();
+                let rim = [0.27, 0.73]
+                    .iter()
+                    .any(|&c| (0.05..0.08).contains(&wheel(c)));
+                let outline = body
+                    && !((u - 0.5).abs() < 0.33 && (0.445..0.6).contains(&v))
+                    && !((u - 0.45).abs() < 0.17 && (0.345..0.44).contains(&v));
+                if outline || rim {
+                    return ink;
+                }
+                plain
+            }
+            WHITE_BOX => {
+                let grey = Color::srgb(0.62, 0.62, 0.64);
+                if v < 0.2 {
+                    return if logo { grey } else { Color::WHITE };
+                }
+                if u < 0.14 {
+                    return Color::srgb(0.82, 0.82, 0.84);
+                }
+                let (wu, wv) = ((u - 0.2) / 0.72, (v - 0.27) / 0.6);
+                if !(0.0..1.0).contains(&wu) || !(0.0..1.0).contains(&wv) {
+                    return plain;
+                }
+                // A robot: a square head on a square body, arms and legs.
+                let robot = ((wu - 0.5).abs() < 0.13 && (0.08..0.28).contains(&wv))
+                    || ((wu - 0.5).abs() < 0.22 && (0.3..0.65).contains(&wv))
+                    || ((wu - 0.5).abs() > 0.26
+                        && (wu - 0.5).abs() < 0.34
+                        && (0.32..0.6).contains(&wv))
+                    || ((wu - 0.5).abs() > 0.05
+                        && (wu - 0.5).abs() < 0.17
+                        && (0.65..0.95).contains(&wv));
+                if robot {
+                    Color::srgb(0.45, 0.45, 0.48)
+                } else {
+                    Color::srgb(0.88, 0.9, 0.93)
+                }
+            }
+            SPACE_BOX => {
+                if v < 0.18 {
+                    return if logo {
+                        Color::srgb(1.0, 0.82, 0.15)
+                    } else {
+                        plain
+                    };
+                }
+                let (ru, rv) = (u - 0.5, v - 0.52);
+                // The rocket: a white body, a red nose and fins, a flame.
+                if ru.abs() < 0.1 && (-0.2..0.16).contains(&rv) {
+                    return Color::WHITE;
+                }
+                if (-0.3..-0.2).contains(&rv) && ru.abs() < (rv + 0.3) {
+                    return Color::srgb(0.9, 0.15, 0.1);
+                }
+                if (0.06..0.2).contains(&rv) && ru.abs() < 0.1 + (rv - 0.06) * 0.9 {
+                    return Color::srgb(0.9, 0.15, 0.1);
+                }
+                if (0.16..0.3).contains(&rv) && ru.abs() < 0.06 - (rv - 0.16) * 0.35 {
+                    return Color::srgb(1.0, 0.6, 0.1);
+                }
+                if random01(x * 7919 + y * 104_729) > 0.975 {
+                    return Color::WHITE;
+                }
+                plain
+            }
+            DOTTED_BOX => {
+                if v < 0.2 {
+                    return if logo {
+                        Color::srgb(0.95, 0.2, 0.15)
+                    } else {
+                        Color::WHITE
+                    };
+                }
+                // In rows, every other a half step along; the cells about
+                // square, 64 / 5 by 96 / 8 pixels.
+                let row = (v * 8.0).floor();
+                let cell = Vec2::new((u * 5.0 + row * 0.5).fract() - 0.5, (v * 8.0).fract() - 0.5);
+                if cell.length() < 0.25 {
+                    Color::WHITE
+                } else {
+                    plain
+                }
+            }
+            _ => {
+                if v < 0.2 {
+                    return if logo { accent } else { Color::WHITE };
+                }
+                if u < 0.14 {
+                    return accent;
+                }
+                // The window, with the toy in it against a pale backing.
+                let (wu, wv) = ((u - 0.2) / 0.72, (v - 0.27) / 0.62);
+                if (0.0..1.0).contains(&wu) && (0.0..1.0).contains(&wv) {
+                    let toy = match index % 3 {
+                        // A figure: a round head over a body.
+                        0 => {
+                            Vec2::new(wu - 0.5, (wv - 0.28) * 1.2).length() < 0.17
+                                || ((wu - 0.5).abs() < 0.2 && (0.45..0.92).contains(&wv))
+                        }
+                        // A car: a body on two wheels.
+                        1 => {
+                            ((wu - 0.5).abs() < 0.4 && (0.45..0.68).contains(&wv))
+                                || ((wu - 0.5).abs() < 0.22 && (0.3..0.5).contains(&wv))
+                                || Vec2::new((wu - 0.25) * 1.0, wv - 0.72).length() < 0.1
+                                || Vec2::new((wu - 0.75) * 1.0, wv - 0.72).length() < 0.1
+                        }
+                        // Bricks, stacked.
+                        _ => wv > 0.25 && (wu * 3.0).fract() > 0.08 && (wv * 4.0).fract() > 0.1,
+                    };
+                    return if toy {
+                        accent.mix(&Color::BLACK, 0.15)
+                    } else {
+                        Color::srgb(0.92, 0.94, 0.98)
+                    };
+                }
+                plain
+            }
         }
-        let shade = 0.92 + 0.08 * value_noise(Vec2::new(x as f32, y as f32) * 0.3);
-        paint.mix(&Color::BLACK, 1.0 - shade)
     })
 }
 

@@ -356,6 +356,14 @@ const RAISED_BANKING: f32 = 1.5;
 const STORE: ToyStore = ToyStore {
     room: (Vec2::new(-175.0, -335.0), Vec2::new(380.0, 130.0)),
     ceiling: 55.0,
+    // In the south wall, the doors ahead of the bikes coming down the east
+    // side onto the train table, the glass along the left of the road
+    // round it.
+    entrance: Some(Entrance {
+        from: 168.0,
+        to: 344.0,
+        doors: 264.0,
+    }),
     furniture: &[
         // The chair the road climbs onto from the floor, its back to the
         // north.
@@ -667,6 +675,30 @@ const STORE: ToyStore = ToyStore {
             scale: 1.0,
             base: 0.0,
         },
+        // A giant robot standing guard inside the shop's door, turned to
+        // the bikes coming down the east side; a jack-in-the-box and a
+        // xylophone on the floor by the start straight.
+        Toy {
+            kind: ToyKind::GiantRobot,
+            position: Vec2::new(305.0, 110.0),
+            heading: -2.6,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::JackInBox,
+            position: Vec2::new(-17.0, -55.0),
+            heading: FRAC_PI_2,
+            scale: 1.0,
+            base: 0.0,
+        },
+        Toy {
+            kind: ToyKind::Xylophone,
+            position: Vec2::new(22.0, 2.0),
+            heading: -FRAC_PI_2 + 0.25,
+            scale: 1.0,
+            base: 0.0,
+        },
         // The floor train's station, its platform along the track, and
         // its tunnel through a mountain on the other straight.
         Toy {
@@ -809,8 +841,8 @@ const STORE: ToyStore = ToyStore {
         },
         Toy {
             kind: ToyKind::Tyres,
-            position: Vec2::new(310.0, 110.0),
-            heading: 0.0,
+            position: Vec2::new(358.0, 106.0),
+            heading: 0.4,
             scale: 3.0,
             base: 0.0,
         },

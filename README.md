@@ -92,7 +92,8 @@ another way splits off round a loop of orange track, and onto a train table
 and off its edge, crossing over and under itself on slot-car, Hot Wheels and
 slide tracks, the slot-car track's bends banked on plastic risers, past toys
 modelled with Meshy and a village, towers, heaps and walls of building
-bricks.
+bricks, shelves of every department round the walls, and the shop's glass
+front, the car park outside it in the daylight.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 
