@@ -12,9 +12,11 @@
 //! - **E, the turn for the lean**: how much the bike turns for how far
 //!   over it is.
 //!
+//! Each curve's shape is chosen (see [`CurveShape`]): the classic one (the
+//! keyboard as it is without the curves, the default), CSS's easings, its
+//! own four numbers, or the one the game learns from how the player rides.
 //! The lean shown is the one the curves give (see [`super::step`]), so
-//! what is seen is what turns the bike. The classic preset is the keyboard
-//! as it is without the curves.
+//! what is seen is what turns the bike.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -46,16 +48,15 @@ impl KeyboardMode {
 
 /// A curve run over a time: how far through it is how long since it began
 /// out of `seconds`.
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct TimedCurve {
     pub curve: Bezier,
     pub seconds: f32,
 }
 
-/// The keyboard's curves, as Options > Control > Keyboard behaviour sets
-/// them in Bézier.
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
-#[serde(default)]
+/// The keyboard's curves the bike follows: what [`KeyboardShapes`] (what
+/// Options > Control > Keyboard behaviour chooses in Bézier) comes to.
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct KeyboardCurves {
     /// A: from upright to all the way over, holding a key.
     pub lean_in: TimedCurve,
@@ -74,39 +75,23 @@ pub struct KeyboardCurves {
 
 impl Default for KeyboardCurves {
     fn default() -> Self {
-        CurvePreset::Classic.curves()
+        KeyboardShapes::default().curves()
     }
 }
 
-/// Bounds of what the curves' options can be set to.
+/// Bounds of what the curves' numbers can be set to.
 pub const SECONDS: (f32, f32) = (0.05, 1.5);
 pub const TOP_SPEED_LEAN: (f32, f32) = (0.3, 1.0);
 
+/// The classic keyboard's times and its lean at top speed: as
+/// `DigitalSteer` at medium, held 1.875 t + 1.875 t² up to all of it
+/// (0.385 s), let go 0.25 t + t² back to upright (0.883 s), upright at once
+/// the other way; its limit with speed two thirds of the way from all of
+/// it to 0.8.
+const CLASSIC_SECONDS: [f32; 3] = [0.385, 0.883, 0.0];
+const CLASSIC_TOP_SPEED_LEAN: f32 = 1.0 - (1.0 - 0.8) * 2.0 / 3.0;
+
 impl KeyboardCurves {
-    /// The preset these curves are, if any.
-    pub fn preset(&self) -> Option<CurvePreset> {
-        CURVE_PRESETS
-            .into_iter()
-            .find(|preset| preset.curves().same_as(self))
-    }
-
-    /// Whether `other` is these curves, but for the rounding of what is
-    /// saved.
-    fn same_as(&self, other: &Self) -> bool {
-        let near = |a: f32, b: f32| (a - b).abs() < 1e-4;
-        let curve = |a: Bezier, b: Bezier| {
-            near(a.x1, b.x1) && near(a.y1, b.y1) && near(a.x2, b.x2) && near(a.y2, b.y2)
-        };
-        let timed =
-            |a: TimedCurve, b: TimedCurve| curve(a.curve, b.curve) && near(a.seconds, b.seconds);
-        timed(self.lean_in, other.lean_in)
-            && timed(self.stand_up, other.stand_up)
-            && timed(self.unwind, other.unwind)
-            && curve(self.speed, other.speed)
-            && near(self.top_speed_lean, other.top_speed_lean)
-            && curve(self.turn, other.turn)
-    }
-
     /// The Bézier of curve `kind`.
     pub fn bezier(&self, kind: CurveKind) -> Bezier {
         match kind {
@@ -115,53 +100,6 @@ impl KeyboardCurves {
             CurveKind::Unwind => self.unwind.curve,
             CurveKind::Speed => self.speed,
             CurveKind::Turn => self.turn,
-        }
-    }
-
-    pub fn bezier_mut(&mut self, kind: CurveKind) -> &mut Bezier {
-        match kind {
-            CurveKind::LeanIn => &mut self.lean_in.curve,
-            CurveKind::StandUp => &mut self.stand_up.curve,
-            CurveKind::Unwind => &mut self.unwind.curve,
-            CurveKind::Speed => &mut self.speed,
-            CurveKind::Turn => &mut self.turn,
-        }
-    }
-
-    /// The number curve `kind` is scaled by, if it has one: the seconds of
-    /// A, B and C, the lean kept at top speed of D.
-    pub fn scale(&self, kind: CurveKind) -> Option<f32> {
-        match kind {
-            CurveKind::LeanIn => Some(self.lean_in.seconds),
-            CurveKind::StandUp => Some(self.stand_up.seconds),
-            CurveKind::Unwind => Some(self.unwind.seconds),
-            CurveKind::Speed => Some(self.top_speed_lean),
-            CurveKind::Turn => None,
-        }
-    }
-
-    /// Steps the number curve `kind` is scaled by (`step` steps of 0.05),
-    /// kept within its bounds. C may come down to nought: at once.
-    pub fn step_scale(&mut self, kind: CurveKind, step: i32) {
-        let stepped = |value: f32, (low, high): (f32, f32)| {
-            ((value + 0.05 * step as f32).clamp(low, high) * 1000.0).round() / 1000.0
-        };
-        match kind {
-            CurveKind::LeanIn => self.lean_in.seconds = stepped(self.lean_in.seconds, SECONDS),
-            CurveKind::StandUp => self.stand_up.seconds = stepped(self.stand_up.seconds, SECONDS),
-            CurveKind::Unwind => {
-                // From the least time down to nought, and back up.
-                let next = stepped(self.unwind.seconds, (0.0, SECONDS.1));
-                self.unwind.seconds = if next > 0.0 && next < SECONDS.0 {
-                    if step < 0 { 0.0 } else { SECONDS.0 }
-                } else {
-                    next
-                };
-            }
-            CurveKind::Speed => {
-                self.top_speed_lean = stepped(self.top_speed_lean, TOP_SPEED_LEAN);
-            }
-            CurveKind::Turn => {}
         }
     }
 
@@ -178,92 +116,262 @@ impl KeyboardCurves {
     }
 }
 
-/// The ready-made sets of curves.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CurvePreset {
-    /// The keyboard as it is without the curves (its options as they are at
-    /// first): leaning in faster and faster, standing up slowly at first,
-    /// upright at once turning the other way, a little less at speed.
+/// The shape chosen for one of the keyboard's curves.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum CurveShape {
+    /// The classic keyboard's (see [`CurveShape::fixed`]).
+    #[default]
     Classic,
-    /// Gentler in and out, and unwinding over a moment.
-    Smooth,
-    /// Quick to lean in from the first instant, quick back up, a little
-    /// more turn for a little lean.
-    Arcade,
-    /// Straight lines, short times: as the key says, nearly at once.
-    Direct,
+    /// CSS's own easings.
+    Linear,
+    Ease,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+    /// Its four numbers as set.
+    Custom,
+    /// As the game has learnt from how the player rides.
+    Learned,
 }
 
-pub const CURVE_PRESETS: [CurvePreset; 4] = [
-    CurvePreset::Classic,
-    CurvePreset::Smooth,
-    CurvePreset::Arcade,
-    CurvePreset::Direct,
+pub const CURVE_SHAPES: [CurveShape; 8] = [
+    CurveShape::Classic,
+    CurveShape::Linear,
+    CurveShape::Ease,
+    CurveShape::EaseIn,
+    CurveShape::EaseOut,
+    CurveShape::EaseInOut,
+    CurveShape::Custom,
+    CurveShape::Learned,
 ];
 
-/// The top speed of the keyboard's classic limit as a share of the bike's
-/// top speed (70 of 80 m/s), and the lean it keeps there: the turn limit
-/// as it is at first, two thirds of the way from all of it to 0.8.
-const CLASSIC_TOP_SPEED_LEAN: f32 = 1.0 - (1.0 - 0.8) * 2.0 / 3.0;
-
-impl CurvePreset {
-    pub fn curves(self) -> KeyboardCurves {
-        let timed = |x1, y1, x2, y2, seconds| TimedCurve {
-            curve: Bezier::new(x1, y1, x2, y2),
-            seconds,
-        };
+impl CurveShape {
+    /// Its Bézier for curve `kind`, if it has one of its own (not custom
+    /// nor learnt). The classic keyboard's lean in and stand up are
+    /// polynomials of the time, so their control points stand on the thirds
+    /// across (y1 = a/3, y2 = (a + 1)/3 for a t + (1 - a) t²); its limit
+    /// with speed, the smoothstep from 15 to 70 m/s, comes close as an
+    /// easing with both control points at 0.56 across; it unwinds at once
+    /// (any curve) and turns as far as it leans.
+    pub fn fixed(self, kind: CurveKind) -> Option<Bezier> {
         let third = 1.0 / 3.0;
-        match self {
-            // As `DigitalSteer` at medium: held, 1.875 t + 1.875 t² up to
-            // all of it (0.385 s); let go, 0.25 t + t² back to upright
-            // (0.883 s). Both polynomials of the time, so their control
-            // points stand on the thirds across. Its limit with speed, the
-            // smoothstep from 15 to 70 m/s, comes close as an easing with
-            // both control points at 0.56 across.
-            CurvePreset::Classic => KeyboardCurves {
-                lean_in: timed(third, 0.2406, 2.0 * third, 0.5739, 0.385),
-                stand_up: timed(third, 0.0736, 2.0 * third, 0.4069, 0.883),
-                unwind: timed(third, third, 2.0 * third, 2.0 * third, 0.0),
-                speed: Bezier::new(0.56, 0.0, 0.56, 1.0),
-                top_speed_lean: CLASSIC_TOP_SPEED_LEAN,
-                turn: Bezier::LINEAR,
+        Some(match self {
+            CurveShape::Classic => match kind {
+                CurveKind::LeanIn => Bezier::new(third, 0.2406, 2.0 * third, 0.5739),
+                CurveKind::StandUp => Bezier::new(third, 0.0736, 2.0 * third, 0.4069),
+                CurveKind::Speed => Bezier::new(0.56, 0.0, 0.56, 1.0),
+                CurveKind::Unwind | CurveKind::Turn => Bezier::LINEAR,
             },
-            CurvePreset::Smooth => KeyboardCurves {
-                lean_in: timed(0.3, 0.1, 0.6, 0.9, 0.5),
-                stand_up: timed(0.25, 0.1, 0.5, 1.0, 0.6),
-                unwind: timed(0.2, 0.3, 0.6, 1.0, 0.15),
-                speed: Bezier::new(0.4, 0.0, 0.6, 1.0),
-                top_speed_lean: 0.8,
-                turn: Bezier::LINEAR,
-            },
-            CurvePreset::Arcade => KeyboardCurves {
-                lean_in: timed(0.1, 0.5, 0.5, 0.95, 0.25),
-                stand_up: timed(0.1, 0.5, 0.4, 1.0, 0.35),
-                unwind: timed(0.1, 0.5, 0.4, 1.0, 0.08),
-                speed: Bezier::new(0.5, 0.0, 0.6, 1.0),
-                top_speed_lean: 0.9,
-                turn: Bezier::new(0.2, 0.4, 0.6, 0.85),
-            },
-            CurvePreset::Direct => KeyboardCurves {
-                lean_in: timed(third, third, 2.0 * third, 2.0 * third, 0.15),
-                stand_up: timed(third, third, 2.0 * third, 2.0 * third, 0.2),
-                unwind: timed(third, third, 2.0 * third, 2.0 * third, 0.0),
-                speed: Bezier::new(0.5, 0.0, 0.6, 1.0),
-                top_speed_lean: 0.95,
-                turn: Bezier::LINEAR,
-            },
-        }
+            CurveShape::Linear => Bezier::LINEAR,
+            CurveShape::Ease => Bezier::new(0.25, 0.1, 0.25, 1.0),
+            CurveShape::EaseIn => Bezier::new(0.42, 0.0, 1.0, 1.0),
+            CurveShape::EaseOut => Bezier::new(0.0, 0.0, 0.58, 1.0),
+            CurveShape::EaseInOut => Bezier::new(0.42, 0.0, 0.58, 1.0),
+            CurveShape::Custom | CurveShape::Learned => return None,
+        })
     }
 
     pub fn name(self, lang: Language) -> &'static str {
         match (self, lang) {
-            (CurvePreset::Classic, Language::Spanish) => "Clásico",
-            (CurvePreset::Classic, Language::English) => "Classic",
-            (CurvePreset::Smooth, Language::Spanish) => "Suave",
-            (CurvePreset::Smooth, Language::English) => "Smooth",
-            (CurvePreset::Arcade, _) => "Arcade",
-            (CurvePreset::Direct, Language::Spanish) => "Directo",
-            (CurvePreset::Direct, Language::English) => "Direct",
+            (CurveShape::Classic, Language::Spanish) => "Clásica",
+            (CurveShape::Classic, Language::English) => "Classic",
+            (CurveShape::Linear, Language::Spanish) => "Lineal",
+            (CurveShape::Linear, Language::English) => "Linear",
+            (CurveShape::Ease, _) => "Ease",
+            (CurveShape::EaseIn, _) => "Ease-in",
+            (CurveShape::EaseOut, _) => "Ease-out",
+            (CurveShape::EaseInOut, _) => "Ease-in-out",
+            (CurveShape::Custom, Language::Spanish) => "Personalizada",
+            (CurveShape::Custom, Language::English) => "Custom",
+            (CurveShape::Learned, Language::Spanish) => "Aprendida",
+            (CurveShape::Learned, Language::English) => "Learned",
+        }
+    }
+}
+
+/// What is chosen for one of the keyboard's curves: its shape, its own four
+/// numbers (used when custom) and what has been learnt for it, if anything
+/// (used when learnt).
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CurveChoice {
+    pub shape: CurveShape,
+    pub custom: Bezier,
+    pub learned: Option<Bezier>,
+}
+
+impl CurveChoice {
+    /// Classic, its custom numbers the classic ones to start from.
+    fn classic(kind: CurveKind) -> Self {
+        Self {
+            shape: CurveShape::Classic,
+            custom: CurveShape::Classic.fixed(kind).unwrap_or(Bezier::LINEAR),
+            learned: None,
+        }
+    }
+}
+
+impl Default for CurveChoice {
+    fn default() -> Self {
+        Self::classic(CurveKind::Turn)
+    }
+}
+
+/// The keyboard's curves as Options > Control > Keyboard behaviour chooses
+/// them in Bézier, saved with the settings: each curve's shape, the times
+/// of A, B and C, the lean D keeps at top speed, and whether the game is
+/// learning them all from how the player rides (then every curve is the
+/// learnt one, whatever its shape).
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KeyboardShapes {
+    pub lean_in: CurveChoice,
+    pub stand_up: CurveChoice,
+    pub unwind: CurveChoice,
+    pub speed: CurveChoice,
+    pub turn: CurveChoice,
+    pub lean_in_seconds: f32,
+    pub stand_up_seconds: f32,
+    pub unwind_seconds: f32,
+    pub top_speed_lean: f32,
+    pub learning: bool,
+}
+
+impl Default for KeyboardShapes {
+    fn default() -> Self {
+        Self {
+            lean_in: CurveChoice::classic(CurveKind::LeanIn),
+            stand_up: CurveChoice::classic(CurveKind::StandUp),
+            unwind: CurveChoice::classic(CurveKind::Unwind),
+            speed: CurveChoice::classic(CurveKind::Speed),
+            turn: CurveChoice::classic(CurveKind::Turn),
+            lean_in_seconds: CLASSIC_SECONDS[0],
+            stand_up_seconds: CLASSIC_SECONDS[1],
+            unwind_seconds: CLASSIC_SECONDS[2],
+            top_speed_lean: CLASSIC_TOP_SPEED_LEAN,
+            learning: false,
+        }
+    }
+}
+
+impl KeyboardShapes {
+    pub fn choice(&self, kind: CurveKind) -> &CurveChoice {
+        match kind {
+            CurveKind::LeanIn => &self.lean_in,
+            CurveKind::StandUp => &self.stand_up,
+            CurveKind::Unwind => &self.unwind,
+            CurveKind::Speed => &self.speed,
+            CurveKind::Turn => &self.turn,
+        }
+    }
+
+    pub fn choice_mut(&mut self, kind: CurveKind) -> &mut CurveChoice {
+        match kind {
+            CurveKind::LeanIn => &mut self.lean_in,
+            CurveKind::StandUp => &mut self.stand_up,
+            CurveKind::Unwind => &mut self.unwind,
+            CurveKind::Speed => &mut self.speed,
+            CurveKind::Turn => &mut self.turn,
+        }
+    }
+
+    /// The shape curve `kind` has now: learnt for all of them while the
+    /// game learns them, the one chosen otherwise.
+    pub fn shape(&self, kind: CurveKind) -> CurveShape {
+        if self.learning {
+            CurveShape::Learned
+        } else {
+            self.choice(kind).shape
+        }
+    }
+
+    /// The Bézier of curve `kind` now: its shape's own, its custom numbers,
+    /// or what has been learnt (until anything has, its custom numbers).
+    pub fn bezier(&self, kind: CurveKind) -> Bezier {
+        let choice = self.choice(kind);
+        match self.shape(kind) {
+            CurveShape::Custom => choice.custom,
+            CurveShape::Learned => choice.learned.unwrap_or(choice.custom),
+            shape => shape.fixed(kind).unwrap_or(Bezier::LINEAR),
+        }
+    }
+
+    /// Curve `kind` gets the shape `step` along. Learnt for the first time,
+    /// it starts from the curve it had.
+    pub fn step_shape(&mut self, kind: CurveKind, step: i32) {
+        let was = self.bezier(kind);
+        let choice = self.choice_mut(kind);
+        choice.shape = crate::settings::cycle(&CURVE_SHAPES, choice.shape, step);
+        if choice.shape == CurveShape::Learned && choice.learned.is_none() {
+            choice.learned = Some(was);
+        }
+    }
+
+    /// The game learning every curve, or not: on, each curve not learnt yet
+    /// starts from the one it has; off, each goes back to its shape.
+    pub fn set_learning(&mut self, on: bool) {
+        if on {
+            for kind in CURVE_KINDS {
+                let was = self.bezier(kind);
+                let choice = self.choice_mut(kind);
+                choice.learned.get_or_insert(was);
+            }
+        }
+        self.learning = on;
+    }
+
+    /// The number curve `kind` is scaled by, if it has one: the seconds of
+    /// A, B and C, the lean kept at top speed of D.
+    pub fn scale(&self, kind: CurveKind) -> Option<f32> {
+        match kind {
+            CurveKind::LeanIn => Some(self.lean_in_seconds),
+            CurveKind::StandUp => Some(self.stand_up_seconds),
+            CurveKind::Unwind => Some(self.unwind_seconds),
+            CurveKind::Speed => Some(self.top_speed_lean),
+            CurveKind::Turn => None,
+        }
+    }
+
+    /// Steps the number curve `kind` is scaled by (`step` steps of 0.05),
+    /// kept within its bounds. C may come down to nought: at once.
+    pub fn step_scale(&mut self, kind: CurveKind, step: i32) {
+        let stepped = |value: f32, (low, high): (f32, f32)| {
+            ((value + 0.05 * step as f32).clamp(low, high) * 1000.0).round() / 1000.0
+        };
+        match kind {
+            CurveKind::LeanIn => self.lean_in_seconds = stepped(self.lean_in_seconds, SECONDS),
+            CurveKind::StandUp => {
+                self.stand_up_seconds = stepped(self.stand_up_seconds, SECONDS);
+            }
+            CurveKind::Unwind => {
+                // From the least time down to nought, and back up.
+                let next = stepped(self.unwind_seconds, (0.0, SECONDS.1));
+                self.unwind_seconds = if next > 0.0 && next < SECONDS.0 {
+                    if step < 0 { 0.0 } else { SECONDS.0 }
+                } else {
+                    next
+                };
+            }
+            CurveKind::Speed => {
+                self.top_speed_lean = stepped(self.top_speed_lean, TOP_SPEED_LEAN);
+            }
+            CurveKind::Turn => {}
+        }
+    }
+
+    /// The curves the bike follows.
+    pub fn curves(&self) -> KeyboardCurves {
+        let timed = |kind, seconds| TimedCurve {
+            curve: self.bezier(kind),
+            seconds,
+        };
+        KeyboardCurves {
+            lean_in: timed(CurveKind::LeanIn, self.lean_in_seconds),
+            stand_up: timed(CurveKind::StandUp, self.stand_up_seconds),
+            unwind: timed(CurveKind::Unwind, self.unwind_seconds),
+            speed: self.bezier(CurveKind::Speed),
+            top_speed_lean: self.top_speed_lean,
+            turn: self.bezier(CurveKind::Turn),
         }
     }
 }
@@ -366,11 +474,6 @@ impl CurveKind {
             },
             _ => format!("{value:.2} s"),
         }
-    }
-
-    /// The other one, `step` along.
-    pub fn next(self, step: i32) -> Self {
-        crate::settings::cycle(&CURVE_KINDS, self, step)
     }
 }
 
@@ -530,22 +633,61 @@ mod tests {
     }
 
     #[test]
-    fn every_preset_is_found_by_its_curves_and_the_classic_one_is_the_default() {
-        for preset in CURVE_PRESETS {
-            assert_eq!(preset.curves().preset(), Some(preset));
+    fn every_curve_starts_classic_and_takes_each_shape_in_turn() {
+        let mut shapes = KeyboardShapes::default();
+        for kind in CURVE_KINDS {
+            assert_eq!(shapes.shape(kind), CurveShape::Classic);
+            // Its custom numbers start from the classic curve.
+            assert_eq!(shapes.choice(kind).custom, shapes.bezier(kind));
         }
+        shapes.step_shape(CurveKind::Turn, 1);
+        assert_eq!(shapes.shape(CurveKind::Turn), CurveShape::Linear);
+        shapes.step_shape(CurveKind::Turn, 1);
         assert_eq!(
-            KeyboardCurves::default().preset(),
-            Some(CurvePreset::Classic)
+            shapes.bezier(CurveKind::Turn),
+            Bezier::new(0.25, 0.1, 0.25, 1.0)
         );
-        let mut custom = KeyboardCurves::default();
-        custom.turn.y1 = 0.5;
-        assert_eq!(custom.preset(), None);
+        // Custom: its own numbers.
+        shapes.turn.custom = Bezier::new(0.1, 0.6, 0.5, 1.0);
+        shapes.turn.shape = CurveShape::Custom;
+        assert_eq!(shapes.bezier(CurveKind::Turn), shapes.turn.custom);
+        assert_eq!(shapes.curves().turn, shapes.turn.custom);
+        // Back round from the first to the last: learnt.
+        shapes.step_shape(CurveKind::LeanIn, -1);
+        assert_eq!(shapes.shape(CurveKind::LeanIn), CurveShape::Learned);
+    }
+
+    #[test]
+    fn a_learnt_curve_starts_from_the_one_it_had_and_learning_makes_them_all_learnt() {
+        let mut shapes = KeyboardShapes::default();
+        shapes.speed.shape = CurveShape::EaseIn;
+        let ease_in = shapes.bezier(CurveKind::Speed);
+        // Chosen learnt, it starts from the curve it had.
+        shapes.step_shape(CurveKind::Speed, 4);
+        assert_eq!(shapes.shape(CurveKind::Speed), CurveShape::Learned);
+        assert_eq!(shapes.bezier(CurveKind::Speed), ease_in);
+        shapes.speed.shape = CurveShape::Linear;
+        // Learning: every curve learnt, each from what it had.
+        let before = shapes.curves();
+        shapes.set_learning(true);
+        for kind in CURVE_KINDS {
+            assert_eq!(shapes.shape(kind), CurveShape::Learned);
+        }
+        assert_eq!(shapes.bezier(CurveKind::LeanIn), before.lean_in.curve);
+        // D was learnt before: it keeps what it had learnt.
+        assert_eq!(shapes.bezier(CurveKind::Speed), ease_in);
+        // What is learnt changes the curve followed.
+        shapes.lean_in.learned = Some(Bezier::LINEAR);
+        assert_eq!(shapes.curves().lean_in.curve, Bezier::LINEAR);
+        // Off, each back to its shape.
+        shapes.set_learning(false);
+        assert_eq!(shapes.shape(CurveKind::Speed), CurveShape::Linear);
+        assert_eq!(shapes.curves(), before);
     }
 
     #[test]
     fn holding_a_key_leans_over_along_a_in_its_time() {
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         let values = run(&curves, 0.0, 1.0, |_| 1.0);
         // Moving from the first step, all the way over by A's time.
         assert!(values[0] > 0.0);
@@ -562,7 +704,7 @@ mod tests {
     fn the_classic_preset_leans_as_the_classic_keyboard_steers() {
         // DigitalSteer at medium: 1.875 t + 1.875 t² held; from all the way
         // over, 0.25 t + t² back once let go.
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         let held = run(&curves, 0.0, 0.3, |_| 1.0);
         for seconds in [0.05, 0.1, 0.2, 0.3] {
             let classic = 1.875 * seconds + 1.875 * seconds * seconds;
@@ -586,7 +728,7 @@ mod tests {
 
     #[test]
     fn the_lean_is_limited_at_speed_as_d_says() {
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         assert!((curves.lean_limit(0.0) - 1.0).abs() < 1e-6);
         let top = curves.lean_limit(1.0);
         assert!((top - curves.top_speed_lean).abs() < 1e-5);
@@ -600,7 +742,7 @@ mod tests {
 
     #[test]
     fn the_limit_rising_lets_the_lean_go_on_without_a_jump() {
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         let mut lean = CurveLean::default();
         for _ in 0..120 {
             lean.update(1.0, &curves, 1.0, DT);
@@ -613,7 +755,7 @@ mod tests {
 
     #[test]
     fn letting_go_halfway_comes_back_from_where_it_was() {
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         let values = run(&curves, 0.0, 1.5, |t| if t < 0.15 { 1.0 } else { 0.0 });
         let let_go = at(&values, 0.15);
         let after = at(&values, 0.15 + DT);
@@ -629,7 +771,7 @@ mod tests {
     fn turning_the_other_way_comes_upright_as_c_says() {
         let flip = |t: f32| if t < 0.5 { 1.0 } else { -1.0 };
         // Classic: upright at once and over the other way as A says.
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         let values = run(&curves, 0.0, 1.0, flip);
         let after = at(&values, 0.5 + DT);
         assert!(after < 0.0 && after > -0.05, "{after}");
@@ -645,7 +787,7 @@ mod tests {
 
     #[test]
     fn the_turn_follows_the_lean_through_e() {
-        let mut curves = CurvePreset::Classic.curves();
+        let mut curves = KeyboardCurves::default();
         assert_eq!(curves.turn_for(0.0), 0.0);
         assert!((curves.turn_for(0.5) - 0.5).abs() < 1e-5);
         assert!((curves.turn_for(-0.5) + 0.5).abs() < 1e-5);
@@ -655,7 +797,17 @@ mod tests {
 
     #[test]
     fn the_same_ride_at_any_frame_rate() {
-        let curves = CurvePreset::Smooth.curves();
+        // Smooth: easing in and out, unwinding over a moment.
+        let mut shapes = KeyboardShapes {
+            lean_in_seconds: 0.5,
+            stand_up_seconds: 0.6,
+            unwind_seconds: 0.15,
+            ..default()
+        };
+        shapes.lean_in.shape = CurveShape::EaseInOut;
+        shapes.stand_up.shape = CurveShape::EaseOut;
+        shapes.unwind.shape = CurveShape::Ease;
+        let curves = shapes.curves();
         let ride = |dt: f32| {
             let mut lean = CurveLean::default();
             for frame in 0..(1.1 / dt).round() as usize {
@@ -678,22 +830,22 @@ mod tests {
 
     #[test]
     fn the_scales_step_within_their_bounds_and_c_reaches_at_once() {
-        let mut curves = KeyboardCurves::default();
+        let mut curves = KeyboardShapes::default();
         for _ in 0..100 {
             curves.step_scale(CurveKind::LeanIn, 1);
         }
-        assert_eq!(curves.lean_in.seconds, SECONDS.1);
+        assert_eq!(curves.lean_in_seconds, SECONDS.1);
         for _ in 0..100 {
             curves.step_scale(CurveKind::Speed, -1);
         }
         assert_eq!(curves.top_speed_lean, TOP_SPEED_LEAN.0);
         // C: from nought up to the least time, and back down to nought.
-        assert_eq!(curves.unwind.seconds, 0.0);
+        assert_eq!(curves.unwind_seconds, 0.0);
         curves.step_scale(CurveKind::Unwind, 1);
-        assert_eq!(curves.unwind.seconds, SECONDS.0);
+        assert_eq!(curves.unwind_seconds, SECONDS.0);
         curves.step_scale(CurveKind::Unwind, -1);
-        assert_eq!(curves.unwind.seconds, 0.0);
+        assert_eq!(curves.unwind_seconds, 0.0);
         curves.step_scale(CurveKind::Unwind, -1);
-        assert_eq!(curves.unwind.seconds, 0.0);
+        assert_eq!(curves.unwind_seconds, 0.0);
     }
 }

@@ -5,7 +5,9 @@ use bevy::prelude::*;
 use bevy::ui::{UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
-use crate::bike::curves::{CURVE_PRESETS, CurveKind, KEYBOARD_MODES, KeyboardMode};
+use crate::bike::curves::{
+    CURVE_KINDS, CurveKind, CurveShape, KEYBOARD_MODES, KeyboardMode, KeyboardShapes,
+};
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
 use crate::legend::{
@@ -270,9 +272,11 @@ pub struct OptionsMenu {
     /// steers, or the keyboard, or the advanced options (Control), or the
     /// performance HUD or the advanced options (Graphics).
     pub page: Option<Page>,
-    /// Which of the keyboard's curves Control's advanced options edit (and
-    /// their panel brings out).
+    /// Which of the keyboard's curves the keyboard's page is on (and their
+    /// panel brings out), and, while a custom curve's four numbers are
+    /// being edited, which of them.
     pub curve: CurveKind,
+    pub point: Option<usize>,
     pub return_to: OptionsReturn,
     pub rescan_msg_until: f32,
 }
@@ -297,11 +301,18 @@ impl Page {
     fn row(self) -> usize {
         let at = |items: Vec<_>, row| items.iter().position(|&item| item == row);
         match self {
-            Page::Stick => at(control_items(None), ControlItem::StickBehaviour),
-            Page::Keyboard | Page::KeyboardCurves => {
-                at(control_items(None), ControlItem::KeyboardBehaviour)
-            }
-            Page::ControlAdvanced => at(control_items(None), ControlItem::Advanced),
+            Page::Stick => at(
+                control_items(None, &KeyboardShapes::default()),
+                ControlItem::StickBehaviour,
+            ),
+            Page::Keyboard | Page::KeyboardCurves => at(
+                control_items(None, &KeyboardShapes::default()),
+                ControlItem::KeyboardBehaviour,
+            ),
+            Page::ControlAdvanced => at(
+                control_items(None, &KeyboardShapes::default()),
+                ControlItem::Advanced,
+            ),
             Page::PerformanceHud => graphics_items(None)
                 .iter()
                 .position(|&item| item == GraphicsItem::PerformanceHud),
@@ -340,11 +351,13 @@ impl OptionsMenu {
         self.is_open = false;
         self.mapping = None;
         self.page = None;
+        self.point = None;
     }
 
     /// Back from a page to its section, on the page's row.
     fn leave_page(&mut self, page: Page) {
         self.page = None;
+        self.point = None;
         self.selected = page.row();
     }
 
@@ -439,17 +452,13 @@ enum ControlItem {
     Advanced,
     /// Classic or by the curves, below (on the keyboard's page then).
     KeyboardMode,
-    /// A ready-made set of the curves.
-    CurvePreset,
-    /// Which one is edited, with the rest of the rows.
-    CurveChoice,
-    /// Its time, or for D the lean at top speed.
-    CurveScale,
-    /// Its control points.
-    CurveX1,
-    CurveY1,
-    CurveX2,
-    CurveY2,
+    /// A curve's shape; under it, when custom, its four numbers on one
+    /// line, and its time (or for D the lean at top speed).
+    CurveShape(CurveKind),
+    CurveCustom(CurveKind),
+    CurveScale(CurveKind),
+    /// Whether the game learns every curve from how the player rides.
+    Learning,
     ShowLegend,
     RescanGamepads,
 }
@@ -536,13 +545,26 @@ const GROUP_GAP: f32 = 14.0;
 /// after the mapping, the legend after the steering, and looking for the
 /// gamepads after the legend and its shortcuts; on Graphics, the
 /// performance forced with what it chooses under it, and the pages.
-fn starts_group(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
+fn starts_group(
+    tab: OptionsTab,
+    page: Option<Page>,
+    index: usize,
+    shapes: &KeyboardShapes,
+) -> bool {
+    // On the keyboard's curves, each curve (with its rows) and learning.
+    if page == Some(Page::KeyboardCurves) {
+        return index > 0
+            && matches!(
+                control_items(page, shapes).get(index),
+                Some(ControlItem::CurveShape(_) | ControlItem::Learning)
+            );
+    }
     if page.is_some() {
         return false;
     }
     match tab {
         OptionsTab::Control => matches!(
-            control_items(page).get(index),
+            control_items(page, shapes).get(index),
             Some(
                 ControlItem::StickBehaviour | ControlItem::ShowLegend | ControlItem::RescanGamepads
             )
@@ -558,13 +580,16 @@ fn starts_group(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
 /// Whether the shortcuts for the sound and fullscreen go under the row at
 /// `index` of `tab` (and `page`): under Control's legend.
 fn shortcuts_after(tab: OptionsTab, page: Option<Page>, index: usize) -> bool {
-    tab == OptionsTab::Control && control_items(page).get(index) == Some(&ControlItem::ShowLegend)
+    tab == OptionsTab::Control
+        && control_items(page, &KeyboardShapes::default()).get(index)
+            == Some(&ControlItem::ShowLegend)
 }
 
 /// Control's options: the mapping of the controls, the pages of how the
 /// stick and the keyboard steer and of the advanced options, the legend;
-/// or, with a page open, its own.
-fn control_items(page: Option<Page>) -> Vec<ControlItem> {
+/// or, with a page open, its own (the keyboard's curves as `shapes` has
+/// them: a custom one's numbers only while it is custom).
+fn control_items(page: Option<Page>, shapes: &KeyboardShapes) -> Vec<ControlItem> {
     match page {
         // (Graphics' pages are not Control's.)
         None | Some(Page::PerformanceHud | Page::Advanced) => vec![
@@ -583,15 +608,20 @@ fn control_items(page: Option<Page>) -> Vec<ControlItem> {
             ControlItem::KeyboardReverseRate,
         ],
         Some(Page::ControlAdvanced) => vec![ControlItem::KeyboardMode],
-        Some(Page::KeyboardCurves) => vec![
-            ControlItem::CurvePreset,
-            ControlItem::CurveChoice,
-            ControlItem::CurveScale,
-            ControlItem::CurveX1,
-            ControlItem::CurveY1,
-            ControlItem::CurveX2,
-            ControlItem::CurveY2,
-        ],
+        Some(Page::KeyboardCurves) => {
+            let mut items = Vec::new();
+            for kind in CURVE_KINDS {
+                items.push(ControlItem::CurveShape(kind));
+                if shapes.shape(kind) == CurveShape::Custom {
+                    items.push(ControlItem::CurveCustom(kind));
+                }
+                if shapes.scale(kind).is_some() {
+                    items.push(ControlItem::CurveScale(kind));
+                }
+            }
+            items.push(ControlItem::Learning);
+            items
+        }
     }
 }
 
@@ -683,10 +713,10 @@ fn render_scale_name(percent: u32, window: Option<&Window>, native: NativeShare)
 
 /// How many options `tab` (on `page` of its, if one is open) has, besides
 /// Reset and Back.
-fn options_count(tab: OptionsTab, page: Option<Page>) -> usize {
+fn options_count(tab: OptionsTab, page: Option<Page>, shapes: &KeyboardShapes) -> usize {
     match tab {
         OptionsTab::Game => game_items().len(),
-        OptionsTab::Control => control_items(page).len(),
+        OptionsTab::Control => control_items(page, shapes).len(),
         OptionsTab::Sound => sound_items().len(),
         OptionsTab::Graphics => graphics_items(page).len(),
     }
@@ -699,8 +729,8 @@ const FOOTER: usize = 2;
 
 /// How many options `tab` (on `page`) has, Reset and Back at its foot
 /// included.
-fn tab_items_count(tab: OptionsTab, page: Option<Page>) -> usize {
-    options_count(tab, page) + FOOTER
+fn tab_items_count(tab: OptionsTab, page: Option<Page>, shapes: &KeyboardShapes) -> usize {
+    options_count(tab, page, shapes) + FOOTER
 }
 
 /// The settings as they are at first.
@@ -733,25 +763,55 @@ fn performance_hud(settings: &Settings) -> (bool, bool, bool, bool, bool, bool) 
     )
 }
 
-/// A row of a control point of curve `kind`'s: which end of the curve it
-/// shapes (P1 its start, P2 its end), what the coordinate measures and its
-/// value.
-fn point_row(
-    item: ControlItem,
-    kind: CurveKind,
-    lang: Language,
-    curve: &crate::bezier::Bezier,
-) -> (&'static str, &'static str, f32) {
+/// The name of number `point` (0 to 3, as `cubic-bezier` lists them) of
+/// curve `kind`: which end of the curve it shapes (x1 and y1 its start, x2
+/// and y2 its end) and what it measures there.
+fn point_name(point: usize, kind: CurveKind, lang: Language) -> String {
     let (across, up) = kind.axes(lang);
-    let (start, end) = match lang {
-        Language::Spanish => ("Inicio", "Final"),
-        Language::English => ("Start", "End"),
+    let end = match (point < 2, lang) {
+        (true, Language::Spanish) => "Inicio",
+        (true, Language::English) => "Start",
+        (false, Language::Spanish) => "Final",
+        (false, Language::English) => "End",
     };
+    let axis = if point.is_multiple_of(2) { across } else { up };
+    format!("{end} · {axis}")
+}
+
+/// Number `point` (0 to 3, as `cubic-bezier` lists them) of `curve`.
+fn point_mut(curve: &mut crate::bezier::Bezier, point: usize) -> &mut f32 {
+    match point {
+        0 => &mut curve.x1,
+        1 => &mut curve.y1,
+        2 => &mut curve.x2,
+        _ => &mut curve.y2,
+    }
+}
+
+/// A custom curve's four numbers on one line, the one being edited (if
+/// any) in brackets.
+fn custom_line(curve: crate::bezier::Bezier, editing: Option<usize>) -> String {
+    [curve.x1, curve.y1, curve.x2, curve.y2]
+        .iter()
+        .enumerate()
+        .map(|(point, value)| {
+            if editing == Some(point) {
+                format!("[{value:.2}]")
+            } else {
+                format!(" {value:.2} ")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("  ")
+}
+
+/// The curve a row of the keyboard's curves is about.
+fn curve_of(item: ControlItem) -> Option<CurveKind> {
     match item {
-        ControlItem::CurveX1 => (start, across, curve.x1),
-        ControlItem::CurveY1 => (start, up, curve.y1),
-        ControlItem::CurveX2 => (end, across, curve.x2),
-        _ => (end, up, curve.y2),
+        ControlItem::CurveShape(kind)
+        | ControlItem::CurveCustom(kind)
+        | ControlItem::CurveScale(kind) => Some(kind),
+        _ => None,
     }
 }
 
@@ -823,7 +883,7 @@ fn section_is_default(
             return keyboard(debug) == keyboard(&at_first);
         }
         (OptionsTab::Control, Some(Page::KeyboardCurves)) => {
-            return settings.keyboard_curves == first.keyboard_curves;
+            return settings.keyboard_shapes == first.keyboard_shapes;
         }
         (OptionsTab::Control, Some(Page::ControlAdvanced)) => {
             return settings.keyboard_mode == first.keyboard_mode;
@@ -863,7 +923,7 @@ fn section_is_default(
         OptionsTab::Control => {
             steering(debug) == steering(&DebugOptions::default())
                 && settings.keyboard_mode == first.keyboard_mode
-                && settings.keyboard_curves == first.keyboard_curves
+                && settings.keyboard_shapes == first.keyboard_shapes
         }
         OptionsTab::Sound => {
             (
@@ -924,7 +984,7 @@ fn reset_section(
             return;
         }
         (OptionsTab::Control, Some(Page::KeyboardCurves)) => {
-            settings.keyboard_curves = first.keyboard_curves;
+            settings.keyboard_shapes = first.keyboard_shapes;
             return;
         }
         (OptionsTab::Control, Some(Page::ControlAdvanced)) => {
@@ -956,7 +1016,7 @@ fn reset_section(
         OptionsTab::Control => {
             *debug = DebugOptions::default();
             settings.keyboard_mode = first.keyboard_mode;
-            settings.keyboard_curves = first.keyboard_curves;
+            settings.keyboard_shapes = first.keyboard_shapes;
         }
         OptionsTab::Sound => {
             settings.fx_volume = first.fx_volume;
@@ -1043,6 +1103,28 @@ fn use_options_menu(
         return;
     }
 
+    // A custom curve's four numbers, while they are edited: across, from
+    // one to another; up and down, the number, by 0.05; confirming or going
+    // back, done.
+    if let Some(point) = options_menu.point {
+        if request.back || request.confirm {
+            options_menu.point = None;
+            sounds.write(MenuSound::Move);
+        } else if request.side != 0 {
+            options_menu.point = Some((point as i32 + request.side).clamp(0, 3) as usize);
+            sounds.write(MenuSound::Move);
+        } else if request.step != 0 {
+            let curve = &mut settings
+                .keyboard_shapes
+                .choice_mut(options_menu.curve)
+                .custom;
+            let value = point_mut(curve, point);
+            *value = step_point(*value, -request.step);
+            sounds.write(MenuSound::Move);
+        }
+        return;
+    }
+
     // Salir / Volver con Esc o B: from a page of Control's, back to
     // Control.
     let page = options_menu.page;
@@ -1067,13 +1149,20 @@ fn use_options_menu(
 
     // Up and down through the row of sections and the options; across on
     // the row of sections, another section.
-    let count = tab_items_count(options_menu.tab, page);
+    let count = tab_items_count(options_menu.tab, page, &settings.keyboard_shapes);
     let on_tabs = options_menu.on_tabs;
     if options_menu.navigate(request.step, request.side, request.confirm, count) {
         sounds.write(MenuSound::Move);
         // Up to the row of sections from a page of Control's: Control.
         if options_menu.on_tabs && page.is_some() {
             options_menu.page = None;
+        }
+        // On the keyboard's curves, the curve of the row chosen.
+        if options_menu.tab == OptionsTab::Control && !options_menu.on_tabs {
+            let items = control_items(options_menu.page, &settings.keyboard_shapes);
+            if let Some(kind) = items.get(options_menu.selected).copied().and_then(curve_of) {
+                options_menu.curve = kind;
+            }
         }
     }
     if on_tabs || request.step != 0 {
@@ -1147,7 +1236,7 @@ fn use_options_menu(
             }
         }
         OptionsTab::Control => {
-            let items = control_items(page);
+            let items = control_items(page, &settings.keyboard_shapes);
             let item = items[options_menu.selected.min(items.len() - 1)];
             match item {
                 ControlItem::Mapping if request.confirm => {
@@ -1173,42 +1262,26 @@ fn use_options_menu(
                     settings.keyboard_mode = cycle(&KEYBOARD_MODES, settings.keyboard_mode, change);
                     sounds.write(MenuSound::Move);
                 }
-                ControlItem::CurvePreset if change != 0 => {
-                    let curves = &mut settings.keyboard_curves;
-                    // From curves of one's own, the first or the last preset.
-                    let next = match curves.preset() {
-                        Some(preset) => cycle(&CURVE_PRESETS, preset, change),
-                        None if change > 0 => CURVE_PRESETS[0],
-                        None => CURVE_PRESETS[CURVE_PRESETS.len() - 1],
-                    };
-                    *curves = next.curves();
-                    sounds.write(MenuSound::Move);
-                }
-                ControlItem::CurveChoice if change != 0 => {
-                    options_menu.curve = options_menu.curve.next(change);
-                    sounds.write(MenuSound::Move);
-                }
-                ControlItem::CurveScale if change != 0 => {
-                    let curve = options_menu.curve;
-                    if settings.keyboard_curves.scale(curve).is_some() {
-                        settings.keyboard_curves.step_scale(curve, change);
-                        sounds.write(MenuSound::Move);
-                    }
-                }
-                ControlItem::CurveX1
-                | ControlItem::CurveY1
-                | ControlItem::CurveX2
-                | ControlItem::CurveY2
-                    if change != 0 =>
+                // While the game learns them, the curves are its own.
+                ControlItem::CurveShape(kind)
+                    if change != 0 && !settings.keyboard_shapes.learning =>
                 {
-                    let curve = settings.keyboard_curves.bezier_mut(options_menu.curve);
-                    let value = match item {
-                        ControlItem::CurveX1 => &mut curve.x1,
-                        ControlItem::CurveY1 => &mut curve.y1,
-                        ControlItem::CurveX2 => &mut curve.x2,
-                        _ => &mut curve.y2,
-                    };
-                    *value = step_point(*value, change);
+                    settings.keyboard_shapes.step_shape(kind, change);
+                    sounds.write(MenuSound::Move);
+                }
+                // Into its four numbers, from the first (or across from
+                // the last).
+                ControlItem::CurveCustom(_) if change != 0 => {
+                    options_menu.point = Some(if request.side < 0 { 3 } else { 0 });
+                    sounds.write(MenuSound::Confirm);
+                }
+                ControlItem::CurveScale(kind) if change != 0 => {
+                    settings.keyboard_shapes.step_scale(kind, change);
+                    sounds.write(MenuSound::Move);
+                }
+                ControlItem::Learning if change != 0 => {
+                    let on = !settings.keyboard_shapes.learning;
+                    settings.keyboard_shapes.set_learning(on);
                     sounds.write(MenuSound::Move);
                 }
                 ControlItem::StickTurnLimit if change != 0 => {
@@ -1732,7 +1805,7 @@ fn show_options_menu(
                 ),
             })
             .collect(),
-        OptionsTab::Control => control_items(options_menu.page)
+        OptionsTab::Control => control_items(options_menu.page, &settings.keyboard_shapes)
             .into_iter()
             .map(|item| match item {
                 ControlItem::StickBehaviour => Row::with_value(
@@ -1818,58 +1891,43 @@ fn show_options_menu(
                     },
                     format!("<  {}  >", settings.keyboard_mode.name(lang)),
                 ),
-                ControlItem::CurvePreset => Row::with_value(
-                    match lang {
-                        Language::Spanish => "Preajuste",
-                        Language::English => "Preset",
-                    },
+                // A learnt curve, while the game learns them all, in the
+                // amber of what changes by itself.
+                ControlItem::CurveShape(kind) => {
+                    let shapes = &settings.keyboard_shapes;
+                    Row::with_value(
+                        format!("{} · {}", kind.letter(), kind.name(lang)),
+                        format!("<  {}  >", shapes.shape(kind).name(lang)),
+                    )
+                    .automatic(shapes.learning)
+                }
+                ControlItem::CurveCustom(kind) => {
+                    let editing = options_menu.point.filter(|_| options_menu.curve == kind);
+                    Row::with_value(
+                        match editing {
+                            Some(point) => format!("      {}", point_name(point, kind, lang)),
+                            None => "      cubic-bezier".to_string(),
+                        },
+                        custom_line(settings.keyboard_shapes.choice(kind).custom, editing),
+                    )
+                }
+                ControlItem::CurveScale(kind) => Row::with_value(
+                    format!("      {}", kind.scale_name(lang)),
                     format!(
                         "<  {}  >",
-                        settings.keyboard_curves.preset().map_or(
-                            match lang {
-                                Language::Spanish => "Personalizado",
-                                Language::English => "Custom",
-                            },
-                            |preset| preset.name(lang)
+                        kind.scale_text(
+                            settings.keyboard_shapes.scale(kind).unwrap_or_default(),
+                            lang
                         )
                     ),
                 ),
-                ControlItem::CurveChoice => Row::with_value(
+                ControlItem::Learning => Row::check(
                     match lang {
-                        Language::Spanish => "Curva",
-                        Language::English => "Curve",
+                        Language::Spanish => "Auto-aprendizaje",
+                        Language::English => "Self-learning",
                     },
-                    format!(
-                        "<  {} · {}  >",
-                        options_menu.curve.letter(),
-                        options_menu.curve.name(lang)
-                    ),
+                    settings.keyboard_shapes.learning,
                 ),
-                ControlItem::CurveScale => {
-                    let curve = options_menu.curve;
-                    match settings.keyboard_curves.scale(curve) {
-                        Some(value) => Row::with_value(
-                            curve.scale_name(lang),
-                            format!("<  {}  >", curve.scale_text(value, lang)),
-                        ),
-                        None => Row {
-                            disabled: true,
-                            ..Row::with_value(curve.scale_name(lang), "—")
-                        },
-                    }
-                }
-                ControlItem::CurveX1
-                | ControlItem::CurveY1
-                | ControlItem::CurveX2
-                | ControlItem::CurveY2 => {
-                    let kind = options_menu.curve;
-                    let curve = settings.keyboard_curves.bezier(kind);
-                    let (end, axis, value) = point_row(item, kind, lang, &curve);
-                    Row::with_value(
-                        format!("{end} · {axis}"),
-                        format!("<  {:.0} %  >", value * 100.0),
-                    )
-                }
                 ControlItem::ShowLegend => {
                     Row::check(lang.show_legend(), debug_options.show_legend)
                 }
@@ -2498,6 +2556,7 @@ fn show_options_menu(
                                                         options_menu.tab,
                                                         options_menu.page,
                                                         index,
+                                                        &settings.keyboard_shapes,
                                                     ) {
                                                         UiRect::top(px(GROUP_GAP))
                                                     } else {
@@ -2636,9 +2695,11 @@ mod tests {
 
     #[test]
     fn on_control_the_steering_and_the_legend_stand_apart() {
-        let items = control_items(None);
+        let items = control_items(None, &KeyboardShapes::default());
         let starts: Vec<ControlItem> = (0..items.len())
-            .filter(|&index| starts_group(OptionsTab::Control, None, index))
+            .filter(|&index| {
+                starts_group(OptionsTab::Control, None, index, &KeyboardShapes::default())
+            })
             .map(|index| items[index])
             .collect();
         assert_eq!(
@@ -2657,13 +2718,23 @@ mod tests {
         assert!(shortcuts_after(OptionsTab::Control, None, legend));
         assert!(!shortcuts_after(OptionsTab::Control, None, legend + 1));
         assert!(!shortcuts_after(OptionsTab::Game, None, legend));
-        assert!((0..8).all(|index| !starts_group(OptionsTab::Game, None, index)));
+        assert!((0..8).all(|index| !starts_group(
+            OptionsTab::Game,
+            None,
+            index,
+            &KeyboardShapes::default()
+        )));
         // A page of Control's: its own options, in no groups.
         let keyboard = Some(Page::Keyboard);
-        assert_eq!(control_items(keyboard).len(), 4);
-        assert!((0..4).all(|index| !starts_group(OptionsTab::Control, keyboard, index)));
+        assert_eq!(control_items(keyboard, &KeyboardShapes::default()).len(), 4);
+        assert!((0..4).all(|index| !starts_group(
+            OptionsTab::Control,
+            keyboard,
+            index,
+            &KeyboardShapes::default()
+        )));
         assert_eq!(
-            control_items(Some(Page::Stick)),
+            control_items(Some(Page::Stick), &KeyboardShapes::default()),
             [ControlItem::StickTurnLimit, ControlItem::StickCurve]
         );
     }
@@ -2760,8 +2831,18 @@ mod tests {
         let forced = at(GraphicsItem::ForcePerformance);
         assert_eq!(at(GraphicsItem::RenderScale), forced + 1);
         assert_eq!(at(GraphicsItem::Shadows), forced + 2);
-        assert!(starts_group(OptionsTab::Graphics, None, forced));
-        assert!(!starts_group(OptionsTab::Graphics, None, forced + 1));
+        assert!(starts_group(
+            OptionsTab::Graphics,
+            None,
+            forced,
+            &KeyboardShapes::default()
+        ));
+        assert!(!starts_group(
+            OptionsTab::Graphics,
+            None,
+            forced + 1,
+            &KeyboardShapes::default()
+        ));
         // The water, and the two pages at the foot of the list.
         assert!(main.contains(&GraphicsItem::Water));
         assert_eq!(
@@ -2888,21 +2969,51 @@ mod tests {
     #[test]
     fn control_s_advanced_page_chooses_how_the_keyboard_behaves_and_its_page_follows() {
         let advanced = Some(Page::ControlAdvanced);
-        assert_eq!(control_items(advanced), [ControlItem::KeyboardMode]);
+        assert_eq!(
+            control_items(advanced, &KeyboardShapes::default()),
+            [ControlItem::KeyboardMode]
+        );
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
         menu.tab = OptionsTab::Control;
         menu.page = advanced;
         menu.leave_page(Page::ControlAdvanced);
-        assert_eq!(control_items(None)[menu.selected], ControlItem::Advanced);
+        assert_eq!(
+            control_items(None, &KeyboardShapes::default())[menu.selected],
+            ControlItem::Advanced
+        );
         // The keyboard's page: its rates as always, its curves in Bézier,
         // both back on its row.
         assert_eq!(keyboard_page(KeyboardMode::Classic), Page::Keyboard);
         assert_eq!(keyboard_page(KeyboardMode::Bezier), Page::KeyboardCurves);
+        // Each curve's shape, under it a custom one's numbers and its time
+        // (but E's), and learning at the end.
+        let mut shapes = KeyboardShapes::default();
+        let curves = |shapes: &KeyboardShapes| control_items(Some(Page::KeyboardCurves), shapes);
+        assert_eq!(curves(&shapes).len(), 5 + 4 + 1);
         assert_eq!(
-            control_items(Some(Page::KeyboardCurves))[0],
-            ControlItem::CurvePreset
+            curves(&shapes)[0],
+            ControlItem::CurveShape(CurveKind::LeanIn)
         );
+        assert_eq!(
+            curves(&shapes)[1],
+            ControlItem::CurveScale(CurveKind::LeanIn)
+        );
+        assert_eq!(*curves(&shapes).last().unwrap(), ControlItem::Learning);
+        shapes.lean_in.shape = CurveShape::Custom;
+        assert_eq!(
+            curves(&shapes)[1],
+            ControlItem::CurveCustom(CurveKind::LeanIn)
+        );
+        assert!(starts_group(
+            OptionsTab::Control,
+            Some(Page::KeyboardCurves),
+            3,
+            &shapes
+        ));
+        // Learning, no numbers to edit: every curve is learnt.
+        shapes.set_learning(true);
+        assert!(!curves(&shapes).contains(&ControlItem::CurveCustom(CurveKind::LeanIn)));
         assert_eq!(Page::KeyboardCurves.row(), Page::Keyboard.row());
         assert_eq!(
             Page::KeyboardCurves.title(Language::Spanish),
@@ -2915,7 +3026,7 @@ mod tests {
         let mut debug = DebugOptions::default();
         assert!(section_is_default(control, advanced, &settings, &debug));
         settings.keyboard_mode = KeyboardMode::Bezier;
-        settings.keyboard_curves.turn.y1 = 0.6;
+        settings.keyboard_shapes.turn.shape = CurveShape::Linear;
         assert!(!section_is_default(control, advanced, &settings, &debug));
         assert!(!section_is_default(control, curves, &settings, &debug));
         // Each page puts back its own.
@@ -2926,27 +3037,19 @@ mod tests {
         reset_section(control, advanced, &mut settings, &mut debug);
         assert!(section_is_default(control, None, &settings, &debug));
 
-        // The control points named by the end they shape and what they
-        // measure; stepped by 0.05 within the square, on the hundredths.
-        let bezier = crate::bike::curves::KeyboardCurves::default().speed;
+        // The four numbers named by the end they shape and what they
+        // measure, on one line with the one edited in brackets; stepped by
+        // 0.05 within the square, on the hundredths.
         assert_eq!(
-            point_row(
-                ControlItem::CurveX1,
-                CurveKind::Speed,
-                Language::Spanish,
-                &bezier
-            ),
-            ("Inicio", "velocidad", bezier.x1)
+            point_name(0, CurveKind::Speed, Language::Spanish),
+            "Inicio · velocidad"
         );
         assert_eq!(
-            point_row(
-                ControlItem::CurveY2,
-                CurveKind::Turn,
-                Language::English,
-                &bezier
-            ),
-            ("End", "turn", bezier.y2)
+            point_name(3, CurveKind::Turn, Language::English),
+            "End · turn"
         );
+        let line = custom_line(crate::bezier::Bezier::new(0.1, 0.25, 0.5, 1.0), Some(1));
+        assert_eq!(line, " 0.10   [0.25]   0.50    1.00 ");
         assert_eq!(step_point(0.98, 1), 1.0);
         assert_eq!(step_point(0.333, -1), 0.28);
         assert_eq!(step_point(0.02, -1), 0.0);
@@ -2962,7 +3065,7 @@ mod tests {
         menu.leave_page(Page::Keyboard);
         assert_eq!(menu.page, None);
         assert_eq!(
-            control_items(None)[menu.selected],
+            control_items(None, &KeyboardShapes::default())[menu.selected],
             ControlItem::KeyboardBehaviour
         );
         // Closing the options leaves no page open for the next time.
@@ -2976,7 +3079,7 @@ mod tests {
     fn the_arrows_reach_the_row_of_sections_and_change_section_there() {
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
-        let count = tab_items_count(menu.tab, None);
+        let count = tab_items_count(menu.tab, None, &KeyboardShapes::default());
         // Up from the first option: the row of sections.
         assert!(menu.navigate(-1, 0, false, count));
         assert!(menu.on_tabs);
@@ -2988,7 +3091,7 @@ mod tests {
         assert_eq!(menu.tab, OptionsTab::Graphics);
         assert!(menu.on_tabs);
         // Down: its first option; up from the row: its last one.
-        let count = tab_items_count(menu.tab, None);
+        let count = tab_items_count(menu.tab, None, &KeyboardShapes::default());
         assert!(menu.navigate(1, 0, false, count));
         assert!(!menu.on_tabs);
         assert_eq!(menu.selected, 0);
@@ -3013,7 +3116,7 @@ mod tests {
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
         menu.tab = OptionsTab::Sound;
-        let count = tab_items_count(menu.tab, None);
+        let count = tab_items_count(menu.tab, None, &KeyboardShapes::default());
         assert_eq!(count, sound_items().len() + FOOTER);
         // Down from the last option: Back.
         menu.selected = count - FOOTER - 1;

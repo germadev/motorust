@@ -1373,8 +1373,9 @@ fn read_player_input(
     let (input, state, autopilot) = player.into_inner();
     // The keyboard's curves, when they are on, and the top speed their
     // limit with speed is measured against.
-    let curves = (settings.keyboard_mode == KeyboardMode::Bezier)
-        .then_some((&settings.keyboard_curves, tuning.max_speed));
+    let shaped = settings.keyboard_shapes.curves();
+    let curves =
+        (settings.keyboard_mode == KeyboardMode::Bezier).then_some((&shaped, tuning.max_speed));
     // On autopilot the machine rides the bike: what the player presses is
     // read (to keep the steering's state) but not used.
     let mut ignored = BikeInput::default();

@@ -164,7 +164,9 @@ pub struct Settings {
     /// Graphics > Performance HUD), with where the first player's bike is
     /// on them (see [`crate::curves_hud`]).
     pub show_keyboard_curves: bool,
-    pub keyboard_curves: crate::bike::curves::KeyboardCurves,
+    /// The curves' shapes and numbers (saved under a name of their own: the
+    /// first ones, saved as a single set of curves, are not read).
+    pub keyboard_shapes: crate::bike::curves::KeyboardShapes,
     /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
     /// Settings tried out and not to be kept (the benchmark's, see
@@ -405,7 +407,7 @@ impl Default for Settings {
             frame_latency: DEFAULT_FRAME_LATENCY,
             keyboard_mode: crate::bike::curves::KeyboardMode::Classic,
             show_keyboard_curves: false,
-            keyboard_curves: crate::bike::curves::KeyboardCurves::default(),
+            keyboard_shapes: crate::bike::curves::KeyboardShapes::default(),
             records: crate::race::Records::default(),
             transient: false,
         }
@@ -2019,11 +2021,14 @@ mod tests {
             show_keyboard_curves: true,
             ..Settings::default()
         };
-        settings.keyboard_curves.lean_in.seconds = 0.25;
-        settings.keyboard_curves.turn = crate::bezier::Bezier::new(0.1, 0.5, 0.6, 0.9);
+        let shapes = &mut settings.keyboard_shapes;
+        shapes.lean_in_seconds = 0.25;
+        shapes.turn.shape = crate::bike::curves::CurveShape::Custom;
+        shapes.turn.custom = crate::bezier::Bezier::new(0.1, 0.5, 0.6, 0.9);
+        shapes.set_learning(true);
         let text = ron::ser::to_string(&settings).unwrap();
         let loaded: Settings = ron::from_str(&text).unwrap();
-        assert_eq!(loaded.keyboard_curves, settings.keyboard_curves);
+        assert_eq!(loaded.keyboard_shapes, settings.keyboard_shapes);
         assert_eq!(
             loaded.keyboard_mode,
             crate::bike::curves::KeyboardMode::Bezier
@@ -2044,9 +2049,17 @@ mod tests {
             crate::bike::curves::KeyboardMode::Bezier
         );
         assert_eq!(
-            older.keyboard_curves.preset(),
-            Some(crate::bike::curves::CurvePreset::Classic)
+            older.keyboard_shapes,
+            crate::bike::curves::KeyboardShapes::default()
         );
+        // The first curves, saved as one set, are not read; the rest is.
+        let first: Settings = ron::from_str(
+            "(fps: Unlimited, keyboard_curves: (lean_in: (curve: (x1: 0.1, y1: 0.2, x2: 0.3, \
+             y2: 0.4), seconds: 0.3), top_speed_lean: 0.9))",
+        )
+        .unwrap();
+        assert_eq!(first.fps, FpsLimit::Unlimited);
+        assert_eq!(first.keyboard_shapes, older.keyboard_shapes);
     }
 
     #[test]

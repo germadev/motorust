@@ -1,8 +1,8 @@
 //! The panel of the keyboard's curves, under the performance HUD at the top
 //! right, when Options > Graphics > Performance HUD says so: each of the five
-//! curves (see [`crate::bike::curves`]) as it is set, over the classic
-//! preset's in grey, with its control points, and a dot where the first
-//! player's bike is on it now. The curve being edited in the options stands
+//! curves (see [`crate::bike::curves`]) as it is set (in amber when it is
+//! the learnt one), over the classic curve in grey, with its control
+//! points, and a dot where the first player's bike is on it now. The curve being edited in the options stands
 //! out in the colour of Control, the panel drawn over them.
 //!
 //! Each curve is drawn once into an image of its own, again only when the
@@ -14,7 +14,9 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
-use crate::bike::curves::{CURVE_KINDS, CurveKind, CurvePreset, CurveProbe, KeyboardCurves, Phase};
+use crate::bike::curves::{
+    CURVE_KINDS, CurveKind, CurveProbe, CurveShape, KeyboardCurves, KeyboardShapes, Phase,
+};
 use crate::hud::UiFont;
 use crate::options::{OptionsMenu, OptionsTab, Page};
 use crate::settings::Settings;
@@ -53,6 +55,8 @@ const PANEL_LAYER: i32 = 60;
 /// The colour of Control, the curves' own; the classic curve under them,
 /// the control points and their arms, the grid and the ground.
 const ACCENT: [f32; 4] = [0.22, 0.76, 1.0, 1.0];
+/// A learnt curve's colour: the amber of what changes by itself.
+const LEARNED: [f32; 4] = [1.0, 0.72, 0.2, 1.0];
 const CLASSIC: [f32; 4] = [1.0, 1.0, 1.0, 0.28];
 const HANDLE: [f32; 4] = [1.0, 0.42, 0.32, 0.95];
 const GRID: [f32; 4] = [1.0, 1.0, 1.0, 0.1];
@@ -75,7 +79,7 @@ struct CurveDot(CurveKind);
 #[derive(Resource)]
 struct CurveImages {
     images: [Handle<Image>; 5],
-    drawn: Option<KeyboardCurves>,
+    drawn: Option<KeyboardShapes>,
 }
 
 fn spawn_panel(mut commands: Commands, font: Res<UiFont>, mut images: ResMut<Assets<Image>>) {
@@ -180,16 +184,18 @@ fn draw_curves(
     mut drawn: ResMut<CurveImages>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let curves = settings.keyboard_curves;
-    if !settings.show_keyboard_curves || drawn.drawn == Some(curves) {
+    let shapes = settings.keyboard_shapes;
+    if !settings.show_keyboard_curves || drawn.drawn == Some(shapes) {
         return;
     }
+    let curves = shapes.curves();
     for (kind, handle) in CURVE_KINDS.into_iter().zip(&drawn.images) {
+        let learned = shapes.shape(kind) == CurveShape::Learned;
         images
-            .insert(handle, draw(kind, &curves))
+            .insert(handle, draw(kind, &curves, learned))
             .expect("the image of a curve is still there");
     }
-    drawn.drawn = Some(curves);
+    drawn.drawn = Some(shapes);
 }
 
 /// Where the bike is on curve `kind` (each a share of its square across
@@ -261,7 +267,7 @@ fn label_cards(
         return;
     }
     let lang = settings.language;
-    let curves = &settings.keyboard_curves;
+    let curves = &settings.keyboard_shapes;
     for (label, mut text) in &mut labels {
         let kind = label.0;
         let number = curves
@@ -334,9 +340,10 @@ fn shown_curve(kind: CurveKind, curves: &KeyboardCurves) -> Vec<Vec2> {
         .collect()
 }
 
-/// Curve `kind` of `curves`, drawn: the grid, the classic preset's curve in
+/// Curve `kind` of `curves`, drawn (in amber if `learned`): the grid, the
+/// classic curve in
 /// grey, the arms to its control points and the curve itself.
-pub fn draw(kind: CurveKind, curves: &KeyboardCurves) -> Image {
+pub fn draw(kind: CurveKind, curves: &KeyboardCurves, learned: bool) -> Image {
     let mut canvas = Canvas::new();
     for k in 0..=4 {
         let share = k as f32 / 4.0;
@@ -355,7 +362,7 @@ pub fn draw(kind: CurveKind, curves: &KeyboardCurves) -> Image {
             false,
         );
     }
-    let classic = CurvePreset::Classic.curves();
+    let classic = KeyboardCurves::default();
     canvas.polyline(&shown_curve(kind, &classic), 1.6, CLASSIC);
     // The control points, each with its arm from the end it pulls on.
     let bezier = curves.bezier(kind);
@@ -367,7 +374,8 @@ pub fn draw(kind: CurveKind, curves: &KeyboardCurves) -> Image {
         canvas.line(end, point, 1.0, HANDLE, true);
         canvas.dot(point, 3.5, HANDLE);
     }
-    canvas.polyline(&shown_curve(kind, curves), 2.4, ACCENT);
+    let color = if learned { LEARNED } else { ACCENT };
+    canvas.polyline(&shown_curve(kind, curves), 2.4, color);
     image(canvas.pixels)
 }
 
@@ -463,7 +471,7 @@ mod tests {
 
     #[test]
     fn each_curve_is_drawn_from_where_it_starts_to_where_it_ends() {
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         let ends = |kind| {
             let points = shown_curve(kind, &curves);
             (points[0], *points.last().unwrap())
@@ -477,7 +485,7 @@ mod tests {
         assert_eq!(start, Vec2::Y);
         assert!((end.y - curves.top_speed_lean).abs() < 1e-6);
         // Drawn: some pixels in the colour of the curve.
-        let image = draw(CurveKind::LeanIn, &curves);
+        let image = draw(CurveKind::LeanIn, &curves, false);
         let data = image.data.unwrap();
         assert!(
             data.chunks(4)
@@ -487,7 +495,7 @@ mod tests {
 
     #[test]
     fn the_dots_show_where_the_bike_is_on_the_curves_it_follows() {
-        let curves = CurvePreset::Classic.curves();
+        let curves = KeyboardCurves::default();
         let mut lean = CurveLean::default();
         for _ in 0..10 {
             lean.update(1.0, &curves, 0.5, 1.0 / 120.0);
