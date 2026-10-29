@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::geometry::{forward, heading_of, smoothstep, wrap_angle};
 
 mod grid;
+pub mod racing_line;
 
 use grid::SegmentGrid;
 

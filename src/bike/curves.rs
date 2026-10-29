@@ -79,6 +79,11 @@ impl Default for KeyboardCurves {
     }
 }
 
+/// How much a correction moves a learnt curve's control points up or down,
+/// and the least E's may come down to (y1, y2).
+pub const NUDGE: f32 = 0.02;
+pub const TURN_FLOOR: (f32, f32) = (0.1, 0.3);
+
 /// Bounds of what the curves' numbers can be set to.
 pub const SECONDS: (f32, f32) = (0.05, 1.5);
 pub const TOP_SPEED_LEAN: (f32, f32) = (0.3, 1.0);
@@ -217,6 +222,32 @@ impl Default for CurveChoice {
     }
 }
 
+/// Whether the game learns the keyboard's curves from how the player rides,
+/// and how far from which line it measures them (see
+/// [`super::learning`]): the centre of the road, or a racing line (see
+/// [`crate::track::racing_line`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum LearnLine {
+    #[default]
+    Off,
+    Centre,
+    Race,
+}
+
+pub const LEARN_LINES: [LearnLine; 3] = [LearnLine::Off, LearnLine::Centre, LearnLine::Race];
+
+impl LearnLine {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (LearnLine::Off, _) => "Off",
+            (LearnLine::Centre, Language::Spanish) => "Centro",
+            (LearnLine::Centre, Language::English) => "Centre",
+            (LearnLine::Race, Language::Spanish) => "Carrera",
+            (LearnLine::Race, Language::English) => "Race",
+        }
+    }
+}
+
 /// The keyboard's curves as Options > Control > Keyboard behaviour chooses
 /// them in Bézier, saved with the settings: each curve's shape, the times
 /// of A, B and C, the lean D keeps at top speed, and whether the game is
@@ -234,7 +265,13 @@ pub struct KeyboardShapes {
     pub stand_up_seconds: f32,
     pub unwind_seconds: f32,
     pub top_speed_lean: f32,
-    pub learning: bool,
+    /// The line the game learns them from, if it is learning them: then
+    /// every curve is the learnt one.
+    pub learn: LearnLine,
+    /// Whether learning corrects the learnt curves, or only notes where
+    /// the bike strays (the key of free ride changes it, see
+    /// [`super::learning`]).
+    pub correct: bool,
 }
 
 impl Default for KeyboardShapes {
@@ -249,7 +286,8 @@ impl Default for KeyboardShapes {
             stand_up_seconds: CLASSIC_SECONDS[1],
             unwind_seconds: CLASSIC_SECONDS[2],
             top_speed_lean: CLASSIC_TOP_SPEED_LEAN,
-            learning: false,
+            learn: LearnLine::Off,
+            correct: false,
         }
     }
 }
@@ -278,7 +316,7 @@ impl KeyboardShapes {
     /// The shape curve `kind` has now: learnt for all of them while the
     /// game learns them, the one chosen otherwise.
     pub fn shape(&self, kind: CurveKind) -> CurveShape {
-        if self.learning {
+        if self.learning() {
             CurveShape::Learned
         } else {
             self.choice(kind).shape
@@ -307,17 +345,54 @@ impl KeyboardShapes {
         }
     }
 
-    /// The game learning every curve, or not: on, each curve not learnt yet
-    /// starts from the one it has; off, each goes back to its shape.
-    pub fn set_learning(&mut self, on: bool) {
-        if on {
+    /// Whether the game is learning the curves.
+    pub fn learning(&self) -> bool {
+        self.learn != LearnLine::Off
+    }
+
+    /// The game learning every curve from `line`, or not: on, each curve
+    /// not learnt yet starts from the one it has; off, each goes back to
+    /// its shape.
+    pub fn set_learn(&mut self, line: LearnLine) {
+        if line != LearnLine::Off && !self.learning() {
             for kind in CURVE_KINDS {
                 let was = self.bezier(kind);
                 let choice = self.choice_mut(kind);
                 choice.learned.get_or_insert(was);
             }
         }
-        self.learning = on;
+        self.learn = line;
+    }
+
+    /// Corrects the learnt curve `kind` a little for the bike having gone
+    /// `wide` (or inside) on it: A and C quicker for going wide, D keeping
+    /// more lean, E less turn for the lean for cutting inside, B quicker for
+    /// standing up too slowly (inside) and slower for too quickly (wide).
+    /// The curve only rises or falls, both control points together, within
+    /// the square; E never comes down below [`TURN_FLOOR`], so a touch of
+    /// the key always turns the bike.
+    pub fn correct_for(&mut self, kind: CurveKind, wide: bool) {
+        let up = match (kind, wide) {
+            (CurveKind::LeanIn | CurveKind::Unwind, true) => 1.0,
+            (CurveKind::Speed, true) => -1.0,
+            (CurveKind::Turn, false) => -1.0,
+            (CurveKind::StandUp, false) => 1.0,
+            (CurveKind::StandUp, true) => -1.0,
+            _ => return,
+        };
+        let Some(curve) = self.choice_mut(kind).learned.as_mut() else {
+            return;
+        };
+        let floor = if kind == CurveKind::Turn {
+            TURN_FLOOR
+        } else {
+            (0.0, 0.0)
+        };
+        let moved = |value: f32, floor: f32| {
+            ((value + up * NUDGE).clamp(floor, 1.0) * 1000.0).round() / 1000.0
+        };
+        curve.y1 = moved(curve.y1, floor.0);
+        curve.y2 = moved(curve.y2, floor.1);
     }
 
     /// The number curve `kind` is scaled by, if it has one: the seconds of
@@ -669,7 +744,7 @@ mod tests {
         shapes.speed.shape = CurveShape::Linear;
         // Learning: every curve learnt, each from what it had.
         let before = shapes.curves();
-        shapes.set_learning(true);
+        shapes.set_learn(LearnLine::Centre);
         for kind in CURVE_KINDS {
             assert_eq!(shapes.shape(kind), CurveShape::Learned);
         }
@@ -680,9 +755,38 @@ mod tests {
         shapes.lean_in.learned = Some(Bezier::LINEAR);
         assert_eq!(shapes.curves().lean_in.curve, Bezier::LINEAR);
         // Off, each back to its shape.
-        shapes.set_learning(false);
+        shapes.set_learn(LearnLine::Off);
         assert_eq!(shapes.shape(CurveKind::Speed), CurveShape::Linear);
         assert_eq!(shapes.curves(), before);
+    }
+
+    #[test]
+    fn corrections_move_a_learnt_curve_the_way_it_strayed_within_bounds() {
+        let mut shapes = KeyboardShapes::default();
+        // Nothing learnt yet: nothing to correct.
+        shapes.correct_for(CurveKind::LeanIn, true);
+        assert_eq!(shapes, KeyboardShapes::default());
+        shapes.set_learn(LearnLine::Centre);
+        let was = shapes.bezier(CurveKind::LeanIn);
+        shapes.correct_for(CurveKind::LeanIn, true);
+        let now = shapes.bezier(CurveKind::LeanIn);
+        assert!((now.y1 - was.y1 - NUDGE).abs() < 1e-3 && (now.y2 - was.y2 - NUDGE).abs() < 1e-3);
+        assert_eq!((now.x1, now.x2), (was.x1, was.x2));
+        // D: more lean (less reduction) for going wide.
+        let d = shapes.bezier(CurveKind::Speed);
+        shapes.correct_for(CurveKind::Speed, true);
+        assert!(shapes.bezier(CurveKind::Speed).y2 < d.y2);
+        // E: less turn for cutting inside, never below its floor.
+        for _ in 0..200 {
+            shapes.correct_for(CurveKind::Turn, false);
+        }
+        let e = shapes.bezier(CurveKind::Turn);
+        assert_eq!((e.y1, e.y2), TURN_FLOOR);
+        // What does not point at a curve changes nothing.
+        let before = shapes;
+        shapes.correct_for(CurveKind::Turn, true);
+        shapes.correct_for(CurveKind::LeanIn, false);
+        assert_eq!(shapes, before);
     }
 
     #[test]

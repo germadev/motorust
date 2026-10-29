@@ -17,7 +17,9 @@ use bevy::{
 use crate::bike::curves::{
     CURVE_KINDS, CurveKind, CurveProbe, CurveShape, KeyboardCurves, KeyboardShapes, Phase,
 };
+use crate::bike::learning::{LearningLog, Side};
 use crate::hud::UiFont;
+use crate::locale::Language;
 use crate::options::{OptionsMenu, OptionsTab, Page};
 use crate::settings::Settings;
 use crate::ui::text_font;
@@ -28,7 +30,14 @@ impl Plugin for CurvesHudPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_panel).add_systems(
             Update,
-            (show_panel, draw_curves, place_dots, label_cards).chain(),
+            (
+                show_panel,
+                draw_curves,
+                place_dots,
+                label_cards,
+                show_learning,
+            )
+                .chain(),
         );
     }
 }
@@ -74,6 +83,15 @@ struct CurveCard(CurveKind);
 struct CurveLabel(CurveKind);
 #[derive(Component)]
 struct CurveDot(CurveKind);
+/// Under each curve, learning, how many times the bike strayed on it; and
+/// under them all how far it is from the line now.
+#[derive(Component)]
+struct CurveNotes(CurveKind);
+#[derive(Component)]
+struct LearningStatus;
+
+/// How long a curve's notes stay lit after it is noted (s).
+const NOTE_LIT: f32 = 1.5;
 
 /// The images the curves are drawn in, and the curves drawn in them.
 #[derive(Resource)]
@@ -157,8 +175,29 @@ fn spawn_panel(mut commands: Commands, font: Res<UiFont>, mut images: ResMut<Ass
                                 BorderColor::all(Color::srgb(0.02, 0.05, 0.1)),
                             ));
                         });
+                        card.spawn((
+                            CurveNotes(kind),
+                            Text::new(""),
+                            text_font(&font, 10.0),
+                            TextColor(LABEL),
+                            Node {
+                                display: Display::None,
+                                ..default()
+                            },
+                        ));
                     });
             }
+            panel.spawn((
+                LearningStatus,
+                Text::new(""),
+                text_font(&font, 12.0),
+                TextColor(Color::srgba(LEARNED[0], LEARNED[1], LEARNED[2], 1.0)),
+                Node {
+                    display: Display::None,
+                    width: percent(100),
+                    ..default()
+                },
+            ));
         });
     commands.insert_resource(CurveImages {
         images,
@@ -290,6 +329,89 @@ fn label_cards(
             EDGE
         };
         border.set_if_neq(BorderColor::all(edge));
+    }
+}
+
+/// Learning, under each curve how many times the bike went wide and
+/// inside on it (lit for a moment when noted), and under them all how far
+/// it is from the line and whether it corrects.
+fn show_learning(
+    settings: Res<Settings>,
+    log: Res<LearningLog>,
+    time: Res<Time>,
+    mut notes: Query<(&CurveNotes, &mut Text, &mut TextColor, &mut Node), Without<LearningStatus>>,
+    mut status: Single<(&mut Text, &mut Node), With<LearningStatus>>,
+) {
+    if !settings.show_keyboard_curves {
+        return;
+    }
+    let lang = settings.language;
+    let display = if log.active {
+        Display::Flex
+    } else {
+        Display::None
+    };
+    let now = time.elapsed_secs();
+    for (note, mut text, mut color, mut node) in &mut notes {
+        if node.display != display {
+            node.display = display;
+        }
+        let words = notes_text(&log, note.0, lang);
+        if text.0 != words {
+            text.0 = words;
+        }
+        let lit = log
+            .last
+            .is_some_and(|(kind, _, at)| kind == note.0 && now - at < NOTE_LIT);
+        let tint = if lit {
+            Color::srgba(LEARNED[0], LEARNED[1], LEARNED[2], 1.0)
+        } else {
+            LABEL
+        };
+        color.set_if_neq(TextColor(tint));
+    }
+    let (text, node) = &mut *status;
+    if node.display != display {
+        node.display = display;
+    }
+    let words = status_text(&log, settings.keyboard_shapes.correct, lang);
+    if text.0 != words {
+        text.0 = words;
+    }
+}
+
+/// How many times the bike went wide and inside on curve `kind`.
+fn notes_text(log: &LearningLog, kind: CurveKind, lang: Language) -> String {
+    let (wide, inside) = (log.count(kind, Side::Wide), log.count(kind, Side::Inside));
+    match lang {
+        Language::Spanish => format!("fuera {wide} · dentro {inside}"),
+        Language::English => format!("wide {wide} · inside {inside}"),
+    }
+}
+
+/// How far from the line the bike is (round a corner, out wide or inside;
+/// on a straight, to the left or right), and whether it corrects.
+fn status_text(log: &LearningLog, correcting: bool, lang: Language) -> String {
+    let metres = log.stray.abs();
+    let side = match (log.in_corner, log.stray >= 0.0, lang) {
+        (true, true, Language::Spanish) => "fuera",
+        (true, false, Language::Spanish) => "dentro",
+        (false, true, Language::Spanish) => "izquierda",
+        (false, false, Language::Spanish) => "derecha",
+        (true, true, Language::English) => "wide",
+        (true, false, Language::English) => "inside",
+        (false, true, Language::English) => "left",
+        (false, false, Language::English) => "right",
+    };
+    let doing = match (correcting, lang) {
+        (false, Language::Spanish) => "solo detección",
+        (true, Language::Spanish) => "corrigiendo",
+        (false, Language::English) => "noting only",
+        (true, Language::English) => "correcting",
+    };
+    match lang {
+        Language::Spanish => format!("Desvío {metres:.1} m {side} · {doing}"),
+        Language::English => format!("Off the line {metres:.1} m {side} · {doing}"),
     }
 }
 
@@ -459,6 +581,29 @@ impl Canvas {
 mod tests {
     use super::*;
     use crate::bike::curves::CurveLean;
+
+    #[test]
+    fn learning_says_how_often_and_how_far_the_bike_strays() {
+        let log = LearningLog {
+            active: true,
+            stray: -2.04,
+            in_corner: true,
+            notes: [[0, 0], [1, 2], [0, 0], [0, 0], [0, 0]],
+            ..default()
+        };
+        assert_eq!(
+            notes_text(&log, CurveKind::StandUp, Language::Spanish),
+            "fuera 1 · dentro 2"
+        );
+        assert_eq!(
+            status_text(&log, false, Language::Spanish),
+            "Desvío 2.0 m dentro · solo detección"
+        );
+        assert_eq!(
+            status_text(&log, true, Language::English),
+            "Off the line 2.0 m inside · correcting"
+        );
+    }
 
     #[test]
     fn the_square_of_a_curve_sits_inside_its_image() {

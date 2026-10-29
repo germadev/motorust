@@ -6,7 +6,7 @@ use bevy::ui::{UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
 use crate::bike::curves::{
-    CURVE_KINDS, CurveKind, CurveShape, KEYBOARD_MODES, KeyboardMode, KeyboardShapes,
+    CURVE_KINDS, CurveKind, CurveShape, KEYBOARD_MODES, KeyboardMode, KeyboardShapes, LEARN_LINES,
 };
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
@@ -1264,7 +1264,7 @@ fn use_options_menu(
                 }
                 // While the game learns them, the curves are its own.
                 ControlItem::CurveShape(kind)
-                    if change != 0 && !settings.keyboard_shapes.learning =>
+                    if change != 0 && !settings.keyboard_shapes.learning() =>
                 {
                     settings.keyboard_shapes.step_shape(kind, change);
                     sounds.write(MenuSound::Move);
@@ -1280,8 +1280,8 @@ fn use_options_menu(
                     sounds.write(MenuSound::Move);
                 }
                 ControlItem::Learning if change != 0 => {
-                    let on = !settings.keyboard_shapes.learning;
-                    settings.keyboard_shapes.set_learning(on);
+                    let shapes = &mut settings.keyboard_shapes;
+                    shapes.set_learn(cycle(&LEARN_LINES, shapes.learn, change));
                     sounds.write(MenuSound::Move);
                 }
                 ControlItem::StickTurnLimit if change != 0 => {
@@ -1899,7 +1899,7 @@ fn show_options_menu(
                         format!("{} · {}", kind.letter(), kind.name(lang)),
                         format!("<  {}  >", shapes.shape(kind).name(lang)),
                     )
-                    .automatic(shapes.learning)
+                    .automatic(shapes.learning())
                 }
                 ControlItem::CurveCustom(kind) => {
                     let editing = options_menu.point.filter(|_| options_menu.curve == kind);
@@ -1921,13 +1921,14 @@ fn show_options_menu(
                         )
                     ),
                 ),
-                ControlItem::Learning => Row::check(
+                ControlItem::Learning => Row::with_value(
                     match lang {
                         Language::Spanish => "Auto-aprendizaje",
                         Language::English => "Self-learning",
                     },
-                    settings.keyboard_shapes.learning,
-                ),
+                    format!("<  {}  >", settings.keyboard_shapes.learn.name(lang)),
+                )
+                .automatic(settings.keyboard_shapes.learning()),
                 ControlItem::ShowLegend => {
                     Row::check(lang.show_legend(), debug_options.show_legend)
                 }
@@ -3012,7 +3013,7 @@ mod tests {
             &shapes
         ));
         // Learning, no numbers to edit: every curve is learnt.
-        shapes.set_learning(true);
+        shapes.set_learn(crate::bike::curves::LearnLine::Centre);
         assert!(!curves(&shapes).contains(&ControlItem::CurveCustom(CurveKind::LeanIn)));
         assert_eq!(Page::KeyboardCurves.row(), Page::Keyboard.row());
         assert_eq!(

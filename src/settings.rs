@@ -2025,7 +2025,7 @@ mod tests {
         shapes.lean_in_seconds = 0.25;
         shapes.turn.shape = crate::bike::curves::CurveShape::Custom;
         shapes.turn.custom = crate::bezier::Bezier::new(0.1, 0.5, 0.6, 0.9);
-        shapes.set_learning(true);
+        shapes.set_learn(crate::bike::curves::LearnLine::Race);
         let text = ron::ser::to_string(&settings).unwrap();
         let loaded: Settings = ron::from_str(&text).unwrap();
         assert_eq!(loaded.keyboard_shapes, settings.keyboard_shapes);

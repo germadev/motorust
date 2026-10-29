@@ -9,6 +9,7 @@ mod chassis;
 mod crash;
 pub mod curves;
 mod grass_kickup;
+pub mod learning;
 mod loop_ride;
 pub(crate) mod model;
 mod wheelie_halo;
@@ -118,6 +119,7 @@ impl Plugin for BikePlugin {
             BikeModelPlugin,
             GrassKickupPlugin,
             wheelie_halo::WheelieHaloPlugin,
+            learning::LearningPlugin,
         ))
         .init_resource::<BikeTuning>()
         .init_resource::<CurveProbe>()
@@ -1142,6 +1144,8 @@ fn start_pose(track: &Track, slot: usize) -> (Vec2, f32) {
 }
 
 /// Al empezar la carrera: la parrilla con la moto elegida para el jugador.
+/// Learning the keyboard's curves in free ride, the player alone on it
+/// (see [`learning`]).
 #[allow(clippy::too_many_arguments)]
 fn spawn_grid(
     mut commands: Commands,
@@ -1152,8 +1156,10 @@ fn spawn_grid(
     mut assets: BikeAssets,
     game_mode: Res<GameMode>,
     settings: Res<Settings>,
+    rules: Option<Res<crate::race::Rules>>,
 ) {
     race.started = false;
+    let alone = learning::learning_line(&settings, rules.as_deref(), *game_mode).is_some();
     let roster_indices = if *game_mode == GameMode::SplitScreen {
         if let Some(split) = split_choices {
             split_lineup(split.p1, split.p2)
@@ -1164,6 +1170,9 @@ fn spawn_grid(
         lineup(choice.0)
     };
     for (slot, (rival, entry)) in GRID.iter().zip(roster_indices).enumerate() {
+        if alone && rival.is_some() {
+            continue;
+        }
         let state = BikeState::parked_on(&track, start_pose(&track, slot));
         let bike = assets.spawn(&mut commands, &ROSTER[entry], state);
         let mut bike = commands.entity(bike);
