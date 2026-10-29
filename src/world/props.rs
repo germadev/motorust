@@ -105,6 +105,7 @@ pub fn spawn_props(
         scenery.soil == super::scenery::Soil::Floor,
         assets,
     ));
+    super::boosters::spawn_boosters(world, track, assets);
     occupied.extend(landmarks::spawn_loops(
         world,
         track,

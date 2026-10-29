@@ -1403,9 +1403,11 @@ impl<'a> Shaper<'a> {
 impl Shaper<'_> {
     /// Indoors (see [`Soil::Floor`]), the floor: flat all over the room, but
     /// for following a road that lies on it a little way past its walls,
-    /// just under its asphalt, so that a bump of the road (where it banks,
-    /// or eases into a ramp) does not sink into it. What runs over it, on
-    /// furniture or on pillars, is a bridge, under which it stays flat.
+    /// just under its asphalt, so that a bump of the road (where it eases
+    /// into a ramp) does not sink into it; where the road banks raised, as
+    /// it would lie level (its inside stays down, and its outside stands on
+    /// supports: see [`crate::track::Banking::raised`]). What runs over it,
+    /// on furniture or on pillars, is a bridge, under which it stays flat.
     fn floor(&self, nearest: Option<&Nearest>) -> f32 {
         let floor = BASE_ELEVATION - UNDER_ROAD;
         let Some(nearest) = nearest else {
@@ -1420,7 +1422,7 @@ impl Shaper<'_> {
         if on_a_bridge || nearest.road != 0 {
             return floor;
         }
-        let road = self.track.height_beside(nearest) - UNDER_ROAD;
+        let road = self.track.level_beside(nearest) - UNDER_ROAD;
         floor.lerp(road, 1.0 - smoothstep(FLAT, FLAT + 6.0, nearest.distance))
     }
 }
@@ -2149,6 +2151,14 @@ mod tests {
                     continue;
                 }
                 for lateral in [-9.0, 0.0, 9.0] {
+                    // Where it banks raised, on supports, there is no road
+                    // past its walls: its inside wall stands on the floor.
+                    let wall = track.wall_at(index);
+                    let lateral = if track.lift(index) > 0.0 {
+                        f32::clamp(lateral, -wall, wall)
+                    } else {
+                        lateral
+                    };
                     let road = track.surface_point(index, lateral);
                     let ground = terrain.height(Vec2::new(road.x, road.z));
                     // Over a tunnel, the road rests on its rock.
@@ -2164,8 +2174,12 @@ mod tests {
                         ground < road.y + 0.02,
                         "el terreno tapa la carretera en {index} de {name}"
                     );
+                    // Where it banks raised, its outside stands on risers:
+                    // the ground is under its inside, as it would lie level.
+                    let level = track.surface_point(index, 0.0).y - track.lift(index);
+                    let under = road.y.min(level);
                     assert!(
-                        ground > road.y - 0.4,
+                        ground > under - 0.4,
                         "hay un hueco bajo la carretera en {index} de {name}"
                     );
                     assert!(

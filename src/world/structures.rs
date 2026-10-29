@@ -314,6 +314,7 @@ pub fn structure_pieces(
     if let Some(store) = &scenery.toys {
         pieces.extend(super::toys::bridge_pieces(track, scenery, store, within));
         pieces.extend(super::toys::store_pieces(track, scenery, store, textures));
+        pieces.extend(super::shopfront::pieces(store));
     }
     (pieces, lamps, ground)
 }

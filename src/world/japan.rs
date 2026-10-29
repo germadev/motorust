@@ -260,12 +260,16 @@ pub(super) struct PropPack {
 
 impl PropPack {
     pub(super) fn piece(&self, name: &str) -> &Piece {
-        &self
-            .pieces
+        self.find(name)
+            .unwrap_or_else(|| panic!("no {name} in the pack"))
+    }
+
+    /// Its piece `name`, if it has one.
+    pub(super) fn find(&self, name: &str) -> Option<&Piece> {
+        self.pieces
             .iter()
             .find(|(piece, _)| piece == name)
-            .unwrap_or_else(|| panic!("no {name} in the pack"))
-            .1
+            .map(|(_, piece)| piece)
     }
 
     /// The pack in `bin` (see `tools/import_props.py`) and its colours in

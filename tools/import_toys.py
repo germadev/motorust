@@ -3,24 +3,31 @@
 castles of bricks, a pirate ship, trains, plush toys, vehicles...
 
 Reads one GLB per toy (a single textured mesh, normalised to a unit box)
-and writes to `assets/models/toys/` what the game loads
-(`src/world/toys.rs`):
+and writes what the game loads (`src/world/toys.rs`) into the pack the toy
+belongs to: `assets/models/toys/` for those in `FIRST_PACK`, whose atlas is
+full, `assets/models/toys2/` for the rest. In each:
 
 - `props.bin`: every toy as a piece named after it, centred on the origin
-  with its lowest point on the ground, up along +Y, facing +Z as Meshy made
-  it, at the game's size (`SIZES`: by its height, or by its length, the
-  longest way across, for a ship, a train or a plane). Same format as the
-  other packs (see `tools/import_props.py`).
+  with its lowest point on the ground, up along +Y, facing +Z (those Meshy
+  made facing -X, `TURNED`, turned a quarter turn), at the game's size
+  (`SIZES`: by its height, or by its length, the longest way across, for a
+  ship, a train or a plane). Same format as the other packs (see
+  `tools/import_props.py`).
 - `color.jpg`: their colour textures together, each brought down to its
   cell (`CELLS`: 1024 pixels square for the big toys the riders pass close
-  by, 512 for the rest), with a 2-pixel margin, the texture coordinates of
-  each moved into it: one texture and one material for every toy. The
-  normal and metal-roughness maps are left out.
+  by, 512 for the small ones), with a 2-pixel margin, the texture
+  coordinates of each moved into it, in an atlas `WIDTH` wide: one texture
+  and one material for every toy of the pack. The normal and
+  metal-roughness maps are left out.
 
-The models come one by one: with `--keep`, the toys already in the pack
-stay as they are (their meshes, and their cells of the texture moved to the
-new atlas), and only those given are added or replaced, so the GLBs of the
-others need not be at hand.
+A toy that changes cell size has to be given again (its GLB), as its cell
+of the old atlas is cut out at its size in `CELLS`.
+
+The models come one by one: with `--keep`, the toys already in the packs
+written stay as they are (their meshes, and their cells of the texture moved
+to the new atlas), and only those given are added or replaced, so the GLBs
+of the others need not be at hand; only the packs of the toys given are
+written.
 
 Usage: python3 tools/import_toys.py [--keep] NAME=TOY.glb [NAME=TOY.glb ...]
 with the names of `SIZES`. Needs numpy and Pillow.
@@ -38,7 +45,39 @@ from import_props import compact, place  # noqa: E402
 from import_trees import read_glb  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "assets" / "models" / "toys"
+MODELS = ROOT / "assets" / "models"
+
+# The toys in the first pack (`toys/`), whose atlas is full, 4096 square;
+# all others go into the second (`toys2/`).
+FIRST_PACK = {
+    "castle_big",
+    "castle_small",
+    "pirate_ship",
+    "giraffe_plush",
+    "dollhouse",
+    "locomotive",
+    "coach",
+    "freight_wagon",
+    "teddy_bear",
+    "tin_robot",
+    "rubber_duck",
+    "spinning_top",
+    "fire_truck",
+    "mech_pegasus",
+    "croc_car",
+    "garage_playset",
+    "train_station",
+    "tunnel_mountain",
+    "rocking_horse",
+    "nutcracker",
+    "biplane",
+    "helicopter",
+}
+
+
+def pack_of(name):
+    """The folder of the pack toy `name` belongs to."""
+    return MODELS / ("toys" if name in FIRST_PACK else "toys2")
 
 # How big each toy is in the game (m): by its height, or by its length (the
 # longest way across). The bikes are about 2 m long.
@@ -51,7 +90,8 @@ SIZES = {
     "dollhouse": ("height", 30.0),
     # The trains.
     "locomotive": ("length", 7.0),
-    "coach": ("length", 7.0),
+    # Longer than the others, as a coach is: as tall and as wide then.
+    "coach": ("length", 10.5),
     "freight_wagon": ("length", 7.0),
     # Standing about.
     "teddy_bear": ("height", 15.0),
@@ -61,16 +101,23 @@ SIZES = {
     "rocking_horse": ("length", 18.0),
     "nutcracker": ("height", 15.0),
     "fire_truck": ("length", 25.0),
+    "mech_pegasus": ("height", 16.0),
+    "croc_car": ("length", 16.0),
     "dump_truck": ("length", 20.0),
     "garage_playset": ("height", 20.0),
     "train_station": ("length", 25.0),
-    "tunnel_mountain": ("length", 36.0),
+    # Its tunnel as wide as a train's and more: 4.4 m.
+    "tunnel_mountain": ("length", 40.0),
     "teepee": ("height", 25.0),
-    "trex": ("length", 20.0),
+    # As big as it takes for its head, over the road, to be well over the
+    # bikes.
+    "trex": ("length", 28.0),
     "rocket": ("height", 25.0),
     "toy_chest": ("length", 16.0),
     "jack_in_box": ("height", 10.0),
     "xylophone": ("length", 12.0),
+    # A shop's display robot, towering over the riders.
+    "giant_robot": ("height", 26.0),
     # Hanging from the ceiling.
     "biplane": ("length", 16.0),
     "helicopter": ("length", 14.0),
@@ -82,6 +129,24 @@ SIZES = {
     "potted_plant": ("height", 20.0),
     "kids_table": ("length", 16.0),
 }
+# Those Meshy made facing -X (a ship's bow, a locomotive's chimney, a
+# plane's nose, a truck's cab, a shopping trolley's basket), turned a
+# quarter turn to face +Z as the others.
+TURNED = {
+    "pirate_ship",
+    "locomotive",
+    "coach",
+    "freight_wagon",
+    "biplane",
+    "helicopter",
+    "fire_truck",
+    "croc_car",
+    "dump_truck",
+    "shopping_cart",
+}
+# Those a train runs through, centred on their tunnels (along z) rather
+# than on their boxes.
+TUNNELS = {"tunnel_mountain"}
 # The cells of the big toys the riders pass close by (px); the others' are
 # `CELL`.
 CELLS = {
@@ -90,10 +155,26 @@ CELLS = {
     "pirate_ship": 1024,
     "giraffe_plush": 1024,
     "dollhouse": 1024,
+    "teddy_bear": 1024,
+    "tin_robot": 1024,
+    "biplane": 1024,
+    "helicopter": 1024,
+    "fire_truck": 1024,
+    "mech_pegasus": 1024,
+    "garage_playset": 1024,
+    "train_station": 1024,
+    "nutcracker": 1024,
+    "dump_truck": 1024,
+    "teepee": 1024,
+    "trex": 1024,
+    "rocket": 1024,
+    "toy_chest": 1024,
+    "giant_robot": 1024,
+    "checkout_counter": 1024,
 }
 CELL = 512
-# How wide the atlas is (px): two of the big cells, or four of the others.
-WIDTH = 2048
+# How wide the atlas is (px): four of the big cells, or eight of the others.
+WIDTH = 4096
 MARGIN = 2
 
 
@@ -122,6 +203,42 @@ def read_pack(path):
         triangles = take(indices, "<u4", 1).astype(np.uint32)
         pieces.append((name, positions, normals, uvs, triangles))
     return pieces
+
+
+def tunnel_middle(positions, indices, height=1.0, step=0.05):
+    """Where the middle of a tunnel along z through a model is across it
+    (x, m): of the widest stretch across at `height` through which a line
+    along z meets none of its triangles."""
+    triangles = positions[indices.reshape(-1, 3)][:, :, :2]
+    a, b, c = triangles[:, 0], triangles[:, 1], triangles[:, 2]
+
+    def blocked(x):
+        point = np.array([x, height])
+
+        def side(p, q):
+            return (p[:, 0] - point[0]) * (q[:, 1] - point[1]) - (q[:, 0] - point[0]) * (p[:, 1] - point[1])
+
+        d = np.stack([side(a, b), side(b, c), side(c, a)])
+        return bool((~((d < 0).any(axis=0) & (d > 0).any(axis=0))).any())
+
+    xs = np.arange(positions[:, 0].min(), positions[:, 0].max(), step)
+    clear = [not blocked(x) for x in xs]
+    best, start = (0, 0), None
+    for k, open_ in enumerate(clear + [False]):
+        if open_ and start is None:
+            start = k
+        elif not open_ and start is not None:
+            if k - start > best[1] - best[0]:
+                best = (start, k)
+            start = None
+    assert best[1] > best[0], "no tunnel through it"
+    return (xs[best[0]] + xs[best[1] - 1]) / 2.0
+
+
+def quarter_turn(vectors):
+    """`vectors` turned a quarter turn about +Y, -X to +Z."""
+    x, y, z = vectors[:, 0], vectors[:, 1], vectors[:, 2]
+    return np.stack([z, y, -x], axis=1)
 
 
 def cells(sizes):
@@ -159,17 +276,22 @@ def main():
         given.append((name, path))
     if not given:
         sys.exit(__doc__)
+    for out in sorted({pack_of(name) for name, _ in given}):
+        write_pack(out, [(name, path) for name, path in given if pack_of(name) == out], keep)
 
+
+def write_pack(out, given, keep):
+    """The pack in folder `out` with the toys `given` (name, GLB), and the
+    others already in it if `keep`."""
     # Each toy: its mesh at the game's size, and its texture (whole).
     toys = {}
-    if keep and (OUT / "props.bin").exists():
-        atlas = Image.open(OUT / "color.jpg").convert("RGB")
-        for name, positions, normals, uvs, indices in read_pack(OUT / "props.bin"):
+    if keep and (out / "props.bin").exists():
+        atlas = Image.open(out / "color.jpg").convert("RGB")
+        for name, positions, normals, uvs, indices in read_pack(out / "props.bin"):
             # Its cell of the old atlas, from where its texture coordinates
             # reach, out to the margin round it.
             size = np.array(atlas.size, dtype=np.float64)
             low = np.floor(uvs.min(axis=0) * size) - MARGIN
-            high = np.ceil(uvs.max(axis=0) * size) + MARGIN
             side = CELLS.get(name, CELL)
             corner = (low / side).round() * side
             texture = atlas.crop((*corner.astype(int), *(corner + side).astype(int)))
@@ -180,7 +302,12 @@ def main():
             ))
     for name, path in given:
         positions, normals, uvs, indices, color = read_glb(path)
+        if name in TURNED:
+            positions, normals = quarter_turn(positions), quarter_turn(normals)
         placed, turned, _, _ = place(positions, normals, SIZES[name])
+        if name in TUNNELS:
+            # Its tunnel on its middle, rather than its box.
+            placed[:, 0] -= tunnel_middle(placed, indices)
         toys[name] = (placed, turned, uvs, indices, color)
 
     names = sorted(toys, key=lambda name: list(SIZES).index(name))
@@ -206,21 +333,21 @@ def main():
             f"{side} px"
         )
 
-    OUT.mkdir(parents=True, exist_ok=True)
-    with open(OUT / "props.bin", "wb") as out:
-        out.write(b"MRMESH01")
-        out.write(len(pieces).to_bytes(4, "little"))
+    out.mkdir(parents=True, exist_ok=True)
+    with open(out / "props.bin", "wb") as written:
+        written.write(b"MRMESH01")
+        written.write(len(pieces).to_bytes(4, "little"))
         for name, positions, normals, uvs, indices in pieces:
             encoded = name.encode()
-            out.write(len(encoded).to_bytes(4, "little") + encoded)
+            written.write(len(encoded).to_bytes(4, "little") + encoded)
             for count in (len(positions), len(indices), 0):
-                out.write(int(count).to_bytes(4, "little"))
-            out.write(positions.astype("<f4").tobytes())
-            out.write(normals.astype("<f4").tobytes())
-            out.write(uvs.astype("<f4").tobytes())
-            out.write(indices.astype("<u4").tobytes())
-    atlas.save(OUT / "color.jpg", quality=88, optimize=True)
-    print(f"{OUT / 'props.bin'}, {OUT / 'color.jpg'} ({atlas.size[0]}x{atlas.size[1]})")
+                written.write(int(count).to_bytes(4, "little"))
+            written.write(positions.astype("<f4").tobytes())
+            written.write(normals.astype("<f4").tobytes())
+            written.write(uvs.astype("<f4").tobytes())
+            written.write(indices.astype("<u4").tobytes())
+    atlas.save(out / "color.jpg", quality=88, optimize=True)
+    print(f"{out / 'props.bin'}, {out / 'color.jpg'} ({atlas.size[0]}x{atlas.size[1]})")
 
 
 if __name__ == "__main__":

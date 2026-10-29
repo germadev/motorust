@@ -135,6 +135,6 @@ mod tests {
             CIRCUITS[6].checkpoints(),
             vec![868.0, 1905.1, 2955.1, 3585.1, 4565.1]
         );
-        assert_eq!(CIRCUITS[7].checkpoints(), vec![635.0, 1378.0, 2300.0]);
+        assert_eq!(CIRCUITS[7].checkpoints(), vec![635.0, 1381.0, 2303.0]);
     }
 }

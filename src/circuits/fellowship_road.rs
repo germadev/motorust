@@ -170,16 +170,19 @@ pub const FELLOWSHIP_ROAD: Circuit = Circuit {
                 from: BREE_SPLIT.0,
                 to: BREE_SPLIT.1,
                 factor: 0.25,
+                raised: false,
             },
             Banking {
                 from: RIVENDELL_SPLIT.0,
                 to: RIVENDELL_SPLIT.1,
                 factor: 0.25,
+                raised: false,
             },
             Banking {
                 from: LORIEN_SPLIT.0,
                 to: LORIEN_SPLIT.1,
                 factor: 0.25,
+                raised: false,
             },
         ],
         // The old bridges over the Water in Hobbiton and over the

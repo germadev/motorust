@@ -2,6 +2,8 @@
 //! la bordea y el decorado de la pista elegida ([`crate::circuits`]), bajo
 //! un cielo de verano. Al cambiar de pista se vuelve a construir.
 
+mod boosters;
+mod bricks;
 mod cavern;
 mod dam;
 mod desert;
@@ -26,6 +28,7 @@ pub(crate) mod road;
 pub mod scenery;
 mod sea;
 mod shadow_fade;
+mod shopfront;
 mod shoulders;
 pub mod sky;
 mod space;
@@ -1043,8 +1046,10 @@ fn build(
             }
             for (mesh, material) in pieces {
                 // What is see-through or glows (light, dust) casts no
-                // shadow.
-                let shadowless = matches!(material.alpha_mode, AlphaMode::Add | AlphaMode::Blend);
+                // shadow, nor what lamps do not light (the daylight out of
+                // a shop's window, its own sun in its colours).
+                let shadowless = matches!(material.alpha_mode, AlphaMode::Add | AlphaMode::Blend)
+                    || material.unlit;
                 let material = assets.materials.add(material);
                 // On a split circuit, the part of each in each realm.
                 let parts: Vec<_> = if split {
