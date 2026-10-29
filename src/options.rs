@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use bevy::ui::{UiGlobalTransform, UiSystems};
 use bevy::window::PrimaryWindow;
 
-use crate::bike::curves::{CURVE_PRESETS, CurveKind, KeyboardCurves};
+use crate::bike::curves::{CURVE_PRESETS, CurveKind, KEYBOARD_MODES, KeyboardMode};
 use crate::gamepads::{ActiveController, Gamepads};
 use crate::hud::UiFont;
 use crate::legend::{
@@ -285,6 +285,8 @@ pub struct OptionsMenu {
 pub enum Page {
     Stick,
     Keyboard,
+    /// The keyboard's page with its behaviour on Bézier: its curves.
+    KeyboardCurves,
     ControlAdvanced,
     PerformanceHud,
     Advanced,
@@ -296,7 +298,9 @@ impl Page {
         let at = |items: Vec<_>, row| items.iter().position(|&item| item == row);
         match self {
             Page::Stick => at(control_items(None), ControlItem::StickBehaviour),
-            Page::Keyboard => at(control_items(None), ControlItem::KeyboardBehaviour),
+            Page::Keyboard | Page::KeyboardCurves => {
+                at(control_items(None), ControlItem::KeyboardBehaviour)
+            }
             Page::ControlAdvanced => at(control_items(None), ControlItem::Advanced),
             Page::PerformanceHud => graphics_items(None)
                 .iter()
@@ -312,8 +316,8 @@ impl Page {
     fn title(self, lang: Language) -> &'static str {
         match (self, lang) {
             (Page::Stick, _) => "STICK",
-            (Page::Keyboard, Language::Spanish) => "TECLADO",
-            (Page::Keyboard, Language::English) => "KEYBOARD",
+            (Page::Keyboard | Page::KeyboardCurves, Language::Spanish) => "TECLADO",
+            (Page::Keyboard | Page::KeyboardCurves, Language::English) => "KEYBOARD",
             (Page::Advanced | Page::ControlAdvanced, Language::Spanish) => "AVANZADO",
             (Page::Advanced | Page::ControlAdvanced, Language::English) => "ADVANCED",
             (Page::PerformanceHud, Language::Spanish) => "HUD DE RENDIMIENTO",
@@ -431,13 +435,11 @@ enum ControlItem {
     KeyboardReturnRate,
     /// How fast the keyboard turns over to the other side.
     KeyboardReverseRate,
-    /// The page of the advanced options: the keyboard's curves, below.
+    /// The page of the advanced options: how the keyboard behaves.
     Advanced,
-    /// Whether the keyboard steers by its curves.
-    CurvesOn,
-    /// Whether they are drawn under the performance HUD.
-    CurvesHud,
-    /// A ready-made set of them.
+    /// Classic or by the curves, below (on the keyboard's page then).
+    KeyboardMode,
+    /// A ready-made set of the curves.
     CurvePreset,
     /// Which one is edited, with the rest of the rows.
     CurveChoice,
@@ -495,6 +497,8 @@ enum GraphicsItem {
     ShowAntialiasing,
     ShowTextures,
     ShowCoordinates,
+    /// The keyboard's curves under it (see [`crate::curves_hud`]).
+    ShowKeyboardCurves,
     /// The page of the advanced options, those below.
     Advanced,
     /// The trees modelled or the classic ones.
@@ -578,9 +582,8 @@ fn control_items(page: Option<Page>) -> Vec<ControlItem> {
             ControlItem::KeyboardReturnRate,
             ControlItem::KeyboardReverseRate,
         ],
-        Some(Page::ControlAdvanced) => vec![
-            ControlItem::CurvesOn,
-            ControlItem::CurvesHud,
+        Some(Page::ControlAdvanced) => vec![ControlItem::KeyboardMode],
+        Some(Page::KeyboardCurves) => vec![
             ControlItem::CurvePreset,
             ControlItem::CurveChoice,
             ControlItem::CurveScale,
@@ -615,6 +618,7 @@ fn graphics_items(page: Option<Page>) -> Vec<GraphicsItem> {
                 GraphicsItem::ShowAntialiasing,
                 GraphicsItem::ShowTextures,
                 GraphicsItem::ShowCoordinates,
+                GraphicsItem::ShowKeyboardCurves,
             ];
         }
         Some(Page::Advanced) => {
@@ -718,14 +722,46 @@ fn advanced(settings: &Settings) -> (bool, bool, bool, bool, bool, u32) {
 }
 
 /// What the performance HUD shows: the options of its page of Graphics'.
-fn performance_hud(settings: &Settings) -> (bool, bool, bool, bool, bool) {
+fn performance_hud(settings: &Settings) -> (bool, bool, bool, bool, bool, bool) {
     (
         settings.show_fps,
         settings.show_resolution,
         settings.show_antialiasing,
         settings.show_textures,
         settings.show_coordinates,
+        settings.show_keyboard_curves,
     )
+}
+
+/// A row of a control point of curve `kind`'s: which end of the curve it
+/// shapes (P1 its start, P2 its end), what the coordinate measures and its
+/// value.
+fn point_row(
+    item: ControlItem,
+    kind: CurveKind,
+    lang: Language,
+    curve: &crate::bezier::Bezier,
+) -> (&'static str, &'static str, f32) {
+    let (across, up) = kind.axes(lang);
+    let (start, end) = match lang {
+        Language::Spanish => ("Inicio", "Final"),
+        Language::English => ("Start", "End"),
+    };
+    match item {
+        ControlItem::CurveX1 => (start, across, curve.x1),
+        ControlItem::CurveY1 => (start, up, curve.y1),
+        ControlItem::CurveX2 => (end, across, curve.x2),
+        _ => (end, up, curve.y2),
+    }
+}
+
+/// The keyboard's page for its behaviour: its rates and limit as always,
+/// or its curves in Bézier.
+fn keyboard_page(mode: KeyboardMode) -> Page {
+    match mode {
+        KeyboardMode::Classic => Page::Keyboard,
+        KeyboardMode::Bezier => Page::KeyboardCurves,
+    }
 }
 
 /// A coordinate of a control point of the keyboard's curves, `step` steps
@@ -786,8 +822,11 @@ fn section_is_default(
         (OptionsTab::Control, Some(Page::Keyboard)) => {
             return keyboard(debug) == keyboard(&at_first);
         }
+        (OptionsTab::Control, Some(Page::KeyboardCurves)) => {
+            return settings.keyboard_curves == first.keyboard_curves;
+        }
         (OptionsTab::Control, Some(Page::ControlAdvanced)) => {
-            return keyboard_curves(settings) == keyboard_curves(first);
+            return settings.keyboard_mode == first.keyboard_mode;
         }
         (OptionsTab::Graphics, Some(Page::Advanced)) => {
             return advanced(settings) == advanced(first);
@@ -823,7 +862,8 @@ fn section_is_default(
         }
         OptionsTab::Control => {
             steering(debug) == steering(&DebugOptions::default())
-                && keyboard_curves(settings) == keyboard_curves(first)
+                && settings.keyboard_mode == first.keyboard_mode
+                && settings.keyboard_curves == first.keyboard_curves
         }
         OptionsTab::Sound => {
             (
@@ -883,8 +923,12 @@ fn reset_section(
             debug.keyboard_reverse = at_first.keyboard_reverse;
             return;
         }
+        (OptionsTab::Control, Some(Page::KeyboardCurves)) => {
+            settings.keyboard_curves = first.keyboard_curves;
+            return;
+        }
         (OptionsTab::Control, Some(Page::ControlAdvanced)) => {
-            reset_keyboard_curves(settings, first);
+            settings.keyboard_mode = first.keyboard_mode;
             return;
         }
         (OptionsTab::Graphics, Some(Page::Advanced)) => {
@@ -911,7 +955,8 @@ fn reset_section(
         }
         OptionsTab::Control => {
             *debug = DebugOptions::default();
-            reset_keyboard_curves(settings, first);
+            settings.keyboard_mode = first.keyboard_mode;
+            settings.keyboard_curves = first.keyboard_curves;
         }
         OptionsTab::Sound => {
             settings.fx_volume = first.fx_volume;
@@ -938,23 +983,6 @@ fn reset_section(
     }
 }
 
-/// The advanced options of Control's: whether the keyboard steers by its
-/// curves, whether they are drawn and the curves themselves.
-fn keyboard_curves(settings: &Settings) -> (bool, bool, KeyboardCurves) {
-    (
-        settings.keyboard_curves_on,
-        settings.show_keyboard_curves,
-        settings.keyboard_curves,
-    )
-}
-
-/// The advanced options of Control's put back as they are at first.
-fn reset_keyboard_curves(settings: &mut Settings, first: &Settings) {
-    settings.keyboard_curves_on = first.keyboard_curves_on;
-    settings.show_keyboard_curves = first.show_keyboard_curves;
-    settings.keyboard_curves = first.keyboard_curves;
-}
-
 /// The advanced options of Graphics' put back as they are at first.
 fn reset_advanced(settings: &mut Settings, first: &Settings) {
     settings.modelled_trees = first.modelled_trees;
@@ -972,6 +1000,7 @@ fn reset_performance_hud(settings: &mut Settings, first: &Settings) {
     settings.show_antialiasing = first.show_antialiasing;
     settings.show_textures = first.show_textures;
     settings.show_coordinates = first.show_coordinates;
+    settings.show_keyboard_curves = first.show_keyboard_curves;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1134,18 +1163,14 @@ fn use_options_menu(
                 {
                     options_menu.page = Some(match item {
                         ControlItem::StickBehaviour => Page::Stick,
-                        ControlItem::KeyboardBehaviour => Page::Keyboard,
+                        ControlItem::KeyboardBehaviour => keyboard_page(settings.keyboard_mode),
                         _ => Page::ControlAdvanced,
                     });
                     options_menu.selected = 0;
                     sounds.write(MenuSound::Confirm);
                 }
-                ControlItem::CurvesOn if change != 0 => {
-                    settings.keyboard_curves_on = !settings.keyboard_curves_on;
-                    sounds.write(MenuSound::Move);
-                }
-                ControlItem::CurvesHud if change != 0 => {
-                    settings.show_keyboard_curves = !settings.show_keyboard_curves;
+                ControlItem::KeyboardMode if change != 0 => {
+                    settings.keyboard_mode = cycle(&KEYBOARD_MODES, settings.keyboard_mode, change);
                     sounds.write(MenuSound::Move);
                 }
                 ControlItem::CurvePreset if change != 0 => {
@@ -1335,6 +1360,10 @@ fn use_options_menu(
                 }
                 GraphicsItem::ShowCoordinates if change != 0 => {
                     settings.show_coordinates = !settings.show_coordinates;
+                    sounds.write(MenuSound::Move);
+                }
+                GraphicsItem::ShowKeyboardCurves if change != 0 => {
+                    settings.show_keyboard_curves = !settings.show_keyboard_curves;
                     sounds.write(MenuSound::Move);
                 }
                 GraphicsItem::Trees if change != 0 => {
@@ -1718,7 +1747,10 @@ fn show_options_menu(
                         Language::Spanish => "Comportamiento Teclado",
                         Language::English => "Keyboard behaviour",
                     },
-                    ">",
+                    match settings.keyboard_mode {
+                        KeyboardMode::Classic => ">".to_string(),
+                        mode => format!("{}   >", mode.name(lang)),
+                    },
                 ),
                 ControlItem::Mapping => Row::with_value(
                     match lang {
@@ -1777,74 +1809,49 @@ fn show_options_menu(
                         Language::Spanish => "Avanzado",
                         Language::English => "Advanced",
                     },
-                    if settings.keyboard_curves_on {
-                        match lang {
-                            Language::Spanish => "Teclado por curvas   >",
-                            Language::English => "Keyboard by curves   >",
-                        }
-                    } else {
-                        ">"
-                    },
+                    ">",
                 ),
-                ControlItem::CurvesOn => Row::check(
+                ControlItem::KeyboardMode => Row::with_value(
                     match lang {
-                        Language::Spanish => "Teclado por curvas",
-                        Language::English => "Keyboard by curves",
+                        Language::Spanish => "Comportamiento de teclado",
+                        Language::English => "Keyboard behaviour",
                     },
-                    settings.keyboard_curves_on,
+                    format!("<  {}  >", settings.keyboard_mode.name(lang)),
                 ),
-                ControlItem::CurvesHud => Row::check(
+                ControlItem::CurvePreset => Row::with_value(
                     match lang {
-                        Language::Spanish => "Curvas bajo el HUD de rendimiento",
-                        Language::English => "Curves under the performance HUD",
+                        Language::Spanish => "Preajuste",
+                        Language::English => "Preset",
                     },
-                    settings.show_keyboard_curves,
+                    format!(
+                        "<  {}  >",
+                        settings.keyboard_curves.preset().map_or(
+                            match lang {
+                                Language::Spanish => "Personalizado",
+                                Language::English => "Custom",
+                            },
+                            |preset| preset.name(lang)
+                        )
+                    ),
                 ),
-                // The curves' rows, faint while the keyboard does not
-                // steer by them (they can still be set).
-                ControlItem::CurvePreset => Row {
-                    disabled: !settings.keyboard_curves_on,
-                    ..Row::with_value(
-                        match lang {
-                            Language::Spanish => "Preajuste",
-                            Language::English => "Preset",
-                        },
-                        format!(
-                            "<  {}  >",
-                            settings.keyboard_curves.preset().map_or(
-                                match lang {
-                                    Language::Spanish => "Personalizado",
-                                    Language::English => "Custom",
-                                },
-                                |preset| preset.name(lang)
-                            )
-                        ),
-                    )
-                },
-                ControlItem::CurveChoice => Row {
-                    disabled: !settings.keyboard_curves_on,
-                    ..Row::with_value(
-                        match lang {
-                            Language::Spanish => "Curva",
-                            Language::English => "Curve",
-                        },
-                        format!(
-                            "<  {} · {}  >",
-                            options_menu.curve.letter(),
-                            options_menu.curve.name(lang)
-                        ),
-                    )
-                },
+                ControlItem::CurveChoice => Row::with_value(
+                    match lang {
+                        Language::Spanish => "Curva",
+                        Language::English => "Curve",
+                    },
+                    format!(
+                        "<  {} · {}  >",
+                        options_menu.curve.letter(),
+                        options_menu.curve.name(lang)
+                    ),
+                ),
                 ControlItem::CurveScale => {
                     let curve = options_menu.curve;
                     match settings.keyboard_curves.scale(curve) {
-                        Some(value) => Row {
-                            disabled: !settings.keyboard_curves_on,
-                            ..Row::with_value(
-                                curve.scale_name(lang),
-                                format!("<  {}  >", curve.scale_text(value, lang)),
-                            )
-                        },
+                        Some(value) => Row::with_value(
+                            curve.scale_name(lang),
+                            format!("<  {}  >", curve.scale_text(value, lang)),
+                        ),
                         None => Row {
                             disabled: true,
                             ..Row::with_value(curve.scale_name(lang), "—")
@@ -1855,17 +1862,13 @@ fn show_options_menu(
                 | ControlItem::CurveY1
                 | ControlItem::CurveX2
                 | ControlItem::CurveY2 => {
-                    let curve = settings.keyboard_curves.bezier(options_menu.curve);
-                    let (label, value) = match item {
-                        ControlItem::CurveX1 => ("P1 X", curve.x1),
-                        ControlItem::CurveY1 => ("P1 Y", curve.y1),
-                        ControlItem::CurveX2 => ("P2 X", curve.x2),
-                        _ => ("P2 Y", curve.y2),
-                    };
-                    Row {
-                        disabled: !settings.keyboard_curves_on,
-                        ..Row::with_value(label, format!("<  {value:.2}  >"))
-                    }
+                    let kind = options_menu.curve;
+                    let curve = settings.keyboard_curves.bezier(kind);
+                    let (end, axis, value) = point_row(item, kind, lang, &curve);
+                    Row::with_value(
+                        format!("{end} · {axis}"),
+                        format!("<  {:.0} %  >", value * 100.0),
+                    )
                 }
                 ControlItem::ShowLegend => {
                     Row::check(lang.show_legend(), debug_options.show_legend)
@@ -1953,6 +1956,13 @@ fn show_options_menu(
                             Language::English => "Show coordinates on the map",
                         },
                         settings.show_coordinates,
+                    ),
+                    GraphicsItem::ShowKeyboardCurves => Row::check(
+                        match lang {
+                            Language::Spanish => "Mostrar curvas del teclado",
+                            Language::English => "Show the keyboard's curves",
+                        },
+                        settings.show_keyboard_curves,
                     ),
                     GraphicsItem::Advanced => Row::with_value(
                         match lang {
@@ -2839,7 +2849,8 @@ mod tests {
                 GraphicsItem::ShowResolution,
                 GraphicsItem::ShowAntialiasing,
                 GraphicsItem::ShowTextures,
-                GraphicsItem::ShowCoordinates
+                GraphicsItem::ShowCoordinates,
+                GraphicsItem::ShowKeyboardCurves
             ]
         );
         assert_eq!(
@@ -2855,6 +2866,7 @@ mod tests {
             show_resolution: true,
             show_antialiasing: true,
             show_textures: true,
+            show_keyboard_curves: true,
             cartoon_water: true,
             ..default()
         };
@@ -2865,6 +2877,7 @@ mod tests {
         assert!(section_is_default(graphics, page, &settings, &debug));
         assert!(settings.show_fps && !settings.show_resolution);
         assert!(!settings.show_antialiasing && !settings.show_textures);
+        assert!(!settings.show_keyboard_curves);
         // The water is on Graphics' own list: its Reset puts it back.
         assert!(!section_is_default(graphics, None, &settings, &debug));
         reset_section(graphics, None, &mut settings, &mut debug);
@@ -2873,31 +2886,67 @@ mod tests {
     }
 
     #[test]
-    fn control_s_advanced_page_holds_the_keyboard_s_curves_and_resets_them() {
-        let page = Some(Page::ControlAdvanced);
-        assert_eq!(control_items(page)[0], ControlItem::CurvesOn);
+    fn control_s_advanced_page_chooses_how_the_keyboard_behaves_and_its_page_follows() {
+        let advanced = Some(Page::ControlAdvanced);
+        assert_eq!(control_items(advanced), [ControlItem::KeyboardMode]);
         let mut menu = OptionsMenu::default();
         menu.open(OptionsReturn::Welcome);
         menu.tab = OptionsTab::Control;
-        menu.page = page;
+        menu.page = advanced;
         menu.leave_page(Page::ControlAdvanced);
         assert_eq!(control_items(None)[menu.selected], ControlItem::Advanced);
+        // The keyboard's page: its rates as always, its curves in Bézier,
+        // both back on its row.
+        assert_eq!(keyboard_page(KeyboardMode::Classic), Page::Keyboard);
+        assert_eq!(keyboard_page(KeyboardMode::Bezier), Page::KeyboardCurves);
+        assert_eq!(
+            control_items(Some(Page::KeyboardCurves))[0],
+            ControlItem::CurvePreset
+        );
+        assert_eq!(Page::KeyboardCurves.row(), Page::Keyboard.row());
+        assert_eq!(
+            Page::KeyboardCurves.title(Language::Spanish),
+            Page::Keyboard.title(Language::Spanish)
+        );
 
         let control = OptionsTab::Control;
+        let curves = Some(Page::KeyboardCurves);
         let mut settings = Settings::default();
         let mut debug = DebugOptions::default();
-        assert!(section_is_default(control, page, &settings, &debug));
-        settings.keyboard_curves_on = true;
+        assert!(section_is_default(control, advanced, &settings, &debug));
+        settings.keyboard_mode = KeyboardMode::Bezier;
         settings.keyboard_curves.turn.y1 = 0.6;
-        assert!(!section_is_default(control, page, &settings, &debug));
-        // Control as a whole is not as at first either.
+        assert!(!section_is_default(control, advanced, &settings, &debug));
+        assert!(!section_is_default(control, curves, &settings, &debug));
+        // Each page puts back its own.
+        reset_section(control, curves, &mut settings, &mut debug);
+        assert!(section_is_default(control, curves, &settings, &debug));
+        assert_eq!(settings.keyboard_mode, KeyboardMode::Bezier);
         assert!(!section_is_default(control, None, &settings, &debug));
-        reset_section(control, page, &mut settings, &mut debug);
+        reset_section(control, advanced, &mut settings, &mut debug);
         assert!(section_is_default(control, None, &settings, &debug));
-        assert!(!settings.keyboard_curves_on);
 
-        // The control points step by 0.05 within the square, on the
-        // hundredths.
+        // The control points named by the end they shape and what they
+        // measure; stepped by 0.05 within the square, on the hundredths.
+        let bezier = crate::bike::curves::KeyboardCurves::default().speed;
+        assert_eq!(
+            point_row(
+                ControlItem::CurveX1,
+                CurveKind::Speed,
+                Language::Spanish,
+                &bezier
+            ),
+            ("Inicio", "velocidad", bezier.x1)
+        );
+        assert_eq!(
+            point_row(
+                ControlItem::CurveY2,
+                CurveKind::Turn,
+                Language::English,
+                &bezier
+            ),
+            ("End", "turn", bezier.y2)
+        );
         assert_eq!(step_point(0.98, 1), 1.0);
         assert_eq!(step_point(0.333, -1), 0.28);
         assert_eq!(step_point(0.02, -1), 0.0);

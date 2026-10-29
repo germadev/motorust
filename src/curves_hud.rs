@@ -1,5 +1,5 @@
 //! The panel of the keyboard's curves, under the performance HUD at the top
-//! right, when Options > Control > Advanced says so: each of the five
+//! right, when Options > Graphics > Performance HUD says so: each of the five
 //! curves (see [`crate::bike::curves`]) as it is set, over the classic
 //! preset's in grey, with its control points, and a dot where the first
 //! player's bike is on it now. The curve being edited in the options stands
@@ -275,7 +275,7 @@ fn label_cards(
     }
     let editing = (menu.is_open
         && menu.tab == OptionsTab::Control
-        && menu.page == Some(Page::ControlAdvanced))
+        && menu.page == Some(Page::KeyboardCurves))
     .then_some(menu.curve);
     for (card, mut border) in &mut cards {
         let edge = if editing == Some(card.0) {

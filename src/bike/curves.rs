@@ -1,5 +1,5 @@
-//! The keyboard's curves: with Options > Control > Advanced's «Keyboard by
-//! curves» on, the keyboard and the d-pad lean the bike over and the lean
+//! The keyboard's curves: with Options > Control > Advanced's keyboard
+//! behaviour on Bézier, the keyboard and the d-pad lean the bike over and the lean
 //! turns it, each step shaped by a Bézier curve (see [`crate::bezier`]):
 //!
 //! - **A, leaning in**: how far over the rider is for how long the key has
@@ -22,6 +22,28 @@ use serde::{Deserialize, Serialize};
 use crate::bezier::Bezier;
 use crate::locale::Language;
 
+/// How the keyboard and the d-pad steer, as Options > Control > Advanced
+/// says: as always (Options > Control > Keyboard behaviour's rates and
+/// limit), or by the curves (that page then sets them).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum KeyboardMode {
+    #[default]
+    Classic,
+    Bezier,
+}
+
+pub const KEYBOARD_MODES: [KeyboardMode; 2] = [KeyboardMode::Classic, KeyboardMode::Bezier];
+
+impl KeyboardMode {
+    pub fn name(self, lang: Language) -> &'static str {
+        match (self, lang) {
+            (KeyboardMode::Classic, Language::Spanish) => "Clásico",
+            (KeyboardMode::Classic, Language::English) => "Classic",
+            (KeyboardMode::Bezier, _) => "Bézier",
+        }
+    }
+}
+
 /// A curve run over a time: how far through it is how long since it began
 /// out of `seconds`.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -30,7 +52,8 @@ pub struct TimedCurve {
     pub seconds: f32,
 }
 
-/// The keyboard's curves, as Options > Control > Advanced sets them.
+/// The keyboard's curves, as Options > Control > Keyboard behaviour sets
+/// them in Bézier.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeyboardCurves {
@@ -304,6 +327,21 @@ impl CurveKind {
             (CurveKind::Speed, Language::English) => "Speed",
             (CurveKind::Turn, Language::Spanish) => "Giro",
             (CurveKind::Turn, Language::English) => "Turn",
+        }
+    }
+
+    /// What its control points' coordinates measure, as the options name
+    /// them: across and up.
+    pub fn axes(self, lang: Language) -> (&'static str, &'static str) {
+        match (self, lang) {
+            (CurveKind::LeanIn, Language::Spanish) => ("tiempo", "tumbada"),
+            (CurveKind::LeanIn, Language::English) => ("time", "lean"),
+            (CurveKind::StandUp | CurveKind::Unwind, Language::Spanish) => ("tiempo", "levantada"),
+            (CurveKind::StandUp | CurveKind::Unwind, Language::English) => ("time", "rise"),
+            (CurveKind::Speed, Language::Spanish) => ("velocidad", "reducción"),
+            (CurveKind::Speed, Language::English) => ("speed", "reduction"),
+            (CurveKind::Turn, Language::Spanish) => ("tumbada", "giro"),
+            (CurveKind::Turn, Language::English) => ("lean", "turn"),
         }
     }
 

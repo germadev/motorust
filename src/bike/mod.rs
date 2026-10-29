@@ -32,7 +32,7 @@ use crate::track::{SURFACE_Y, Surface, Track};
 use crate::welcome::GameMode;
 use ai::Rival;
 use chassis::{Chassis, Forces};
-use curves::{CurveLean, CurveProbe, KeyboardCurves};
+use curves::{CurveLean, CurveProbe, KeyboardCurves, KeyboardMode};
 use model::{
     BikeBlueprint, BikeModelPlugin, COVER, DIAGONAL, Design, FLECHA, Livery, ROSSO, TRICOLOR, VERDE,
 };
@@ -320,7 +320,8 @@ pub struct BikeInput {
     pub pivot_slowing: f32,
     /// The lean the keyboard's curves ask for (a share of all the bike can,
     /// positive to the left), which the bike shows instead of the one the
-    /// turn gives: with Options > Control > Advanced's curves on, while the
+    /// turn gives: with the keyboard's behaviour on Bézier (Options > Control >
+    /// Advanced), while the
     /// keyboard or the d-pad steer (see [`curves`]).
     pub lean: Option<f32>,
 }
@@ -1372,8 +1373,7 @@ fn read_player_input(
     let (input, state, autopilot) = player.into_inner();
     // The keyboard's curves, when they are on, and the top speed their
     // limit with speed is measured against.
-    let curves = settings
-        .keyboard_curves_on
+    let curves = (settings.keyboard_mode == KeyboardMode::Bezier)
         .then_some((&settings.keyboard_curves, tuning.max_speed));
     // On autopilot the machine rides the bike: what the player presses is
     // read (to keep the steering's state) but not used.
