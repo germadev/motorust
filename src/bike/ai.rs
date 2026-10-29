@@ -472,6 +472,7 @@ pub fn decide(
         // Los rivales no hacen caballitos: van a por el tiempo.
         wheelie: 0.0,
         pivot_slowing: 0.0,
+        lean: None,
     }
 }
 

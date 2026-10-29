@@ -5,9 +5,11 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod bench;
+mod bezier;
 mod bike;
 mod camera;
 mod circuits;
+mod curves_hud;
 mod debug_start;
 mod gamepads;
 mod geometry;
@@ -208,6 +210,7 @@ fn main() {
             modes::ModesPlugin,
             perf_log::PerfLogPlugin,
             render_scale::RenderScalePlugin,
+            curves_hud::CurvesHudPlugin,
         ));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);

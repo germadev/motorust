@@ -155,6 +155,14 @@ pub struct Settings {
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
+    /// Whether the keyboard and the d-pad steer by the curves of Options >
+    /// Control > Advanced, leaning the bike over and turning it with the
+    /// lean (see [`crate::bike::curves`]), rather than as always.
+    pub keyboard_curves_on: bool,
+    /// Whether those curves are drawn under the performance HUD, with where
+    /// the first player's bike is on them (see [`crate::curves_hud`]).
+    pub show_keyboard_curves: bool,
+    pub keyboard_curves: crate::bike::curves::KeyboardCurves,
     /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
     /// Settings tried out and not to be kept (the benchmark's, see
@@ -393,6 +401,9 @@ impl Default for Settings {
             show_coordinates: false,
             cartoon_water: false,
             frame_latency: DEFAULT_FRAME_LATENCY,
+            keyboard_curves_on: false,
+            show_keyboard_curves: false,
+            keyboard_curves: crate::bike::curves::KeyboardCurves::default(),
             records: crate::race::Records::default(),
             transient: false,
         }
@@ -1992,6 +2003,28 @@ mod tests {
             "Normales y parallax"
         );
         assert_eq!(Relief::Off.name(Language::English), "Off");
+    }
+
+    #[test]
+    fn the_keyboard_s_curves_are_saved_and_older_settings_start_without_them() {
+        let mut settings = Settings {
+            keyboard_curves_on: true,
+            show_keyboard_curves: true,
+            ..Settings::default()
+        };
+        settings.keyboard_curves.lean_in.seconds = 0.25;
+        settings.keyboard_curves.turn = crate::bezier::Bezier::new(0.1, 0.5, 0.6, 0.9);
+        let text = ron::ser::to_string(&settings).unwrap();
+        let loaded: Settings = ron::from_str(&text).unwrap();
+        assert_eq!(loaded.keyboard_curves, settings.keyboard_curves);
+        assert!(loaded.keyboard_curves_on && loaded.show_keyboard_curves);
+        // Saved before them: off, and the classic ones.
+        let older: Settings = ron::from_str("(fps: Unlimited)").unwrap();
+        assert!(!older.keyboard_curves_on && !older.show_keyboard_curves);
+        assert_eq!(
+            older.keyboard_curves.preset(),
+            Some(crate::bike::curves::CurvePreset::Classic)
+        );
     }
 
     #[test]

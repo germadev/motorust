@@ -7,6 +7,7 @@
 mod ai;
 mod chassis;
 mod crash;
+pub mod curves;
 mod grass_kickup;
 mod loop_ride;
 pub(crate) mod model;
@@ -31,6 +32,7 @@ use crate::track::{SURFACE_Y, Surface, Track};
 use crate::welcome::GameMode;
 use ai::Rival;
 use chassis::{Chassis, Forces};
+use curves::{CurveLean, CurveProbe, KeyboardCurves};
 use model::{
     BikeBlueprint, BikeModelPlugin, COVER, DIAGONAL, Design, FLECHA, Livery, ROSSO, TRICOLOR, VERDE,
 };
@@ -63,6 +65,12 @@ const DIGITAL_RELEASE_ACCEL: f32 = 4.0;
 /// parte, para el teclado y para el stick.
 const DIGITAL_STEER_FAST: f32 = 0.8;
 const DIGITAL_STEER_SPEEDS: (f32, f32) = (15.0, 70.0);
+/// With the keyboard's curves (see [`curves`]), the speed from which the
+/// bike leans all they ask (m/s), and how closely the lean shown follows it
+/// (1/s): within a few hundredths of a second, so that their times are
+/// the ones seen.
+const CURVE_LEAN_SPEED: f32 = 15.0;
+const CURVE_LEAN_FOLLOW: f32 = 40.0;
 /// Lo que tarda la hierba en frenar del todo (s), y la parte de ese tiempo
 /// en la que apenas se nota: pisarla un momento casi no frena. Al volver al
 /// asfalto se recupera el doble de rápido.
@@ -112,6 +120,7 @@ impl Plugin for BikePlugin {
             wheelie_halo::WheelieHaloPlugin,
         ))
         .init_resource::<BikeTuning>()
+        .init_resource::<CurveProbe>()
         .init_resource::<Race>()
         .add_message::<RecallToGrid>()
         .init_resource::<SplitChoices>()
@@ -309,6 +318,11 @@ pub struct BikeInput {
     /// the keyboard or the d-pad, as Options > Control says (see
     /// [`pause::ReverseRate`]).
     pub pivot_slowing: f32,
+    /// The lean the keyboard's curves ask for (a share of all the bike can,
+    /// positive to the left), which the bike shows instead of the one the
+    /// turn gives: with Options > Control > Advanced's curves on, while the
+    /// keyboard or the d-pad steer (see [`curves`]).
+    pub lean: Option<f32>,
 }
 
 /// Estado físico de la moto. Solo cambia en los pasos fijos de la simulación.
@@ -621,7 +635,16 @@ pub fn step(
         0.0
     };
     let grip_used = (speed * yaw_rate / tuning.max_lateral_accel).clamp(-1.0, 1.0);
-    let dynamic_lean = tuning.max_lean * grip_used.abs().powf(LEAN_CURVE).copysign(grip_used);
+    // With the keyboard's curves, the lean they ask for, less of it slow
+    // (walking pace, the bike turns on the bars rather than leaning).
+    let dynamic_lean = match input.lean {
+        Some(share) => {
+            tuning.max_lean
+                * share.clamp(-1.0, 1.0)
+                * smoothstep(STOPPED_SPEED, CURVE_LEAN_SPEED, speed.abs())
+        }
+        None => tuning.max_lean * grip_used.abs().powf(LEAN_CURVE).copysign(grip_used),
+    };
     let target_lean = dynamic_lean * (1.0 - stopped) + STOPPED_LEAN * stopped;
     // Se tumba deprisa y se levanta suave. Al cambiar de lado en una curva,
     // también se tumba deprisa hacia el lado contrario.
@@ -630,7 +653,10 @@ pub fn step(
     // Going over to the other side, as fast as the controls say (as always
     // but with the keyboard asking for less).
     let swinging = swinging(state.swinging, state.lean, target_lean);
-    let lean_rate = if leaning_in {
+    let lean_rate = if input.lean.is_some() {
+        // The curves already shape it: followed closely.
+        CURVE_LEAN_FOLLOW
+    } else if leaning_in {
         tuning.lean_in_response
     } else {
         tuning.lean_response
@@ -1175,9 +1201,10 @@ fn read_controller_binding(
     keyboard: &ButtonInput<KeyCode>,
     gamepads: &Query<(Entity, &Gamepad)>,
     options: &DebugOptions,
+    curves: Option<(&KeyboardCurves, f32)>,
     speed: f32,
     dt: f32,
-    digital: &mut DigitalSteer,
+    digital: &mut KeySteer,
     analog: &mut AnalogSteer,
     arming: &mut PadArming,
 ) -> BikeInput {
@@ -1208,20 +1235,15 @@ fn read_controller_binding(
             } else {
                 0.0
             };
-            let steer_direct = digital.update(
-                (left - right).clamp(-1.0, 1.0),
-                reach_with(options.keyboard_limit, speed),
-                options.keyboard_rate.factor(),
-                options.keyboard_return.factor(),
-                dt,
-            );
+            let keys = digital.update(left - right, speed, dt, options, curves);
             BikeInput {
                 throttle,
                 brake,
                 steer: 0.0,
-                steer_direct,
+                steer_direct: keys.steer,
                 wheelie,
-                pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
+                pivot_slowing: keys.pivot_slowing,
+                lean: keys.lean,
             }
         }
         ControllerBinding::Arrows => {
@@ -1255,20 +1277,15 @@ fn read_controller_binding(
             } else {
                 0.0
             };
-            let steer_direct = digital.update(
-                (left - right).clamp(-1.0, 1.0),
-                reach_with(options.keyboard_limit, speed),
-                options.keyboard_rate.factor(),
-                options.keyboard_return.factor(),
-                dt,
-            );
+            let keys = digital.update(left - right, speed, dt, options, curves);
             BikeInput {
                 throttle,
                 brake,
                 steer: 0.0,
-                steer_direct,
+                steer_direct: keys.steer,
                 wheelie,
-                pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
+                pivot_slowing: keys.pivot_slowing,
+                lean: keys.lean,
             }
         }
         ControllerBinding::Gamepad(entity) => {
@@ -1303,13 +1320,7 @@ fn read_controller_binding(
                 } else {
                     0.0f32
                 };
-                let steer_direct = digital.update(
-                    (dpad_left - dpad_right).clamp(-1.0, 1.0),
-                    reach_with(options.keyboard_limit, speed),
-                    options.keyboard_rate.factor(),
-                    options.keyboard_return.factor(),
-                    dt,
-                );
+                let keys = digital.update(dpad_left - dpad_right, speed, dt, options, curves);
 
                 // B, or the trigger and A at once. Not the stick pulled back:
                 // steering, it is easy to pull it a little without meaning to.
@@ -1324,9 +1335,10 @@ fn read_controller_binding(
                     throttle,
                     brake,
                     steer: steer.clamp(-1.0, 1.0),
-                    steer_direct,
+                    steer_direct: keys.steer,
                     wheelie,
-                    pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
+                    pivot_slowing: keys.pivot_slowing,
+                    lean: keys.lean,
                 }
             } else {
                 BikeInput::default()
@@ -1351,12 +1363,18 @@ fn read_player_input(
         (&mut BikeInput, &BikeState, &LocalPlayer),
         (Without<Player>, Without<Autopilot>),
     >,
-    mut digital: Local<[DigitalSteer; 2]>,
+    mut digital: Local<[KeySteer; 2]>,
     mut analog: Local<[AnalogSteer; 2]>,
     mut arming: Local<PadArming>,
     names: Query<&Name, With<Gamepad>>,
+    (tuning, mut probe): (Res<BikeTuning>, ResMut<CurveProbe>),
 ) {
     let (input, state, autopilot) = player.into_inner();
+    // The keyboard's curves, when they are on, and the top speed their
+    // limit with speed is measured against.
+    let curves = settings
+        .keyboard_curves_on
+        .then_some((&settings.keyboard_curves, tuning.max_speed));
     // On autopilot the machine rides the bike: what the player presses is
     // read (to keep the steering's state) but not used.
     let mut ignored = BikeInput::default();
@@ -1377,6 +1395,7 @@ fn read_player_input(
                 &keyboard,
                 &gamepads,
                 &options,
+                curves,
                 state.speed,
                 dt,
                 digital_p1,
@@ -1391,6 +1410,7 @@ fn read_player_input(
                     &keyboard,
                     &gamepads,
                     &options,
+                    curves,
                     p2_state.speed,
                     dt,
                     digital_p2,
@@ -1477,21 +1497,16 @@ fn read_player_input(
 
         let raw_steer = steer * reach_with(options.stick_limit, state.speed);
         let steer = analog_p1.update(raw_steer, dt);
-        let steer_direct = digital_p1.update(
-            pressed.clamp(-1.0, 1.0),
-            reach_with(options.keyboard_limit, state.speed),
-            options.keyboard_rate.factor(),
-            options.keyboard_return.factor(),
-            dt,
-        );
+        let keys = digital_p1.update(pressed, state.speed, dt, &options, curves);
 
         *input = BikeInput {
             throttle,
             brake,
             steer: steer.clamp(-1.0, 1.0),
-            steer_direct,
+            steer_direct: keys.steer,
             wheelie,
-            pivot_slowing: options.keyboard_reverse.slowing(steer_direct),
+            pivot_slowing: keys.pivot_slowing,
+            lean: keys.lean,
         };
         if throttle > 0.0 && !race.started && !race.lights {
             info!(
@@ -1500,6 +1515,24 @@ fn read_player_input(
             );
         }
     }
+
+    // Where the first player's bike is on the keyboard's curves, for the
+    // panel that draws them.
+    let next = match curves {
+        Some((curves, top_speed)) => {
+            let speed_share = (state.speed / top_speed).abs();
+            let lean = digital_p1.curves;
+            CurveProbe {
+                live: true,
+                lean,
+                speed_share,
+                limit: curves.lean_limit(speed_share),
+                turn: curves.turn_for(lean.lean),
+            }
+        }
+        None => CurveProbe::default(),
+    };
+    probe.set_if_neq(next);
 
     let p2_throttles = other_players.iter().any(|(inp, _, _)| inp.throttle > 0.0);
     if (input.throttle > 0.0 || p2_throttles) && !race.started && !race.lights {
@@ -1575,6 +1608,66 @@ impl DigitalSteer {
             self.time += dt;
         }
         self.value
+    }
+}
+
+/// How the keyboard or the d-pad steer a bike: as always (see
+/// [`DigitalSteer`]), or leaning it over by the keyboard's curves when they
+/// are on (see [`curves`]).
+#[derive(Default)]
+struct KeySteer {
+    digital: DigitalSteer,
+    curves: CurveLean,
+}
+
+/// What the keys ask of the bike: the turn, how much slower than usual the
+/// lean goes over to the other side, and the lean, with the curves.
+struct KeyTurn {
+    steer: f32,
+    pivot_slowing: f32,
+    lean: Option<f32>,
+}
+
+impl KeySteer {
+    /// Goes on `dt` seconds with `pressed` held (left less right) at `speed`
+    /// (m/s): as Options > Control > Keyboard says, or by `curves` (with the
+    /// bike's top speed) when they are on.
+    fn update(
+        &mut self,
+        pressed: f32,
+        speed: f32,
+        dt: f32,
+        options: &DebugOptions,
+        curves: Option<(&KeyboardCurves, f32)>,
+    ) -> KeyTurn {
+        let pressed = pressed.clamp(-1.0, 1.0);
+        match curves {
+            Some((curves, top_speed)) => {
+                self.digital = DigitalSteer::default();
+                let lean = self.curves.update(pressed, curves, speed / top_speed, dt);
+                KeyTurn {
+                    steer: curves.turn_for(lean),
+                    pivot_slowing: 0.0,
+                    // Upright with no key held, the stick (if any) leans it.
+                    lean: (pressed != 0.0 || lean != 0.0).then_some(lean),
+                }
+            }
+            None => {
+                self.curves = CurveLean::default();
+                let steer = self.digital.update(
+                    pressed,
+                    reach_with(options.keyboard_limit, speed),
+                    options.keyboard_rate.factor(),
+                    options.keyboard_return.factor(),
+                    dt,
+                );
+                KeyTurn {
+                    steer,
+                    pivot_slowing: options.keyboard_reverse.slowing(steer),
+                    lean: None,
+                }
+            }
+        }
     }
 }
 
@@ -2253,6 +2346,106 @@ mod tests {
         assert_eq!(heading, slow_heading);
         // Nothing slower with the stick (no keyboard turn).
         assert_eq!(ReverseRate::Slow.slowing(0.0), 0.0);
+    }
+
+    #[test]
+    fn with_the_curves_the_bike_shows_the_lean_they_ask_for() {
+        let tuning = BikeTuning::default();
+        let mut state = BikeState {
+            speed: 50.0,
+            ..parked()
+        };
+        let input = BikeInput {
+            throttle: 1.0,
+            steer_direct: 0.5,
+            lean: Some(0.5),
+            ..default()
+        };
+        for _ in 0..(0.2 / DT) as usize {
+            state = step(&state, &input, &Ground::flat(Surface::Asphalt), &tuning, DT);
+        }
+        // Half the bike's lean, whatever the turn would give.
+        assert!(
+            (state.lean - 0.5 * tuning.max_lean).abs() < 0.01,
+            "{}",
+            state.lean
+        );
+        // To the other side, at once (within a few hundredths).
+        let other = BikeInput {
+            steer_direct: -0.5,
+            lean: Some(-0.5),
+            ..input
+        };
+        for _ in 0..(0.1 / DT) as usize {
+            state = step(&state, &other, &Ground::flat(Surface::Asphalt), &tuning, DT);
+        }
+        assert!(
+            (state.lean + 0.5 * tuning.max_lean).abs() < 0.03,
+            "{}",
+            state.lean
+        );
+        // At walking pace, hardly any: the bars turn it.
+        let mut slow = BikeState {
+            speed: 3.0,
+            ..parked()
+        };
+        let coasting = BikeInput {
+            throttle: 0.0,
+            ..input
+        };
+        for _ in 0..(0.2 / DT) as usize {
+            slow = step(
+                &slow,
+                &coasting,
+                &Ground::flat(Surface::Asphalt),
+                &tuning,
+                DT,
+            );
+        }
+        assert!(slow.lean.abs() < 0.05 * tuning.max_lean, "{}", slow.lean);
+    }
+
+    #[test]
+    fn the_keys_steer_as_always_without_the_curves_and_by_them_with_them() {
+        let options = DebugOptions::default();
+        let mut keys = KeySteer::default();
+        let mut digital = DigitalSteer::default();
+        let reach = reach_with(options.keyboard_limit, 30.0);
+        let (rate, back) = (
+            options.keyboard_rate.factor(),
+            options.keyboard_return.factor(),
+        );
+        for frame in 0..90 {
+            let pressed = if frame < 50 { 1.0 } else { 0.0 };
+            let turn = keys.update(pressed, 30.0, DT, &options, None);
+            assert_eq!(turn.steer, digital.update(pressed, reach, rate, back, DT));
+            assert_eq!(turn.lean, None);
+        }
+        // With the classic curves, nearly the same turn, and the lean.
+        let curves = KeyboardCurves::default();
+        let mut by_curves = KeySteer::default();
+        let mut digital = DigitalSteer::default();
+        for frame in 0..90 {
+            let pressed = if frame < 50 { 1.0 } else { 0.0 };
+            let turn = by_curves.update(pressed, 30.0, DT, &options, Some((&curves, 80.0)));
+            let classic = digital.update(pressed, reach, rate, back, DT);
+            // Let go short of all the way over (the limit at speed), the
+            // curve goes on from where it is that high, a little ahead of
+            // the classic keyboard, which starts back slowly from anywhere.
+            let near = if frame < 50 { 0.03 } else { 0.08 };
+            assert!(
+                (turn.steer - classic).abs() < near,
+                "{frame}: {} {classic}",
+                turn.steer
+            );
+            // E is a straight line in the classic curves: as much turn as lean.
+            assert!((turn.lean.unwrap() - turn.steer).abs() < 1e-4);
+            assert_eq!(turn.pivot_slowing, 0.0);
+        }
+        // Upright with no key held, the lean is left to the turn.
+        let mut idle = KeySteer::default();
+        let turn = idle.update(0.0, 30.0, DT, &options, Some((&curves, 80.0)));
+        assert_eq!((turn.steer, turn.lean), (0.0, None));
     }
 
     #[test]
