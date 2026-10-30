@@ -190,7 +190,7 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
 
 ### Where tracks live
 
-Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron` and `turbo_bay.ron`) or in Rust in `src/circuits/` (`loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
+Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `turbo_bay.ron` and `loop_island.ron`) or in Rust in `src/circuits/` (`gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -283,7 +283,7 @@ pub const LAYOUT: Layout = Layout {
 };
 ```
 
-In a real track, the layout goes straight into the `Circuit`, as in `loop_island.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[], narrows: &[] }`. (The example needs `branches: &[]` and `narrows: &[]` too.) In a file, as in `turbo_bay.ron`, the same fields by name, the lists it leaves out empty.
+In a real track, the layout goes straight into the `Circuit`, as in `gold_mine.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[], narrows: &[] }`. (The example needs `branches: &[]` and `narrows: &[]` too.) In a file, as in `turbo_bay.ron` (or `loop_island.ron`, with a branch round a loop), the same fields by name, the lists it leaves out empty.
 
 ### Branches and loops
 
