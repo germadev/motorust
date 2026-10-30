@@ -645,7 +645,7 @@ mod tests {
     #[test]
     fn every_dam_s_crest_is_a_bridge_of_its_own() {
         let mut dams = 0;
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let scenery = &circuit.scenery;
             for dam in scenery.dams {
                 assert!(
@@ -673,7 +673,7 @@ mod tests {
 
     #[test]
     fn a_lake_s_water_is_a_fan_that_never_folds_over() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             for dam in circuit.scenery.dams {
                 let shore = closed_curve(dam.lake, SHORE_SPACING);
                 let middle = shore.iter().copied().sum::<Vec2>() / shore.len() as f32;
@@ -695,7 +695,7 @@ mod tests {
         // As an arch dam: over the crest the road bends away from the lake,
         // all the way along it, so the arch's middle stands out towards the
         // water it holds.
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             for dam in circuit.scenery.dams {
                 let crest = indices(&track, dam.crest, track.lap_length());

@@ -2420,7 +2420,7 @@ mod tests {
 
     #[test]
     fn every_circuit_gets_its_houses() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let houses = place_houses(&track, &terrain, &circuit.scenery.houses, &[]);

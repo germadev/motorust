@@ -4,12 +4,14 @@
 //! Los datos de cada pista están en [`crate::circuits`].
 
 use bevy::prelude::*;
+use serde::Deserialize;
 
 use crate::geometry::smoothstep;
 
 /// Un tramo de la vuelta, en metros desde la meta. Puede pasar por la meta:
 /// de 2400 a 300, por ejemplo.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(from = "crate::circuits::data::SpanFile")]
 pub struct Span {
     pub from: f32,
     pub to: f32,
@@ -64,7 +66,7 @@ impl Span {
 }
 
 /// A qué lado de la carretera, mirando hacia donde se corre.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum Side {
     Left,
     Right,
@@ -81,12 +83,15 @@ impl Side {
 }
 
 /// Un peñasco: una masa de roca con forma irregular.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Massif {
     pub center: Vec2,
     pub radius: f32,
     pub height: f32,
     /// Whether the road climbs it: its smooth slopes are the ground the road
     /// is cut into, rather than rock standing up behind the walls.
+    #[serde(default)]
     pub climbed: bool,
 }
 
@@ -109,6 +114,8 @@ pub const fn climbed_massif(x: f32, z: f32, radius: f32, height: f32) -> Massif 
 
 /// Una pared de roca a un lado de la carretera, como si la hubieran abierto
 /// cortando la montaña.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cutting {
     pub span: Span,
     pub side: Side,
@@ -116,7 +123,7 @@ pub struct Cutting {
 }
 
 /// The greens of a track's grass.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum Greens {
     /// The arcade lawn: a bright green, a little lighter or deeper here and
     /// there.
@@ -154,6 +161,8 @@ pub struct Terrace {
 }
 
 /// Dónde está el mar.
+#[derive(Deserialize)]
+#[serde(try_from = "crate::circuits::data::CoastFile")]
 pub enum Coast {
     /// Distancia con signo a la costa, positiva tierra adentro.
     Function(fn(Vec2) -> f32),
@@ -181,7 +190,7 @@ pub enum Coast {
 }
 
 /// Cómo se cierra la carretera por los lados.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum WallStyle {
     /// Muro de piedra.
     Stone,
@@ -222,7 +231,7 @@ pub enum WallStyle {
 
 /// What the steep faces of the terrain (cliffs, rock walls and the rock
 /// around the tunnels) are made of.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum Soil {
     /// Natural rock with tilted strata.
     Rock,
@@ -249,7 +258,7 @@ pub enum Soil {
 /// afternoon, the sun low and golden; a low sun setting in a warm, hazy
 /// sky; or the black sky of the Moon with the Earth hanging above the
 /// horizon.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum SkyStyle {
     Day,
     Mediterranean,
@@ -268,7 +277,7 @@ pub enum SkyStyle {
 
 /// The colour of the water: the blue sea, or the red water of a flooded pit
 /// rich in iron, as at Rio Tinto.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum Water {
     Sea,
     Iron,
@@ -375,6 +384,8 @@ pub struct Dam {
 }
 
 /// Un tramo con otro muro distinto del de piedra a un lado.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WallRun {
     pub span: Span,
     pub side: Side,
@@ -382,25 +393,36 @@ pub struct WallRun {
 }
 
 /// Un arco sobre la carretera con un rótulo.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Gantry {
     pub along: f32,
+    #[serde(deserialize_with = "crate::circuits::data::color")]
     pub color: Color,
     /// El rótulo, o un tablero de ajedrez si no hay.
+    #[serde(deserialize_with = "crate::circuits::data::optional_text", default)]
     pub text: Option<&'static str>,
 }
 
 /// Un cartel publicitario junto a la carretera.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Billboard {
     pub along: f32,
     pub side: Side,
+    #[serde(deserialize_with = "crate::circuits::data::text")]
     pub text: &'static str,
+    #[serde(deserialize_with = "crate::circuits::data::color")]
     pub color: Color,
     /// Desde qué letra, y en qué color, van las demás.
+    #[serde(deserialize_with = "crate::circuits::data::accent", default)]
     pub accent: Option<(usize, Color)>,
 }
 
 /// Una fila de algo a lo largo de la carretera: en un tramo, a un lado, a
 /// esta distancia de la línea central y cada tantos metros.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Row {
     pub span: Span,
     pub side: Side,
@@ -409,7 +431,7 @@ pub struct Row {
 }
 
 /// Especies de árbol.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum Species {
     UmbrellaPine,
     Cypress,
@@ -440,16 +462,24 @@ pub enum Species {
 
 /// A forest: a stretch with trees close together on both sides of the road,
 /// of these species.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Forest {
     pub span: Span,
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub species: &'static [Species],
     /// A tree every so many metres along the road, in each of its rows
     /// either side ([`FOREST_EVERY`], or more where it is more open).
+    #[serde(default = "forest_every")]
     pub every: f32,
 }
 
 /// How far apart along the road a forest's trees are, in each row (m).
 pub const FOREST_EVERY: f32 = 5.0;
+
+fn forest_every() -> f32 {
+    FOREST_EVERY
+}
 
 pub const fn forest(span: Span, species: &'static [Species]) -> Forest {
     Forest {
@@ -468,15 +498,19 @@ impl Forest {
 
 /// Las casas: cuántas como mucho, de qué colores y, si hace falta, solo en
 /// unos tramos.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Houses {
     pub max: usize,
+    #[serde(deserialize_with = "crate::circuits::data::colors")]
     pub paints: &'static [Color],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub spans: &'static [Span],
     pub style: HouseStyle,
 }
 
 /// How the houses are built.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum HouseStyle {
     /// Plastered walls under a tiled gable roof.
     Cottage,
@@ -487,6 +521,10 @@ pub enum HouseStyle {
 }
 
 /// Todo lo que hace falta para construir el escenario de una pista.
+#[derive(Deserialize)]
+// Its gantries' and billboards' texts are `&'static`, so a file is read
+// from a text as lasting (see `crate::circuits::data::parse`).
+#[serde(deny_unknown_fields, bound(deserialize = "'de: 'static"))]
 pub struct Scenery {
     pub coast: Coast,
     /// Altura de las colinas (m).
@@ -498,58 +536,87 @@ pub struct Scenery {
     /// greens (the grass in flower darkens half as much, the flowers being
     /// lighter; the hedges as much as the grass).
     pub grass_shade: f32,
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub massifs: &'static [Massif],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub cuttings: &'static [Cutting],
+    #[serde(skip)]
     pub terraces: &'static [Terrace],
     /// Montañas lejanas que cierran el horizonte.
+    #[serde(deserialize_with = "crate::circuits::data::function")]
     pub mountains: fn(Vec2) -> f32,
     /// Colores de las franjas de los pianos.
+    #[serde(deserialize_with = "crate::circuits::data::color_pair")]
     pub curbs: [Color; 2],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub walls: &'static [WallRun],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub tunnels: &'static [Span],
+    #[serde(skip)]
     pub bridges: &'static [Bridge],
     /// Dams, each with the road along its crest (see [`Dam`]).
+    #[serde(skip)]
     pub dams: &'static [Dam],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub gantries: &'static [Gantry],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub billboards: &'static [Billboard],
     /// Farolas, cada `every` metros.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub lamps: &'static [Row],
     /// Especies de los árboles sueltos, y bosques: tramos con árboles altos
     /// muy juntos a los dos lados.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub trees: &'static [Species],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub forests: &'static [Forest],
     pub houses: Houses,
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub palms: &'static [Row],
     /// Hoteles altos en fila, de colores.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub hotels: &'static [Row],
     /// Un gran hotel de los de antes: punto de la vuelta y distancia a la
     /// carretera (con signo, positiva a la izquierda).
+    #[serde(default)]
     pub grand_hotel: Option<(f32, f32)>,
     /// Boyas de rayas en el mar.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub buoys: &'static [Vec2],
     /// Faros costeros en islotes o cabos.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub lighthouses: &'static [Lighthouse],
     /// Veleros y yates fondeados en la bahía o el mar abierto.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub boats: &'static [Boat],
     /// Flechas indicadoras de curva (<<< y >>>) en curvas cerradas.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub chevrons: &'static [ChevronSign],
     /// Tribunas cubiertas con público frente a la pista.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub grandstands: &'static [Grandstand],
     /// Sombrillas y tumbonas de colores en las playas.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub beach_parasols: &'static [ParasolCluster],
     /// Carteles de aviso de frenada (100 m, 50 m).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub brake_markers: &'static [BrakeMarker],
     /// What cliffs and rock walls are made of.
     pub soil: Soil,
     /// Rows of tall sunflowers turned towards the road.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub sunflowers: &'static [Row],
     /// Carved totem poles beside the road.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub totems: &'static [Totem],
     /// Giant vertical loops standing beside the road.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub loops: &'static [Loop],
     /// Lines of spinning golden rings floating over the road.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub rings: &'static [Rings],
     /// Waterfalls pouring down the rock walls of the cuttings.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub waterfalls: &'static [Waterfall],
     /// The light: day or dusk.
     pub sky: SkyStyle,
@@ -559,29 +626,38 @@ pub struct Scenery {
     /// blues with waves rolling in (Loop Island, an arcade island); on the
     /// other tracks it mirrors what stands round it unless Options >
     /// Graphics > Water says otherwise (see [`crate::world::sea`]).
+    #[serde(default)]
     pub cartoon_water: bool,
     /// An open pit round the water, if there is one.
+    #[serde(skip)]
     pub pit: Option<Pit>,
     /// The works of a mine around the road, if there is one.
+    #[serde(skip)]
     pub mine: Option<Mine>,
     /// The roadside of a desert of the American West, if the road runs
     /// through one.
+    #[serde(skip)]
     pub desert: Option<Desert>,
     /// The colour of the halo the rear wheel leaves behind it on the road
     /// while the bike rides a wheelie, as Sonic's spin (Loop Island's), or
     /// `None` for none (see `crate::bike::wheelie_halo`).
+    #[serde(deserialize_with = "crate::circuits::data::optional_color", default)]
     pub wheelie_halo: Option<Color>,
     /// The scenery of feudal Japan, from models made with Meshy, or `None`:
     /// see [`Japan`].
+    #[serde(skip)]
     pub japan: Option<Japan>,
     /// The scenery of Middle-earth, from models made with Meshy, or `None`:
     /// see [`MiddleEarth`].
+    #[serde(skip)]
     pub middle_earth: Option<MiddleEarth>,
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
+    #[serde(skip)]
     pub space: Option<Space>,
     /// The inside of a toy store, if the road runs through one: see
     /// [`ToyStore`].
+    #[serde(skip)]
     pub toys: Option<ToyStore>,
 }
 
@@ -1286,6 +1362,8 @@ pub struct Pile {
 }
 
 /// A carved totem pole beside the road, facing it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Totem {
     pub along: f32,
     pub side: Side,
@@ -1293,6 +1371,8 @@ pub struct Totem {
 
 /// A giant vertical loop on a block of earth beside the road, in the plane
 /// of the road: from the road it is seen side on, as in a 2D platformer.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Loop {
     pub along: f32,
     pub side: Side,
@@ -1304,6 +1384,8 @@ pub struct Loop {
 
 /// A line of `count` golden rings over the road from `along` on, `lateral`
 /// metres to the left of the centre line and `height` metres above the road.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rings {
     pub along: f32,
     pub count: u32,
@@ -1312,6 +1394,8 @@ pub struct Rings {
 }
 
 /// A waterfall `width` metres wide down the rock wall of a cutting.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Waterfall {
     pub along: f32,
     pub side: Side,
@@ -1319,18 +1403,22 @@ pub struct Waterfall {
 }
 
 /// Un faro costero sobre un peñasco o cabo.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Lighthouse {
     pub position: Vec2,
     pub height: f32,
 }
 
 /// Embarcaciones fondeadas en el mar.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum BoatKind {
     Sailboat,
     Yacht,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Boat {
     pub position: Vec2,
     pub heading: f32,
@@ -1338,13 +1426,15 @@ pub struct Boat {
 }
 
 /// Dirección de la flecha de curva.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Deserialize)]
 pub enum ChevronDirection {
     Left,
     Right,
 }
 
 /// Cartel de curva con flechas reflectantes.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChevronSign {
     pub along: f32,
     pub side: Side,
@@ -1352,6 +1442,8 @@ pub struct ChevronSign {
 }
 
 /// Tribuna de espectadores cubierta.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Grandstand {
     pub along: f32,
     pub side: Side,
@@ -1360,12 +1452,16 @@ pub struct Grandstand {
 }
 
 /// Grupo de sombrillas y tumbonas en la arena.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ParasolCluster {
     pub position: Vec2,
     pub count: usize,
 }
 
 /// Cartel de distancia a curva (100 m, 50 m).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BrakeMarker {
     pub along: f32,
     pub side: Side,

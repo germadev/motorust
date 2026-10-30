@@ -997,7 +997,7 @@ mod tests {
 
     #[test]
     fn landmarks_of_every_circuit_stand_clear_of_the_road() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let scenery = &circuit.scenery;
             let name = circuit.name;
@@ -1035,7 +1035,7 @@ mod tests {
 
     #[test]
     fn waterfalls_pour_down_a_rock_wall() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             for waterfall in circuit.scenery.waterfalls {

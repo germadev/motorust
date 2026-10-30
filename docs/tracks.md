@@ -190,11 +190,11 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
 
 ### Where tracks live
 
-Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
+Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`) or in Rust in `src/circuits/` (`turbo_bay.rs`, `loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
-- `song`: the music for the race, an MP3 in `assets/music/` embedded with `include_bytes!`, its `length` in seconds (as `ffprobe` gives it) and its `loudness`: the integrated loudness (LUFS) of its first two minutes above 500 Hz, which `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all sound equally loud over the engine (whose drone covers the lower notes), and well under it.
+- `song`: the music for the race, an MP3 in `assets/music/` embedded with `include_bytes!` (a file names it, as `song: (file: "bahia.mp3", length: 178.4, loudness: -16.1)`, and `music` in `src/circuits/mod.rs` builds it in), its `length` in seconds (as `ffprobe` gives it) and its `loudness`: the integrated loudness (LUFS) of its first two minutes above 500 Hz, which `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all sound equally loud over the engine (whose drone covers the lower notes), and well under it.
 - `ambience`: what its surroundings sound like on the bike select screen: how much sea, seagulls, small birds, cicadas and wind (0 to 1 each).
 - `pace`: how fast the track is ridden against most (1): against the clock, the checkpoints of a slower one, narrow and twisting, give their seconds at that much of the usual pace (`CheckpointTimes::at`), so that a good ride earns as much on it as on the others (Juguetería's is 0.75; every other track's 1).
 - `layout`: the road itself (a `Layout` from `src/track.rs`).
@@ -202,9 +202,19 @@ Each track is a `Circuit` in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_is
 
 `CIRCUITS` in `src/circuits/mod.rs` lists the tracks in the order the track select screen shows them. The first one is also the default track. To add a track:
 
-1. Create a module next to the others that defines a `pub const` `Circuit`.
-2. Declare the module in `src/circuits/mod.rs`.
-3. Add the track to `CIRCUITS` and update the array length.
+1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `FILES` in `src/circuits/mod.rs`; or create a module next to the others that defines a `pub const` `Circuit`, and declare it.
+2. Add the track to `CIRCUITS` and update the array length.
+
+#### Circuits in RON
+
+A circuit's file has the fields of `Circuit`, `Layout` and `Scenery` by their names, as the Rust does; `src/circuits/data.rs` reads it. The lists the scenery leaves out are empty, and its `Option`s `None`. What is not plain numbers, lists and structs:
+
+- a colour as its sRGB: `(0.85, 0.08, 0.06)`;
+- a point as `(x, z)`;
+- a stretch of the lap as `Span(40.0, 340.0)`, or `Lap` for all of it;
+- the terrain's functions by name, as `coast: Function("bay_coast")` and `mountains: "bay_mountains"`: they stay in Rust, named in `terrain_function` (`src/circuits/mod.rs`).
+
+The scenery a file cannot give yet (terraces, bridges, dams, an open pit, a mine, a desert and the themed scenery of feudal Japan, Middle-earth, space and the toy store) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
 
 When a different track is picked, the world is rebuilt from its `Circuit` (see [architecture.md](architecture.md)).
 

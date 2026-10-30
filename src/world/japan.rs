@@ -1222,7 +1222,7 @@ mod tests {
 
     #[test]
     fn the_corridor_of_torii_stands_round_the_road_beside_its_walls() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(japan) = &circuit.scenery.japan else {
                 continue;
             };
@@ -1259,7 +1259,7 @@ mod tests {
     #[test]
     fn a_clearing_of_maple_leaves_faces_the_road_ringed_with_logs() {
         let mut checked = 0;
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(japan) = &circuit.scenery.japan else {
                 continue;
             };
@@ -1337,7 +1337,7 @@ mod tests {
 
     #[test]
     fn petals_drift_over_their_areas_red_and_white() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(japan) = &circuit.scenery.japan else {
                 continue;
             };
@@ -1379,7 +1379,7 @@ mod tests {
 
     #[test]
     fn no_tree_stands_in_the_way_of_a_landmark() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(japan) = &circuit.scenery.japan else {
                 continue;
             };
@@ -1405,7 +1405,7 @@ mod tests {
 
     #[test]
     fn props_stand_clear_of_the_roads_and_in_the_water_where_they_should() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(japan) = &circuit.scenery.japan else {
                 continue;
             };
@@ -1440,7 +1440,7 @@ mod tests {
     fn a_small_prop_by_the_road_stands_on_a_plinth_that_shows_it_over_the_wall() {
         let pack = pack();
         let mut stood = 0;
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(japan) = &circuit.scenery.japan else {
                 continue;
             };
@@ -1481,7 +1481,7 @@ mod tests {
 
     #[test]
     fn a_prop_that_faces_the_riders_looks_down_the_road_they_come_up() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(japan) = &circuit.scenery.japan else {
                 continue;
             };

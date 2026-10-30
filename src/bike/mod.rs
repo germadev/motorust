@@ -3732,7 +3732,7 @@ mod tests {
 
     #[test]
     fn flat_out_steering_only_laps_without_touching_the_walls() {
-        for circuit in &crate::circuits::CIRCUITS {
+        for circuit in crate::circuits::CIRCUITS.iter() {
             flat_out_lap(&Track::new(&circuit.layout), circuit.name);
         }
     }

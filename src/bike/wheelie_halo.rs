@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn only_loop_island_leaves_a_blue_halo() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let halo = circuit.scenery.wheelie_halo;
             if circuit.name == "Loop Island" {
                 let blue = halo.expect("Loop Island has a halo").to_srgba();

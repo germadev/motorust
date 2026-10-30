@@ -601,7 +601,7 @@ mod tests {
         }
         // The Gold Mine's lake and river are red, Fellowship Road's rivers
         // and lakes green-grey, every other track's sea blue.
-        for circuit in &crate::circuits::CIRCUITS {
+        for circuit in crate::circuits::CIRCUITS.iter() {
             let wanted = if circuit.scenery.mine.is_some() {
                 Water::Iron
             } else if circuit.scenery.middle_earth.is_some() {
@@ -619,7 +619,7 @@ mod tests {
         // mirrors unless the options ask for the cartoon one, but indoors,
         // where the sea lies under the floor, never seen, and nothing is
         // worked out for it to mirror.
-        for circuit in &crate::circuits::CIRCUITS {
+        for circuit in crate::circuits::CIRCUITS.iter() {
             let cartoon = circuit.name == "Loop Island"
                 || circuit.scenery.soil == crate::world::scenery::Soil::Floor;
             assert_eq!(circuit.scenery.cartoon_water, cartoon, "{}", circuit.name);
@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn the_mirroring_sea_maps_the_whole_track_and_round_it() {
-        for circuit in &crate::circuits::CIRCUITS {
+        for circuit in crate::circuits::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let reach = mirror_reach(&track);
             let (min, max) = track.bounds();

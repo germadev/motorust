@@ -1332,7 +1332,7 @@ mod tests {
 
     #[test]
     fn every_track_has_its_checkpoints_evenly_spread() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let lap = Track::new(&circuit.layout).lap_length();
             let points = checkpoints(&circuit.checkpoints(), lap);
             assert!(points.len() >= 2, "{}: {points:?}", circuit.name);

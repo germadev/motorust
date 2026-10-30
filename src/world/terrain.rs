@@ -2134,7 +2134,7 @@ mod tests {
 
     #[test]
     fn terrain_hugs_the_road_and_the_track_stays_dry() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let tunnels = Tunnels::new(&track, &circuit.scenery);
@@ -2193,7 +2193,7 @@ mod tests {
 
     #[test]
     fn the_track_edge_is_where_the_earth_rises_inside_the_walls() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let edges = terrain.track_edges(&track);

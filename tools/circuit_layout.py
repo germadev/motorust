@@ -2,7 +2,8 @@
 """Draws a circuit's layout and height profile, and reports where it may
 not ride well, without building the game.
 
-Reads a circuit's source (`src/circuits/NAME.rs`) and works its lap out as
+Reads a circuit's source (`src/circuits/NAME.rs`, or its file in RON,
+`assets/circuits/NAME.ron`, see `src/circuits/data.rs`) and works its lap out as
 the game does (`src/track.rs`): the centre line through `CONTROL_POINTS`
 (closed centripetal Catmull-Rom, resampled every `SAMPLE_SPACING` metres)
 and the heights along it from `ELEVATION` (Hermite with Catmull-Rom
@@ -60,6 +61,12 @@ NUMBER = r"-?\d+(?:\.\d+)?"
 def const_block(text, name):
     """The body of `const NAME: [...] = [ ... ];`, or None."""
     m = re.search(r"const %s: \[[^\]]*\] = \[(.*?)\n\];" % name, text, re.S)
+    return m.group(1) if m else None
+
+
+def ron_list(text, name):
+    """The body of `name: [ ... ],` in a circuit's RON file, or None."""
+    m = re.search(r"\b%s: \[(.*?)\n\s*\]," % name, text, re.S)
     return m.group(1) if m else None
 
 
@@ -144,8 +151,12 @@ class Lap:
 
     def __init__(self, path):
         self.text = open(path).read()
-        control = vec2s(const_block(self.text, "CONTROL_POINTS"))
-        self.elevation = pairs(const_block(self.text, "ELEVATION"))
+        if path.endswith(".ron"):
+            control = np.array(pairs(ron_list(self.text, "control_points")))
+            self.elevation = pairs(ron_list(self.text, "elevation"))
+        else:
+            control = vec2s(const_block(self.text, "CONTROL_POINTS"))
+            self.elevation = pairs(const_block(self.text, "ELEVATION"))
         self.line = closed_curve(control, SAMPLE_SPACING)
         self.control = control
         n = len(self.line)
@@ -262,7 +273,16 @@ def plot_plan(lap, out, box, every):
     if river is not None and len(vec2s(river)) > 1:
         ax.plot(*vec2s(river).T, color="#20a0c0", lw=3)
     massif = r"(climbed_massif|massif)\(\s*(%s),\s*(%s),\s*(%s),\s*(%s)\s*\)" % ((NUMBER,) * 4)
-    for kind, x, z, r, h in re.findall(massif, lap.text):
+    # In RON: `(center: (x, z), radius: r, height: h)`, `climbed: true` if
+    # the road climbs it.
+    ron_massif = (
+        r"\(center: \((%s), (%s)\), radius: (%s), height: (%s)(, climbed: true)?\)" % ((NUMBER,) * 4)
+    )
+    found = re.findall(massif, lap.text) + [
+        ("climbed_massif" if climbed else "massif", x, z, r, h)
+        for x, z, r, h, climbed in re.findall(ron_massif, lap.text)
+    ]
+    for kind, x, z, r, h in found:
         x, z, r = float(x), float(z), float(r)
         color = "#2f8f2f" if kind == "climbed_massif" else "#8b5a2b"
         ax.add_patch(plt.Circle((x, z), r, fill=False, color=color, ls="--", lw=0.8))

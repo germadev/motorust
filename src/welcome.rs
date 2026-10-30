@@ -845,7 +845,7 @@ mod tests {
 
     #[test]
     fn the_camera_flies_under_the_rock_through_every_tunnel() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let lap = track.sample_count() as f32 * track.step_length();
             let height = |at: f32| flyby_height(&circuit.scenery, at, lap);
@@ -902,7 +902,7 @@ mod tests {
     #[test]
     fn the_camera_flies_under_the_beam_of_every_arch_over_the_road() {
         let beam = GANTRY_HEIGHT - GANTRY_BEAM;
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let lap = track.sample_count() as f32 * track.step_length();
             let height = |at: f32| flyby_height(&circuit.scenery, at, lap);
@@ -925,7 +925,7 @@ mod tests {
 
     #[test]
     fn the_flight_over_a_track_sets_off_just_before_its_line() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let lap = track.sample_count() as f32 * track.step_length();
             let start = flyby_start(lap);
