@@ -49,9 +49,12 @@ const FOLLOW_GAP: f32 = 4.0;
 /// by side, it keeps to its side of the road until there is room.
 const BESIDE: f32 = 6.0;
 /// Over the last this many metres of a branch without a loop (m), a rival
-/// gives way to a bike from this far behind to this far ahead (m) that is
-/// within this much more than the clearance across (m), going this much
-/// slower than it (m/s).
+/// gives way to a bike on the lap from this far behind to this far ahead
+/// (m), from where it is now to where it will be by the time the rival
+/// gets to the lap (so that one catching it up from further behind counts
+/// too), and within this much more than the clearance across (m): going
+/// this much slower than it (m/s), or slower still for it to be that far
+/// ahead by then, though no more than twice as much slower.
 const MERGE_ZONE: f32 = 120.0;
 const MERGE_BEHIND: f32 = 4.0;
 const MERGE_AHEAD: f32 = 15.0;
@@ -342,23 +345,45 @@ pub fn plan_line(
         let branch = track.road(road);
         let last = branch.sample_count() - 1;
         let to_join = (last - index.min(last)) as f32 * branch.step_length();
-        let reach = ((horizon + MERGE_BEHIND) / track.step_length()).ceil() as usize + 4;
+        // How far ahead of it (m, behind if negative) a bike on the lap
+        // `gap` ahead now will be when it gets to the lap.
+        let joining = to_join / speed.max(1.0);
+        let at_join = |gap: f32, other: &Traffic| gap + (other.speed - speed) * joining;
+        let quickest = traffic
+            .iter()
+            .map(|other| other.speed)
+            .fold(speed, f32::max);
+        let back = MERGE_BEHIND + (quickest - speed) * joining.min(MERGE_ZONE / speed.max(1.0));
+        let before = (back / track.step_length()).ceil() as usize + 4;
+        let reach = (horizon / track.step_length()).ceil() as usize + before;
         let on_lap = |other: &Traffic| {
-            let from = (here as usize + track.sample_count() - 4) % track.sample_count();
+            let from = (here as usize + track.sample_count() - before) % track.sample_count();
             track.nearest_among(other.position, from, reach).lateral
         };
-        let beside = traffic
+        let yielding = traffic
             .iter()
-            .filter(|other| {
+            .filter_map(|other| {
                 let index = track.nearest_index_at(other.position, other.elevation) as i64;
                 let gap = ((index - here + n + n / 2) % n - n / 2) as f32 * SAMPLE_SPACING;
-                (-MERGE_BEHIND..MERGE_AHEAD).contains(&gap)
-                    && (on_lap(other) - line).abs() < CLEARANCE + MERGE_MARGIN
+                // Level with it at any time until then, on the lap (one on
+                // this branch with it is traffic like any other).
+                let (near, far) = (gap.min(at_join(gap, other)), gap.max(at_join(gap, other)));
+                let level = far > -MERGE_BEHIND
+                    && near < MERGE_AHEAD
+                    && track.nearest_at(other.position, other.elevation).road != road
+                    && (on_lap(other) - line).abs() < CLEARANCE + MERGE_MARGIN;
+                // Slow enough that it is far enough ahead by then, though
+                // no more than twice as much slower as by default.
+                let clear = other.speed * to_join / (MERGE_AHEAD + to_join - gap).max(1.0);
+                level.then(|| {
+                    (other.speed - MERGE_YIELD)
+                        .min(clear)
+                        .max(other.speed - 2.0 * MERGE_YIELD)
+                })
             })
-            .map(|other| other.speed)
             .reduce(f32::min);
-        if let (true, Some(other)) = (to_join < MERGE_ZONE, beside) {
-            return (line, (other - MERGE_YIELD).max(0.0));
+        if let (true, Some(yielding)) = (to_join < MERGE_ZONE, yielding) {
+            return (line, yielding.max(0.0));
         }
     }
     let limit = way.half_width(track) - EDGE_MARGIN;
