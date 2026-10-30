@@ -13,9 +13,9 @@ out: this is the lap's centre line only.
 - `--plan FILE.png`: the lap from above, north (-Z) up as on the race map,
   with its walls, its control points (red), a label every `--every` metres
   along it with its height, and what the circuit's source draws round it:
-  its coast (`COAST` or `SHORE`), hills (`massif`, brown; `climbed_massif`,
-  green, with their heights), and a dam's lake (`LAKE`) and river
-  (`RIVER`). `--box X0 Z0 X1 Z1` zooms in (metres).
+  its coast (`COAST` or `SHORE`; in RON, an `Outline`), hills (`massif`,
+  brown; `climbed_massif`, green, with their heights), and a dam's lake
+  (`LAKE`) and river (`RIVER`; in RON, the dam's `lake` and `river`). `--box X0 Z0 X1 Z1` zooms in (metres).
 - `--profile FILE.png`: height, grade and the radius of the crests and
   dips along the lap (or `--along FROM TO` of it), with the grade the game
   allows and the crest radius the bike takes off over at its top speed.
@@ -151,7 +151,8 @@ class Lap:
 
     def __init__(self, path):
         self.text = open(path).read()
-        if path.endswith(".ron"):
+        self.ron = path.endswith(".ron")
+        if self.ron:
             control = np.array(pairs(ron_list(self.text, "control_points")))
             self.elevation = pairs(ron_list(self.text, "elevation"))
         else:
@@ -272,6 +273,22 @@ def plot_plan(lap, out, box, every):
     river = const_block(lap.text, "RIVER")
     if river is not None and len(vec2s(river)) > 1:
         ax.plot(*vec2s(river).T, color="#20a0c0", lw=3)
+    if lap.ron:
+        # A file's coast as an outline, and its dam's lake and river (a
+        # point and a height each: `((x, z), h)`).
+        outline = re.search(r"coast: Outline\(\[(.*?)\n\s*\]\)", lap.text, re.S)
+        if outline:
+            ring = closed_curve(np.array(pairs(outline.group(1))), 4.0)
+            ax.plot(*np.vstack([ring, ring[:1]]).T, color="#2a5db0", lw=0.8)
+        lake = ron_list(lap.text, "lake")
+        if lake is not None:
+            ax.fill(*closed_curve(np.array(pairs(lake)), 3.0).T, color="#3060c0", alpha=0.45, lw=0)
+        river = ron_list(lap.text, "river")
+        if river is not None:
+            pattern = r"\(\(\s*(%s),\s*(%s)\s*\)" % (NUMBER, NUMBER)
+            points = np.array([(float(x), float(z)) for x, z in re.findall(pattern, river)])
+            if len(points) > 1:
+                ax.plot(*points.T, color="#20a0c0", lw=3)
     massif = r"(climbed_massif|massif)\(\s*(%s),\s*(%s),\s*(%s),\s*(%s)\s*\)" % ((NUMBER,) * 4)
     # In RON: `(center: (x, z), radius: r, height: h)`, `climbed: true` if
     # the road climbs it.

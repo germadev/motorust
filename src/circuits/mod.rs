@@ -106,13 +106,20 @@ impl Circuit {
 
 /// The circuits written in RON, by the names of their files in
 /// `assets/circuits/`, built into the game.
-const FILES: [(&str, &str); 1] = [("bahia.ron", include_str!("../../assets/circuits/bahia.ron"))];
+const FILES: [(&str, &str); 2] = [
+    ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
+    (
+        "turbo_bay.ron",
+        include_str!("../../assets/circuits/turbo_bay.ron"),
+    ),
+];
 
 /// The terrain's functions the circuits' files name (see [`data`]).
 fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
     Some(match name {
         "bay_coast" => bay::coast,
         "bay_mountains" => bay::mountains,
+        "turbo_bay_mountains" => turbo_bay::mountains,
         _ => return None,
     })
 }
@@ -121,6 +128,7 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
 fn music(file: &str) -> Option<&'static [u8]> {
     Some(match file {
         "bahia.mp3" => include_bytes!("../../assets/music/bahia.mp3"),
+        "turbo_bay.mp3" => include_bytes!("../../assets/music/turbo_bay.mp3"),
         _ => return None,
     })
 }
@@ -128,10 +136,10 @@ fn music(file: &str) -> Option<&'static [u8]> {
 /// Las pistas, en el orden de la pantalla de elegir pista: those written in
 /// RON read from their files the first time they are wanted.
 pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
-    let [(bay, bay_file)] = FILES;
+    let [(bay, bay_file), (turbo_bay, turbo_bay_file)] = FILES;
     [
         data::load(bay, bay_file),
-        turbo_bay::TURBO_BAY,
+        data::load(turbo_bay, turbo_bay_file),
         loop_island::LOOP_ISLAND,
         gold_mine::GOLD_MINE,
         ghost_island::GHOST_ISLAND,

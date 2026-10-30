@@ -190,7 +190,7 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
 
 ### Where tracks live
 
-Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`) or in Rust in `src/circuits/` (`turbo_bay.rs`, `loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
+Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron` and `turbo_bay.ron`) or in Rust in `src/circuits/` (`loop_island.rs`, `gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -214,7 +214,9 @@ A circuit's file has the fields of `Circuit`, `Layout` and `Scenery` by their na
 - a stretch of the lap as `Span(40.0, 340.0)`, or `Lap` for all of it;
 - the terrain's functions by name, as `coast: Function("bay_coast")` and `mountains: "bay_mountains"`: they stay in Rust, named in `terrain_function` (`src/circuits/mod.rs`).
 
-The scenery a file cannot give yet (terraces, bridges, dams, an open pit, a mine, a desert and the themed scenery of feudal Japan, Middle-earth, space and the toy store) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
+A file has no constants: where the Rust named a stretch once and used it often (`CREST`, `TUNNEL.from + 60.0`), the file writes the numbers, and says in a comment at its top where things are (as `turbo_bay.ron` does).
+
+The scenery a file cannot give yet (an open pit, a mine, a desert and the themed scenery of feudal Japan, Middle-earth, space and the toy store) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
 
 When a different track is picked, the world is rebuilt from its `Circuit` (see [architecture.md](architecture.md)).
 
@@ -281,7 +283,7 @@ pub const LAYOUT: Layout = Layout {
 };
 ```
 
-In a real track, the layout goes straight into the `Circuit`, as in `turbo_bay.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[], narrows: &[] }`. (The example needs `branches: &[]` and `narrows: &[]` too.)
+In a real track, the layout goes straight into the `Circuit`, as in `loop_island.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[], narrows: &[] }`. (The example needs `branches: &[]` and `narrows: &[]` too.) In a file, as in `turbo_bay.ron`, the same fields by name, the lists it leaves out empty.
 
 ### Branches and loops
 

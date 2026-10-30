@@ -146,6 +146,8 @@ pub enum Greens {
 /// Una explanada: el terreno, llano a una altura (m sobre el mar) en un
 /// círculo, para poner encima un edificio grande; or sloping, facing one
 /// way.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Terrace {
     pub center: Vec2,
     pub radius: f32,
@@ -153,6 +155,7 @@ pub struct Terrace {
     pub height: f32,
     /// How much higher it stands for each metre along x and along z: zero
     /// for level ground.
+    #[serde(default)]
     pub tilt: Vec2,
     /// How far past its edge the ground blends back into the land (m):
     /// wider where the land round it stands far above or below it, so the
@@ -301,13 +304,15 @@ pub struct Pit {
 }
 
 /// A stretch of the lap carried by a bridge, and how it is built.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Bridge {
     pub span: Span,
     pub style: BridgeStyle,
     /// How high a wooden bridge's fence stands over its deck (m): most as
     /// high as [`WOODEN_FENCE`], a boardwalk low over the water lower. The
     /// other bridges have walls of their own, and leave it unused.
+    #[serde(default)]
     pub fence: f32,
 }
 
@@ -322,7 +327,7 @@ impl BridgeStyle {
 }
 
 /// How a bridge is built.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum BridgeStyle {
     /// A concrete deck under two red steel arches.
     RedArches,
@@ -354,6 +359,8 @@ pub enum BridgeStyle {
 /// bowed towards the lake it holds, its water up near the crest; on the
 /// other side its face drops nearly sheer to the river, which runs on down
 /// the gorge to the sea.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Dam {
     /// Where the road runs along the crest.
     pub crest: Span,
@@ -363,6 +370,7 @@ pub struct Dam {
     /// z), drawn as a coast's is, round a middle from which every point of
     /// it can be seen (the water is a fan from there). Where it meets the
     /// dam it runs along the crest, so the water reaches the dam's face.
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub lake: &'static [Vec2],
     /// The height of the lake's water (m over the sea): a little under the
     /// crest.
@@ -372,6 +380,7 @@ pub struct Dam {
     /// under it) down to the sea, each with how high the gorge's far
     /// wall stands there over the sea (m). Its water is the sea's, coming up
     /// the gorge to the foot of the dam.
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub river: &'static [(Vec2, f32)],
     /// Which bank of the river (going downstream) the road up the gorge
     /// runs along: on that side the bank only drops from the road to the
@@ -380,6 +389,7 @@ pub struct Dam {
     /// Where a paved square stands by the end of the crest with a
     /// monument in the middle, if one does (x, z): on level ground, as a
     /// [`Terrace`] makes it.
+    #[serde(default)]
     pub monument: Option<Vec2>,
 }
 
@@ -540,7 +550,7 @@ pub struct Scenery {
     pub massifs: &'static [Massif],
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub cuttings: &'static [Cutting],
-    #[serde(skip)]
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub terraces: &'static [Terrace],
     /// Montañas lejanas que cierran el horizonte.
     #[serde(deserialize_with = "crate::circuits::data::function")]
@@ -552,10 +562,10 @@ pub struct Scenery {
     pub walls: &'static [WallRun],
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub tunnels: &'static [Span],
-    #[serde(skip)]
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub bridges: &'static [Bridge],
     /// Dams, each with the road along its crest (see [`Dam`]).
-    #[serde(skip)]
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub dams: &'static [Dam],
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub gantries: &'static [Gantry],

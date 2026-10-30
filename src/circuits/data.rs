@@ -17,9 +17,10 @@
 //!   [`super::music`]).
 //!
 //! What a file leaves out of the scenery is not there (no tunnels, no
-//! bridges, ...). The scenery a file cannot give yet (dams, terraces, the
-//! themed scenery of feudal Japan, Middle-earth, ...) is not read: a file
-//! giving it fails, as does any other field the game does not know.
+//! bridges, ...). The scenery a file cannot give yet (an open pit, a mine,
+//! a desert, the themed scenery of feudal Japan, Middle-earth, ...) is not
+//! read: a file giving it fails, as does any other field the game does not
+//! know.
 
 use bevy::prelude::*;
 use serde::de::{Deserialize, Deserializer, Error};
@@ -213,8 +214,8 @@ mod tests {
         let function = changed("\"bay_coast\"", "\"nowhere\"");
         assert!(parse(name, function).err().unwrap().contains("nowhere"));
         // What a file cannot give yet is not read.
-        let dams = changed("scenery: (", "scenery: (dams: [], ");
-        assert!(parse(name, dams).is_err());
+        let mine = changed("scenery: (", "scenery: (mine: None, ");
+        assert!(parse(name, mine).is_err());
     }
 
     #[test]
