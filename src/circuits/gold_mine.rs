@@ -95,12 +95,14 @@ pub const GOLD_MINE: Circuit = Circuit {
                 to: EXCAVATION.to,
                 factor: 0.25,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: HAIRPINS.from,
                 to: HAIRPINS.to,
                 factor: 0.6,
                 raised: false,
+                grip: 1.0,
             },
         ],
         // The wooden bridge is narrower than the road: its fences close in

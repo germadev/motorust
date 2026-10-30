@@ -19,6 +19,9 @@ use crate::track::{Fork, SAMPLE_SPACING, Track};
 /// en este tiempo. Mirar más lejos a más velocidad evita los eses.
 const LOOK_AHEAD_DISTANCE: f32 = 8.0;
 const LOOK_AHEAD_TIME: f32 = 0.4;
+/// Where the road grips harder (see [`Track::grip_at`]), the most of it a
+/// rival plans its speed round a bend with.
+const PLANNED_GRIP: f32 = 1.6;
 /// Fracción del freno con la que planea las frenadas, para llegar con margen.
 const PLANNED_BRAKING: f32 = 0.6;
 /// How much more of the brakes a rival plans with for each bit of skill
@@ -179,6 +182,15 @@ impl Waypoint {
                 track.road(road).smoothed_curvature(index, CURVATURE_WINDOW)
             }
             Waypoint::Into(..) => 0.0,
+        }
+    }
+
+    /// How much harder than usual the road grips across here (see
+    /// [`Track::grip_at`]).
+    fn grip(self, track: &Track) -> f32 {
+        match self {
+            Waypoint::Road(road, index) => track.grip_at(road, index),
+            Waypoint::Into(..) => 1.0,
         }
     }
 
@@ -447,8 +459,11 @@ pub fn decide(
     let to_target = target.point(track, line) - state.position;
     let angle = wrap_angle(heading_of(to_target) - state.heading);
     let wanted_curvature = 2.0 * angle.sin() / to_target.length().max(1.0);
-    let max_curvature =
-        (1.0 / tuning.min_turn_radius).min(tuning.max_lateral_accel / speed.max(0.1).powi(2));
+    // Where the road grips harder (Hot Wheels' banked track), the same
+    // steering turns it more, as the physics has it.
+    let held = way[0].grip(track);
+    let max_curvature = (1.0 / tuning.min_turn_radius)
+        .min(tuning.max_lateral_accel * held / speed.max(0.1).powi(2));
     let steer = (wanted_curvature / max_curvature).clamp(-1.0, 1.0);
 
     // Velocidad: la más baja que exijan las curvas de delante, contando con
@@ -459,7 +474,10 @@ pub fn decide(
         if curvature < 1e-4 {
             continue;
         }
-        let corner_speed = (grip / curvature).sqrt();
+        // Where the road grips harder, faster, but with room: their
+        // steering turns in late into a tight bend taken flat out.
+        let held = waypoint.grip(track).min(PLANNED_GRIP);
+        let corner_speed = (grip * held / curvature).sqrt();
         let distance = step as f32 * SAMPLE_SPACING;
         target_speed = target_speed.min((corner_speed.powi(2) + 2.0 * braking * distance).sqrt());
     }

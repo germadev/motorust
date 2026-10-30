@@ -27,6 +27,7 @@ long and as gently bent, so that neither way is quicker.
 Usage:
     python3 tools/toy_store_layout.py              # the checks
     python3 tools/toy_store_layout.py --emit       # the Rust arrays
+    python3 tools/toy_store_layout.py --write      # ... written into the circuit
     python3 tools/toy_store_layout.py --plan plan.png --profile profile.png
     python3 tools/toy_store_layout.py --pace 760 1500 2140  # a rival's time
 
@@ -44,6 +45,8 @@ Needs numpy (and matplotlib for the pictures).
 """
 
 import argparse
+import contextlib
+import io
 import math
 import os
 import re
@@ -251,8 +254,10 @@ def lap():
     t.L(40, 35).at(0)
     t.S(10).at(0.3)
     t.S(76).at(T2 - 0.6, "T2")
-    t.S(40).at(T2)
-    # Round on it past its train, and straight off its edge.
+    # On along it straight at the shop's doors, the glass ahead, and round
+    # just short of it.
+    t.S(60).at(T2, "doors")
+    # Round on it beside its train, and straight off its edge.
     t.R(32, 90).at(T2)
     t.S(6).at(T2)
     t.L(35, 30).at(T2)
@@ -596,6 +601,23 @@ def emit_branches(t, line, step):
     print(points("LOOP_EXIT", exit_))
 
 
+def write(arrays):
+    """Puts `arrays` (what `--emit` prints) into the circuit's source in
+    place of its own: each `const` by its name, the rest of the file as it
+    is. The loop's heading is left as written there (a named angle)."""
+    text = open(CIRCUIT).read()
+    blocks = re.findall(r"^(const (\w+)[^\n]*?(?:\[\n.*?^\];|;))$", arrays, re.M | re.S)
+    for block, name in blocks:
+        if name == "LOOP_HEADING":
+            continue
+        pattern = re.compile(rf"^const {name}\b[^\n]*?(?:\[\n.*?^\];|;)$", re.M | re.S)
+        text, count = pattern.subn(lambda _: block, text, count=1)
+        if count != 1:
+            sys.exit(f"{name} not found in {CIRCUIT}")
+    open(CIRCUIT, "w").write(text)
+    print(f"written: {', '.join(name for _, name in blocks if name != 'LOOP_HEADING')}")
+
+
 def furniture():
     """The furniture of the circuit's source: kind, middle, size."""
     text = open(CIRCUIT).read()
@@ -659,6 +681,11 @@ def plot(t, points, line, step, heights, profile, tunnels, plan, profile_out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--emit", action="store_true", help="print the Rust arrays")
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="write the Rust arrays into src/circuits/toy_store.rs in place of its own",
+    )
     parser.add_argument("--plan", help="draw the lap from above to this PNG")
     parser.add_argument("--profile", help="draw the height profile to this PNG")
     parser.add_argument(
@@ -672,9 +699,15 @@ def main():
     walk = lap()
     points, line, step, length, profile, heights = resolve(walk)
     tunnels = under_another(line, step, heights)
-    if args.emit:
-        emit(points, profile)
-        emit_branches(walk, line, step)
+    if args.emit or args.write:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            emit(points, profile)
+            emit_branches(walk, line, step)
+        if args.write:
+            write(out.getvalue())
+        else:
+            print(out.getvalue(), end="")
     else:
         check(line, step, heights, tunnels)
         check_branches(walk, line)

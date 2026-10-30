@@ -481,6 +481,9 @@ pub struct Ground {
     /// The speed a booster under the bike drives it on to (m/s), or nought
     /// (see [`crate::track::Track::booster_beside`]).
     pub booster: f32,
+    /// How much harder than usual the road grips across (see
+    /// [`crate::track::Track::grip_beside`]): 1 as usual.
+    pub grip: f32,
 }
 
 impl Ground {
@@ -491,6 +494,7 @@ impl Ground {
             grade: 0.0,
             crest: 0.0,
             booster: 0.0,
+            grip: 1.0,
         }
     }
 }
@@ -718,7 +722,9 @@ pub fn step(
             1.0
         } else {
             1.0 + BRAKE_GRIP * state.chassis.front_load()
-        };
+        }
+        // Banked track that grips harder (Hot Wheels').
+        * ground.grip;
     let max_yaw_rate = tuning.max_yaw_rate_with_grip(speed, corner_grip);
     // Con una rueda en el aire apenas se puede girar.
     let grip = state.chassis.steering_grip();
@@ -905,6 +911,7 @@ pub fn advance_hitting_walls(
         grade: track.grade(state.position, forward(state.heading), state.elevation),
         crest: track.crest(&nearest),
         booster: track.booster_beside(&nearest),
+        grip: track.grip_beside(&nearest),
     };
     let mut next = step(state, input, &ground, tuning, dt);
     let wall = hit_walls(&mut next, track);
@@ -2933,6 +2940,39 @@ mod tests {
             assert!(shown(Smooth, seconds) <= 1.0 + 1e-3);
         }
         assert!(shown(Smooth, 1.0) > 0.99 && shown(Soft, 1.0) > 0.99);
+    }
+
+    #[test]
+    fn the_toy_store_s_helix_is_taken_flat_out() {
+        // Round every point where Hot Wheels' banked track grips harder, at
+        // top speed, the turn its bend needs is within what the bike gives
+        // short of where it scrubs speed off (`CORNER_LOSS_FROM`).
+        let circuit = crate::circuits::CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name == "Juguetería")
+            .unwrap();
+        let track = Track::new(&circuit.layout);
+        let tuning = BikeTuning::default();
+        let speed = tuning.max_speed;
+        let steer = CORNER_LOSS_FROM;
+        let mut grippy = 0;
+        for index in 0..track.sample_count() {
+            let grip = track.grip_at(0, index);
+            if grip <= 1.0 {
+                continue;
+            }
+            grippy += 1;
+            let extra = CORNER_GRIP.end * smoothstep(CORNER_GRIP_FROM, 1.0, steer);
+            let most = steer * tuning.max_yaw_rate_with_grip(speed, (1.0 + extra) * grip);
+            let needed = track.smoothed_curvature(index, 4) * speed;
+            assert!(
+                needed <= most,
+                "{} m: {needed} > {most}",
+                index as f32 * track.step_length()
+            );
+        }
+        // All the helix: over 250 m of it.
+        assert!(grippy as f32 * track.step_length() > 250.0, "{grippy}");
     }
 
     #[test]

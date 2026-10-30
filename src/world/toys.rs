@@ -2802,7 +2802,9 @@ mod tests {
                         && resting(&track, store, index, depth)
                 })
                 .count();
-            assert!(banked > 100, "{name}: {banked} points");
+            // (Fewer than the bends' length: through esses, where it would
+            // rock the road side to side, the bank eases out.)
+            assert!(banked > 60, "{name}: {banked} points");
         }
     }
 
