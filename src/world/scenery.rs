@@ -292,6 +292,8 @@ pub enum Water {
 /// An open-pit mine round the water (see [`Scenery::pit`]): benches cut in
 /// steps from its rim down to the water, following the shore, and its spoil
 /// heaped round the rim.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Pit {
     /// How many benches, how high each face steps up (m) and how wide each
     /// bench is (m).
@@ -639,14 +641,14 @@ pub struct Scenery {
     #[serde(default)]
     pub cartoon_water: bool,
     /// An open pit round the water, if there is one.
-    #[serde(skip)]
+    #[serde(default)]
     pub pit: Option<Pit>,
     /// The works of a mine around the road, if there is one.
-    #[serde(skip)]
+    #[serde(default)]
     pub mine: Option<Mine>,
     /// The roadside of a desert of the American West, if the road runs
     /// through one.
-    #[serde(skip)]
+    #[serde(default)]
     pub desert: Option<Desert>,
     /// The colour of the halo the rear wheel leaves behind it on the road
     /// while the bike rides a wheelie, as Sonic's spin (Loop Island's), or
@@ -1209,25 +1211,38 @@ pub enum MiddleEarthModel {
 /// Racer): gas stations, oil pumpjacks nodding on the dunes, highway
 /// viaducts across the road, adobe pueblos, diamond warning signs before
 /// the bends, cacti, and tumbleweeds rolling across the road.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Desert {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub gas_stations: &'static [GasStation],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub pumpjacks: &'static [Pumpjack],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub overpasses: &'static [Overpass],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub pueblos: &'static [Pueblo],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub curve_signs: &'static [CurveSign],
     pub cacti: Cacti,
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub tumbleweeds: &'static [Tumbleweed],
 }
 
 /// Saguaro cacti beside the road: about `count` of them, scattered along
 /// `spans` either side, on fairly level ground clear of the roads.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cacti {
     pub count: usize,
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub spans: &'static [Span],
 }
 
 /// A tumbleweed blown across the road `along` the lap, rolling and bouncing
 /// from `reach` metres out on one side to as far on the other, and again.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Tumbleweed {
     pub along: f32,
     pub reach: f32,
@@ -1236,6 +1251,8 @@ pub struct Tumbleweed {
 /// A gas station beside the road, `lateral` metres from its centre line on
 /// `side`, facing it: pumps under a canopy, a shop behind them and a tall
 /// sign by the road.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GasStation {
     pub along: f32,
     pub side: Side,
@@ -1244,6 +1261,8 @@ pub struct GasStation {
 
 /// An oil pumpjack at `position` (x, z), its beam nodding towards
 /// `heading` (see [`crate::geometry`]).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Pumpjack {
     pub position: Vec2,
     pub heading: f32,
@@ -1253,6 +1272,8 @@ pub struct Pumpjack {
 /// of its deck `height` metres over the road, from one rock wall into the
 /// other on columns beyond the walls (put a [`Cutting`] on both sides
 /// first).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Overpass {
     pub along: f32,
     pub height: f32,
@@ -1261,6 +1282,8 @@ pub struct Overpass {
 /// An adobe pueblo beside the road, `lateral` metres from its centre line on
 /// `side`: flat-roofed houses of earth, some of two floors, with beams
 /// sticking out under their roofs, ladders and a dry tree.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Pueblo {
     pub along: f32,
     pub side: Side,
@@ -1269,6 +1292,8 @@ pub struct Pueblo {
 
 /// A diamond warning sign before a bend that way, high on a post on its
 /// outside, `along` the lap.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CurveSign {
     pub along: f32,
     pub direction: ChevronDirection,
@@ -1278,7 +1303,7 @@ pub struct CurveSign {
 /// The colour of a diamond warning sign: green with a white arrow for a
 /// bend, yellow with a black one for a sharp one, red with a white one for
 /// a hairpin.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Deserialize)]
 pub enum SignColor {
     Green,
     Yellow,
@@ -1289,12 +1314,20 @@ pub enum SignColor {
 /// trestles carrying a rail over the road, headframes over the shafts,
 /// lanterns on posts, piles of crates, barrels and ore, and the halls of
 /// its excavation (its tunnels, see [`Scenery::tunnels`]).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Mine {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub rails: &'static [Rails],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub trestles: &'static [Trestle],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub headframes: &'static [Headframe],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub lanterns: &'static [Row],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub piles: &'static [Pile],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub halls: &'static [Hall],
 }
 
@@ -1302,6 +1335,8 @@ pub struct Mine {
 /// the lap counts as the stretch it stands in for): the rock it is cut
 /// through and how high its roof rises above the road in the middle (m).
 /// Where there is none, the excavation is a gallery propped with timber.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Hall {
     pub span: Span,
     pub stone: Stone,
@@ -1309,12 +1344,13 @@ pub struct Hall {
     /// How much wider than the road between its walls the hall is, either
     /// side (m): where it is, the road runs through it between low walls of
     /// its stone (none in a mine).
+    #[serde(default)]
     pub width: f32,
 }
 
 /// What the rock of a stretch of a mine's excavation is like, and the
 /// ground beside its roads.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 pub enum Stone {
     /// A gallery propped with timber sets, with planks beside the road.
     Timbered,
@@ -1333,6 +1369,8 @@ pub enum Stone {
 
 /// A rail line beside the road over a span, `lateral` metres from its
 /// centre line, with `carts` ore carts rolling up and down it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rails {
     pub span: Span,
     pub side: Side,
@@ -1342,12 +1380,16 @@ pub struct Rails {
 
 /// A timber trestle carrying a rail across the road at `along`, from one
 /// rock wall to the other, with an ore cart going over and back.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Trestle {
     pub along: f32,
 }
 
 /// A headframe over a mine shaft: a timber tower with the winding wheels
 /// turning on top, beside the road.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Headframe {
     pub along: f32,
     pub side: Side,
@@ -1355,7 +1397,7 @@ pub struct Headframe {
 }
 
 /// What a pile beside the road is made of.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum PileKind {
     /// Crates, barrels and a box of dynamite.
     Supplies,
@@ -1364,6 +1406,8 @@ pub enum PileKind {
 }
 
 /// A pile of something beside the road.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Pile {
     pub along: f32,
     pub side: Side,

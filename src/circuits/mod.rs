@@ -106,7 +106,7 @@ impl Circuit {
 
 /// The circuits written in RON, by the names of their files in
 /// `assets/circuits/`, built into the game.
-const FILES: [(&str, &str); 4] = [
+const FILES: [(&str, &str); 5] = [
     ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
     (
         "turbo_bay.ron",
@@ -120,6 +120,10 @@ const FILES: [(&str, &str); 4] = [
         "moon_base.ron",
         include_str!("../../assets/circuits/moon_base.ron"),
     ),
+    (
+        "gold_mine.ron",
+        include_str!("../../assets/circuits/gold_mine.ron"),
+    ),
 ];
 
 /// The terrain's functions the circuits' files name (see [`data`]).
@@ -130,6 +134,8 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
         "turbo_bay_mountains" => turbo_bay::mountains,
         "loop_island_mountains" => loop_island::mountains,
         "moon_base_mountains" => moon_base::mountains,
+        "gold_mine_water" => gold_mine::water,
+        "gold_mine_mountains" => gold_mine::mountains,
         _ => return None,
     })
 }
@@ -141,6 +147,7 @@ fn music(file: &str) -> Option<&'static [u8]> {
         "turbo_bay.mp3" => include_bytes!("../../assets/music/turbo_bay.mp3"),
         "loop_island.mp3" => include_bytes!("../../assets/music/loop_island.mp3"),
         "moon_base.mp3" => include_bytes!("../../assets/music/moon_base.mp3"),
+        "gold_mine.mp3" => include_bytes!("../../assets/music/gold_mine.mp3"),
         _ => return None,
     })
 }
@@ -153,12 +160,13 @@ pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
         (turbo_bay, turbo_bay_file),
         (loop_island, loop_island_file),
         (moon_base, moon_base_file),
+        (gold_mine, gold_mine_file),
     ] = FILES;
     [
         data::load(bay, bay_file),
         data::load(turbo_bay, turbo_bay_file),
         data::load(loop_island, loop_island_file),
-        gold_mine::GOLD_MINE,
+        data::load(gold_mine, gold_mine_file),
         ghost_island::GHOST_ISLAND,
         data::load(moon_base, moon_base_file),
         fellowship_road::FELLOWSHIP_ROAD,

@@ -3,7 +3,8 @@
 not ride well, without building the game.
 
 Reads a circuit's source (`src/circuits/NAME.rs`, or its file in RON,
-`assets/circuits/NAME.ron`, see `src/circuits/data.rs`) and works its lap out as
+`assets/circuits/NAME.ron`, see `src/circuits/data.rs`, with what of it is
+left in `src/circuits/NAME.rs`) and works its lap out as
 the game does (`src/track.rs`): the centre line through `CONTROL_POINTS`
 (closed centripetal Catmull-Rom, resampled every `SAMPLE_SPACING` metres)
 and the heights along it from `ELEVATION` (Hermite with Catmull-Rom
@@ -33,6 +34,7 @@ Needs numpy (and matplotlib for the pictures).
 """
 
 import argparse
+import os
 import re
 import sys
 
@@ -153,6 +155,17 @@ class Lap:
         self.text = open(path).read()
         self.ron = path.endswith(".ron")
         if self.ron:
+            # What its file names in Rust (a dam's or a pit's water, say) is
+            # in `src/circuits/NAME.rs`, if there: read with it.
+            source = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "src",
+                "circuits",
+                os.path.basename(path)[: -len(".ron")] + ".rs",
+            )
+            if os.path.exists(source):
+                self.text += open(source).read()
             control = np.array(pairs(ron_list(self.text, "control_points")))
             self.elevation = pairs(ron_list(self.text, "elevation"))
         else:
