@@ -100,12 +100,14 @@ pub const TURBO_BAY: Circuit = Circuit {
                 to: 470.0,
                 factor: 2.5,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: CREST.from,
                 to: CREST.to,
                 factor: 0.0,
                 raised: false,
+                grip: 1.0,
             },
         ],
         narrows: &[Narrowing {

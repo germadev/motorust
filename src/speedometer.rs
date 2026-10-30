@@ -29,6 +29,7 @@ use swash::zeno::{Mask, Stroke, Transform as Affine};
 use crate::bike::{BikeState, LocalPlayer, Player};
 use crate::geometry::smoothstep;
 use crate::menu::GameState;
+use crate::settings::Settings;
 use crate::vector_art::{Coverage, draw_plain_text};
 
 // The design, in its own units: its view box is 380 wide, with the dial
@@ -124,6 +125,11 @@ struct Pointer(usize);
 /// is.
 #[derive(Component)]
 struct Figures(usize);
+
+/// The words under the speed of a player's dial: the unit, and with the
+/// gears on the gear.
+#[derive(Component)]
+struct Unit(usize);
 
 /// A figure of the scale lit up while the pointer of `player`'s speedometer
 /// points at it: the speed it marks (km/h).
@@ -233,8 +239,17 @@ pub fn spawn_speedometer(
             Text::new("0"),
             figures(SPEED_SIZE, SPEED_AT),
         ));
-        dial.spawn((Text::new("km/h"), figures(UNIT_SIZE, UNIT_AT)));
+        dial.spawn((Unit(player), Text::new("km/h"), figures(UNIT_SIZE, UNIT_AT)));
     });
+}
+
+/// The words under the speed with the gears on: the gear `gear` is in (0
+/// the first) and the unit.
+fn unit_label(gear: usize, lang: crate::locale::Language) -> String {
+    match lang {
+        crate::locale::Language::Spanish => format!("{}ª · km/h", gear + 1),
+        crate::locale::Language::English => format!("G{} · km/h", gear + 1),
+    }
 }
 
 /// Where the pointer points at `kmh` (rad, clockwise from straight up).
@@ -247,21 +262,33 @@ pub fn pointer_angle(kmh: f32) -> f32 {
 fn show_speed(
     player: Query<&BikeState, With<Player>>,
     others: Query<(&BikeState, &LocalPlayer), Without<Player>>,
+    settings: Res<Settings>,
     mut pointers: Query<(&Pointer, &mut UiTransform)>,
-    mut figures: Query<(&Figures, &mut Text)>,
+    mut figures: Query<(&Figures, &mut Text), Without<Unit>>,
+    mut units: Query<(&Unit, &mut Text), Without<Figures>>,
     mut lit: Query<(&LitFigure, &mut ImageNode)>,
 ) {
-    let kmh = |index: usize| {
-        let state = if index == 0 {
+    let state = |index: usize| {
+        if index == 0 {
             player.iter().next()
         } else {
             others
                 .iter()
                 .find(|(_, local)| local.0 == index)
                 .map(|(state, _)| state)
-        };
-        state.map_or(0.0, |state| state.speed.abs() * 3.6)
+        }
     };
+    let kmh = |index: usize| state(index).map_or(0.0, |state| state.speed.abs() * 3.6);
+    // With the gears on, the gear under the speed.
+    for (unit, mut text) in &mut units {
+        let label = match state(unit.0).filter(|_| settings.gears) {
+            Some(state) => unit_label(state.gear, settings.language),
+            None => "km/h".to_string(),
+        };
+        if text.0 != label {
+            text.0 = label;
+        }
+    }
     for (pointer, mut transform) in &mut pointers {
         let rotation = Rot2::radians(pointer_angle(kmh(pointer.0)));
         if transform.rotation != rotation {
@@ -617,6 +644,13 @@ fn pointer(size: u32) -> Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_the_gears_the_dial_says_which_one() {
+        use crate::locale::Language;
+        assert_eq!(unit_label(0, Language::Spanish), "1ª · km/h");
+        assert_eq!(unit_label(5, Language::English), "G6 · km/h");
+    }
 
     /// The colour (0..=255) of the drawing at a point of the design.
     fn at(canvas: &Canvas, point: Vec2) -> [u8; 4] {

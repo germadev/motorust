@@ -303,6 +303,27 @@ pub fn music_prompt(device: ActiveDevice, lang: Language, what: String) -> KeyPr
     }
 }
 
+/// What changes, learning the keyboard's curves in free ride, between only
+/// noting where the bike strays and correcting the curves (see
+/// [`crate::bike::learning`]), and which it does now.
+pub fn correction_prompt(device: ActiveDevice, lang: Language, correcting: bool) -> KeyPrompt {
+    use crate::bike::learning::{CORRECT_BUTTON, CORRECT_KEY};
+    let badge = match device {
+        ActiveDevice::Keyboard => key_badge(CORRECT_KEY, lang),
+        _ => button_badge(device, CORRECT_BUTTON),
+    };
+    let action = match (lang, correcting) {
+        (Language::Spanish, false) => "Aprendizaje: solo detección",
+        (Language::Spanish, true) => "Aprendizaje: corrección",
+        (Language::English, false) => "Learning: noting only",
+        (Language::English, true) => "Learning: correcting",
+    };
+    KeyPrompt {
+        badges: vec![badge],
+        action: action.into(),
+    }
+}
+
 /// What turns the music on or off in the menus (the same as changes free
 /// ride's), and whether it is on.
 pub fn music_toggle_prompt(device: ActiveDevice, lang: Language, on: bool) -> KeyPrompt {

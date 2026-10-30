@@ -17,9 +17,10 @@
 //!    while a way to the left runs through it, in at its gate and out at
 //!    the other (about 730–915 m), the two ways mirror images, as long and
 //!    as fast; then swinging right and left over the start straight below.
-//! 4. **The Hot Wheels helix** (about 1050–1330 m): orange track, banked,
-//!    a turn and a quarter round a blue column up to the top of a tall
-//!    shelving unit (39 m), near the ceiling's lamps.
+//! 4. **The Hot Wheels helix** (about 1050–1330 m): orange track, banked
+//!    steeply and gripping hard, a turn and a quarter round a blue column up
+//!    to the top of a tall shelving unit (39 m), near the ceiling's lamps,
+//!    climbed flat out.
 //! 5. **Along the top of the shelves** (about 1330–1420 m).
 //! 6. **The slide** (about 1420–1880 m): a helter-skelter's chute, two turns
 //!    and a quarter round its tower, down to the floor.
@@ -29,10 +30,11 @@
 //!    1920–2160 m), a booster on each.
 //! 8. **Under the first table** (about 2200–2450 m): south under it and in
 //!    esses down the east side.
-//! 9. **The train table** (about 2450–2810 m): up a ramp onto it (9 m),
-//!    round past its electric train, and straight off its edge back down to
-//!    the floor.
-//! 10. **Home** (about 2810 m to the finish): round onto the drag strip.
+//! 9. **The train table** (about 2450–2830 m): up a ramp onto it (9 m),
+//!    straight on at the shop's glass and its doors, round short of it and
+//!    along it past its electric train, right by the road, and straight off
+//!    its edge back down to the floor.
+//! 10. **Home** (about 2830 m to the finish): round onto the drag strip.
 
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -43,17 +45,17 @@ use crate::track::{Banking, Branch, Layout, VerticalLoop};
 use crate::world::scenery::*;
 
 /// Key stretches of the lap, in metres from the finish line.
-const DRAG_STRIP: Span = span(2888.0, 130.0);
+const DRAG_STRIP: Span = span(2928.0, 130.0);
 const TABLES: Span = span(222.0, 1053.0);
 const HELIX: Span = span(1053.0, 1348.0);
 const SHELVES: Span = span(1348.0, 1427.0);
 const SLIDE: Span = span(1427.0, 1888.0);
-const TRAIN_TABLE: Span = span(2453.0, 2818.0);
+const TRAIN_TABLE: Span = span(2453.0, 2838.0);
 /// Along the north wall, past the loop; round the north-east corner, under
 /// the first table and down the east side; and round the last bend.
 const NORTH_WALL: Span = span(1908.0, 2208.0);
 const BRICK_WALLS: Span = span(2208.0, 2453.0);
-const HOME: Span = span(2818.0, 2888.0);
+const HOME: Span = span(2838.0, 2928.0);
 /// How far the walls stand from the middle of the road (m): a toy track's,
 /// narrow.
 const WALL: f32 = 7.5;
@@ -109,54 +111,64 @@ pub const TOY_STORE: Circuit = Circuit {
                 to: CASTLE.from,
                 factor: RAISED_BANKING,
                 raised: true,
+                grip: 1.0,
             },
             Banking {
                 from: CASTLE.from,
                 to: CASTLE.to,
                 factor: 0.0,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: CASTLE.to,
                 to: HELIX.from,
                 factor: RAISED_BANKING,
                 raised: true,
+                grip: 1.0,
             },
             Banking {
                 from: HELIX.from,
                 to: HELIX.to,
                 factor: 2.5,
                 raised: false,
+                // Hot Wheels' banked track: steep, and gripping hard.
+                grip: HOT_WHEELS_GRIP,
             },
             Banking {
                 from: SHELVES.from,
                 to: SHELVES.to,
                 factor: 0.0,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: SLIDE.from,
                 to: SLIDE.to,
                 factor: 2.5,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: SLIDE.to,
                 to: LOOP.from,
                 factor: RAISED_BANKING,
                 raised: true,
+                grip: 1.0,
             },
             Banking {
                 from: LOOP.from,
                 to: LOOP.to,
                 factor: 0.0,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: LOOP.to,
                 to: f32::MAX,
                 factor: RAISED_BANKING,
                 raised: true,
+                grip: 1.0,
             },
         ],
         narrows: &[],
@@ -352,21 +364,27 @@ pub const TOY_STORE: Circuit = Circuit {
 };
 
 /// How fast it is ridden against most tracks (see [`Circuit::pace`]).
-const PACE: f32 = 0.75;
+const PACE: f32 = 0.80;
 /// How much more the bends on the floor and on the furniture bank than a
 /// road's would (see [`Banking`]): most as much as a road may.
 const RAISED_BANKING: f32 = 1.5;
+/// How much harder the helix grips, banked as much more steeply (see
+/// [`Banking::grip`], about 23°): enough to go up it flat out, no braking
+/// for its tight turns (36 m round). (Not the slide, down its tower: the
+/// bikes come off it as fast as the way round the loop by the north wall
+/// is reckoned for, its booster making up for the loop's length.)
+const HOT_WHEELS_GRIP: f32 = 2.4;
 
 const STORE: ToyStore = ToyStore {
     room: (Vec2::new(-175.0, -335.0), Vec2::new(380.0, 130.0)),
     ceiling: 55.0,
-    // In the south wall, the doors ahead of the bikes coming down the east
-    // side onto the train table, the glass along the left of the road
-    // round it.
+    // In the south wall, the glass ahead of the bikes coming down the east
+    // side onto the train table, along it to the shop's doors, and along
+    // the left of the road round it, close by.
     entrance: Some(Entrance {
         from: 168.0,
         to: 344.0,
-        doors: 264.0,
+        doors: 320.0,
     }),
     furniture: &[
         // The chair the road climbs onto from the floor, its back to the
@@ -416,11 +434,12 @@ const STORE: ToyStore = ToyStore {
             top: 38.6,
             color: SHELF_WHITE,
         },
-        // The train table, the road round it and straight off its edge.
+        // The train table, the road along it at the shop's doors and the
+        // glass, round beside its train and straight off its edge.
         Furniture {
             kind: FurnitureKind::Table,
-            center: Vec2::new(204.5, 56.5),
-            size: Vec2::new(141.0, 89.0),
+            center: Vec2::new(207.0, 66.0),
+            size: Vec2::new(146.0, 108.0),
             heading: 0.0,
             top: 8.2,
             color: TABLE_YELLOW,
@@ -474,17 +493,20 @@ const STORE: ToyStore = ToyStore {
             wagons: 4,
             speed: 12.0,
         },
-        // On the train table, beside the road round it: wagons of crates.
+        // On the train table, right beside the road along it: wagons of
+        // crates, on an oval reaching out towards the road's walls.
         Train {
             track: &[
-                Vec2::new(160.0, 40.0),
-                Vec2::new(190.0, 40.0),
-                Vec2::new(220.0, 40.0),
-                Vec2::new(231.0, 51.0),
-                Vec2::new(220.0, 62.0),
-                Vec2::new(190.0, 62.0),
-                Vec2::new(160.0, 62.0),
-                Vec2::new(149.0, 51.0),
+                Vec2::new(160.0, 60.0),
+                Vec2::new(190.0, 60.0),
+                Vec2::new(220.0, 60.0),
+                Vec2::new(238.0, 60.0),
+                Vec2::new(249.0, 73.0),
+                Vec2::new(238.0, 86.0),
+                Vec2::new(220.0, 86.0),
+                Vec2::new(190.0, 86.0),
+                Vec2::new(160.0, 86.0),
+                Vec2::new(149.0, 73.0),
             ],
             height: 8.2,
             wagon: Wagon::Freight,
@@ -646,7 +668,7 @@ const STORE: ToyStore = ToyStore {
         // straight, its open front to the road.
         Toy {
             kind: ToyKind::Trex,
-            position: Vec2::new(45.0, 99.7),
+            position: Vec2::new(45.0, 119.7),
             heading: PI,
             scale: 1.0,
             base: 0.0,
@@ -660,7 +682,7 @@ const STORE: ToyStore = ToyStore {
         },
         Toy {
             kind: ToyKind::Teepee,
-            position: Vec2::new(-18.0, 62.0),
+            position: Vec2::new(-19.5, 62.0),
             heading: FRAC_PI_2,
             scale: 1.0,
             base: 0.0,
@@ -684,52 +706,52 @@ const STORE: ToyStore = ToyStore {
         // xylophone on the floor by the start straight.
         Toy {
             kind: ToyKind::GiantRobot,
-            position: Vec2::new(305.0, 110.0),
+            position: Vec2::new(354.0, 98.0),
             heading: -2.6,
             scale: 1.0,
             base: 0.0,
         },
-        // By the doors: the checkout counter before the glass east of them,
-        // its front with the sweets to the room; a row of trolleys before
-        // the glass west of them, nested; a potted plant either side.
+        // By the doors: the checkout counter east of them, its front with
+        // the sweets to the room; a row of trolleys before the glass west of
+        // them, nested; a potted plant at either end of the glass.
         Toy {
             kind: ToyKind::CheckoutCounter,
-            position: Vec2::new(330.0, 108.0),
+            position: Vec2::new(364.0, 116.0),
             heading: PI,
             scale: 1.0,
             base: 0.0,
         },
         Toy {
             kind: ToyKind::ShoppingCart,
-            position: Vec2::new(224.0, 120.0),
+            position: Vec2::new(286.0, 123.0),
             heading: FRAC_PI_2,
             scale: 1.0,
             base: 0.0,
         },
         Toy {
             kind: ToyKind::ShoppingCart,
-            position: Vec2::new(228.5, 120.0),
+            position: Vec2::new(290.5, 123.0),
             heading: FRAC_PI_2,
             scale: 1.0,
             base: 0.0,
         },
         Toy {
             kind: ToyKind::ShoppingCart,
-            position: Vec2::new(233.0, 120.0),
+            position: Vec2::new(295.0, 123.0),
             heading: FRAC_PI_2,
             scale: 1.0,
             base: 0.0,
         },
         Toy {
             kind: ToyKind::PottedPlant,
-            position: Vec2::new(176.0, 121.0),
+            position: Vec2::new(122.0, 121.0),
             heading: 0.4,
             scale: 1.0,
             base: 0.0,
         },
         Toy {
             kind: ToyKind::PottedPlant,
-            position: Vec2::new(289.0, 122.0),
+            position: Vec2::new(373.0, 122.0),
             heading: -0.7,
             scale: 1.0,
             base: 0.0,
@@ -982,7 +1004,7 @@ const STORE: ToyStore = ToyStore {
         },
         Bricks {
             kind: BrickKind::Tower { count: 6 },
-            position: Vec2::new(205.0, 74.0),
+            position: Vec2::new(200.0, 73.0),
             heading: -0.4,
             base: 8.2,
         },
@@ -1086,7 +1108,7 @@ const LOOP_EXIT: [Vec2; 8] = [
 
 /// The centre line's points, in race order, as `tools/toy_store_layout.py`
 /// walks them.
-const CONTROL_POINTS: [Vec2; 377] = [
+const CONTROL_POINTS: [Vec2; 381] = [
     Vec2::new(0.0, 0.0),
     Vec2::new(0.0, -13.33),
     Vec2::new(0.0, -26.67),
@@ -1418,52 +1440,56 @@ const CONTROL_POINTS: [Vec2; 377] = [
     Vec2::new(264.0, -15.56),
     Vec2::new(264.0, -2.89),
     Vec2::new(264.0, 9.77),
-    Vec2::new(264.0, 23.11),
-    Vec2::new(264.0, 36.44),
-    Vec2::new(264.0, 49.77),
-    Vec2::new(263.39, 56.02),
-    Vec2::new(261.56, 62.02),
-    Vec2::new(258.61, 67.55),
-    Vec2::new(254.63, 72.4),
-    Vec2::new(249.78, 76.38),
-    Vec2::new(244.25, 79.34),
-    Vec2::new(238.24, 81.16),
-    Vec2::new(232.0, 81.77),
-    Vec2::new(226.0, 81.77),
-    Vec2::new(219.92, 82.3),
-    Vec2::new(214.03, 83.88),
-    Vec2::new(208.5, 86.46),
-    Vec2::new(202.97, 89.04),
-    Vec2::new(197.08, 90.62),
-    Vec2::new(191.0, 91.15),
-    Vec2::new(184.92, 90.62),
-    Vec2::new(179.03, 89.04),
-    Vec2::new(173.5, 86.46),
-    Vec2::new(167.97, 83.88),
-    Vec2::new(162.08, 82.3),
-    Vec2::new(156.0, 81.77),
-    Vec2::new(143.5, 81.77),
-    Vec2::new(131.0, 81.77),
-    Vec2::new(119.57, 81.77),
-    Vec2::new(108.14, 81.77),
-    Vec2::new(96.71, 81.77),
-    Vec2::new(85.29, 81.77),
-    Vec2::new(73.86, 81.77),
-    Vec2::new(62.43, 81.77),
-    Vec2::new(51.0, 81.77),
-    Vec2::new(40.0, 81.77),
-    Vec2::new(33.74, 81.28),
-    Vec2::new(27.64, 79.81),
-    Vec2::new(21.84, 77.41),
-    Vec2::new(16.49, 74.13),
-    Vec2::new(11.72, 70.06),
-    Vec2::new(7.64, 65.28),
-    Vec2::new(4.36, 59.93),
-    Vec2::new(1.96, 54.13),
-    Vec2::new(0.49, 48.03),
-    Vec2::new(0.0, 41.77),
-    Vec2::new(0.0, 27.85),
-    Vec2::new(0.0, 13.92),
+    Vec2::new(264.0, 21.77),
+    Vec2::new(264.0, 33.77),
+    Vec2::new(264.0, 45.77),
+    Vec2::new(264.0, 57.77),
+    Vec2::new(264.0, 69.77),
+    Vec2::new(263.39, 76.02),
+    Vec2::new(261.56, 82.02),
+    Vec2::new(258.61, 87.55),
+    Vec2::new(254.63, 92.4),
+    Vec2::new(249.78, 96.38),
+    Vec2::new(244.25, 99.34),
+    Vec2::new(238.24, 101.16),
+    Vec2::new(232.0, 101.77),
+    Vec2::new(226.0, 101.77),
+    Vec2::new(219.92, 102.3),
+    Vec2::new(214.03, 103.88),
+    Vec2::new(208.5, 106.46),
+    Vec2::new(202.97, 109.04),
+    Vec2::new(197.08, 110.62),
+    Vec2::new(191.0, 111.15),
+    Vec2::new(184.92, 110.62),
+    Vec2::new(179.03, 109.04),
+    Vec2::new(173.5, 106.46),
+    Vec2::new(167.97, 103.88),
+    Vec2::new(162.08, 102.3),
+    Vec2::new(156.0, 101.77),
+    Vec2::new(143.5, 101.77),
+    Vec2::new(131.0, 101.77),
+    Vec2::new(119.57, 101.77),
+    Vec2::new(108.14, 101.77),
+    Vec2::new(96.71, 101.77),
+    Vec2::new(85.29, 101.77),
+    Vec2::new(73.86, 101.77),
+    Vec2::new(62.43, 101.77),
+    Vec2::new(51.0, 101.77),
+    Vec2::new(40.0, 101.77),
+    Vec2::new(33.74, 101.28),
+    Vec2::new(27.64, 99.81),
+    Vec2::new(21.84, 97.41),
+    Vec2::new(16.49, 94.13),
+    Vec2::new(11.72, 90.06),
+    Vec2::new(7.64, 85.28),
+    Vec2::new(4.36, 79.93),
+    Vec2::new(1.96, 74.13),
+    Vec2::new(0.49, 68.03),
+    Vec2::new(0.0, 61.77),
+    Vec2::new(0.0, 49.42),
+    Vec2::new(0.0, 37.06),
+    Vec2::new(0.0, 24.71),
+    Vec2::new(0.0, 12.35),
 ];
 
 /// The road's height along the lap
@@ -1534,14 +1560,14 @@ const ELEVATION: [(f32, f32); 75] = [
     (2452.5, 0.0),
     (2462.5, 0.3),
     (2538.5, 8.4), // T2
-    (2578.5, 9.0),
-    (2628.5, 9.0),
-    (2634.5, 9.0),
-    (2652.5, 9.0),
-    (2690.5, 9.0),
-    (2708.6, 9.0),
-    (2732.6, 9.0), // drop
-    (2812.6, 0.3), // drop end
-    (2824.6, 0.0),
-    (2886.6, 0.0), // home
+    (2598.5, 9.0), // doors
+    (2648.5, 9.0),
+    (2654.5, 9.0),
+    (2672.5, 9.0),
+    (2710.5, 9.0),
+    (2728.5, 9.0),
+    (2752.6, 9.0), // drop
+    (2832.6, 0.3), // drop end
+    (2844.6, 0.0),
+    (2906.6, 0.0), // home
 ];

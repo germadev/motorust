@@ -99,6 +99,13 @@ pub struct Forces {
 
 impl Chassis {
     /// Cuánto se puede girar con el caballito o la trasera levantada (0..1).
+    /// How much the front is loaded by the braking (0 to 1): how far the
+    /// fork has dived, of all it can. It comes as the bike brakes and goes
+    /// as the fork comes back up, a moment after.
+    pub fn front_load(&self) -> f32 {
+        smoothstep(0.0, MAX_DIVE, -self.squat)
+    }
+
     pub fn steering_grip(&self) -> f32 {
         1.0 - 0.85 * smoothstep(0.05, 0.4, self.wheelie)
             - 0.3 * smoothstep(0.03, 0.1, -self.wheelie)

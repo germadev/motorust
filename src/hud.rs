@@ -12,7 +12,7 @@ use bevy::prelude::*;
 
 use crate::circuits::CurrentCircuit;
 use crate::gamepads::ActiveController;
-use crate::legend::{KeyPrompt, music_prompt, race_prompts, spawn_legend};
+use crate::legend::{KeyPrompt, correction_prompt, music_prompt, race_prompts, spawn_legend};
 use crate::menu::GameState;
 use crate::pause::{DebugOptions, Pause};
 use crate::race::{Mode, Rules};
@@ -427,6 +427,10 @@ fn show_race_legend(
     icons: Res<UiIcons>,
     shown: Query<Entity, With<Legend>>,
     mut last: Local<Option<Vec<KeyPrompt>>>,
+    (learning, probe): (
+        Option<Res<crate::bike::learning::TargetLine>>,
+        Option<Res<crate::bike::curves::CurveProbe>>,
+    ),
 ) {
     let active_dev = current_active_device(
         device.as_deref().copied().unwrap_or_default(),
@@ -443,6 +447,19 @@ fn show_race_legend(
         wanted
             .get_or_insert_default()
             .push(music_prompt(active_dev, lang, what));
+    }
+    // Learning the keyboard's curves: only noting, or correcting.
+    if learning.is_some_and(|target| target.line.is_some()) {
+        let stick = probe.is_some_and(|probe| probe.stick);
+        let shapes = if stick {
+            &settings.stick_shapes
+        } else {
+            &settings.keyboard_shapes
+        };
+        let correcting = shapes.correct;
+        wanted
+            .get_or_insert_default()
+            .push(correction_prompt(active_dev, lang, correcting));
     }
     let wanted = wanted.filter(|_| !pause.is_open());
     if *last == wanted && shown.is_empty() == wanted.is_none() {

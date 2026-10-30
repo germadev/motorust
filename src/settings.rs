@@ -155,6 +155,26 @@ pub struct Settings {
     /// How many frames may wait to go to the GPU (`desired_maximum_frame_latency`):
     /// fewer, less lag; more, steadier frames. Applied when the game starts.
     pub frame_latency: u32,
+    /// How the keyboard and the d-pad steer (Options > Control > Advanced):
+    /// as always, or by the curves of Options > Control > Keyboard
+    /// behaviour, leaning the bike over and turning it with the lean (see
+    /// [`crate::bike::curves`]).
+    pub keyboard_mode: crate::bike::curves::KeyboardMode,
+    /// Whether the bikes change gears, automatically: none while changing
+    /// up, each gear strongest at the revs it pulls best (see
+    /// [`crate::bike::gearbox`]), and the gear on the speedometer.
+    pub gears: bool,
+    /// Whether those curves are drawn under the performance HUD (Options >
+    /// Graphics > Performance HUD), with where the first player's bike is
+    /// on them (see [`crate::curves_hud`]).
+    pub show_keyboard_curves: bool,
+    /// The curves' shapes and numbers (saved under a name of their own: the
+    /// first ones, saved as a single set of curves, are not read).
+    pub keyboard_shapes: crate::bike::curves::KeyboardShapes,
+    /// The same for the stick (Options > Control > Advanced and Stick
+    /// behaviour), with its response.
+    pub stick_mode: crate::bike::curves::KeyboardMode,
+    pub stick_shapes: crate::bike::curves::KeyboardShapes,
     /// The best of each track (see [`crate::race::Records`]).
     pub records: crate::race::Records,
     /// Settings tried out and not to be kept (the benchmark's, see
@@ -393,6 +413,12 @@ impl Default for Settings {
             show_coordinates: false,
             cartoon_water: false,
             frame_latency: DEFAULT_FRAME_LATENCY,
+            keyboard_mode: crate::bike::curves::KeyboardMode::Classic,
+            gears: false,
+            show_keyboard_curves: false,
+            keyboard_shapes: crate::bike::curves::KeyboardShapes::default(),
+            stick_mode: crate::bike::curves::KeyboardMode::Classic,
+            stick_shapes: crate::bike::curves::KeyboardShapes::classic(true),
             records: crate::race::Records::default(),
             transient: false,
         }
@@ -1459,6 +1485,11 @@ impl Settings {
             settings.force_performance = ForcePerformance::Fps60;
         }
         settings.controls.give_the_wheelie_a_button();
+        // The curves were turned on with a box before the keyboard's
+        // behaviour could be chosen.
+        if text.contains("keyboard_curves_on: true") && !text.contains("keyboard_mode") {
+            settings.keyboard_mode = crate::bike::curves::KeyboardMode::Bezier;
+        }
         // Ghost Island was Tsushima Isle.
         settings.records.rename("Tsushima Isle", "Ghost Island");
         settings
@@ -1992,6 +2023,54 @@ mod tests {
             "Normales y parallax"
         );
         assert_eq!(Relief::Off.name(Language::English), "Off");
+    }
+
+    #[test]
+    fn the_keyboard_s_curves_are_saved_and_older_settings_start_without_them() {
+        let mut settings = Settings {
+            keyboard_mode: crate::bike::curves::KeyboardMode::Bezier,
+            show_keyboard_curves: true,
+            ..Settings::default()
+        };
+        let shapes = &mut settings.keyboard_shapes;
+        shapes.lean_in_seconds = 0.25;
+        shapes.turn.shape = crate::bike::curves::CurveShape::Custom;
+        shapes.turn.custom = crate::bezier::Bezier::new(0.1, 0.5, 0.6, 0.9);
+        shapes.set_learn(crate::bike::curves::LearnLine::Race);
+        let text = ron::ser::to_string(&settings).unwrap();
+        let loaded: Settings = ron::from_str(&text).unwrap();
+        assert_eq!(loaded.keyboard_shapes, settings.keyboard_shapes);
+        assert_eq!(
+            loaded.keyboard_mode,
+            crate::bike::curves::KeyboardMode::Bezier
+        );
+        assert!(loaded.show_keyboard_curves);
+        // Saved before them: off, and the classic ones.
+        let older: Settings = ron::from_str("(fps: Unlimited)").unwrap();
+        assert_eq!(
+            older.keyboard_mode,
+            crate::bike::curves::KeyboardMode::Classic
+        );
+        assert!(!older.show_keyboard_curves);
+        // Turned on with the box they had at first: Bézier.
+        let boxed = Settings::default()
+            .brought_up_to_date("(keyboard_curves_on: true, show_keyboard_curves: true)");
+        assert_eq!(
+            boxed.keyboard_mode,
+            crate::bike::curves::KeyboardMode::Bezier
+        );
+        assert_eq!(
+            older.keyboard_shapes,
+            crate::bike::curves::KeyboardShapes::default()
+        );
+        // The first curves, saved as one set, are not read; the rest is.
+        let first: Settings = ron::from_str(
+            "(fps: Unlimited, keyboard_curves: (lean_in: (curve: (x1: 0.1, y1: 0.2, x2: 0.3, \
+             y2: 0.4), seconds: 0.3), top_speed_lean: 0.9))",
+        )
+        .unwrap();
+        assert_eq!(first.fps, FpsLimit::Unlimited);
+        assert_eq!(first.keyboard_shapes, older.keyboard_shapes);
     }
 
     #[test]

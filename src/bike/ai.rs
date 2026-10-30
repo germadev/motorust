@@ -19,6 +19,9 @@ use crate::track::{Fork, SAMPLE_SPACING, Track};
 /// en este tiempo. Mirar más lejos a más velocidad evita los eses.
 const LOOK_AHEAD_DISTANCE: f32 = 8.0;
 const LOOK_AHEAD_TIME: f32 = 0.4;
+/// Where the road grips harder (see [`Track::grip_at`]), the most of it a
+/// rival plans its speed round a bend with.
+const PLANNED_GRIP: f32 = 1.6;
 /// Fracción del freno con la que planea las frenadas, para llegar con margen.
 const PLANNED_BRAKING: f32 = 0.6;
 /// How much more of the brakes a rival plans with for each bit of skill
@@ -46,9 +49,12 @@ const FOLLOW_GAP: f32 = 4.0;
 /// by side, it keeps to its side of the road until there is room.
 const BESIDE: f32 = 6.0;
 /// Over the last this many metres of a branch without a loop (m), a rival
-/// gives way to a bike from this far behind to this far ahead (m) that is
-/// within this much more than the clearance across (m), going this much
-/// slower than it (m/s).
+/// gives way to a bike on the lap from this far behind to this far ahead
+/// (m), from where it is now to where it will be by the time the rival
+/// gets to the lap (so that one catching it up from further behind counts
+/// too), and within this much more than the clearance across (m): going
+/// this much slower than it (m/s), or slower still for it to be that far
+/// ahead by then, though no more than twice as much slower.
 const MERGE_ZONE: f32 = 120.0;
 const MERGE_BEHIND: f32 = 4.0;
 const MERGE_AHEAD: f32 = 15.0;
@@ -179,6 +185,15 @@ impl Waypoint {
                 track.road(road).smoothed_curvature(index, CURVATURE_WINDOW)
             }
             Waypoint::Into(..) => 0.0,
+        }
+    }
+
+    /// How much harder than usual the road grips across here (see
+    /// [`Track::grip_at`]).
+    fn grip(self, track: &Track) -> f32 {
+        match self {
+            Waypoint::Road(road, index) => track.grip_at(road, index),
+            Waypoint::Into(..) => 1.0,
         }
     }
 
@@ -330,23 +345,45 @@ pub fn plan_line(
         let branch = track.road(road);
         let last = branch.sample_count() - 1;
         let to_join = (last - index.min(last)) as f32 * branch.step_length();
-        let reach = ((horizon + MERGE_BEHIND) / track.step_length()).ceil() as usize + 4;
+        // How far ahead of it (m, behind if negative) a bike on the lap
+        // `gap` ahead now will be when it gets to the lap.
+        let joining = to_join / speed.max(1.0);
+        let at_join = |gap: f32, other: &Traffic| gap + (other.speed - speed) * joining;
+        let quickest = traffic
+            .iter()
+            .map(|other| other.speed)
+            .fold(speed, f32::max);
+        let back = MERGE_BEHIND + (quickest - speed) * joining.min(MERGE_ZONE / speed.max(1.0));
+        let before = (back / track.step_length()).ceil() as usize + 4;
+        let reach = (horizon / track.step_length()).ceil() as usize + before;
         let on_lap = |other: &Traffic| {
-            let from = (here as usize + track.sample_count() - 4) % track.sample_count();
+            let from = (here as usize + track.sample_count() - before) % track.sample_count();
             track.nearest_among(other.position, from, reach).lateral
         };
-        let beside = traffic
+        let yielding = traffic
             .iter()
-            .filter(|other| {
+            .filter_map(|other| {
                 let index = track.nearest_index_at(other.position, other.elevation) as i64;
                 let gap = ((index - here + n + n / 2) % n - n / 2) as f32 * SAMPLE_SPACING;
-                (-MERGE_BEHIND..MERGE_AHEAD).contains(&gap)
-                    && (on_lap(other) - line).abs() < CLEARANCE + MERGE_MARGIN
+                // Level with it at any time until then, on the lap (one on
+                // this branch with it is traffic like any other).
+                let (near, far) = (gap.min(at_join(gap, other)), gap.max(at_join(gap, other)));
+                let level = far > -MERGE_BEHIND
+                    && near < MERGE_AHEAD
+                    && track.nearest_at(other.position, other.elevation).road != road
+                    && (on_lap(other) - line).abs() < CLEARANCE + MERGE_MARGIN;
+                // Slow enough that it is far enough ahead by then, though
+                // no more than twice as much slower as by default.
+                let clear = other.speed * to_join / (MERGE_AHEAD + to_join - gap).max(1.0);
+                level.then(|| {
+                    (other.speed - MERGE_YIELD)
+                        .min(clear)
+                        .max(other.speed - 2.0 * MERGE_YIELD)
+                })
             })
-            .map(|other| other.speed)
             .reduce(f32::min);
-        if let (true, Some(other)) = (to_join < MERGE_ZONE, beside) {
-            return (line, (other - MERGE_YIELD).max(0.0));
+        if let (true, Some(yielding)) = (to_join < MERGE_ZONE, yielding) {
+            return (line, yielding.max(0.0));
         }
     }
     let limit = way.half_width(track) - EDGE_MARGIN;
@@ -447,8 +484,11 @@ pub fn decide(
     let to_target = target.point(track, line) - state.position;
     let angle = wrap_angle(heading_of(to_target) - state.heading);
     let wanted_curvature = 2.0 * angle.sin() / to_target.length().max(1.0);
-    let max_curvature =
-        (1.0 / tuning.min_turn_radius).min(tuning.max_lateral_accel / speed.max(0.1).powi(2));
+    // Where the road grips harder (Hot Wheels' banked track), the same
+    // steering turns it more, as the physics has it.
+    let held = way[0].grip(track);
+    let max_curvature = (1.0 / tuning.min_turn_radius)
+        .min(tuning.max_lateral_accel * held / speed.max(0.1).powi(2));
     let steer = (wanted_curvature / max_curvature).clamp(-1.0, 1.0);
 
     // Velocidad: la más baja que exijan las curvas de delante, contando con
@@ -459,7 +499,10 @@ pub fn decide(
         if curvature < 1e-4 {
             continue;
         }
-        let corner_speed = (grip / curvature).sqrt();
+        // Where the road grips harder, faster, but with room: their
+        // steering turns in late into a tight bend taken flat out.
+        let held = waypoint.grip(track).min(PLANNED_GRIP);
+        let corner_speed = (grip * held / curvature).sqrt();
         let distance = step as f32 * SAMPLE_SPACING;
         target_speed = target_speed.min((corner_speed.powi(2) + 2.0 * braking * distance).sqrt());
     }
@@ -472,6 +515,10 @@ pub fn decide(
         // Los rivales no hacen caballitos: van a por el tiempo.
         wheelie: 0.0,
         pivot_slowing: 0.0,
+        lean: None,
+        // Its steering does not reckon with the front's extra grip braking.
+        plain_grip: true,
+        look: super::curves::LeanLook::Real,
     }
 }
 

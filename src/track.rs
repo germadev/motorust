@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::geometry::{forward, heading_of, smoothstep, wrap_angle};
 
 mod grid;
+pub mod racing_line;
 
 use grid::SegmentGrid;
 
@@ -127,11 +128,15 @@ pub struct Fork {
 /// instead of the road turning about its middle (see [`Track::lift`]).
 /// Where its `factor` is nought, the road lies level, and so do the roads
 /// off it beside it, alike.
+/// Where `grip` is more than 1, the road grips the tyres that much harder
+/// across (as Hot Wheels' banked track does, see [`Track::grip_beside`]),
+/// and may bank as much more steeply.
 pub struct Banking {
     pub from: f32,
     pub to: f32,
     pub factor: f32,
     pub raised: bool,
+    pub grip: f32,
 }
 
 /// Altura de la línea de meta sobre el nivel del mar: el resto del perfil va
@@ -143,6 +148,9 @@ const BANK_PER_CURVATURE: f32 = 7.0;
 const MAX_BANK: f32 = 0.17;
 /// Puntos a cada lado con los que se suaviza el peralte.
 const BANK_SMOOTHING: usize = 10;
+/// On a lap that banks raised, how many points either side the bank is
+/// eased over once more (see [`Banking::raised`]).
+const RAISED_BANK_SMOOTHING: usize = 12;
 /// Where the road banks raised (see [`Banking::raised`]), how many points
 /// either side its lift is eased over, twice: in and out over a few tens of
 /// metres, no crest or dip to take off from.
@@ -258,6 +266,9 @@ pub struct Track {
     /// Whether each point of the lap's centre line banks raised. Empty:
     /// none do.
     raised: Vec<bool>,
+    /// How much harder than usual each point of the lap grips across (see
+    /// [`Banking::grip`]). Empty: as usual all round.
+    grip: Vec<f32>,
     /// Whether each point of the lap's centre line is set level (its
     /// banking's factor nought). Empty: none is.
     level: Vec<bool>,
@@ -477,6 +488,7 @@ impl Track {
             bank: Vec::new(),
             lift: Vec::new(),
             raised: Vec::new(),
+            grip: Vec::new(),
             level: Vec::new(),
             half_width: (TRACK_WIDTH / 2.0).min(layout.wall - NARROW_MARGIN),
             step: 0.0,
@@ -538,6 +550,53 @@ impl Track {
                             track.wall.lerp(narrow.wall, closed)
                         })
                         .fold(track.wall, f32::min)
+                })
+                .collect();
+        }
+        // On a lap that banks raised anywhere (a toy track's banked curves,
+        // on supports), the bank comes to its most softly instead of
+        // stopping dead at it, and is eased over as many points again, all
+        // round (or where its kinds of banking meet it would jump): else its
+        // outside rises and falls in kinks, felt as bumps off the middle of
+        // the road.
+        let raised_at = |i: usize| {
+            let along = (i % n) as f32 * step;
+            layout
+                .banking
+                .iter()
+                .find(|banking| (banking.from..banking.to).contains(&along))
+                .is_some_and(|banking| banking.raised)
+        };
+        let grip = |i: usize| {
+            let along = (i % n) as f32 * step;
+            layout
+                .banking
+                .iter()
+                .find(|banking| (banking.from..banking.to).contains(&along))
+                .map_or(1.0, |banking| banking.grip)
+        };
+        if (0..n).any(|i| grip(i) != 1.0) {
+            track.grip = (0..n).map(grip).collect();
+        }
+        if (0..n).any(raised_at) {
+            // (Where it grips harder, it may bank as much more steeply.)
+            let soft: Vec<f32> = (0..n)
+                .map(|i| {
+                    let window = (i + n - BANK_SMOOTHING)..=(i + n + BANK_SMOOTHING);
+                    let count = window.clone().count() as f32;
+                    let curvature =
+                        window.map(|j| track.curvature(j) * factor(j)).sum::<f32>() / count;
+                    let most = MAX_BANK * grip(i);
+                    most * (curvature * BANK_PER_CURVATURE / most).tanh()
+                })
+                .collect();
+            let reach = RAISED_BANK_SMOOTHING as isize;
+            track.bank = (0..n as isize)
+                .map(|i| {
+                    (i - reach..=i + reach)
+                        .map(|j| soft[j.rem_euclid(n as isize) as usize])
+                        .sum::<f32>()
+                        / (2 * reach + 1) as f32
                 })
                 .collect();
         }
@@ -695,6 +754,7 @@ impl Track {
             bank: Vec::new(),
             lift: Vec::new(),
             raised: Vec::new(),
+            grip: Vec::new(),
             level: Vec::new(),
             half_width: SIDE_HALF_WIDTH,
             step,
@@ -999,6 +1059,29 @@ impl Track {
     /// (m): where it banks raised (see [`Banking::raised`]), at least as
     /// much as its inside wall would sink turning about the middle, eased in
     /// and out; elsewhere nothing.
+    /// How much harder than usual road `road` grips across at point `index`
+    /// of its centre line (see [`Banking::grip`]): the lap's, as usual off
+    /// it.
+    pub fn grip_at(&self, road: usize, index: usize) -> f32 {
+        if road != 0 || self.grip.is_empty() {
+            return 1.0;
+        }
+        self.grip[self.wrap(index as isize)]
+    }
+
+    /// How much harder than usual the road grips across beside a point
+    /// already found (see [`Banking::grip`]): the lap's, as usual off it.
+    pub fn grip_beside(&self, nearest: &Nearest) -> f32 {
+        if nearest.road != 0 || self.grip.is_empty() {
+            return 1.0;
+        }
+        let (i, j) = (
+            self.wrap(nearest.index as isize),
+            self.wrap(nearest.index as isize + 1),
+        );
+        self.grip[i].lerp(self.grip[j], nearest.t)
+    }
+
     pub fn lift(&self, index: usize) -> f32 {
         self.lift
             .get(self.wrap(index as isize))
@@ -2478,6 +2561,35 @@ mod tests {
     }
 
     #[test]
+    fn the_banking_puts_no_bumps_off_the_middle_of_the_road() {
+        // Ridden at 30 m/s 4 m either side of the middle, how sharply the
+        // road rises and falls is never more than 0.6 g from what it is in
+        // the middle (every track well under it, the toy store's 0.3 g):
+        // the bank changes smoothly, coming to its most softly (as it did
+        // not on the toy store's raised bends, 3 g off the middle, felt as
+        // bumps).
+        for circuit in crate::circuits::CIRCUITS.iter() {
+            let track = Track::new(&circuit.layout);
+            let (n, step, speed) = (track.sample_count(), track.step_length(), 30.0f32);
+            let felt = |i: usize, lateral: f32| {
+                let h = |i: usize| track.surface_point(i % n, lateral).y;
+                (h(i - 1) - 2.0 * h(i) + h(i + 1)) / (step * step) * speed * speed
+            };
+            for i in 1..n {
+                for lateral in [-4.0, 4.0] {
+                    let off = (felt(i, lateral) - felt(i, 0.0)).abs();
+                    assert!(
+                        off < 0.6 * 9.81,
+                        "{}: {off} m/s² at {} m, {lateral} m off the middle",
+                        circuit.name,
+                        i as f32 * step
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn slopes_and_banking_stay_rideable() {
         for (name, track) in every_track() {
             let (n, step) = (track.sample_count(), track.step_length());
@@ -2488,7 +2600,13 @@ mod tests {
                     "pendiente del {:.0} % en {i} de {name}",
                     grade * 100.0
                 );
-                assert!(track.bank[i].abs() <= MAX_BANK);
+                // (Steeper where the road grips harder, see `Banking::grip`,
+                // and eased in and out over the points either side.)
+                let reach = (BANK_SMOOTHING + RAISED_BANK_SMOOTHING) as isize;
+                let grip = (i as isize - reach..=i as isize + reach)
+                    .map(|j| track.grip_at(0, j.rem_euclid(n as isize) as usize))
+                    .fold(1.0, f32::max);
+                assert!(track.bank[i].abs() <= MAX_BANK * grip + 1e-5);
             }
             // Las curvas cerradas sí tienen peralte.
             assert!(track.bank.iter().any(|b| b.abs() > 0.08), "{name}");

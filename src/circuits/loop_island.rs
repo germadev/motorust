@@ -82,12 +82,14 @@ pub const LOOP_ISLAND: Circuit = Circuit {
                 to: 1100.0,
                 factor: 1.6,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: 2252.4,
                 to: 2392.4,
                 factor: 1.5,
                 raised: false,
+                grip: 1.0,
             },
         ],
         // The wooden bridge, narrower than the road.

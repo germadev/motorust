@@ -107,18 +107,21 @@ pub const GHOST_ISLAND: Circuit = Circuit {
                 to: 3300.0,
                 factor: 2.5,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: TEMPLE_SPLIT.0,
                 to: TEMPLE_SPLIT.1,
                 factor: 0.25,
                 raised: false,
+                grip: 1.0,
             },
             Banking {
                 from: CASTLE_SPLIT.0,
                 to: CASTLE_SPLIT.1,
                 factor: 0.25,
                 raised: false,
+                grip: 1.0,
             },
         ],
         // The shrine's boardwalk and the corridor of torii are narrower than
