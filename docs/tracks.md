@@ -190,7 +190,7 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
 
 ### Where tracks live
 
-Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `turbo_bay.ron` and `loop_island.ron`) or in Rust in `src/circuits/` (`gold_mine.rs`, `ghost_island.rs`, `moon_base.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
+Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `turbo_bay.ron`, `loop_island.ron` and `moon_base.ron`) or in Rust in `src/circuits/` (`gold_mine.rs`, `ghost_island.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -216,7 +216,7 @@ A circuit's file has the fields of `Circuit`, `Layout` and `Scenery` by their na
 
 A file has no constants: where the Rust named a stretch once and used it often (`CREST`, `TUNNEL.from + 60.0`), the file writes the numbers, and says in a comment at its top where things are (as `turbo_bay.ron` does).
 
-The scenery a file cannot give yet (an open pit, a mine, a desert and the themed scenery of feudal Japan, Middle-earth, space and the toy store) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
+The scenery a file cannot give yet (an open pit, a mine, a desert and the themed scenery of feudal Japan, Middle-earth and the toy store) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
 
 When a different track is picked, the world is rebuilt from its `Circuit` (see [architecture.md](architecture.md)).
 
