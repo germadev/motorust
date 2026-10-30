@@ -18,8 +18,8 @@
 //!
 //! What a file leaves out of the scenery is not there (no tunnels, no
 //! bridges, ...). The scenery a file cannot give yet (the themed scenery of
-//! feudal Japan, Middle-earth and the toy store) is not read: a file giving
-//! it fails, as does any other field the game does not know.
+//! Middle-earth and the toy store) is not read: a file giving it fails, as
+//! does any other field the game does not know.
 
 use bevy::prelude::*;
 use serde::de::{Deserialize, Deserializer, Error};

@@ -190,7 +190,7 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
 
 ### Where tracks live
 
-Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `turbo_bay.ron`, `loop_island.ron`, `moon_base.ron` and `gold_mine.ron`) or in Rust in `src/circuits/` (`ghost_island.rs`, `fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
+Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `turbo_bay.ron`, `loop_island.ron`, `moon_base.ron`, `gold_mine.ron` and `ghost_island.ron`) or in Rust in `src/circuits/` (`fellowship_road.rs` and `toy_store.rs`). A `Circuit` has seven fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -212,11 +212,12 @@ A circuit's file has the fields of `Circuit`, `Layout` and `Scenery` by their na
 - a colour as its sRGB: `(0.85, 0.08, 0.06)`;
 - a point as `(x, z)`;
 - a stretch of the lap as `Span(40.0, 340.0)`, or `Lap` for all of it;
+- a prop (of feudal Japan's) by the road as `(model: Pagoda, spot: Road(along: 3780.0, lateral: -34.0))`, over it as `Over(along: …)`, anywhere as `At(position: (x, z), heading: h)`, with `scale`, `turn`, `lean` and `facing_riders` if wanted;
 - the terrain's functions by name, as `coast: Function("bay_coast")` and `mountains: "bay_mountains"`: they stay in Rust, named in `terrain_function` (`src/circuits/mod.rs`).
 
 A file has no constants: where the Rust named a stretch once and used it often (`CREST`, `TUNNEL.from + 60.0`), the file writes the numbers, and says in a comment at its top where things are (as `turbo_bay.ron` does).
 
-The scenery a file cannot give yet (the themed scenery of feudal Japan, Middle-earth and the toy store) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
+The scenery a file cannot give yet (the themed scenery of Middle-earth and the toy store) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
 
 When a different track is picked, the world is rebuilt from its `Circuit` (see [architecture.md](architecture.md)).
 
@@ -283,7 +284,7 @@ pub const LAYOUT: Layout = Layout {
 };
 ```
 
-In a real track, the layout goes straight into the `Circuit`, as in `ghost_island.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[], narrows: &[] }`. (The example needs `branches: &[]` and `narrows: &[]` too.) In a file, as in `turbo_bay.ron` (or `loop_island.ron`, with a branch round a loop), the same fields by name, the lists it leaves out empty.
+In a real track, the layout goes straight into the `Circuit`, as in `fellowship_road.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[], narrows: &[] }`. (The example needs `branches: &[]` and `narrows: &[]` too.) In a file, as in `turbo_bay.ron` (or `loop_island.ron`, with a branch round a loop), the same fields by name, the lists it leaves out empty.
 
 ### Branches and loops
 

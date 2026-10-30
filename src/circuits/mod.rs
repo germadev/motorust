@@ -106,7 +106,7 @@ impl Circuit {
 
 /// The circuits written in RON, by the names of their files in
 /// `assets/circuits/`, built into the game.
-const FILES: [(&str, &str); 5] = [
+const FILES: [(&str, &str); 6] = [
     ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
     (
         "turbo_bay.ron",
@@ -124,6 +124,10 @@ const FILES: [(&str, &str); 5] = [
         "gold_mine.ron",
         include_str!("../../assets/circuits/gold_mine.ron"),
     ),
+    (
+        "ghost_island.ron",
+        include_str!("../../assets/circuits/ghost_island.ron"),
+    ),
 ];
 
 /// The terrain's functions the circuits' files name (see [`data`]).
@@ -136,6 +140,8 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
         "moon_base_mountains" => moon_base::mountains,
         "gold_mine_water" => gold_mine::water,
         "gold_mine_mountains" => gold_mine::mountains,
+        "ghost_island_lakes" => ghost_island::lakes,
+        "ghost_island_mountains" => ghost_island::mountains,
         _ => return None,
     })
 }
@@ -148,6 +154,7 @@ fn music(file: &str) -> Option<&'static [u8]> {
         "loop_island.mp3" => include_bytes!("../../assets/music/loop_island.mp3"),
         "moon_base.mp3" => include_bytes!("../../assets/music/moon_base.mp3"),
         "gold_mine.mp3" => include_bytes!("../../assets/music/gold_mine.mp3"),
+        "autumn_gale.mp3" => include_bytes!("../../assets/music/autumn_gale.mp3"),
         _ => return None,
     })
 }
@@ -161,13 +168,14 @@ pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
         (loop_island, loop_island_file),
         (moon_base, moon_base_file),
         (gold_mine, gold_mine_file),
+        (ghost_island, ghost_island_file),
     ] = FILES;
     [
         data::load(bay, bay_file),
         data::load(turbo_bay, turbo_bay_file),
         data::load(loop_island, loop_island_file),
         data::load(gold_mine, gold_mine_file),
-        ghost_island::GHOST_ISLAND,
+        data::load(ghost_island, ghost_island_file),
         data::load(moon_base, moon_base_file),
         fellowship_road::FELLOWSHIP_ROAD,
         toy_store::TOY_STORE,

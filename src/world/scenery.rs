@@ -657,7 +657,7 @@ pub struct Scenery {
     pub wheelie_halo: Option<Color>,
     /// The scenery of feudal Japan, from models made with Meshy, or `None`:
     /// see [`Japan`].
-    #[serde(skip)]
+    #[serde(default)]
     pub japan: Option<Japan>,
     /// The scenery of Middle-earth, from models made with Meshy, or `None`:
     /// see [`MiddleEarth`].
@@ -715,13 +715,21 @@ impl Scenery {
 /// The scenery of feudal Japan, as at Ghost Island (see
 /// [`crate::world::japan`]): corridors of torii over the road, props made
 /// with Meshy standing about, and fields of flowers.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Japan {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub corridors: &'static [ToriiCorridor],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub props: &'static [Prop],
     /// The small ones over and over along the road (see [`PropRow`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub rows: &'static [PropRow],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub maple_grounds: &'static [MapleGround],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub petals: &'static [Petals],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub flowers: &'static [FlowerField],
 }
 
@@ -729,8 +737,11 @@ pub struct Japan {
 /// flower, of one kind or, in patches, of several, with gaps of grass among
 /// them and a ragged edge, and, near the road, clumps standing up. Where
 /// fields overlap, the first one decides.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FlowerField {
     pub area: FlowerArea,
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub kinds: &'static [FlowerKind],
 }
 
@@ -742,6 +753,7 @@ pub struct FlowerField {
 /// round a point, from `inner` to `outer` metres from it (a ring round a
 /// lake, or, from 0, a round meadow, which nothing else is put in); or
 /// everywhere else.
+#[derive(Deserialize)]
 pub enum FlowerArea {
     Road {
         span: Span,
@@ -759,7 +771,7 @@ pub enum FlowerArea {
     Everywhere,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum FlowerKind {
     /// Red spider lilies (higanbana): bare stems crowned with curling
     /// petals and long stamens.
@@ -787,6 +799,8 @@ pub enum FlowerKind {
 
 /// Petals, or leaves, drifting down through the air over an area, falling
 /// and swaying, over and over.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Petals {
     pub area: PetalArea,
     pub kind: PetalKind,
@@ -794,12 +808,13 @@ pub struct Petals {
 
 /// Where petals drift: over a stretch of the lap, out to `reach` metres
 /// either side of its centre line, or round a point.
+#[derive(Deserialize)]
 pub enum PetalArea {
     Road { span: Span, reach: f32 },
     Round { center: Vec2, radius: f32 },
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum PetalKind {
     /// Red maple leaves.
     Maple,
@@ -813,6 +828,8 @@ pub enum PetalKind {
 /// under a great maple by a lake: its middle (x, z) and the radius of its
 /// ring of logs (m). Its leaves spill a little past the ring. Lay it on
 /// level ground (a [`Terrace`]).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MapleGround {
     pub center: Vec2,
     pub radius: f32,
@@ -823,6 +840,8 @@ pub struct MapleGround {
 /// narrow gate every `every` metres; and over the `approach` metres before
 /// and after it, where the road is as wide as ever, a wide gate every
 /// `approach_every` metres.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ToriiCorridor {
     pub span: Span,
     pub every: f32,
@@ -832,7 +851,7 @@ pub struct ToriiCorridor {
 
 /// One of the props of feudal Japan, made with Meshy (see
 /// [`crate::world::japan`]).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum PropModel {
     /// The great torii standing in the sea, as at Itsukushima.
     GreatTorii,
@@ -924,21 +943,31 @@ pub enum Plinth {
 /// foot a little under it; `scale` times as big as made (see
 /// [`Prop::scaled`]), turned `turn` radians from that (see
 /// [`Prop::turned`]), and leaning `lean` radians towards its side that was
-/// -X as made (see [`Prop::leaning`]). Its model is one of feudal Japan's
+/// -X as made. Its model is one of feudal Japan's
 /// ([`PropModel`]) or of Middle-earth's ([`MiddleEarthModel`]).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Prop<M = PropModel> {
     pub model: M,
     pub spot: Spot,
+    #[serde(default = "as_made")]
     pub scale: f32,
+    #[serde(default)]
     pub turn: f32,
+    #[serde(default)]
     pub lean: f32,
     /// Whether it faces the riders coming up the road at it, instead of
     /// the road beside it (see [`Prop::facing_riders`]).
+    #[serde(default)]
     pub facing_riders: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+/// A [`Prop`]'s scale where a circuit's file leaves it out: as made.
+fn as_made() -> f32 {
+    1.0
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
 pub enum Spot {
     Road {
         along: f32,
@@ -991,13 +1020,6 @@ impl<M: Copy> Prop<M> {
         Prop { turn, ..self }
     }
 
-    /// The same prop leaning `lean` radians about its foot, towards its side
-    /// that was -X as made: a tree leaning out over what its crown spreads
-    /// over.
-    pub const fn leaning(self, lean: f32) -> Self {
-        Prop { lean, ..self }
-    }
-
     /// The same prop turned to face the riders coming up the road at it,
     /// not the road beside it: a gate on a hilltop reads as a gate from
     /// far down the road, not as two posts edge on.
@@ -1014,30 +1036,14 @@ impl<M: Copy> Prop<M> {
 /// or the jizō down a hillside road. Each stands as one of [`by_road`],
 /// on its plinth, and the wall opens for it; where another road runs, or
 /// where one of the props put by hand already stands, there is none.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PropRow {
     /// The kinds it is made of, each in turn: one kind over and over, or
     /// several, so that a stretch is not all of one thing.
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub models: &'static [PropModel],
     pub row: Row,
-}
-
-/// A row of a small prop by the road (see [`PropRow`]).
-pub const fn prop_row(
-    models: &'static [PropModel],
-    span: Span,
-    side: Side,
-    lateral: f32,
-    every: f32,
-) -> PropRow {
-    PropRow {
-        models,
-        row: Row {
-            span,
-            side,
-            lateral,
-            every,
-        },
-    }
 }
 
 /// A prop anywhere (see [`Prop`]).

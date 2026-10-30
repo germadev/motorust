@@ -14,9 +14,10 @@ out: this is the lap's centre line only.
 - `--plan FILE.png`: the lap from above, north (-Z) up as on the race map,
   with its walls, its control points (red), a label every `--every` metres
   along it with its height, and what the circuit's source draws round it:
-  its coast (`COAST` or `SHORE`; in RON, an `Outline`), hills (`massif`,
-  brown; `climbed_massif`, green, with their heights), and a dam's lake
-  (`LAKE`) and river (`RIVER`; in RON, the dam's `lake` and `river`). `--box X0 Z0 X1 Z1` zooms in (metres).
+  its coast (`COAST` or `SHORE`; in RON, an `Outline` or
+  `OutlineWithLakes`), hills (`massif`, brown; `climbed_massif`, green, with
+  their heights), and a dam's lake (`LAKE`) and river (`RIVER`; in RON, the
+  dam's `lake` and `river`). `--box X0 Z0 X1 Z1` zooms in (metres).
 - `--profile FILE.png`: height, grade and the radius of the crests and
   dips along the lap (or `--along FROM TO` of it), with the grade the game
   allows and the crest radius the bike takes off over at its top speed.
@@ -289,7 +290,7 @@ def plot_plan(lap, out, box, every):
     if lap.ron:
         # A file's coast as an outline, and its dam's lake and river (a
         # point and a height each: `((x, z), h)`).
-        outline = re.search(r"coast: Outline\(\[(.*?)\n\s*\]\)", lap.text, re.S)
+        outline = re.search(r"coast: Outline(?:WithLakes)?\(\[(.*?)\n\s*\]", lap.text, re.S)
         if outline:
             ring = closed_curve(np.array(pairs(outline.group(1))), 4.0)
             ax.plot(*np.vstack([ring, ring[:1]]).T, color="#2a5db0", lw=0.8)
