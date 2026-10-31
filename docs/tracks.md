@@ -190,7 +190,7 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
 
 ### Where tracks live
 
-Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `turbo_bay.ron`, `loop_island.ron`, `moon_base.ron`, `gold_mine.ron`, `ghost_island.ron` and `fellowship_road.ron`) or in Rust in `src/circuits/` (`toy_store.rs`). A `Circuit` has seven fields:
+Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `turbo_bay.ron`, `loop_island.ron`, `moon_base.ron`, `gold_mine.ron`, `ghost_island.ron`, `fellowship_road.ron` and `toy_store.ron`), with the functions of its terrain it names (its coast or water, its mountains) in `src/circuits/` (`bay.rs`, `turbo_bay.rs`, `loop_island.rs`, `moon_base.rs`, `gold_mine.rs`, `ghost_island.rs`, `fellowship_road.rs`), with the tests of each. A `Circuit` has seven fields:
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
@@ -202,8 +202,9 @@ Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `t
 
 `CIRCUITS` in `src/circuits/mod.rs` lists the tracks in the order the track select screen shows them. The first one is also the default track. To add a track:
 
-1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `FILES` in `src/circuits/mod.rs`; or create a module next to the others that defines a `pub const` `Circuit`, and declare it.
-2. Add the track to `CIRCUITS` and update the array length.
+1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `FILES` in `src/circuits/mod.rs`.
+2. If it has a coast, water or mountains of its own, write their functions in a module next to the others, declare it, and name them in `terrain_function` (`src/circuits/mod.rs`); its song, in `music`. A circuit with neither water nor mountains, indoors, names `dry` and `flat`.
+3. Add the track to `CIRCUITS` and update the array length.
 
 #### Circuits in RON
 
@@ -217,7 +218,7 @@ A circuit's file has the fields of `Circuit`, `Layout` and `Scenery` by their na
 
 A file has no constants: where the Rust named a stretch once and used it often (`CREST`, `TUNNEL.from + 60.0`), the file writes the numbers, and says in a comment at its top where things are (as `turbo_bay.ron` does).
 
-The scenery a file cannot give yet (the toy store's) is refused, as is any field the game does not know: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
+A field the game does not know is refused: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
 
 When a different track is picked, the world is rebuilt from its `Circuit` (see [architecture.md](architecture.md)).
 
@@ -237,54 +238,43 @@ The road is 14 m wide plus curbs (less on a narrow track), and the walls stand 1
 
 The centre line may cross itself only where one stretch goes through a tunnel and the other passes well above it, at least 12 m higher, as in Turbo Bay. The physics follows each bike, its rider and the rivals on the stretch at their own level (`Track::nearest_at`), and the scenery takes care of the rest (see `tunnels` below).
 
-The example below is illustrative and is not a real track. It shows a short loop with a crest on the start straight and an extra-banked hairpin:
+The example below is illustrative and is not a real track. It shows a short loop with a crest on the start straight and an extra-banked hairpin, as a circuit's file writes its `layout`:
 
-```rust
-use bevy::prelude::*;
-
-use crate::track::{Banking, Layout};
-
-const CONTROL_POINTS: [Vec2; 10] = [
-    // Start straight, towards -Z.
-    Vec2::new(0.0, 0.0),
-    Vec2::new(0.0, -250.0),
-    // Hairpin to the right.
-    Vec2::new(40.0, -330.0),
-    Vec2::new(130.0, -350.0),
-    Vec2::new(210.0, -300.0),
-    // Back straight and the last corners.
-    Vec2::new(230.0, -200.0),
-    Vec2::new(220.0, -60.0),
-    Vec2::new(180.0, 40.0),
-    Vec2::new(90.0, 70.0),
-    Vec2::new(20.0, 50.0),
-];
-
-/// (metres from the finish line, height in metres).
-const ELEVATION: [(f32, f32); 7] = [
-    (0.0, 0.0),
-    (120.0, 1.0),
-    // Crest on the start straight: flat out, the bike jumps.
-    (200.0, 6.0),
-    (250.0, 3.5),
-    (450.0, 2.0),
-    (750.0, 10.0),
-    (950.0, 3.0),
-];
-
-pub const LAYOUT: Layout = Layout {
-    control_points: &CONTROL_POINTS,
-    elevation: &ELEVATION,
+```ron
+layout: (
+    control_points: [
+        // Start straight, towards -Z.
+        (0.0, 0.0),
+        (0.0, -250.0),
+        // Hairpin to the right.
+        (40.0, -330.0),
+        (130.0, -350.0),
+        (210.0, -300.0),
+        // Back straight and the last corners.
+        (230.0, -200.0),
+        (220.0, -60.0),
+        (180.0, 40.0),
+        (90.0, 70.0),
+        (20.0, 50.0),
+    ],
+    // (metres from the finish line, height in metres).
+    elevation: [
+        (0.0, 0.0),
+        (120.0, 1.0),
+        // Crest on the start straight: flat out, the bike jumps.
+        (200.0, 6.0),
+        (250.0, 3.5),
+        (450.0, 2.0),
+        (750.0, 10.0),
+        (950.0, 3.0),
+    ],
+    wall: 11.5,
     // The hairpin, with twice the banking its curvature gives it.
-    banking: &[Banking {
-        from: 260.0,
-        to: 480.0,
-        factor: 2.0,
-    }],
-};
+    banking: [(from: 260.0, to: 480.0, factor: 2.0)],
+),
 ```
 
-In a real track, the layout goes straight into the `Circuit`, as in `toy_store.rs`: `layout: Layout { control_points: &CONTROL_POINTS, elevation: &ELEVATION, banking: &[...], branches: &[], narrows: &[] }`. (The example needs `branches: &[]` and `narrows: &[]` too.) In a file, as in `turbo_bay.ron` (or `loop_island.ron`, with a branch round a loop), the same fields by name, the lists it leaves out empty.
+The lists it leaves out (`branches`, `narrows`) are empty; `turbo_bay.ron` has narrows, `loop_island.ron` a branch round a loop, `gold_mine.ron` branches without one, and `toy_store.ron` all of them, written by `tools/toy_store_layout.py`.
 
 ### Branches and loops
 
@@ -319,7 +309,7 @@ Round the loop (`src/bike/loop_ride.rs`), a bike rides on the running surface: s
 | `walls` | Wall style per span and side (short runs of a shrine's fence first, to open a wall where something stands by the road): `WallRun { span, side, style }`. `WallStyle` is `Stone` (the default everywhere else), `Concrete` (white barrier), `Railing` (green seafront railing), `Hedge` (hedge on a low wall, its leaves as dark and dull as the track's grass), `Checkered` (blocks of checkerboard earth), `Timber` (a fence of heavy planks) `ShrineFence` (a low vermilion fence of posts and rails, as round a shrine: like the railing, the ground beyond it shows through, where a wall would hide whatever lies on the ground near the road) or `Fence` (a low fence of weathered wooden posts and rails, as along the Shire's lanes, see-through as well); and the toy tracks' own, indoors: `SlotBorder` (a slot-car track's low border in red and white stripes), `OrangeEdge` (the raised orange edge of Hot Wheels' track, with a little light every few metres along its top), `ChuteSide` (the tall, rounded side of a slide's chute, of red plastic) `Blocks` (a row of wooden toy blocks, each a bright colour of its own with a letter on its face) and `Bricks` (a low wall of plastic building bricks just outside the road's walls, a course of bricks and a course of plates on it in a running bond, studs on top, each brick a bright colour of its own, a gap left by an arch over the road). Along a toy track (see `bridges`) its own border stands, whatever the runs say. The first run that covers a point wins, so a run over `LAP` after the others sets the default. On bridges the bridge decides: concrete barriers on both sides, and on a dam's crest a low concrete `Parapet` on the lake's side, so its water shows over it. |
 | `dams` | Dams, as El Atazar's, each with the road along its crest, a bridge of `BridgeStyle::Dam` over the same span (`src/world/dam.rs`): `Dam { crest, lake_side, lake, level, river, road_bank, monument }`. The concrete follows the crest, so an arched crest makes an arch dam: on the lake's side its face drops straight into the water; on the other it is nearly sheer under the crest, which juts out on brackets, and leans out more and more down to its foot, streaked by the damp, some strips rusty. `lake` is the shore, a smooth closed curve through its points that can all be seen from its middle, running along the crest where it meets the dam; `level` its water's height, a few metres under the crest; its water mirrors the hills round it, the roads, the dam and the sky. The crest's deck reaches just past the walls, so where they close in over it (`narrows`) the dam's crest is as narrow. The lake's bed is cut under the water and the ground round it raised to hold it in (but across the gorge, where the dam does). `river` is its course from under the crest down to the sea, each point with how high the gorge's far wall stands there; its bed is the sea's water, coming up the gorge to the foot of the dam, where the valley opens out into a pool and a floor of gravel, so the face shows across it; on the road's bank the floor opens out further down the river, so the face shows from the road up the gorge. On the side of the road up the gorge (`road_bank`), the bank only drops from the road to the water; across the river, the far wall rises. `monument`: where a paved square with a monument stands by the end of the crest, if one does, on level ground made with a `terraces` entry. |
 | `tunnels` | Spans that run through a tunnel. Another stretch of the track may pass over a tunnel (see [Layout](#layout)): there the ground stays down at the level of the tunnel, under its rock, and the rock carries the road above, just below its asphalt. Where the tunnel's top is gentle, grass grows on it unless the soil is checkerboard. Indoors (`Soil::Floor`) a tunnel is only a stretch under a table or another stretch of the road: nothing is drawn for it, and its walls stay. |
-| `bridges` | Spans carried by a bridge, each built its own way: `Bridge { span, style, fence }` (`fence` how high a wooden bridge's fence stands over its deck: `WOODEN_FENCE`, 1.2 m, or lower over a boardwalk; unused by the others), with `style` one of `RedArches` (a concrete deck under two red arches, with concrete walls), `Wooden` (planks on log piers, a small gap between each two through which what is under the bridge shows, with a wooden fence instead of walls), `OldWooden` (the same, old and weathered: grey planks, leaning posts, sagging and missing rails, as at Fellowship Road), `Truss` (a concrete deck between two steel through trusses braced overhead, on concrete piers, with concrete walls, as in West Way) or `Dam` (the crest of a dam, which is drawn by its entry in `dams`, with concrete walls); and, indoors, the toy tracks (`src/world/toys.rs`): `SlotTrack` (a slot-car track: dark plastic with two slots and their silver rails, red and white curbs, between `SlotBorder`s, lying on the furniture under it or carried over the floor on pairs of blue lattice towers), `OrangeTrack` (Hot Wheels' orange track with its chevrons between `OrangeEdge`s, on blue pillars with a cradle across, or round a tower on brackets off it) or `Slide` (a slide's chute, yellow between tall red `ChuteSide`s, on red posts, or round a tower on brackets off it). A toy track's supports stand on whatever is under them (a table, the chair or the floor), never on a road below. Under a bridge the ground keeps its natural shape, below the deck: water, or a gully where the road runs high over it. |
+| `bridges` | Spans carried by a bridge, each built its own way: `Bridge { span, style, fence }` (`fence` how high a wooden bridge's fence stands over its deck: 1.2 m most, or lower over a boardwalk; unused by the others), with `style` one of `RedArches` (a concrete deck under two red arches, with concrete walls), `Wooden` (planks on log piers, a small gap between each two through which what is under the bridge shows, with a wooden fence instead of walls), `OldWooden` (the same, old and weathered: grey planks, leaning posts, sagging and missing rails, as at Fellowship Road), `Truss` (a concrete deck between two steel through trusses braced overhead, on concrete piers, with concrete walls, as in West Way) or `Dam` (the crest of a dam, which is drawn by its entry in `dams`, with concrete walls); and, indoors, the toy tracks (`src/world/toys.rs`): `SlotTrack` (a slot-car track: dark plastic with two slots and their silver rails, red and white curbs, between `SlotBorder`s, lying on the furniture under it or carried over the floor on pairs of blue lattice towers), `OrangeTrack` (Hot Wheels' orange track with its chevrons between `OrangeEdge`s, on blue pillars with a cradle across, or round a tower on brackets off it) or `Slide` (a slide's chute, yellow between tall red `ChuteSide`s, on red posts, or round a tower on brackets off it). A toy track's supports stand on whatever is under them (a table, the chair or the floor), never on a road below. Under a bridge the ground keeps its natural shape, below the deck: water, or a gully where the road runs high over it. |
 | `soil` | What cliffs, rock walls and the rock around tunnels are made of: `Soil::Rock` (natural rock with strata), `Soil::Checkered` (Loop Island's checkerboard earth, which also lines the tunnels), `Soil::Mine` (a desert canyon: dry red earth and banded red rock; its tunnels are a mine's excavation, see `mine` below), `Soil::Granite` (grey granite, the rock photo without its warm tint, as the Argonath are carved from; tunnels' frames of it too) `Soil::Floor` (the floor of a room, indoors: flat wooden boards, with no rock, sand nor grass, the ground hugging the roads on the floor and staying flat under the others; its tunnels draw nothing) or `Soil::Lunar` (cratered grey lunar regolith and dark basaltic crater rock on the Moon half, and lush green countryside grass and stratified rock beyond the interdimensional portals on the Earth half; its tunnels are pressurized space-station corridors lined in metallic blue-white and lit by cool cyan-white strips). |
 | `gantries` | Arches over the road: `Gantry { along, color, text }`. Without text they carry a chequered board. Those reading "CHECKPOINT" are the checkpoints of the checkpoint mode (with the finish line) and are marked on the minimap: keep them about a kilometre apart (550–1500 m, a test checks it), off bridges and branches. |
 | `billboards` | Roadside signs: `Billboard { along, side, text, color, accent }`, where `accent` recolours the text from a given letter. |

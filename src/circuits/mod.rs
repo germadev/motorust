@@ -8,7 +8,6 @@ mod ghost_island;
 mod gold_mine;
 mod loop_island;
 mod moon_base;
-mod toy_store;
 mod turbo_bay;
 
 use std::sync::LazyLock;
@@ -106,7 +105,7 @@ impl Circuit {
 
 /// The circuits written in RON, by the names of their files in
 /// `assets/circuits/`, built into the game.
-const FILES: [(&str, &str); 7] = [
+const FILES: [(&str, &str); 8] = [
     ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
     (
         "turbo_bay.ron",
@@ -132,11 +131,18 @@ const FILES: [(&str, &str); 7] = [
         "fellowship_road.ron",
         include_str!("../../assets/circuits/fellowship_road.ron"),
     ),
+    (
+        "toy_store.ron",
+        include_str!("../../assets/circuits/toy_store.ron"),
+    ),
 ];
 
 /// The terrain's functions the circuits' files name (see [`data`]).
 fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
     Some(match name {
+        // No water anywhere, and no mountains: for a circuit indoors.
+        "dry" => |_| 1000.0,
+        "flat" => |_| 0.0,
         "bay_coast" => bay::coast,
         "bay_mountains" => bay::mountains,
         "turbo_bay_mountains" => turbo_bay::mountains,
@@ -164,6 +170,9 @@ fn music(file: &str) -> Option<&'static [u8]> {
         "beyond_the_final_turn.mp3" => {
             include_bytes!("../../assets/music/beyond_the_final_turn.mp3")
         }
+        "plastic_velocity_rush.mp3" => {
+            include_bytes!("../../assets/music/plastic_velocity_rush.mp3")
+        }
         _ => return None,
     })
 }
@@ -179,6 +188,7 @@ pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
         (gold_mine, gold_mine_file),
         (ghost_island, ghost_island_file),
         (fellowship_road, fellowship_road_file),
+        (toy_store, toy_store_file),
     ] = FILES;
     [
         data::load(bay, bay_file),
@@ -188,7 +198,7 @@ pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
         data::load(ghost_island, ghost_island_file),
         data::load(moon_base, moon_base_file),
         data::load(fellowship_road, fellowship_road_file),
-        toy_store::TOY_STORE,
+        data::load(toy_store, toy_store_file),
     ]
 });
 

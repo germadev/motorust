@@ -17,9 +17,7 @@
 //!   [`super::music`]).
 //!
 //! What a file leaves out of the scenery is not there (no tunnels, no
-//! bridges, ...). The scenery a file cannot give yet (the toy store's) is
-//! not read: a file giving it fails, as does any other field the game does
-//! not know.
+//! bridges, ...). A file giving a field the game does not know fails.
 
 use bevy::prelude::*;
 use serde::de::{Deserialize, Deserializer, Error};
@@ -224,9 +222,9 @@ mod tests {
         assert!(parse(name, unknown).err().unwrap().contains("speed"));
         let function = changed("\"bay_coast\"", "\"nowhere\"");
         assert!(parse(name, function).err().unwrap().contains("nowhere"));
-        // What a file cannot give yet is not read.
-        let toys = changed("scenery: (", "scenery: (toys: None, ");
-        assert!(parse(name, toys).is_err());
+        // Nor a field the scenery does not have.
+        let scenery = changed("scenery: (", "scenery: (lakes: [], ");
+        assert!(parse(name, scenery).err().unwrap().contains("lakes"));
     }
 
     #[test]

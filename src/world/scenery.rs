@@ -294,15 +294,12 @@ pub struct Pit {
 pub struct Bridge {
     pub span: Span,
     pub style: BridgeStyle,
-    /// How high a wooden bridge's fence stands over its deck (m): most as
-    /// high as [`WOODEN_FENCE`], a boardwalk low over the water lower. The
-    /// other bridges have walls of their own, and leave it unused.
+    /// How high a wooden bridge's fence stands over its deck (m): most at
+    /// 1.2 m, a boardwalk low over the water lower. The other bridges have
+    /// walls of their own, and leave it unused.
     #[serde(default)]
     pub fence: f32,
 }
-
-/// How high the fence of a wooden bridge usually stands over its deck (m).
-pub const WOODEN_FENCE: f32 = 1.2;
 
 impl BridgeStyle {
     /// Whether it is of wood, old or new, with its own fence.
@@ -637,7 +634,7 @@ pub struct Scenery {
     pub space: Option<Space>,
     /// The inside of a toy store, if the road runs through one: see
     /// [`ToyStore`].
-    #[serde(skip)]
+    #[serde(default)]
     pub toys: Option<ToyStore>,
 }
 
@@ -1577,21 +1574,32 @@ pub struct LunarBoulders {
 /// tower a slide winds round, electric trains, castles of plastic bricks,
 /// loops of orange track, mats on the floor and toys about. Heights are
 /// the road's, as [`crate::track::Layout::elevation`]'s: the floor is at 0.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ToyStore {
     /// The corners of the room's floor (x, z): the least and the most.
     pub room: (Vec2, Vec2),
     /// How high its ceiling is over the floor (m).
     pub ceiling: f32,
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub furniture: &'static [Furniture],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub towers: &'static [Tower],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub trains: &'static [Train],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub castles: &'static [Castle],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub loops: &'static [ToyLoop],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub mats: &'static [Mat],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub toys: &'static [Toy],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub bricks: &'static [Bricks],
     /// Its way in, if it is seen: a front of glass in a wall, the car park
     /// outside it.
+    #[serde(default)]
     pub entrance: Option<Entrance>,
 }
 
@@ -1599,6 +1607,8 @@ pub struct ToyStore {
 /// glass from `from` to `to` along it (x), sliding doors in it round
 /// `doors` (x), out onto a car park in the daylight (see
 /// `world::shopfront`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Entrance {
     pub from: f32,
     pub to: f32,
@@ -1608,16 +1618,19 @@ pub struct Entrance {
 /// A piece of furniture: a box `size` across (x and z before it is turned
 /// `heading`, as a road's heading), its top `top` over the floor, at
 /// `center` (x, z).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Furniture {
     pub kind: FurnitureKind,
     pub center: Vec2,
     pub size: Vec2,
     pub heading: f32,
     pub top: f32,
+    #[serde(deserialize_with = "crate::circuits::data::color")]
     pub color: Color,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum FurnitureKind {
     /// A table on four legs: the slot-car track lies on its top.
     Table,
@@ -1633,6 +1646,8 @@ pub enum FurnitureKind {
 
 /// A tower a spiral road winds round, carrying it on brackets: a slide's,
 /// as a fairground's helter-skelter, or Hot Wheels' blue column.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Tower {
     pub kind: TowerKind,
     pub center: Vec2,
@@ -1642,7 +1657,7 @@ pub struct Tower {
     pub height: f32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum TowerKind {
     /// Striped red and white under a pointed roof.
     HelterSkelter,
@@ -1653,7 +1668,10 @@ pub enum TowerKind {
 /// An electric train going round and round its track, a closed curve
 /// through `track` (x, z), on whatever stands under it, `height` over the
 /// floor: a locomotive and `wagons` wagons of `wagon` at `speed` (m/s).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Train {
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub track: &'static [Vec2],
     pub height: f32,
     pub wagon: Wagon,
@@ -1662,7 +1680,7 @@ pub struct Train {
 }
 
 /// What a train's locomotive pulls: Meshy's (see `tools/import_toys.py`).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum Wagon {
     /// A green coach, longer than the locomotive.
     Coach,
@@ -1674,6 +1692,8 @@ pub enum Wagon {
 /// `heading`, its front along +z), standing `base` over the floor: one of
 /// Meshy's, as big as fits; or one a road runs through (see
 /// [`CastleKind::Through`]).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Castle {
     pub center: Vec2,
     pub size: Vec2,
@@ -1682,7 +1702,7 @@ pub struct Castle {
     pub kind: CastleKind,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum CastleKind {
     /// Meshy's castle: walls and towers round a keep, its gate on its
     /// front.
@@ -1699,6 +1719,8 @@ pub enum CastleKind {
 
 /// A loop of orange toy track on a blue stand, to look at: standing up,
 /// facing along `heading`, `radius` round, `base` over the floor.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ToyLoop {
     pub center: Vec2,
     pub heading: f32,
@@ -1708,6 +1730,8 @@ pub struct ToyLoop {
 
 /// Something lying on the floor: a mat of foam tiles in bright colours, or
 /// a rug of one colour, `size` across, turned `heading`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Mat {
     pub center: Vec2,
     pub size: Vec2,
@@ -1715,16 +1739,18 @@ pub struct Mat {
     pub kind: MatKind,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Deserialize)]
 pub enum MatKind {
     Foam,
-    Rug(Color),
+    Rug(#[serde(deserialize_with = "crate::circuits::data::color")] Color),
 }
 
 /// A toy standing about, turned `heading` (its front along +z), `base` over
 /// the floor, as big as `scale` says: times the size it was made at, for
 /// one Meshy made (see `tools/import_toys.py`), or times its own size
 /// (about a metre) for one built in code.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Toy {
     pub kind: ToyKind,
     pub position: Vec2,
@@ -1736,6 +1762,8 @@ pub struct Toy {
 /// Something built of plastic bricks as big as the studs of the diorama's
 /// baseplate (see `world::bricks`), standing `base` over the floor at
 /// `position` (x, z), turned `heading` (its front along +z).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Bricks {
     pub kind: BrickKind,
     pub position: Vec2,
@@ -1743,7 +1771,7 @@ pub struct Bricks {
     pub base: f32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum BrickKind {
     /// `count` bricks spilled in a heap: most lying flat, a few on their
     /// sides, some stacked on others.
@@ -1760,7 +1788,7 @@ pub enum BrickKind {
     },
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum ToyKind {
     /// A stack of wooden blocks with letters on them.
     Blocks,
