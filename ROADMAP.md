@@ -29,6 +29,8 @@ Two aims:
 
 Both ask for the same thing: an engine that knows nothing of the content it runs. Circuits written in RON are the first step, not the whole of it.
 
+The whole plan, in full and kept up to date: `RECORD/2026-10-31.engine-split-plan.WIP.md`.
+
 ### What stands in the way today
 
 - **The engine knew each circuit and each bike.** `CIRCUITS` and `ROSTER` were `const` arrays, used in 37 files and in 6: they are files now, read into the `Circuits` and `Roster` resources (step 1).
