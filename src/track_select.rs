@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 
-use crate::bike::ROSTER;
+use crate::bike::RIDERS;
 use crate::camera::{CameraGlide, CameraPlayer};
 use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
@@ -428,10 +428,10 @@ fn show_track(
         (Language::Spanish, true) => "Cargando el circuito…".to_string(),
         (Language::English, true) => "Loading the track…".to_string(),
         (Language::Spanish, false) => {
-            format!("{kilometres} km por vuelta   ·   {} motos", ROSTER.len())
+            format!("{kilometres} km por vuelta   ·   {RIDERS} motos")
         }
         (Language::English, false) => {
-            format!("{kilometres} km per lap   ·   {} bikes", ROSTER.len())
+            format!("{kilometres} km per lap   ·   {RIDERS} bikes")
         }
     };
     if length.0 != label {

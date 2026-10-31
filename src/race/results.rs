@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 use super::hud::{clock, ordinal};
 use super::{Championship, Mode, Outcome, POINTS};
-use crate::bike::ROSTER;
+use crate::bike::Roster;
 use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
@@ -151,7 +151,7 @@ fn show_results(
     outcome: Res<Outcome>,
     page: Option<Res<ResultsPage>>,
     championship: Res<Championship>,
-    circuits: Res<Circuits>,
+    (circuits, roster): (Res<Circuits>, Res<Roster>),
     settings: Res<Settings>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
@@ -202,11 +202,11 @@ fn show_results(
         }
     };
     let lines = if standings {
-        standing_lines(&outcome, &championship, lang)
+        standing_lines(&roster, &outcome, &championship, lang)
     } else if outcome.mode == Mode::Checkpoint {
         checkpoint_lines(&outcome, &settings, circuit.name, track, lang)
     } else {
-        race_lines(&outcome, lang)
+        race_lines(&roster, &outcome, lang)
     };
     let next = next_after(outcome.mode, standings, &championship, circuits.len());
     let go_on = match (next, lang) {
@@ -381,8 +381,8 @@ struct Line {
 }
 
 /// A bike's name, marked if it is a player's.
-fn rider_name(rider: usize, outcome: &Outcome, lang: Language) -> (String, bool) {
-    let name = ROSTER[rider].name;
+fn rider_name(roster: &Roster, rider: usize, outcome: &Outcome, lang: Language) -> (String, bool) {
+    let name = roster[rider].name;
     match outcome.players.iter().position(|&p| p == rider) {
         Some(index) if outcome.players.len() > 1 => (format!("{name}  ·  {}P", index + 1), true),
         Some(_) => (
@@ -402,14 +402,14 @@ fn rider_name(rider: usize, outcome: &Outcome, lang: Language) -> (String, bool)
 /// Each bike's place, time (or gap, or out) and, in a championship, the
 /// points it gets. Those still racing are on their way; once the results
 /// are final, they have the time they would have taken (marked "~").
-fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
+fn race_lines(roster: &Roster, outcome: &Outcome, lang: Language) -> Vec<Line> {
     let winner = outcome.places.first().and_then(|place| place.time);
     outcome
         .places
         .iter()
         .enumerate()
         .map(|(index, place)| {
-            let (name, player) = rider_name(place.rider, outcome, lang);
+            let (name, player) = rider_name(roster, place.rider, outcome, lang);
             let pending = place.estimated && !outcome.settled;
             let result = if place.disqualified {
                 match lang {
@@ -461,13 +461,18 @@ fn race_lines(outcome: &Outcome, lang: Language) -> Vec<Line> {
 }
 
 /// The championship's standings: each bike's place and points.
-fn standing_lines(outcome: &Outcome, championship: &Championship, lang: Language) -> Vec<Line> {
+fn standing_lines(
+    roster: &Roster,
+    outcome: &Outcome,
+    championship: &Championship,
+    lang: Language,
+) -> Vec<Line> {
     championship
         .standings()
         .into_iter()
         .enumerate()
         .map(|(index, rider)| {
-            let (name, player) = rider_name(rider, outcome, lang);
+            let (name, player) = rider_name(roster, rider, outcome, lang);
             Line {
                 left: format!("{}   {name}", ordinal(index + 1)),
                 right: format!("{} pts", championship.points[rider]),
@@ -538,6 +543,7 @@ fn checkpoint_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bike::ROSTER;
     use crate::circuits::CIRCUITS;
 
     #[test]
@@ -588,18 +594,18 @@ mod tests {
             record: false,
             settled: true,
         };
-        let lines = race_lines(&outcome, Language::Spanish);
+        let lines = race_lines(&ROSTER, &outcome, Language::Spanish);
         assert!(
             lines[1].right.starts_with("descalificado"),
             "{}",
             lines[1].right
         );
         assert!(lines[1].player && !lines[1].pending);
-        let lines = race_lines(&outcome, Language::English);
+        let lines = race_lines(&ROSTER, &outcome, Language::English);
         assert!(lines[1].right.starts_with("disqualified"));
         // In the arcade, with no points.
         outcome.mode = Mode::Arcade;
-        let lines = race_lines(&outcome, Language::English);
+        let lines = race_lines(&ROSTER, &outcome, Language::English);
         assert!(lines[1].right.ends_with("+0"), "{}", lines[1].right);
     }
 
@@ -658,6 +664,7 @@ mod tests {
             .init_resource::<Championship>()
             .init_resource::<CurrentCircuit>()
             .insert_resource(*crate::circuits::CIRCUITS)
+            .insert_resource(*crate::bike::ROSTER)
             .add_message::<MenuSound>()
             .add_plugins((ResultsPlugin, crate::gamepads::GamepadsPlugin))
             .add_systems(OnExit(GameState::Race), |mut commands: Commands| {

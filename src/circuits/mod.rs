@@ -189,7 +189,7 @@ impl Circuits {
     pub fn load() -> Self {
         let circuits: Vec<Circuit> = FILES
             .iter()
-            .map(|&(name, text)| data::load(name, text))
+            .map(|&(name, text)| data::load("circuits", name, text))
             .collect();
         Circuits(Vec::leak(circuits))
     }

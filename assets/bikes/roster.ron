@@ -1,0 +1,77 @@
+// Las motos de la carrera, in the order of the bike select screen: the one
+// the player chooses starts from their place on the grid, the others take,
+// in order, the rivals' places. One for each place on the grid (eight).
+//
+// Each: its name and description (Spanish and English), the colour of its
+// name on the start screen and of its dot on the minimap (sRGB), its design
+// (the models made with Meshy, each with its rider: Shogun, Legend, Azura,
+// Kraken, Falcon, Stiletto, Cobra, Ronin; or those built in code: Afilada,
+// Escudo, Alerones, Rombo) and its livery, by name (only those built in code
+// show it: cover, flecha, diagonal, verde, tricolor, rosso; see
+// src/bike/model/livery.rs).
+[
+    (
+        name: "Shogun TZ",
+        description: "Azul y blanca, como la de la portada de Moto Racer",
+        description_en: "Blue and white, like the Moto Racer cover",
+        color: (0.35, 0.6, 1.0),
+        design: Shogun,
+        livery: "cover",
+    ),
+    (
+        name: "Legend 88",
+        description: "Blanca y roja",
+        description_en: "White and red",
+        color: (1.0, 0.3, 0.35),
+        design: Legend,
+        livery: "flecha",
+    ),
+    (
+        name: "Azura RZ",
+        description: "Amarilla, blanca y negra",
+        description_en: "Yellow, white and black",
+        color: (1.0, 0.85, 0.15),
+        design: Azura,
+        livery: "diagonal",
+    ),
+    (
+        name: "Kraken RS",
+        description: "Verde lima y negra",
+        description_en: "Lime green and black",
+        color: (0.5, 0.95, 0.2),
+        design: Kraken,
+        livery: "verde",
+    ),
+    (
+        name: "Falcon KRZ",
+        description: "Roja, azul y blanca",
+        description_en: "Red, blue and white",
+        color: (1.0, 0.25, 0.25),
+        design: Falcon,
+        livery: "tricolor",
+    ),
+    (
+        name: "Stiletto V4",
+        description: "Roja",
+        description_en: "Red",
+        color: (0.95, 0.15, 0.15),
+        design: Stiletto,
+        livery: "rosso",
+    ),
+    (
+        name: "Cobra XT",
+        description: "Naranja y negra",
+        description_en: "Orange and black",
+        color: (1.0, 0.5, 0.1),
+        design: Cobra,
+        livery: "rosso",
+    ),
+    (
+        name: "Ronin YS",
+        description: "Azul y negra",
+        description_en: "Blue and black",
+        color: (0.25, 0.45, 1.0),
+        design: Ronin,
+        livery: "cover",
+    ),
+]

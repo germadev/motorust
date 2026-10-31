@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::bike::{
-    Autopilot, BikeState, LocalPlayer, Player, ROSTER, Race, RaceControls, Retired, Rider,
+    Autopilot, BikeState, LocalPlayer, Player, RIDERS, Race, RaceControls, Retired, Rider,
     autopilot,
 };
 use crate::circuits::{Circuit, Circuits, CurrentCircuit};
@@ -33,7 +33,7 @@ use crate::track::{Nearest, Track};
 pub const CHAMPIONSHIP_LAPS: u32 = 5;
 /// How many laps an elimination has: one fewer than the bikes, so that one
 /// goes out each lap but the last, which the last two race for.
-pub const ELIMINATION_LAPS: u32 = ROSTER.len() as u32 - 1;
+pub const ELIMINATION_LAPS: u32 = RIDERS as u32 - 1;
 /// The laps a race can be set to, and how many it has at first.
 pub const LAPS: std::ops::RangeInclusive<u32> = 1..=9;
 pub const DEFAULT_LAPS: u32 = 5;
@@ -163,7 +163,7 @@ impl Default for Rules {
 }
 
 /// The championship under way: the race it is on (the index of its track
-/// in [`Circuits`]) and the points of each bike of the [`ROSTER`] so far.
+/// in [`Circuits`]) and the points of each bike of the [`crate::bike::Roster`] so far.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct Championship {
     pub round: usize,
@@ -188,7 +188,7 @@ impl Championship {
     /// The bikes of the roster from most points to fewest (ties: the
     /// order of the roster).
     pub fn standings(&self) -> Vec<usize> {
-        let mut order: Vec<usize> = (0..ROSTER.len()).collect();
+        let mut order: Vec<usize> = (0..RIDERS).collect();
         order.sort_by_key(|&rider| std::cmp::Reverse(self.points[rider]));
         order
     }
@@ -1219,6 +1219,7 @@ pub fn start_championship(championship: &mut Championship, current: &mut Current
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bike::ROSTER;
     use crate::circuits::CIRCUITS;
 
     const LAP: f32 = 3000.0;

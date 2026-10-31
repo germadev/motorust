@@ -140,6 +140,8 @@ pub struct BikePlugin;
 
 impl Plugin for BikePlugin {
     fn build(&self, app: &mut App) {
+        // The bikes, read from their file once, as the game starts.
+        app.init_resource::<Roster>();
         app.add_plugins((
             BikeModelPlugin,
             GrassKickupPlugin,
@@ -1046,14 +1048,23 @@ fn move_toward(value: f32, target: f32, max_delta: f32) -> f32 {
 }
 
 /// Una moto que se puede elegir: su diseño, su decoración (solo cuenta en las
-/// hechas por código) y cómo se presenta en la pantalla de inicio.
+/// hechas por código) y cómo se presenta en la pantalla de inicio. Read from
+/// the roster's file (see [`Roster`]).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Entry {
+    #[serde(deserialize_with = "crate::circuits::data::text")]
     pub name: &'static str,
+    #[serde(deserialize_with = "crate::circuits::data::text")]
     pub description: &'static str,
+    #[serde(deserialize_with = "crate::circuits::data::text")]
     pub description_en: &'static str,
     /// Color de su nombre en la pantalla de inicio.
+    #[serde(deserialize_with = "crate::circuits::data::srgba")]
     pub color: Srgba,
     design: Design,
+    /// Its livery, by name (see [`livery`]).
+    #[serde(deserialize_with = "livery")]
     livery: &'static Livery,
 }
 
@@ -1066,74 +1077,68 @@ impl Entry {
     }
 }
 
-/// Las motos de la carrera. La que elige el jugador sale desde su puesto y
-/// las demás ocupan, por orden, los de los rivales.
-pub const ROSTER: [Entry; 8] = [
-    Entry {
-        name: "Shogun TZ",
-        description: "Azul y blanca, como la de la portada de Moto Racer",
-        description_en: "Blue and white, like the Moto Racer cover",
-        color: Srgba::rgb(0.35, 0.6, 1.0),
-        design: Design::Shogun,
-        livery: &COVER,
-    },
-    Entry {
-        name: "Legend 88",
-        description: "Blanca y roja",
-        description_en: "White and red",
-        color: Srgba::rgb(1.0, 0.3, 0.35),
-        design: Design::Legend,
-        livery: &FLECHA,
-    },
-    Entry {
-        name: "Azura RZ",
-        description: "Amarilla, blanca y negra",
-        description_en: "Yellow, white and black",
-        color: Srgba::rgb(1.0, 0.85, 0.15),
-        design: Design::Azura,
-        livery: &DIAGONAL,
-    },
-    Entry {
-        name: "Kraken RS",
-        description: "Verde lima y negra",
-        description_en: "Lime green and black",
-        color: Srgba::rgb(0.5, 0.95, 0.2),
-        design: Design::Kraken,
-        livery: &VERDE,
-    },
-    Entry {
-        name: "Falcon KRZ",
-        description: "Roja, azul y blanca",
-        description_en: "Red, blue and white",
-        color: Srgba::rgb(1.0, 0.25, 0.25),
-        design: Design::Falcon,
-        livery: &TRICOLOR,
-    },
-    Entry {
-        name: "Stiletto V4",
-        description: "Roja",
-        description_en: "Red",
-        color: Srgba::rgb(0.95, 0.15, 0.15),
-        design: Design::Stiletto,
-        livery: &ROSSO,
-    },
-    Entry {
-        name: "Cobra XT",
-        description: "Naranja y negra",
-        description_en: "Orange and black",
-        color: Srgba::rgb(1.0, 0.5, 0.1),
-        design: Design::Cobra,
-        livery: &ROSSO,
-    },
-    Entry {
-        name: "Ronin YS",
-        description: "Azul y negra",
-        description_en: "Blue and black",
-        color: Srgba::rgb(0.25, 0.45, 1.0),
-        design: Design::Ronin,
-        livery: &COVER,
-    },
-];
+/// A livery the roster's file names: those painted in code, the engine's
+/// own (see `src/bike/model/livery.rs`).
+fn livery<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<&'static Livery, D::Error> {
+    use serde::{Deserialize, de::Error};
+    let name = String::deserialize(deserializer)?;
+    Ok(match name.as_str() {
+        "cover" => &COVER,
+        "flecha" => &FLECHA,
+        "diagonal" => &DIAGONAL,
+        "verde" => &VERDE,
+        "tricolor" => &TRICOLOR,
+        "rosso" => &ROSSO,
+        _ => return Err(D::Error::custom(format!("no livery called `{name}`"))),
+    })
+}
+
+/// How many ride a race: the places on the grid ([`GRID`]), as many as the
+/// bikes of the roster.
+pub const RIDERS: usize = GRID.len();
+
+/// Las motos de la carrera, read from `assets/bikes/roster.ron` once, when
+/// the game starts ([`Roster::load`]). La que elige el jugador sale desde su
+/// puesto y las demás ocupan, por orden, los de los rivales: one for each
+/// place on the grid ([`RIDERS`]).
+#[derive(Resource, Clone, Copy)]
+pub struct Roster(&'static [Entry]);
+
+impl Roster {
+    /// The bikes, read from their file (see [`crate::circuits::data::load`]).
+    pub fn load() -> Self {
+        let entries: Vec<Entry> = crate::circuits::data::load(
+            "bikes",
+            "roster.ron",
+            include_str!("../../assets/bikes/roster.ron"),
+        );
+        assert_eq!(
+            entries.len(),
+            RIDERS,
+            "roster.ron: {} bikes, not one for each of the {RIDERS} places on the grid",
+            entries.len()
+        );
+        Roster(Vec::leak(entries))
+    }
+}
+
+impl Default for Roster {
+    fn default() -> Self {
+        Self::load()
+    }
+}
+
+impl std::ops::Deref for Roster {
+    type Target = [Entry];
+
+    fn deref(&self) -> &[Entry] {
+        self.0
+    }
+}
+
+/// The bikes, for the tests: read once, as the game reads them.
+#[cfg(test)]
+pub static ROSTER: std::sync::LazyLock<Roster> = std::sync::LazyLock::new(Roster::load);
 
 /// Quién sale de cada puesto de la parrilla ([`Track::grid_slot`]), de la
 /// pole hacia atrás: los rivales, del más hábil al menos, y el jugador el
@@ -1186,7 +1191,7 @@ const PLAYER_SLOT: usize = GRID.len() - 1;
 /// rivales.
 fn lineup(choice: usize) -> [usize; GRID.len()] {
     let mut lineup = [choice; GRID.len()];
-    let mut others = (0..ROSTER.len()).filter(|&entry| entry != choice);
+    let mut others = (0..RIDERS).filter(|&entry| entry != choice);
     for (slot, entry) in lineup.iter_mut().enumerate() {
         if slot != PLAYER_SLOT {
             *entry = others.next().expect("hay una moto para cada rival");
@@ -1201,10 +1206,10 @@ fn split_lineup(p1_choice: usize, p2_choice: usize) -> [usize; GRID.len()] {
     let mut lineup = [0; GRID.len()];
     lineup[PLAYER_SLOT] = p1_choice;
     lineup[PLAYER_SLOT - 1] = p2_choice;
-    let mut others = (0..ROSTER.len()).filter(|&entry| entry != p1_choice && entry != p2_choice);
+    let mut others = (0..RIDERS).filter(|&entry| entry != p1_choice && entry != p2_choice);
     for (slot, entry) in lineup.iter_mut().enumerate() {
         if slot != PLAYER_SLOT && slot != PLAYER_SLOT - 1 {
-            *entry = others.next().unwrap_or(slot % ROSTER.len());
+            *entry = others.next().unwrap_or(slot % RIDERS);
         }
     }
     lineup
@@ -1272,6 +1277,7 @@ fn start_pose(track: &Track, slot: usize) -> (Vec2, f32) {
 #[allow(clippy::too_many_arguments)]
 fn spawn_grid(
     mut commands: Commands,
+    roster: Res<Roster>,
     track: Res<Track>,
     choice: Res<Choice>,
     split_choices: Option<Res<SplitChoices>>,
@@ -1297,7 +1303,7 @@ fn spawn_grid(
             continue;
         }
         let state = BikeState::parked_on(&track, start_pose(&track, slot));
-        let bike = assets.spawn(&mut commands, &ROSTER[entry], state);
+        let bike = assets.spawn(&mut commands, &roster[entry], state);
         let mut bike = commands.entity(bike);
         bike.insert((
             GridPosition(slot),
@@ -2326,6 +2332,21 @@ mod tests {
     use crate::track::{Dust, WALL_DISTANCE};
 
     use super::*;
+
+    /// The roster's file reads, with a bike for each place on the grid;
+    /// what it gets wrong is told.
+    #[test]
+    fn the_roster_reads_a_bike_for_each_place() {
+        assert_eq!(ROSTER.len(), RIDERS);
+        let text = include_str!("../../assets/bikes/roster.ron");
+        let changed = |from, to| &*String::leak(text.replacen(from, to, 1));
+        let parse = |text| crate::circuits::data::parse::<Vec<Entry>>("roster.ron", text);
+        assert!(parse(text).is_ok());
+        let livery = changed("\"cover\"", "\"nowhere\"");
+        assert!(parse(livery).err().unwrap().contains("nowhere"));
+        let unknown = changed("design:", "model:");
+        assert!(parse(unknown).err().unwrap().contains("model"));
+    }
 
     const DT: f32 = 1.0 / 120.0;
 
