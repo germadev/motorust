@@ -102,7 +102,7 @@ const PETALS_SEEN: f32 = 170.0;
 const RIDERS_BACK: f32 = 110.0;
 
 /// How big a prop stands, times the size it was made (`props.bin`), over
-/// what its spot says ([`Prop::scaled`]): the wayside shrine came the size
+/// what its spot says ([`Prop::scale`]): the wayside shrine came the size
 /// of a doll's house, and the torii of logs stands on a hilltop, to be
 /// seen from far down the road.
 fn size(model: PropModel) -> f32 {

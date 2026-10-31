@@ -106,7 +106,7 @@ impl Circuit {
 
 /// The circuits written in RON, by the names of their files in
 /// `assets/circuits/`, built into the game.
-const FILES: [(&str, &str); 6] = [
+const FILES: [(&str, &str); 7] = [
     ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
     (
         "turbo_bay.ron",
@@ -128,6 +128,10 @@ const FILES: [(&str, &str); 6] = [
         "ghost_island.ron",
         include_str!("../../assets/circuits/ghost_island.ron"),
     ),
+    (
+        "fellowship_road.ron",
+        include_str!("../../assets/circuits/fellowship_road.ron"),
+    ),
 ];
 
 /// The terrain's functions the circuits' files name (see [`data`]).
@@ -142,6 +146,8 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
         "gold_mine_mountains" => gold_mine::mountains,
         "ghost_island_lakes" => ghost_island::lakes,
         "ghost_island_mountains" => ghost_island::mountains,
+        "fellowship_road_water" => fellowship_road::water,
+        "fellowship_road_mountains" => fellowship_road::mountains,
         _ => return None,
     })
 }
@@ -155,6 +161,9 @@ fn music(file: &str) -> Option<&'static [u8]> {
         "moon_base.mp3" => include_bytes!("../../assets/music/moon_base.mp3"),
         "gold_mine.mp3" => include_bytes!("../../assets/music/gold_mine.mp3"),
         "autumn_gale.mp3" => include_bytes!("../../assets/music/autumn_gale.mp3"),
+        "beyond_the_final_turn.mp3" => {
+            include_bytes!("../../assets/music/beyond_the_final_turn.mp3")
+        }
         _ => return None,
     })
 }
@@ -169,6 +178,7 @@ pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
         (moon_base, moon_base_file),
         (gold_mine, gold_mine_file),
         (ghost_island, ghost_island_file),
+        (fellowship_road, fellowship_road_file),
     ] = FILES;
     [
         data::load(bay, bay_file),
@@ -177,7 +187,7 @@ pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
         data::load(gold_mine, gold_mine_file),
         data::load(ghost_island, ghost_island_file),
         data::load(moon_base, moon_base_file),
-        fellowship_road::FELLOWSHIP_ROAD,
+        data::load(fellowship_road, fellowship_road_file),
         toy_store::TOY_STORE,
     ]
 });

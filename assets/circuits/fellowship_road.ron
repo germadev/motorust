@@ -1,0 +1,1581 @@
+// Fellowship Road: the journey of *The Fellowship of the Ring*, its
+// stretches in the order of the film, from the Shire to the Argonath and,
+// past the finish, home again (*There and Back Again*). It crosses the
+// Misty Mountains twice, in a figure of eight: first over them, by the pass
+// of Caradhras, and then, as the Fellowship turned back from the snow,
+// through them, by the mines of Moria, under the pass.
+//
+// 1. Hobbiton: the start straight, north through the wood, over a crest,
+//    a long sweep to the right down to the Water and low over it, a
+//    sweep to the left round the village's hill, and one to the right
+//    past Bag End's hill.
+// 2. The Shire: a sweep to the right and the left over the bridge on the
+//    Brandywine, and through its fields.
+// 3. Bree: through its gate, right and left through the town.
+// 4. Weathertop: up its flank at up to 12 %, round to the left and the
+//    right, over its top on a straight with a crest where the bike takes
+//    off, 51 m up, and down at up to 12 %.
+// 5. The Trollshaws: down in esses to the Ford of Bruinen, low over the
+//    water.
+// 6. Rivendell: south along the valley under its cliffs, where the road
+//    splits in two: the lap snakes along it and a way to the left swings
+//    out over a hump.
+// 7. Caradhras: up in bends at up to 12 % to the pass, 49 m up, right over
+//    the mines.
+// 8. Down round the mountain: on south, round to the left, east, north and
+//    back west, to the Doors of Durin.
+// 9. Moria: through the Doors of Durin, open, where the road narrows; west
+//    through the mountain, under the pass, 38 m beneath it,
+//    and on in a sweep to the left and the right, down into it and up
+//    again.
+// 10. Lothlórien: where the road splits three ways, the lap snaking
+//     between a way to the left over a hump and one to the right through a
+//     dip, all of them up and down, high over the land.
+// 11. The Anduin: down to the river, along its gorge in esses, and west
+//     down its middle on a causeway, narrower than the road, in a sweep to
+//     the right and the left between the two kings of the Argonath.
+// 12. Amon Hen: past the lake, round to the right over the shoulder of the
+//     hill, and down onto the start straight, back in the Shire.
+//
+// Named in its source, and written out where used here:
+//
+//   Where things are, in metres from the finish line, in the order of the
+//   film.
+//   The wood the race starts in, by Hobbiton; Hobbiton, down to the Water
+//   and over it on an old wooden bridge, and round the pool past Bag End's
+//   hill.
+// - wood: Span(5645.1, 140.0)
+// - hobbiton: Span(140.0, 867.0)
+// - hobbiton_bridge: Span(375.0, 455.0)
+// - shire: Span(867.0, 1085.1)
+// - brandywine: Span(885.1, 945.1)
+// - bree: Span(1085.1, 1299.1)
+// - trollshaws: Span(1959.1, 2300.1)
+//   The Ford of Bruinen: low over the river.
+// - ford: Span(2300.1, 2360.1)
+// - rivendell: Span(2360.1, 2819.1)
+// - caradhras: Span(2819.1, 3219.1)
+//   The top of the pass, right over the mines.
+// - pass: Span(3155.1, 3219.1)
+// - moria: Span(3790.1, 4133.1)
+// - lothlorien: Span(4133.1, 4587.1)
+// - gorge: Span(4587.1, 4900.1)
+//   Down the middle of the Anduin, between the kings of the Argonath: a
+//   causeway narrower than the road, its walls this far from the middle
+//   (m).
+// - causeway: Span(4900.1, 5235.1)
+// - causeway_wall: 6.5
+//   How far from the middle the walls stand through the Doors of Durin (m),
+//   just inside their leaves.
+// - durin_wall: 5.5
+// - amon_hen: Span(5235.1, 5645.1)
+//   How far apart along the road the trees of the woods from Amon Hen to
+//   Hobbiton are, in each row (m): more open than a forest's, so that they
+//   are not dark.
+// - open_wood: 9.0
+//   Where the seat of seeing stands by the road up Amon Hen (m).
+// - amon_hen_seat: 5405.1
+//   How far from the middle the walls stand over the bridge on the Water in
+//   Hobbiton, an old, narrow one (m), and over the bridge on the Brandywine,
+//   as narrow.
+// - hobbiton_bridge_wall: 6.5
+// - brandywine_wall: 6.5
+//   Where the road splits: a way through the Prancing Pony in Bree, in two in
+//   Rivendell, three ways in Lothlórien.
+// - bree_split: (1097.1, 1525.9)
+// - rivendell_split: (2364.1, 2714.1)
+//   How far along Bree's way the middle of the Prancing Pony's archway is
+//   (m), how long its passage is (m), and how far from the middle of the
+//   way its walls stand through it (m), just inside the archway.
+// - pony_along: 111.5
+// - pony_passage: 33.0
+// - pony_wall: 4.0
+// - lorien_split: (4187.1, 4537.1)
+//   The Ring's gold, the Shire's green and cream.
+// - gold: (0.86, 0.68, 0.22)
+// - green: (0.22, 0.45, 0.2)
+// - cream: (0.93, 0.88, 0.72)
+//   The warm light that fills Rivendell's valley (see `MiddleEarth::glows`),
+//   as of the evening sky over it.
+// - rivendell_light: (1.0, 0.86, 0.68)
+//   How steep Rivendell's rock is grass (the upward part of the ground's
+//   normal under which it is rock, see `Turf::steepest`): up to 53°.
+// - rivendell_turf: 0.6
+//   The browner stone of the rock on the right of the road down the
+//   Anduin's gorge (see `MiddleEarth::rock_tints`).
+// - gorge_stone: (0.62, 0.53, 0.44)
+//   The sunbeams down from the sky onto Rivendell's halls: how bright on
+//   them (lx), over them and a little round them, and their light, golden.
+// - sunbeam: 4000.0
+//   How bright the diffused sunbeams are on what they light (lx): less, so
+//   that the seat of seeing and the ruins on Weathertop keep their detail;
+//   and Amon Hen's, the most diffused, still less.
+// - diffused_sunbeam: 3100.0
+// - amon_hen_sunbeam: 2200.0
+// - sunbeam_light: (1.0, 0.84, 0.58)
+//   How their shafts show in the air (see `Shaft`): Rivendell's diffused,
+//   spreading to a little over three times as wide up into the sky; Amon
+//   Sûl's more, to four and a half times as wide, and fainter; Amon Hen's
+//   most, to six and a half.
+// - sunbeam_shaft: (spread: 3.2, light: 0.027)
+// - diffused_shaft: (spread: 4.5, light: 0.025)
+// - amon_hen_shaft: (spread: 6.5, light: 0.02)
+//   The pool of Bywater, below the right of the village, where the Water
+//   widens before it runs on into the Brandywine: its middle and radius
+//   (m).
+// - pond: (470.0, -330.0)
+// - pond_radius: 30.0
+//   Mirrormere, below Moria's gate, and Nen Hithoel, the lake the Anduin
+//   opens into past the kings: their middles and radii (m).
+// - mirrormere: (1350.0, 505.0)
+// - mirrormere_radius: 45.0
+// - nen_hithoel: (180.0, 500.0)
+// - nen_hithoel_radius: 85.0
+// - kings_facing: -1.89
+//   Weathertop, Caradhras over the mines, and Amon Hen: their middles,
+//   radii and heights (m).
+// - weathertop_hill: (center: (1225.0, -665.0), radius: 280.0, height: 68.0, climbed: true)
+// - caradhras_peak: (center: (1595.0, 385.0), radius: 280.0, height: 44.0, climbed: true)
+//
+// How a circuit's file is written: see src/circuits/data.rs. Its
+// terrain's functions are in src/circuits/fellowship_road.rs.
+(
+    name: "Fellowship Road",
+    name_en: "Fellowship Road",
+    description: "Inspirada en La Comunidad del Anillo: de la Comarca a los\nArgonath, un ocho sobre y bajo las montañas, cuestas y dos bifurcaciones",
+    description_en: "Inspired by The Fellowship of the Ring: from the Shire to the\nArgonath, a figure of eight over and under the mountains, steep hills and two splits",
+    // "Beyond the Final Turn".
+    // Fields and woods: birds, the wind, and crickets in the grass.
+    ambience: (sea: 0.0, gulls: 0.0, birds: 0.75, cicadas: 0.2, wind: 0.6),
+    song: (file: "beyond_the_final_turn.mp3", length: 179.2, loudness: -15.5),
+    pace: 1.0,
+    layout: (
+        control_points: [
+            // 1. The wood by Hobbiton: the start straight, north (-Z), over a crest.
+            (0.0, 0.0),
+            (0.0, -50.0),
+            (0.0, -100.0),
+            (0.0, -110.0),
+            // Hobbiton: a long sweep to the right down to the Water, over it on
+            // an old wooden bridge, a sweep to the left round the village's hill,
+            // and one to the right past Bag End's hill, each eased in and out
+            // (drawn by `tools/fellowship_dev/hobbiton_v4.py`, as dense as that,
+            // so that the spline through them keeps their curvature).
+            (0.07, -123.0),
+            (0.53, -135.99),
+            (1.82, -149.17),
+            (4.02, -161.98),
+            (7.14, -174.6),
+            (11.16, -186.96),
+            (16.07, -199.0),
+            (21.94, -210.87),
+            (28.54, -222.07),
+            (35.94, -232.76),
+            (44.08, -242.89),
+            (52.93, -252.4),
+            (62.64, -261.42),
+            (72.78, -269.55),
+            (83.48, -276.92),
+            (94.69, -283.51),
+            (106.57, -289.37),
+            (118.61, -294.25),
+            (130.97, -298.27),
+            (143.53, -301.63),
+            (156.16, -304.71),
+            (169.04, -307.83),
+            (181.67, -310.89),
+            (194.31, -313.95),
+            (206.94, -317.0),
+            (219.58, -320.06),
+            (232.44, -323.25),
+            (244.94, -326.82),
+            (257.14, -331.28),
+            (268.92, -336.78),
+            (280.18, -343.27),
+            (291.03, -350.87),
+            (300.98, -359.22),
+            (310.17, -368.41),
+            (318.54, -378.36),
+            (326.01, -388.99),
+            (332.65, -400.45),
+            (338.16, -412.22),
+            (342.62, -424.43),
+            (346.1, -436.95),
+            (349.14, -449.59),
+            (352.51, -462.4),
+            (356.72, -474.7),
+            (361.97, -486.59),
+            (368.22, -497.98),
+            (375.58, -509.0),
+            (383.7, -519.14),
+            (392.67, -528.54),
+            (402.41, -537.14),
+            (412.86, -544.87),
+            (424.15, -551.8),
+            (435.78, -557.61),
+            (447.86, -562.39),
+            (460.31, -566.12),
+            (473.03, -568.77),
+            (486.19, -570.34),
+            (499.17, -570.91),
+            (512.17, -571.0),
+            // 2. The Shire: a sweep to the right and the left over the Brandywine
+            // bridge.
+            (555.2, -569.0),
+            (589.5, -562.9),
+            (623.0, -552.9),
+            (656.4, -542.9),
+            (690.7, -536.9),
+            (725.6, -534.8),
+            // 3. Bree: through the gate, right and left through the town.
+            (756.3, -529.4),
+            (783.4, -513.8),
+            (806.4, -494.5),
+            (833.5, -478.9),
+            (864.2, -473.4),
+            (924.2, -473.4),
+            // 4. Weathertop: up its flank, round to the left and the right, over
+            // its top east and round to the right, down.
+            (955.8, -478.1),
+            (984.7, -491.5),
+            (1008.5, -512.7),
+            (1025.2, -539.9),
+            (1033.5, -570.7),
+            (1032.6, -602.5),
+            (1031.7, -634.4),
+            (1039.9, -665.2),
+            (1056.6, -692.3),
+            (1080.5, -713.5),
+            (1109.4, -727.0),
+            (1140.9, -731.6),
+            (1200.9, -731.6),
+            (1260.9, -731.6),
+            (1320.9, -731.6),
+            (1352.5, -727.0),
+            (1381.3, -713.5),
+            (1405.2, -692.3),
+            // 5. The Trollshaws: esses down to the Ford of Bruinen, and south.
+            (1431.5, -678.4),
+            (1461.2, -674.1),
+            (1490.8, -669.7),
+            (1517.2, -655.8),
+            (1533.0, -630.7),
+            (1536.2, -601.0),
+            (1533.9, -571.0),
+            (1537.1, -541.3),
+            (1553.0, -516.2),
+            (1570.3, -486.1),
+            (1576.4, -451.9),
+            // 6. Rivendell: the lap snakes between the ways of its split, as by
+            // Ghost Island's temple, turned south, from just past the ford.
+            (1576.4, -386.9),
+            (1585.5, -345.7),
+            (1600.3, -304.4),
+            (1598.5, -263.1),
+            (1576.4, -221.9),
+            (1554.3, -180.7),
+            (1552.5, -139.4),
+            (1567.3, -98.1),
+            (1576.4, -56.9),
+            (1576.4, -1.9),
+            (1576.4, 48.1),
+            // 7. Caradhras: up in bends to the top, right over Moria.
+            (1571.3, 77.2),
+            (1556.5, 102.7),
+            (1533.9, 121.7),
+            (1511.3, 140.7),
+            (1496.5, 166.2),
+            (1491.4, 195.3),
+            (1496.5, 224.4),
+            (1511.3, 250.0),
+            (1533.9, 268.9),
+            (1557.8, 289.0),
+            (1573.5, 316.1),
+            (1578.9, 346.9),
+            (1578.9, 386.9),
+            // 8. Over and down round the mountain: on south, round to the left,
+            // east, north and back west, to the Doors of Durin.
+            (1578.9, 456.9),
+            (1583.2, 485.9),
+            (1595.8, 512.4),
+            (1615.5, 534.2),
+            (1640.6, 549.3),
+            (1669.1, 556.4),
+            (1698.4, 555.0),
+            (1726.0, 545.1),
+            (1749.6, 527.6),
+            (1767.1, 504.0),
+            (1777.0, 476.4),
+            (1778.4, 447.1),
+            (1771.3, 418.6),
+            (1756.2, 393.4),
+            (1734.5, 373.7),
+            (1707.9, 361.2),
+            (1678.9, 356.9),
+            (1618.9, 356.9),
+            // 9. Moria: west under the top, and a sweep to the left and the right.
+            (1558.9, 356.9),
+            (1498.9, 356.9),
+            (1467.0, 359.2),
+            (1435.8, 366.1),
+            (1405.9, 377.5),
+            (1376.0, 388.9),
+            (1344.8, 395.8),
+            (1313.0, 398.1),
+            // 10. Lothlórien: the lap snakes between the three ways of its split, as
+            // on Ghost Island's castle ridge.
+            (1257.9, 398.1),
+            (1216.7, 389.0),
+            (1175.4, 374.2),
+            (1134.1, 376.0),
+            (1092.9, 398.1),
+            (1051.7, 420.2),
+            (1010.4, 422.0),
+            (969.1, 407.2),
+            (927.9, 398.1),
+            (877.9, 398.1),
+            // 11. Down to the Anduin, along its gorge in esses, and west down its
+            // middle in a sweep to the right and the left, between the two kings of
+            // the Argonath.
+            (847.9, 398.1),
+            (820.0, 408.6),
+            (796.7, 427.4),
+            (773.3, 446.2),
+            (745.4, 456.8),
+            (715.9, 453.1),
+            (690.5, 437.4),
+            (667.9, 417.5),
+            (642.5, 401.8),
+            (613.0, 398.1),
+            (583.0, 398.1),
+            (551.6, 397.0),
+            (520.3, 393.7),
+            (489.4, 388.3),
+            (458.9, 380.7),
+            (429.1, 371.0),
+            (399.2, 361.3),
+            (368.7, 353.7),
+            (337.8, 348.2),
+            (306.5, 344.9),
+            (275.1, 343.8),
+            // 12. Past the lake, round to the right over the shoulder of Amon Hen
+            // onto the start straight, back in the Shire.
+            (235.2, 343.8),
+            (204.5, 341.8),
+            (174.3, 335.8),
+            (145.2, 325.9),
+            (117.6, 312.3),
+            (92.0, 295.2),
+            (68.9, 274.9),
+            (48.6, 251.8),
+            (31.5, 226.2),
+            (17.9, 198.7),
+            (8.0, 169.5),
+            (2.0, 139.4),
+            (0.0, 108.7),
+        ],
+        // Up Weathertop, 42.7 m, and down to the ford; up Caradhras, 32 m, and down
+        // round it to the mines, 38 m under the pass; up through Moria, up and
+        // down through Lothlórien, and down to the Anduin, at the water's level
+        // between the kings;
+        // over Amon Hen and down to the line. Up and down at up to 12 %.
+        elevation: [
+            // The start straight through the wood, high over Hobbiton, over a
+            // lower crest where the bike flies; down the long sweep into Hobbiton
+            // at up to 9.4 % (drawn as a grade, its changes long and gentle) to the
+            // bridge low over the wide Water, low round the sweep the other way,
+            // and up round the last past Bag End's hill to the Brandywine.
+            (0.0, 13.5),
+            (50.0, 14.2),
+            (95.0, 17.2),
+            (140.0, 16.2),
+            (170.0, 15.25),
+            (200.0, 13.71),
+            (230.0, 11.58),
+            (260.0, 8.9),
+            (290.0, 6.09),
+            (320.0, 3.28),
+            (350.0, 1.07),
+            (380.0, 0.06),
+            (410.0, 0.0),
+            (460.0, 0.0),
+            (520.0, 0.3),
+            (580.0, 0.8),
+            (640.0, 1.6),
+            (720.0, 3.0),
+            (800.0, 4.4),
+            (860.0, 5.4),
+            (925.1, 6.0),
+            // Bree, and up Weathertop at up to 12 %: at 7.5 % round the turn that
+            // Bree's way cuts across, beside it, and at 10.5 % where it joins it;
+            // steeper before and after (drawn as a grade, its changes long and
+            // gentle, so that no crest in a bend throws the bikes into the air).
+            (1145.1, 6.5),
+            (1299.1, 7.0),
+            (1314.1, 7.52),
+            (1329.1, 8.41),
+            (1344.1, 9.46),
+            (1359.1, 10.58),
+            (1374.1, 11.71),
+            (1389.1, 12.83),
+            (1404.1, 13.96),
+            (1419.1, 15.08),
+            (1434.1, 16.21),
+            (1449.1, 17.37),
+            (1464.1, 18.75),
+            (1479.1, 20.3),
+            (1494.1, 21.88),
+            (1509.1, 23.45),
+            (1524.1, 25.03),
+            (1539.1, 26.63),
+            (1554.1, 28.39),
+            (1569.1, 30.19),
+            (1584.1, 31.99),
+            (1599.1, 33.79),
+            (1614.1, 35.59),
+            (1629.1, 37.39),
+            (1644.1, 39.18),
+            (1659.1, 40.83),
+            (1674.1, 42.3),
+            // Over its top: a crest where the bike flies.
+            (1689.1, 43.57),
+            (1704.1, 44.74),
+            (1773.1, 49.7),
+            (1808.1, 47.8),
+            (1863.1, 44.7),
+            // Down through the Trollshaws at up to 12 %, to the ford, low over the
+            // water.
+            (1959.1, 38.0),
+            (2049.1, 27.5),
+            (2139.1, 17.0),
+            (2229.1, 7.0),
+            (2299.1, 3.0),
+            (2339.1, 0.5),
+            // Climbing steadily through Rivendell's split (as Ghost Island's
+            // temple's).
+            (2364.1, 1.1),
+            (2714.1, 13.1),
+            // Up Caradhras at up to 12 %, to the pass right over the mines.
+            (2899.1, 21.0),
+            (2999.1, 30.0),
+            (3099.1, 39.0),
+            (3159.1, 45.5),
+            (3199.1, 47.5),
+            // Down round the mountain to the Doors of Durin; through Moria, down
+            // into it and up again.
+            (3259.1, 45.5),
+            (3419.1, 36.0),
+            (3579.1, 24.0),
+            (3761.1, 15.0),
+            (3821.1, 12.0),
+            (3881.1, 9.0),
+            (4053.1, 20.0),
+            (4133.1, 24.0),
+            // Up through Lothlórien's split, high over the land, to its top 5 m
+            // over where it came out of Moria, and down again: gently (at most
+            // 4.5 %), its top over the dip of the way to the right, so that the
+            // ways' humps and dips do not add up into a climb too steep or a crest
+            // that throws the bikes in the bends. Then down the Anduin's gorge to
+            // the water, and the causeway, low over it.
+            (4187.1, 23.5),
+            (4280.0, 24.5),
+            (4400.0, 28.5),
+            (4480.0, 26.5),
+            (4560.0, 22.5),
+            (4640.0, 14.0),
+            (4760.0, 5.4),
+            (4887.1, 1.5),
+            (4957.1, -1.4),
+            (5211.1, -1.4),
+            // Up over the shoulder of Amon Hen, and on up into the wood, to the
+            // line.
+            (5271.1, 1.0),
+            (5371.1, 6.5),
+            (5461.1, 10.5),
+            (5531.1, 11.3),
+            (5689.1, 13.0),
+        ],
+        // Hardly banked where the road splits, as at Ghost Island.
+        wall: 11.5,
+        banking: [
+            (from: 1097.1, to: 1525.9, factor: 0.25),
+            (from: 2364.1, to: 2714.1, factor: 0.25),
+            (from: 4187.1, to: 4537.1, factor: 0.25),
+        ],
+        // The old bridges over the Water in Hobbiton and over the
+        // Brandywine, the way through the Doors of Durin, between their
+        // leaves, and the causeway between the kings are narrower than the
+        // road: its walls close in on them.
+        narrows: [
+            (from: 375.0, to: 455.0, wall: 6.5),
+            (from: 885.1, to: 945.1, wall: 6.5),
+            (from: 3778.1, to: 3810.1, wall: 5.5),
+            (from: 4900.1, to: 5235.1, wall: 6.5),
+        ],
+        // In Bree a way to the left of the lap, through the Prancing Pony's
+        // archway, its walls closing in through it, and on, a short cut,
+        // across the inside of the lap's turn up Weathertop; in Rivendell a
+        // way to the left of the lap over a hump; in Lothlórien one to the left
+        // over a hump and one to the right through a dip.
+        branches: [
+            (
+                from: 1097.1,
+                to: 1525.9,
+                // The ways off the lap, each through points to one side of it (m along
+                // the lap and from its centre line in the comments), from where it leaves
+                // the lap to where it joins it again: Ghost Island's, turned and placed.
+                // In Bree, to the left: an S out to the left, 52 m from the lap, as the lap
+                // bends right, a straight through the Prancing Pony's archway (45 m, the
+                // inn in the middle of it), and straight on past the inn, across the
+                // inside of the lap's turn up Weathertop's flank, in one long bend to the
+                // left (R 90) onto the lap, running beside it for its last metres: a
+                // short cut, 35 m shorter than the lap (drawn by integrating its
+                // curvature, as Hobbiton's line). It climbs with the lap up Weathertop's
+                // flank, which is gentler round the turn it cuts across (see
+                // the elevation), so that beside the lap, as steep as the lap is there
+                // seen from the inside of its turn, it stays under 11 %.
+                approach: [
+                    // 1110 m, 1 m.
+                    (750.01, -531.87),
+                    // 1120 m, 4 m.
+                    (762.24, -531.54),
+                    // 1128 m, 12 m.
+                    (773.95, -534.02),
+                    // 1136 m, 21 m.
+                    (785.39, -538.39),
+                    // 1142 m, 30 m.
+                    (797.04, -541.12),
+                    // 1150 m, 37 m.
+                    (809.25, -540.67),
+                    // 1160 m, 42 m.
+                    (820.88, -537.75),
+                    // 1174 m, 47 m.
+                    (832.55, -534.04),
+                    // 1190 m, 51 m.
+                    (843.98, -530.38),
+                    // 1222 m, 52 m.
+                    (855.65, -526.65),
+                    // 1238 m, 50 m.
+                    (867.08, -522.99),
+                    // 1254 m, 47 m.
+                    (878.98, -519.18),
+                    // 1266 m, 43 m.
+                    (890.64, -515.45),
+                    // 1278 m, 39 m.
+                    (902.29, -511.71),
+                    // 1292 m, 35 m.
+                    (913.98, -508.06),
+                    // 1304 m, 32 m.
+                    (925.88, -505.18),
+                    // 1318 m, 29 m.
+                    (938.04, -503.83),
+                    // 1334 m, 27 m.
+                    (950.27, -504.15),
+                    // 1350 m, 24 m.
+                    (962.34, -506.13),
+                    // 1366 m, 21 m.
+                    (974.04, -509.72),
+                    // 1380 m, 18 m.
+                    (985.14, -514.87),
+                    // 1394 m, 16 m.
+                    (995.43, -521.47),
+                    // 1408 m, 13 m.
+                    (1004.74, -529.41),
+                    // 1422 m, 11 m.
+                    (1012.89, -538.54),
+                    // 1434 m, 8 m.
+                    (1019.72, -548.69),
+                    // 1448 m, 6 m.
+                    (1025.11, -559.67),
+                    // 1460 m, 5 m.
+                    (1028.96, -571.28),
+                    // 1472 m, 3 m.
+                    (1031.21, -583.31),
+                    // 1484 m, 1 m.
+                    (1031.84, -595.53),
+                    // 1498 m, 1 m.
+                    (1031.45, -607.77),
+                    // 1510 m, 1 m.
+                    (1030.88, -620.01),
+                ],
+                narrows: [(from: 95.0, to: 128.0, wall: 4.0)],
+            ),
+            (
+                from: 2364.1,
+                to: 2714.1,
+                // In Rivendell, to the left (east): it swings out to the left before the
+                // lap does, and back to it late.
+                approach: [
+                    // 2374 m, 0 m.
+                    (1578.2, -377.0),
+                    // 2404 m, 4 m.
+                    (1589.0, -348.4),
+                    // 2442 m, 13 m.
+                    (1611.6, -315.5),
+                    // 2472 m, 32 m.
+                    (1633.5, -281.3),
+                    // 2492 m, 48 m.
+                    (1644.7, -248.3),
+                    // 2512 m, 60 m.
+                    (1642.1, -215.3),
+                    // 2546 m, 65 m.
+                    (1628.1, -182.3),
+                    // 2624 m, 57 m.
+                    (1608.7, -149.4),
+                    // 2658 m, 29 m.
+                    (1589.4, -121.7),
+                    // 2678 m, 11 m.
+                    (1579.4, -94.7),
+                    // 2700 m, 2 m.
+                    (1575.9, -70.3),
+                ],
+                // How much higher than the lap beside it each way runs (m along it, m):
+                // over a hump, or through a dip, where it is far from the lap, as at Ghost
+                // Island.
+                rise: [
+                    (106.3, 0.0),
+                    (112.3, 0.01),
+                    (118.3, 0.06),
+                    (124.3, 0.22),
+                    (130.3, 0.51),
+                    (136.3, 0.87),
+                    (142.3, 1.26),
+                    (148.3, 1.65),
+                    (154.3, 2.04),
+                    (160.3, 2.43),
+                    (166.3, 2.82),
+                    (172.3, 3.2),
+                    (178.3, 3.58),
+                    (184.3, 3.91),
+                    (190.3, 4.17),
+                    (196.3, 4.36),
+                    (202.3, 4.47),
+                    (208.3, 4.5),
+                    (214.3, 4.45),
+                    (220.3, 4.32),
+                    (226.3, 4.11),
+                    (232.3, 3.83),
+                    (238.3, 3.48),
+                    (244.3, 3.11),
+                    (250.3, 2.72),
+                    (256.3, 2.33),
+                    (262.3, 1.94),
+                    (268.3, 1.55),
+                    (274.3, 1.16),
+                    (280.3, 0.77),
+                    (286.3, 0.42),
+                    (292.3, 0.16),
+                    (298.3, 0.04),
+                    (304.3, 0.01),
+                    (310.3, 0.0),
+                ],
+            ),
+            (
+                from: 4187.1,
+                to: 4537.1,
+                // In Lothlórien, to the left (south): it runs straight on where the lap
+                // swings right, and out round a wide curve back to it.
+                approach: [
+                    // 4199 m, 1 m.
+                    (1246.2, 397.9),
+                    // 4227 m, 15 m.
+                    (1215.0, 404.0),
+                    // 4249 m, 40 m.
+                    (1183.0, 418.9),
+                    // 4311 m, 65 m.
+                    (1152.3, 438.9),
+                    // 4371 m, 64 m.
+                    (1119.3, 457.3),
+                    // 4399 m, 57 m.
+                    (1086.3, 467.5),
+                    // 4415 m, 44 m.
+                    (1053.3, 464.5),
+                    // 4439 m, 25 m.
+                    (1020.3, 448.1),
+                    // 4471 m, 9 m.
+                    (986.6, 424.2),
+                    // 4501 m, 3 m.
+                    (961.8, 408.1),
+                    // 4523 m, 0 m.
+                    (941.5, 400.6),
+                ],
+                rise: [
+                    (55.9, 0.0),
+                    (61.9, 0.01),
+                    (67.9, 0.06),
+                    (73.9, 0.22),
+                    (79.9, 0.51),
+                    (85.9, 0.87),
+                    (91.9, 1.26),
+                    (97.9, 1.65),
+                    (103.9, 2.04),
+                    (109.9, 2.43),
+                    (115.9, 2.82),
+                    (121.9, 3.21),
+                    (127.9, 3.58),
+                    (133.9, 3.92),
+                    (139.9, 4.19),
+                    (145.9, 4.38),
+                    (151.9, 4.5),
+                    (157.9, 4.54),
+                    (163.9, 4.5),
+                    (169.9, 4.37),
+                    (175.9, 4.17),
+                    (181.9, 3.9),
+                    (187.9, 3.56),
+                    (193.9, 3.18),
+                    (199.9, 2.8),
+                    (205.9, 2.41),
+                    (211.9, 2.02),
+                    (217.9, 1.63),
+                    (223.9, 1.24),
+                    (229.9, 0.85),
+                    (235.9, 0.49),
+                    (241.9, 0.21),
+                    (247.9, 0.06),
+                    (253.9, 0.01),
+                    (259.9, 0.0),
+                ],
+            ),
+            (
+                from: 4187.1,
+                to: 4537.1,
+                // In Lothlórien, to the right (north): it swings out to the right before
+                // the lap does, and back to it late.
+                approach: [
+                    // 4199 m, -0 m.
+                    (1246.6, 396.1),
+                    // 4229 m, -4 m.
+                    (1218.5, 385.2),
+                    // 4267 m, -14 m.
+                    (1186.2, 362.8),
+                    // 4295 m, -32 m.
+                    (1152.3, 341.0),
+                    // 4317 m, -48 m.
+                    (1119.3, 329.8),
+                    // 4335 m, -60 m.
+                    (1086.3, 332.4),
+                    // 4369 m, -65 m.
+                    (1053.3, 346.4),
+                    // 4447 m, -57 m.
+                    (1020.4, 365.8),
+                    // 4481 m, -29 m.
+                    (992.2, 384.9),
+                    // 4503 m, -11 m.
+                    (964.6, 394.8),
+                    // 4523 m, -2 m.
+                    (941.8, 398.7),
+                ],
+                rise: [
+                    (112.3, 0.0),
+                    (118.3, -0.01),
+                    (124.3, -0.06),
+                    (130.3, -0.14),
+                    (136.3, -0.29),
+                    (142.3, -0.49),
+                    (148.3, -0.75),
+                    (154.3, -1.06),
+                    (160.3, -1.42),
+                    (166.3, -1.8),
+                    (172.3, -2.19),
+                    (178.3, -2.58),
+                    (184.3, -2.97),
+                    (190.3, -3.36),
+                    (196.3, -3.71),
+                    (202.3, -3.97),
+                    (208.3, -4.05),
+                    (214.3, -3.92),
+                    (220.3, -3.63),
+                    (226.3, -3.26),
+                    (232.3, -2.87),
+                    (238.3, -2.48),
+                    (244.3, -2.09),
+                    (250.3, -1.7),
+                    (256.3, -1.32),
+                    (262.3, -0.98),
+                    (268.3, -0.68),
+                    (274.3, -0.43),
+                    (280.3, -0.24),
+                    (286.3, -0.12),
+                    (292.3, -0.04),
+                    (298.3, -0.01),
+                    (304.3, 0.0),
+                ],
+            ),
+        ],
+    ),
+    // Middle-earth's own props, made with Meshy (see the props), among the
+    // walls, bridges, cliffs, forests and waterfalls of the other tracks.
+    scenery: (
+        coast: Inland("fellowship_road_water"),
+        hills: 26.0,
+        // A lush green land's greens, deep: lighter, the low sun made them
+        // pale and vivid.
+        greens: Lush,
+        grass_shade: 0.55,
+        massifs: [
+            (center: (1225.0, -665.0), radius: 280.0, height: 68.0, climbed: true),
+            (center: (1595.0, 385.0), radius: 280.0, height: 44.0, climbed: true),
+            // Bag End's hill, on the outside of the last of Hobbiton's sweeps, and
+            // Amon Hen, on the outside of the last bend.
+            (center: (320.6, -711.3), radius: 170.0, height: 32.0, climbed: true),
+            (center: (40.0, 400.0), radius: 150.0, height: 20.0, climbed: true),
+            // The hills of Hobbiton, either side of the road past the bridge, rising
+            // behind the hobbit holes dug into their flanks.
+            (center: (184.7, -517.5), radius: 120.0, height: 28.0, climbed: true),
+            (center: (440.0, -470.0), radius: 80.0, height: 20.0, climbed: true),
+            // Rolling hills: beside the Shire's lanes; west of Hobbiton; in the
+            // middle of the lap, beyond the Brandywine and towards the Misty
+            // Mountains; and south of the Anduin.
+            (center: (230.0, -735.0), radius: 150.0, height: 30.0, climbed: true),
+            (center: (-110.0, -600.0), radius: 150.0, height: 22.0, climbed: true),
+            (center: (800.0, -160.0), radius: 200.0, height: 40.0, climbed: true),
+            (center: (1150.0, 140.0), radius: 160.0, height: 34.0, climbed: true),
+            (center: (-320.0, -330.0), radius: 150.0, height: 30.0, climbed: true),
+            (center: (-300.0, 120.0), radius: 140.0, height: 26.0, climbed: true),
+            (center: (440.0, 660.0), radius: 150.0, height: 30.0, climbed: true),
+            (center: (330.0, 120.0), radius: 130.0, height: 24.0, climbed: true),
+            // The cliffs on the far side of Rivendell's valley, and the rock at its
+            // head its halls stand on, one over another.
+            (center: (1735.0, -200.0), radius: 80.0, height: 40.0),
+            (center: (1745.0, -90.0), radius: 70.0, height: 36.0),
+            (center: (1650.0, 180.0), radius: 100.0, height: 60.0),
+            // The mountain of rock the kings of the Argonath guard: its cliffs close
+            // in on the river at the kings, rising sheer from the water just past
+            // them, and run on either side of the gorge past them; either side of
+            // the kings, as the riders coming down to them see it, higher still,
+            // up the Anduin's west bank and over the cutting on the right of the
+            // road, so that the river goes through a range and not between two
+            // hills; and the rocks the kings stand on in the river.
+            (center: (455.0, 505.0), radius: 58.0, height: 100.0),
+            (center: (505.0, 548.0), radius: 56.0, height: 110.0),
+            (center: (548.0, 600.0), radius: 50.0, height: 104.0),
+            (center: (515.0, 262.0), radius: 56.0, height: 104.0),
+            (center: (568.0, 236.0), radius: 56.0, height: 114.0),
+            (center: (622.0, 250.0), radius: 50.0, height: 100.0),
+            (center: (411.0, 447.0), radius: 50.0, height: 85.0),
+            (center: (376.0, 438.0), radius: 52.0, height: 92.0),
+            (center: (346.0, 431.0), radius: 50.0, height: 78.0),
+            (center: (460.0, 299.0), radius: 50.0, height: 85.0),
+            (center: (419.0, 284.0), radius: 52.0, height: 92.0),
+            (center: (374.0, 273.0), radius: 52.0, height: 82.0),
+            (center: (325.0, 266.0), radius: 50.0, height: 70.0),
+            (center: (426.5, 394.4), radius: 14.0, height: 5.0),
+            (center: (441.0, 350.7), radius: 14.0, height: 5.0),
+        ],
+        cuttings: [
+            // The cliffs on the right of Rivendell's valley, down which its
+            // waterfalls pour.
+            (span: Span(2360.1, 2835.1), side: Right, height: 32.0),
+            // The Walls of Moria, sheer and higher than the doors in them, closing
+            // in on the way to them; and the rock round its east gate.
+            (span: Span(3760.1, 3880.1), side: Left, height: 54.0),
+            (span: Span(3760.1, 3880.1), side: Right, height: 54.0),
+            (span: Span(4063.1, 4163.1), side: Left, height: 16.0),
+            (span: Span(4063.1, 4163.1), side: Right, height: 16.0),
+            // The gorge's cliffs on the right, away from the river.
+            (span: Span(4587.1, 4890.1), side: Right, height: 24.0),
+        ],
+        // The level ground the buildings stand on: knolls under the buildings by
+        // the road, raised 1.3 m over the ground there, so that the walls do not
+        // hide their feet, and the gardens before the hobbit holes, level with
+        // their doors: their middles, radii and heights (m).
+        terraces: [
+            // A hobbit hole's doorstep, cut into the hill.
+            (center: (261.1, -446.4), radius: 3.0, height: 8.9, skirt: 8.0),
+            // A hobbit hole's doorstep, cut into the hill.
+            (center: (220.8, -427.7), radius: 3.0, height: 11.0, skirt: 8.0),
+            // A hobbit hole's doorstep, cut into the hill.
+            (center: (180.3, -414.7), radius: 3.0, height: 7.1, skirt: 8.0),
+            // A hobbit hole's doorstep, cut into the hill.
+            (center: (139.1, -431.8), radius: 3.0, height: 9.5, skirt: 8.0),
+            // A hobbit hole's doorstep, cut into the hill.
+            (center: (390.2, -481.7), radius: 3.0, height: 13.5, skirt: 8.0),
+            // A hobbit hole's doorstep, cut into the hill.
+            (center: (393.4, -454.7), radius: 3.0, height: 16.1, skirt: 8.0),
+            // A hobbit hole's doorstep, cut into the hill.
+            (center: (409.4, -422.2), radius: 3.0, height: 12.8, skirt: 8.0),
+            // The mill, by the water.
+            (center: (103.4, -402.7), radius: 5.5, height: 1.7, skirt: 4.0),
+            // The Green Dragon, by the road, raised well over its fence.
+            (center: (341.0, -518.6), radius: 15.0, height: 8.3, skirt: 8.0),
+            // Bag End's doorstep, cut into its hill.
+            (center: (382.5, -607.3), radius: 3.5, height: 20.6, skirt: 8.0),
+            // A house of Bree.
+            (center: (870.3, -448.9), radius: 9.0, height: 9.1, skirt: 8.0),
+            // A house of Bree.
+            (center: (819.5, -460.9), radius: 9.0, height: 10.1, skirt: 8.0),
+            // A house of Bree.
+            (center: (899.8, -450.4), radius: 9.0, height: 9.9, skirt: 8.0),
+            // The stone trolls.
+            (center: (1545.1, -654.1), radius: 8.0, height: 25.9, skirt: 8.0),
+            // The ruins of Amon Sûl, on Weathertop's summit, 25 m over the road:
+            // the summit levelled under them, so they stand on it whole.
+            (center: (1271.7, -669.7), radius: 18.0, height: 75.0, skirt: 8.0),
+            // Rivendell's halls, one over another: the pavilion to the left of the
+            // others, 4 m over the road, the Last Homely House on a ledge 10 m over
+            // it, and the tower on a ledge at the edge of the rock behind, 16 m
+            // over it, where nothing of the rock hides it from the road.
+            (center: (1624.5, 49.0), radius: 6.0, height: 22.8, skirt: 8.0),
+            (center: (1620.0, 110.0), radius: 20.0, height: 31.0, skirt: 10.0),
+            (center: (1577.1, 151.9), radius: 6.0, height: 38.2, skirt: 8.0),
+        ],
+        mountains: "fellowship_road_mountains",
+        curbs: [(0.22, 0.45, 0.2), (0.93, 0.88, 0.72)],
+        // Wooden fences through the wood the race starts in, along the lanes
+        // of Hobbiton and the street of Bree, and where the small props stand
+        // by the road, so that they show whole (a wall would hide them);
+        // hedgerows through the Shire, pale walls where the road splits in
+        // Lothlórien, and stone walls everywhere else.
+        walls: [
+            (span: Span(5645.1, 867.0), side: Left, style: Fence),
+            (span: Span(5645.1, 867.0), side: Right, style: Fence),
+            (span: Span(968.0, 982.0), side: Left, style: Fence),
+            (span: Span(1013.0, 1027.0), side: Right, style: Fence),
+            (span: Span(867.0, 1085.1), side: Left, style: Hedge),
+            (span: Span(867.0, 1085.1), side: Right, style: Hedge),
+            (span: Span(1085.1, 1299.1), side: Left, style: Fence),
+            (span: Span(1085.1, 1299.1), side: Right, style: Fence),
+            (span: Span(1757.1, 1773.1), side: Left, style: Fence),
+            (span: Span(1797.1, 1813.1), side: Right, style: Fence),
+            (span: Span(2368.1, 2382.1), side: Left, style: Fence),
+            (span: Span(2368.1, 2382.1), side: Right, style: Fence),
+            (span: Span(2788.1, 2802.1), side: Left, style: Fence),
+            (span: Span(2788.1, 2802.1), side: Right, style: Fence),
+            (span: Span(4143.1, 4157.1), side: Left, style: Fence),
+            (span: Span(4143.1, 4157.1), side: Right, style: Fence),
+            // Where the road splits three ways in Lothlórien, pale walls, as
+            // of the elves' white stone, standing out against the gold of
+            // its woods, so that each way is seen.
+            (span: Span(4187.1, 4537.1), side: Left, style: Concrete),
+            (span: Span(4187.1, 4537.1), side: Right, style: Concrete),
+            (span: Lap, side: Left, style: Stone),
+            (span: Lap, side: Right, style: Stone),
+        ],
+        tunnels: [Span(3790.1, 4133.1)],
+        // The bridge over the Brandywine, the ford low over the Bruinen, the
+        // causeway down the Anduin, and the bridge over the Water in
+        // Hobbiton, their fences low (the water shows), all of old,
+        // weathered wood.
+        bridges: [
+            (span: Span(885.1, 945.1), style: OldWooden, fence: 1.2),
+            (span: Span(2300.1, 2360.1), style: OldWooden, fence: 0.75),
+            (span: Span(4900.1, 5235.1), style: OldWooden, fence: 0.75),
+            (span: Span(375.0, 455.0), style: OldWooden, fence: 1.2),
+        ],
+        gantries: [
+            (along: 0.0, color: (0.86, 0.68, 0.22), text: Some("FELLOWSHIP ROAD")),
+            // The checkpoints, 600 m to a kilometre and a half apart (none
+            // where the road splits, on the bridges nor in the mines): out of
+            // Hobbiton, down from Weathertop, up Caradhras, on the
+            // way round the mountain to the doors, and past Lothlórien.
+            (along: 868.0, color: (0.22, 0.45, 0.2), text: Some("CHECKPOINT")),
+            (along: 1905.1, color: (0.22, 0.45, 0.2), text: Some("CHECKPOINT")),
+            (along: 2955.1, color: (0.22, 0.45, 0.2), text: Some("CHECKPOINT")),
+            (along: 3585.1, color: (0.22, 0.45, 0.2), text: Some("CHECKPOINT")),
+            (along: 4565.1, color: (0.22, 0.45, 0.2), text: Some("CHECKPOINT")),
+        ],
+        billboards: [
+            (
+                along: 150.0,
+                side: Right,
+                text: "MOTORUST",
+                color: (0.1, 0.1, 0.12),
+                accent: Some((4, (0.9, 0.4, 0.12))),
+            ),
+        ],
+        // Oaks and birches, as in the Shire.
+        trees: [Broadleaf, Poplar],
+        // The wood the race starts in, of oaks and a few dark trees, on from
+        // Amon Hen's of broadleaves, as the beech forests where the film was
+        // made, both open, the low sun reaching in between their trees;
+        // dark conifers through the Trollshaws and up Caradhras' foothills;
+        // Rivendell's woods in autumn, red and gold, as the film has them;
+        // and Lothlórien's in gold.
+        forests: [
+            (span: Span(5645.1, 140.0), species: [Broadleaf, Broadleaf, Poplar, Tall], every: 9.0),
+            (span: Span(1959.1, 2300.1), species: [Sugi]),
+            (span: Span(2360.1, 2819.1), species: [Ginkgo, Momiji]),
+            (span: Span(2819.1, 3155.1), species: [Sugi]),
+            (span: Span(4133.1, 4587.1), species: [Ginkgo]),
+            (span: Span(5425.1, 5645.1), species: [Broadleaf, Poplar], every: 9.0),
+        ],
+        // No houses of the other tracks: Hobbiton has its hobbit holes and
+        // Bree its own houses (see the props).
+        houses: (
+            max: 0,
+            paints: [(0.93, 0.86, 0.66), (0.86, 0.74, 0.52), (0.95, 0.93, 0.86)],
+            spans: [Span(5685.1, 300.0), Span(1085.1, 1299.1)],
+            style: Cottage,
+        ),
+        grandstands: [(along: 60.0, side: Left, lateral: 16.5, length: 30.0)],
+        soil: Granite,
+        // Down the cliffs of Rivendell, on the right of the valley: where
+        // the foot of the cliff is low, by the road.
+        waterfalls: [
+            (along: 2419.1, side: Right, width: 8.0),
+            (along: 2773.1, side: Right, width: 8.0),
+            (along: 2811.1, side: Right, width: 12.0),
+        ],
+        // A summer sunset in high country, its long shadows over the hills,
+        // graded as a film; the rivers and lakes green-grey.
+        sky: HighCountry,
+        water: River,
+        middle_earth: Some((
+            // The props of Middle-earth, made with Meshy, in the order of the lap:
+            // where the road comes at them, and those with a front turned to face the
+            // riders coming, towards the road 60 m before them (by at most 45°), so
+            // that they see it from afar (see `docs/tracks.md`).
+            props: [
+                // The wood the race starts in: Gandalf's cart, loaded with fireworks,
+                // by the road among the trees, and a pile of logs.
+                (model: GandalfCart, spot: Road(along: 32.0, lateral: -14.5), turn: 0.79),
+                (model: LogPile, spot: Road(along: 84.0, lateral: -13.5)),
+                // Hobbiton, down the long sweep to the Water and round the village's
+                // hills: the mill across the water on the left, ahead down the sweep;
+                // ahead on the left, past the bridge, hobbit holes spread low round the
+                // foot of the hill inside the sweep to the left, facing the riders
+                // coming; ahead on the right, across the field over the pool, more
+                // spread over the whole flank of the other hill that faces the road,
+                // from the south to the north, facing the road, a little towards the
+                // riders coming; and on the outside of the last sweep, on the other
+                // side of the road from them, the Green Dragon raised over the road and
+                // its fence, facing the riders coming, its sign by the road, and, up on
+                // its hill, Bag End under its oak, and the party tree in its field past
+                // it, ahead all the way round.
+                (
+                    model: HobbitDoorBlue,
+                    spot: Road(along: 613.9, lateral: 84.7),
+                    scale: 1.4,
+                    facing_riders: true,
+                ),
+                (
+                    model: HobbitDoorRed,
+                    spot: Road(along: 503.9, lateral: 103.5),
+                    scale: 1.4,
+                    facing_riders: true,
+                ),
+                (
+                    model: HobbitDoorYellow,
+                    spot: Road(along: 434.0, lateral: 101.9),
+                    scale: 1.4,
+                    facing_riders: true,
+                ),
+                (
+                    model: HobbitDoorGreen,
+                    spot: Road(along: 398.0, lateral: 128.3),
+                    scale: 1.4,
+                    facing_riders: true,
+                ),
+                (model: Mill, spot: Road(along: 360.0, lateral: 108.0), facing_riders: true),
+                (
+                    model: HobbitDoorGreen,
+                    spot: At(position: (391.1, -482.2), heading: 2.0816),
+                    scale: 1.4,
+                ),
+                (
+                    model: HobbitDoorRed,
+                    spot: At(position: (394.3, -455.2), heading: 2.0208),
+                    scale: 1.4,
+                ),
+                (
+                    model: HobbitDoorYellow,
+                    spot: At(position: (410.3, -422.5), heading: 1.8387),
+                    scale: 1.4,
+                ),
+                (model: GreenDragonSign, spot: Road(along: 668.0, lateral: 13.5), turn: -0.79),
+                (model: GreenDragon, spot: Road(along: 700.0, lateral: 34.0), facing_riders: true),
+                (model: BagEnd, spot: Road(along: 770.0, lateral: 70.0), facing_riders: true),
+                (model: BagEndOak, spot: Road(along: 778.0, lateral: 84.0)),
+                (model: PartyTree, spot: Road(along: 800.0, lateral: 50.0)),
+                // The old tree the hobbits hid under, on the outside of the last of
+                // Hobbiton's sweeps; past the Brandywine, a scarecrow in the Shire's
+                // fields, and a pile of logs by the road.
+                (model: RootTree, spot: Road(along: 845.0, lateral: 22.0)),
+                (model: Scarecrow, spot: Road(along: 975.0, lateral: 14.0), turn: -0.79),
+                (model: LogPile, spot: Road(along: 1020.0, lateral: -13.5)),
+                (model: Ferry, spot: At(position: (562.0, -626.0), heading: -1.5707964)),
+                // Bree: its gate over the road; past it, ahead on the outside of the
+                // first bend, the Prancing Pony, 1.4 times as big, a way of the road
+                // forking off to the left through its archway (its middle on the way,
+                // the inn facing the riders coming down it); and its houses either side
+                // of the street, tall and narrow ones and wide ones.
+                (model: BreeGate, spot: Over(along: 1091.1)),
+                (
+                    model: PrancingPony,
+                    spot: At(position: (846.1, -528.82), heading: 1.2614),
+                    scale: 1.4,
+                ),
+                (model: BreeHouseB, spot: Road(along: 1105.1, lateral: -16.0), turn: 0.79),
+                (model: BreeHouseB, spot: Road(along: 1117.1, lateral: -16.0), turn: 0.79),
+                (model: BreeHouseB, spot: Road(along: 1160.1, lateral: -16.0), turn: 0.79),
+                (model: BreeHouseB, spot: Road(along: 1172.1, lateral: -16.0), turn: 0.79),
+                (model: BreeHouseA, spot: Road(along: 1203.1, lateral: -22.0), turn: 0.79),
+                (model: BreeHouseB, spot: Road(along: 1243.1, lateral: 16.0), turn: -0.79),
+                (model: BreeHouseB, spot: Road(along: 1255.1, lateral: 16.0), turn: -0.79),
+                (model: BreeHouseA, spot: Road(along: 1275.1, lateral: -22.0), turn: 0.79),
+                (model: BreeHouseB, spot: Road(along: 1221.1, lateral: -16.0), turn: 0.79),
+                (model: BreeHouseB, spot: Road(along: 1233.1, lateral: -16.0), turn: 0.79),
+                (model: BreeHouseA, spot: Road(along: 1247.1, lateral: -24.0), turn: 0.79),
+                (model: BreeHouseB, spot: Road(along: 1305.1, lateral: -16.0), turn: 0.79),
+                // Weathertop: the ring of ruins of Amon Sûl up on the summit, over the
+                // bank beside the top straight (on its own level ground, see
+                // the terraces), and broken arches either side of the road.
+                (model: WeathertopRuin, spot: Road(along: 1813.1, lateral: -62.0), turn: 0.79),
+                (model: RuinArch, spot: Road(along: 1765.1, lateral: 16.0), turn: -0.79),
+                (model: RuinArch, spot: Road(along: 1805.1, lateral: -16.0), turn: 0.79),
+                // The Trollshaws: the trolls turned to stone on the outside of the
+                // esses.
+                (model: StoneTrolls, spot: Road(along: 2095.1, lateral: 21.0), turn: -0.79),
+                // Rivendell: lamps along its paths, and at the head of the valley,
+                // ahead down it on the outside of the bend, its halls together one over
+                // another up the rock: the domed pavilion on the left, to one side of
+                // the others as the riders see them, the Last Homely House on a ledge
+                // over the road, and a tower on a crag over it.
+                (model: ElvenLamp, spot: Road(along: 2375.1, lateral: 13.5)),
+                (model: ElvenLamp, spot: Road(along: 2375.1, lateral: -13.5)),
+                (model: ElvenLamp, spot: Road(along: 2795.1, lateral: 13.5)),
+                (model: ElvenLamp, spot: Road(along: 2795.1, lateral: -13.5)),
+                (model: Gazebo, spot: Road(along: 2815.0, lateral: 48.0), facing_riders: true),
+                (
+                    model: LastHomelyHouse,
+                    spot: Road(along: 2857.1, lateral: 58.0),
+                    facing_riders: true,
+                ),
+                (
+                    model: ElvenTower,
+                    spot: Road(along: 2891.7, lateral: 50.3),
+                    scale: 1.25,
+                    facing_riders: true,
+                ),
+                // The Doors of Durin, open, in the sheer Walls of Moria: the road goes
+                // through them into the mountain, ahead of the riders coming round the
+                // last bend before it.
+                (model: DurinDoors, spot: Over(along: 3790.1), turn: 3.1415927),
+                // Lothlórien, out of Moria's east gate: elven lamps and a mallorn with
+                // its flet.
+                (model: ElvenLamp, spot: Road(along: 4150.1, lateral: 13.5)),
+                (model: ElvenLamp, spot: Road(along: 4150.1, lateral: -13.5)),
+                (model: MallornFlet, spot: Road(along: 4157.1, lateral: 40.0)),
+                // The Anduin: Galadriel's swan ship going down the river beside the
+                // causeway, ahead out of the gorge; the two kings of the Argonath in the
+                // river either side of the causeway, facing the riders coming down it,
+                // and past them, in the gorge, the sailing ship of the elves going down
+                // the river beside it.
+                (model: SwanShip, spot: At(position: (515.0, 425.0), heading: 1.5707964)),
+                (model: ArgonathA, spot: At(position: (426.5, 394.4), heading: -1.89)),
+                (model: ArgonathB, spot: At(position: (441.0, 350.7), heading: -1.89)),
+                (model: ElvenShip, spot: Road(along: 5150.1, lateral: 24.0), turn: 3.1415927),
+                // Amon Hen: the elven boats drawn up on the shore of Parth Galen, and
+                // the seat of seeing up the hill on the outside of the last bend, by the
+                // road, its lions looking out over it (its throne along the road, the
+                // way the riders go), a sunbeam on it (see `glows`).
+                (model: ElvenBoat, spot: At(position: (238.0, 393.0), heading: 2.2)),
+                (model: ElvenBoat, spot: At(position: (226.0, 404.0), heading: 2.0)),
+                (
+                    model: AmonHenSeat,
+                    spot: Road(along: 5405.1, lateral: 21.0),
+                    scale: 1.3,
+                    turn: 1.5707964,
+                ),
+            ],
+            // The fields of flowers: in the hobbit holes' gardens; white and yellow
+            // through the Shire's fields (not Hobbiton's lawns, kept green),
+            // irises round the pond; gold tussock grass up Weathertop and down to the
+            // ford, and silver in the Anduin's gorge, as on the hills of Otago where
+            // the film was made. And the grass not green everywhere: leaves fallen
+            // under the trees of the wood at the start, Rivendell's and Lothlórien's,
+            // and the grass worn down to bare earth round Bree, and both round Amon
+            // Hen, each in patches with grass between them; and on the shoulders of
+            // the roads, fallen leaves or bare earth in patches.
+            flowers: [
+                (area: Round(center: (470.0, -330.0), inner: 22.0, outer: 42.0), kinds: [Iris]),
+                (
+                    area: Road(span: Span(867.0, 1085.1), near: 14.0, far: 60.0),
+                    kinds: [White, Yellow],
+                ),
+                (area: Road(span: Span(1329.1, 2360.1), near: 14.0, far: 120.0), kinds: [Susuki]),
+                (area: Road(span: Span(4587.1, 4900.1), near: 14.0, far: 60.0), kinds: [Susuki]),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (261.4, -443.5), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (219.8, -425.4), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (178.4, -411.7), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (138.2, -429.6), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (388.2, -480.6), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (391.2, -453.6), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (406.0, -421.3), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                // A hobbit hole's garden.
+                (
+                    area: Round(center: (381.6, -602.7), inner: 0.0, outer: 4.0),
+                    kinds: [Phlox, White],
+                ),
+                (
+                    area: Road(span: Span(5645.1, 140.0), near: 14.0, far: 90.0),
+                    kinds: [FallenLeaves],
+                ),
+                (area: Road(span: Span(1085.1, 1299.1), near: 12.0, far: 70.0), kinds: [BareEarth]),
+                (
+                    area: Road(span: Span(2360.1, 2819.1), near: 14.0, far: 120.0),
+                    kinds: [FallenLeaves],
+                ),
+                (
+                    area: Road(span: Span(4133.1, 4587.1), near: 14.0, far: 120.0),
+                    kinds: [FallenLeaves],
+                ),
+                (
+                    area: Road(span: Span(5235.1, 5645.1), near: 14.0, far: 100.0),
+                    kinds: [FallenLeaves, BareEarth],
+                ),
+                // The shoulders of the roads, between the asphalt and the walls: not
+                // all grass, but in patches leaves fallen under the trees of the wood
+                // at the start, Rivendell's and Lothlórien's, and earth worn bare
+                // everywhere else, with as much grass between them.
+                (area: Shoulders(span: Span(5645.1, 140.0)), kinds: [FallenLeaves, BareEarth]),
+                (area: Shoulders(span: Span(2360.1, 2819.1)), kinds: [FallenLeaves, BareEarth]),
+                (area: Shoulders(span: Span(4133.1, 4587.1)), kinds: [FallenLeaves]),
+                (area: Shoulders(span: Lap), kinds: [BareEarth]),
+            ],
+            // Leaves blowing down through Rivendell, red and gold, and
+            // through Lothlórien, the mallorns' gold.
+            petals: [
+                (area: Road(span: Span(2360.1, 2819.1), reach: 24.0), kind: Maple),
+                (area: Road(span: Span(2510.1, 2819.1), reach: 24.0), kind: Gold),
+                (area: Road(span: Span(4133.1, 4587.1), reach: 24.0), kind: Gold),
+            ],
+            // The halls of Moria, through the Doors of Durin: the way in, of the
+            // dwarves' masonry, as high as the doors; a natural cave under the pass; the
+            // Dwarrowdelf, a great hall of pillars far wider than the road, its roof
+            // lost high above; and a natural cave out to the east gate.
+            halls: [
+                (span: Span(3770.1, 3835.1), stone: Masonry, crown: 30.0),
+                (span: Span(3835.1, 3900.1), stone: Cave, crown: 22.0, width: 5.0),
+                (span: Span(3900.1, 4055.1), stone: Masonry, crown: 34.0, width: 16.0),
+                (span: Span(4055.1, 4153.1), stone: Cave, crown: 20.0, width: 4.0),
+            ],
+            paths: [
+                // The footpaths of Hobbiton, of bare earth: from the road past the bridge
+                // up the hill on the left, past the gates of its holes, low and high,
+                // and down to the road again, and from the low one along the water to
+                // the mill; from the road up past the gates of the holes on the right;
+                // and from the party tree past Bag End's gate and down round the Green
+                // Dragon, past its front, to the road by its sign.
+                [
+                    (301.2, -384.0),
+                    (298.9, -387.2),
+                    (296.6, -390.5),
+                    (294.2, -393.8),
+                    (291.9, -397.1),
+                    (289.6, -400.4),
+                    (287.3, -403.6),
+                    (284.9, -406.9),
+                    (282.6, -410.2),
+                    (280.3, -413.5),
+                    (278.0, -416.8),
+                    (275.6, -420.0),
+                    (273.3, -423.3),
+                    (271.0, -426.6),
+                    (268.7, -429.9),
+                    (266.3, -433.1),
+                    (263.9, -435.8),
+                    (261.1, -437.5),
+                    (257.9, -437.7),
+                    (254.4, -436.7),
+                    (250.8, -435.3),
+                    (247.2, -433.8),
+                    (243.6, -432.3),
+                    (240.0, -430.9),
+                    (236.4, -429.4),
+                    (232.7, -427.9),
+                    (229.1, -426.5),
+                    (225.5, -425.0),
+                    (221.8, -423.5),
+                    (218.2, -422.1),
+                    (214.4, -420.8),
+                    (210.6, -419.6),
+                    (206.8, -418.3),
+                    (203.0, -417.1),
+                    (199.2, -415.9),
+                    (195.4, -414.7),
+                    (191.6, -413.4),
+                    (187.8, -412.2),
+                    (184.0, -411.0),
+                    (180.2, -410.1),
+                    (176.5, -409.8),
+                    (172.8, -410.5),
+                    (169.2, -411.8),
+                    (165.6, -413.3),
+                    (162.0, -414.9),
+                    (158.4, -416.5),
+                    (154.8, -418.1),
+                    (151.2, -419.7),
+                    (147.6, -421.3),
+                    (144.0, -422.9),
+                    (140.4, -424.6),
+                    (136.8, -426.2),
+                ],
+                [
+                    (136.8, -426.2),
+                    (133.8, -423.5),
+                    (130.7, -420.9),
+                    (127.7, -418.2),
+                    (124.7, -415.6),
+                    (121.7, -413.0),
+                    (118.7, -410.3),
+                    (115.7, -407.7),
+                    (112.7, -405.0),
+                    (109.7, -402.4),
+                    (106.7, -399.7),
+                    (103.7, -397.1),
+                    (100.7, -394.5),
+                ],
+                [
+                    (351.2, -399.6),
+                    (354.9, -401.1),
+                    (358.5, -402.6),
+                    (362.2, -404.1),
+                    (365.8, -405.6),
+                    (369.5, -407.0),
+                    (373.1, -408.5),
+                    (376.8, -410.0),
+                    (380.4, -411.5),
+                    (384.1, -412.9),
+                    (387.7, -414.4),
+                    (391.4, -415.9),
+                    (395.0, -417.4),
+                    (398.0, -419.1),
+                    (399.9, -421.3),
+                    (400.1, -424.1),
+                    (399.0, -427.4),
+                    (397.5, -430.9),
+                    (395.9, -434.4),
+                    (394.3, -437.9),
+                    (392.7, -441.4),
+                    (391.1, -445.0),
+                    (389.6, -448.5),
+                    (388.4, -452.1),
+                    (387.5, -455.9),
+                    (387.0, -459.6),
+                    (386.6, -463.5),
+                    (386.1, -467.3),
+                    (385.7, -471.1),
+                    (385.3, -474.9),
+                    (384.9, -478.7),
+                ],
+                [
+                    (442.4, -594.3),
+                    (438.5, -595.5),
+                    (434.7, -596.6),
+                    (430.8, -597.8),
+                    (426.9, -598.8),
+                    (423.1, -599.9),
+                    (419.2, -600.7),
+                    (415.4, -601.4),
+                    (411.5, -601.9),
+                    (407.7, -602.1),
+                    (403.9, -602.1),
+                    (400.1, -601.9),
+                    (396.4, -601.4),
+                    (392.8, -600.8),
+                    (389.2, -599.7),
+                    (385.7, -598.0),
+                    (382.3, -595.5),
+                    (379.3, -592.4),
+                    (377.0, -589.0),
+                    (375.1, -585.6),
+                    (373.4, -582.2),
+                    (371.8, -578.7),
+                    (370.3, -575.1),
+                    (368.7, -571.4),
+                    (367.0, -567.7),
+                    (365.4, -564.0),
+                    (363.9, -560.2),
+                    (362.4, -556.4),
+                    (360.8, -552.8),
+                    (358.8, -549.6),
+                    (356.2, -546.9),
+                    (353.1, -544.7),
+                    (349.8, -542.7),
+                    (346.4, -540.7),
+                    (343.1, -538.7),
+                    (339.7, -536.7),
+                    (336.4, -534.7),
+                    (333.0, -532.7),
+                    (329.7, -530.7),
+                    (326.3, -528.7),
+                    (323.0, -526.6),
+                    (320.1, -524.4),
+                    (318.2, -521.8),
+                    (317.5, -518.7),
+                    (318.1, -515.5),
+                    (319.9, -512.7),
+                    (322.7, -510.8),
+                    (326.2, -509.6),
+                    (329.9, -508.9),
+                    (333.4, -508.5),
+                    (336.9, -508.3),
+                    (340.4, -508.0),
+                    (343.6, -507.4),
+                    (345.7, -506.0),
+                    (346.2, -503.4),
+                    (345.5, -500.2),
+                    (344.3, -496.5),
+                    (343.0, -492.9),
+                    (341.7, -489.2),
+                    (340.4, -485.6),
+                    (339.1, -481.9),
+                    (337.8, -478.3),
+                ],
+            ],
+            // Hobbiton's hillsides, whose banks and doorsteps cut into them
+            // stay grass, as the Shire's, but for sheer faces. And Rivendell's
+            // rock, as the film's green crags: at the head of its valley, on
+            // its far side and down its cliffs on the right, grass on its
+            // ledges and gentler slopes, and moss on its faces.
+            turf: [
+                (center: (285.0, -495.0), radius: 250.0, steepest: 0.45),
+                // Weathertop's flanks, risen over the road climbing them:
+                // grass up its slopes, the rock out between.
+                (center: (1225.0, -665.0), radius: 260.0, steepest: 0.6),
+                (center: (1650.0, 180.0), radius: 115.0, steepest: 0.6),
+                (center: (1740.0, -145.0), radius: 130.0, steepest: 0.6),
+                (center: (1555.0, -320.0), radius: 100.0, steepest: 0.6),
+                (center: (1545.0, -170.0), radius: 100.0, steepest: 0.6),
+                (center: (1550.0, -20.0), radius: 100.0, steepest: 0.6),
+            ],
+            // The rock on the right of the road down the Anduin's gorge,
+            // from 4590 to 4882 m: a browner stone.
+            rock_tints: [
+                (center: (867.9, 355.7), radius: 55.0, color: (0.62, 0.53, 0.44)),
+                (center: (800.9, 371.2), radius: 55.0, color: (0.62, 0.53, 0.44)),
+                (center: (759.6, 403.9), radius: 55.0, color: (0.62, 0.53, 0.44)),
+                (center: (741.4, 414.9), radius: 55.0, color: (0.62, 0.53, 0.44)),
+                (center: (727.6, 412.3), radius: 55.0, color: (0.62, 0.53, 0.44)),
+                (center: (694.9, 385.3), radius: 55.0, color: (0.62, 0.53, 0.44)),
+                (center: (635.1, 357.5), radius: 55.0, color: (0.62, 0.53, 0.44)),
+            ],
+            // Rivendell's halls and the rock at the head of its valley, which
+            // the low sun in the south-east lights only from behind as the
+            // riders come down the valley at them: a warm light, as of the
+            // evening sky, from behind and over the riders, fills them. And
+            // up the valley, where the rock on its east side shades both its
+            // walls, a light across it onto each wall. And over each of its
+            // halls, the pavilion, the Last Homely House and the tower, a
+            // sunbeam down from the sky through the clouds, leaning towards
+            // the riders, its shaft showing in the air, spreading up into the
+            // sky; diffused ones on the seat of seeing on Amon Hen and on
+            // the ruins of Amon Sûl; and one on the stone trolls.
+            glows: [
+                (
+                    from: (1549.2, 133.2, -93.5),
+                    to: (1613.0, 36.0, 105.0),
+                    illuminance: 3500.0,
+                    color: (1.0, 0.86, 0.68),
+                    angle: 0.6,
+                ),
+                (
+                    from: (1720.0, 100.0, -300.0),
+                    to: (1565.8, 25.0, -221.8),
+                    illuminance: 2500.0,
+                    color: (1.0, 0.86, 0.68),
+                    angle: 0.7,
+                ),
+                (
+                    from: (1450.0, 100.0, -300.0),
+                    to: (1634.0, 20.0, -208.0),
+                    illuminance: 2500.0,
+                    color: (1.0, 0.86, 0.68),
+                    angle: 0.7,
+                ),
+                (
+                    from: (1604.8, 163.2, -11.3),
+                    to: (1624.5, 27.3, 49.0),
+                    illuminance: 4000.0,
+                    color: (1.0, 0.84, 0.58),
+                    angle: 0.095,
+                    shaft: Some((spread: 3.2, light: 0.027)),
+                ),
+                (
+                    from: (1599.4, 175.9, 52.2),
+                    to: (1619.1, 40.0, 112.5),
+                    illuminance: 4000.0,
+                    color: (1.0, 0.84, 0.58),
+                    angle: 0.2,
+                    shaft: Some((spread: 3.2, light: 0.027)),
+                ),
+                (
+                    from: (1557.5, 189.1, 91.7),
+                    to: (1577.1, 53.2, 151.9),
+                    illuminance: 4000.0,
+                    color: (1.0, 0.84, 0.58),
+                    angle: 0.095,
+                    shaft: Some((spread: 3.2, light: 0.027)),
+                ),
+                // And, wider and far more diffused, one on the seat of seeing
+                // on Amon Hen, and one on the ruins of Amon Sûl on
+                // Weathertop.
+                (
+                    from: (159.8, 152.2, 331.9),
+                    to: (96.8, 16.3, 324.2),
+                    illuminance: 2200.0,
+                    color: (1.0, 0.84, 0.58),
+                    angle: 0.16,
+                    shaft: Some((spread: 6.5, light: 0.02)),
+                ),
+                (
+                    from: (1213.3, 218.6, -694.3),
+                    to: (1271.7, 82.6, -669.7),
+                    illuminance: 3100.0,
+                    color: (1.0, 0.84, 0.58),
+                    angle: 0.12,
+                    shaft: Some((spread: 4.5, light: 0.025)),
+                ),
+                // And one down through the dark trees of the Trollshaws onto
+                // the trolls turned to stone, leaning over the road towards
+                // the riders coming down at them.
+                (
+                    from: (1494.5, 166.0, -691.1),
+                    to: (1545.3, 30.0, -653.7),
+                    illuminance: 4000.0,
+                    color: (1.0, 0.84, 0.58),
+                    angle: 0.095,
+                    shaft: Some((spread: 3.2, light: 0.027)),
+                ),
+            ],
+            // At the top of the pass, two arches of rock out of the cliff
+            // on the left, where it comes nearest the road (30 m from its
+            // middle; between them, over the mines, it stands back), the
+            // second seen through the first, each a little askew.
+            arches: [
+                (along: 3163.1, turn: 0.1, width: 29.0, height: 17.0, depth: 10.0),
+                (along: 3214.1, turn: -0.08, width: 30.0, height: 19.0, depth: 9.0),
+            ],
+        )),
+    ),
+)

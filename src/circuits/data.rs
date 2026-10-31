@@ -17,9 +17,9 @@
 //!   [`super::music`]).
 //!
 //! What a file leaves out of the scenery is not there (no tunnels, no
-//! bridges, ...). The scenery a file cannot give yet (the themed scenery of
-//! Middle-earth and the toy store) is not read: a file giving it fails, as
-//! does any other field the game does not know.
+//! bridges, ...). The scenery a file cannot give yet (the toy store's) is
+//! not read: a file giving it fails, as does any other field the game does
+//! not know.
 
 use bevy::prelude::*;
 use serde::de::{Deserialize, Deserializer, Error};
@@ -58,6 +58,18 @@ pub fn leak<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,
 ) -> Result<&'static [T], D::Error> {
     Ok(Vec::leak(Vec::deserialize(deserializer)?))
+}
+
+/// Lists of points, each leaked.
+pub fn paths<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<&'static [&'static [Vec2]], D::Error> {
+    let paths: Vec<&'static [Vec2]> = Vec::<Vec<Vec2>>::deserialize(deserializer)?
+        .into_iter()
+        .map(Vec::leak)
+        .map(|path| &*path)
+        .collect();
+    Ok(Vec::leak(paths))
 }
 
 /// A text, leaked.

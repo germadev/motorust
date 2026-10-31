@@ -95,23 +95,6 @@ pub struct Massif {
     pub climbed: bool,
 }
 
-pub const fn massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
-    Massif {
-        center: Vec2::new(x, z),
-        radius,
-        height,
-        climbed: false,
-    }
-}
-
-/// A mountain the road climbs (see [`Massif::climbed`]).
-pub const fn climbed_massif(x: f32, z: f32, radius: f32, height: f32) -> Massif {
-    Massif {
-        climbed: true,
-        ..massif(x, z, radius, height)
-    }
-}
-
 /// Una pared de roca a un lado de la carretera, como si la hubieran abierto
 /// cortando la montaña.
 #[derive(Deserialize)]
@@ -493,21 +476,6 @@ fn forest_every() -> f32 {
     FOREST_EVERY
 }
 
-pub const fn forest(span: Span, species: &'static [Species]) -> Forest {
-    Forest {
-        span,
-        species,
-        every: FOREST_EVERY,
-    }
-}
-
-impl Forest {
-    /// The forest more open: a tree every `every` metres in each row.
-    pub const fn open(self, every: f32) -> Self {
-        Forest { every, ..self }
-    }
-}
-
 /// Las casas: cuántas como mucho, de qué colores y, si hace falta, solo en
 /// unos tramos.
 #[derive(Deserialize)]
@@ -661,7 +629,7 @@ pub struct Scenery {
     pub japan: Option<Japan>,
     /// The scenery of Middle-earth, from models made with Meshy, or `None`:
     /// see [`MiddleEarth`].
-    #[serde(skip)]
+    #[serde(default)]
     pub middle_earth: Option<MiddleEarth>,
     /// The works of a lunar base and orbital space station, if any: see
     /// [`Space`].
@@ -940,10 +908,11 @@ pub enum Plinth {
 /// right if negative), facing the road; over the road, facing along it; or
 /// anywhere, at `position` (x, z) facing `heading` (see
 /// [`crate::geometry`]). It stands on the ground, or in the water, with its
-/// foot a little under it; `scale` times as big as made (see
-/// [`Prop::scaled`]), turned `turn` radians from that (see
-/// [`Prop::turned`]), and leaning `lean` radians towards its side that was
-/// -X as made. Its model is one of feudal Japan's
+/// foot a little under it; `scale` times as big as made, turned `turn`
+/// radians from that about its foot (anticlockwise seen from above: one by
+/// the road turned to face the riders coming along it), and leaning `lean`
+/// radians towards its side that was -X as made (a tree leaning out over
+/// what its crown spreads over). Its model is one of feudal Japan's
 /// ([`PropModel`]) or of Middle-earth's ([`MiddleEarthModel`]).
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -957,7 +926,8 @@ pub struct Prop<M = PropModel> {
     #[serde(default)]
     pub lean: f32,
     /// Whether it faces the riders coming up the road at it, instead of
-    /// the road beside it (see [`Prop::facing_riders`]).
+    /// the road beside it: a gate on a hilltop reads as a gate from far
+    /// down the road, not as two posts edge on.
     #[serde(default)]
     pub facing_riders: bool,
 }
@@ -995,42 +965,6 @@ pub const fn by_road<M: Copy>(model: M, along: f32, lateral: f32) -> Prop<M> {
     }
 }
 
-/// A prop over the road, facing along it (see [`Prop`]).
-pub const fn over_road<M: Copy>(model: M, along: f32) -> Prop<M> {
-    Prop {
-        model,
-        spot: Spot::Over { along },
-        scale: 1.0,
-        turn: 0.0,
-        lean: 0.0,
-        facing_riders: false,
-    }
-}
-
-impl<M: Copy> Prop<M> {
-    /// The same prop, `scale` times as big.
-    pub const fn scaled(self, scale: f32) -> Self {
-        Prop { scale, ..self }
-    }
-
-    /// The same prop turned `turn` radians about its foot (anticlockwise
-    /// seen from above): one by the road turned to face the riders coming
-    /// along it.
-    pub const fn turned(self, turn: f32) -> Self {
-        Prop { turn, ..self }
-    }
-
-    /// The same prop turned to face the riders coming up the road at it,
-    /// not the road beside it: a gate on a hilltop reads as a gate from
-    /// far down the road, not as two posts edge on.
-    pub const fn facing_riders(self) -> Self {
-        Prop {
-            facing_riders: true,
-            ..self
-        }
-    }
-}
-
 /// The same small prop over and over by the road: one every so many
 /// metres of a span, to one side, as the lanterns of a shrine's approach
 /// or the jizō down a hillside road. Each stands as one of [`by_road`],
@@ -1046,47 +980,43 @@ pub struct PropRow {
     pub row: Row,
 }
 
-/// A prop anywhere (see [`Prop`]).
-pub const fn standing<M: Copy>(model: M, x: f32, z: f32, heading: f32) -> Prop<M> {
-    Prop {
-        model,
-        spot: Spot::At {
-            position: Vec2::new(x, z),
-            heading,
-        },
-        scale: 1.0,
-        turn: 0.0,
-        lean: 0.0,
-        facing_riders: false,
-    }
-}
-
 /// The scenery of Middle-earth, as at Fellowship Road (see
 /// [`crate::world::middle_earth`]): props made with Meshy standing about,
 /// hobbit holes in their grassy banks, fields of flowers and leaves
 /// drifting down.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MiddleEarth {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub props: &'static [Prop<MiddleEarthModel>],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub flowers: &'static [FlowerField],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub petals: &'static [Petals],
     /// The halls of Moria: where there are, the tunnels are excavations, as
     /// a mine's, through them (see [`Scenery::excavation`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub halls: &'static [Hall],
     /// Footpaths of bare earth, as between the hobbit holes: each a line of
     /// points (x, z) over the ground.
+    #[serde(deserialize_with = "crate::circuits::data::paths", default)]
     pub paths: &'static [&'static [Vec2]],
     /// Where the ground stays grass steeper than elsewhere, as the banks and
     /// the cut doorsteps of Hobbiton's hillsides are (but sheer), or the
     /// ledges of Rivendell's rock, its faces mossy.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub turf: &'static [Turf],
     /// Where the granite is of another colour, as the browner rock of the
     /// Anduin's gorge.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub rock_tints: &'static [RockTint],
     /// Lights that fill a stretch of land the low sun lights only from
     /// behind, as Rivendell's halls are, seen by the riders coming at them.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub glows: &'static [Glow],
     /// Arches of layered rock over the road, out of the rock beside it, as
     /// the sea's arches on a beach of cliffs.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub arches: &'static [RockArch],
 }
 
@@ -1094,7 +1024,8 @@ pub struct MiddleEarth {
 /// `along` the lap, turned `turn` radians from square across it, its
 /// opening `width` wide across the road at its foot and `height` high over
 /// its middle, and `depth` thick along the road.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RockArch {
     pub along: f32,
     pub turn: f32,
@@ -1109,12 +1040,16 @@ pub struct RockArch {
 /// shadow, as the evening sky's light does. With a `shaft`, it comes down
 /// from the sky onto one building, a sunbeam through the clouds, and its
 /// shaft shows in the air.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Glow {
     pub from: Vec3,
     pub to: Vec3,
     pub illuminance: f32,
+    #[serde(deserialize_with = "crate::circuits::data::color")]
     pub color: Color,
     pub angle: f32,
+    #[serde(default)]
     pub shaft: Option<Shaft>,
 }
 
@@ -1122,7 +1057,8 @@ pub struct Glow {
 /// times wider than at its foot it spreads at its top, and how bright it is
 /// down its middle at its foot (linear, added over what is behind it, as
 /// light is); the more it spreads and the fainter, the more diffused.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Shaft {
     pub spread: f32,
     pub light: f32,
@@ -1133,6 +1069,8 @@ pub struct Shaft {
 /// ground's normal under which it is rock (0.45: all but sheer faces; more,
 /// grass on the ledges and gentler slopes of a rock face, rock between); and
 /// its granite green with moss over much of it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Turf {
     pub center: Vec2,
     pub radius: f32,
@@ -1142,15 +1080,18 @@ pub struct Turf {
 /// A round stretch of land whose granite is of another colour (see
 /// [`MiddleEarth::rock_tints`]): `color`, as light as the grey it stands
 /// for, fading back into the grey over the outer quarter of `radius`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RockTint {
     pub center: Vec2,
     pub radius: f32,
+    #[serde(deserialize_with = "crate::circuits::data::color")]
     pub color: Color,
 }
 
 /// One of the props of Middle-earth, made with Meshy (see
 /// [`crate::world::middle_earth`]), in the order of the film.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
 pub enum MiddleEarthModel {
     /// The front of a hobbit hole, with its round door (green, yellow, red
     /// or blue), set into a grassy bank, a chimney rising out of it.

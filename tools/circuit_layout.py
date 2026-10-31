@@ -154,6 +154,9 @@ class Lap:
 
     def __init__(self, path):
         self.text = open(path).read()
+        if path.endswith(".ron"):
+            # Its comments name things too, written as its values are.
+            self.text = re.sub(r"//[^\n]*", "", self.text)
         self.ron = path.endswith(".ron")
         if self.ron:
             # What its file names in Rust (a dam's or a pit's water, say) is
