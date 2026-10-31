@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::legend::{Keys, menu_prompts, music_toggle_prompt, spawn_legend};
@@ -180,9 +180,8 @@ pub fn spawn_mode_badge(
         });
 }
 
-/// What a mode is, under its name.
-fn description(mode: Mode, lang: Language) -> String {
-    let tracks = CIRCUITS.len();
+/// What a mode is, under its name, with `tracks` tracks.
+fn description(mode: Mode, tracks: usize, lang: Language) -> String {
     match (mode, lang) {
         (Mode::Arcade, Language::Spanish) => format!(
             "Las {tracks} pistas, una tras otra, a {CHAMPIONSHIP_LAPS} vueltas: puntos en cada carrera"
@@ -292,7 +291,7 @@ fn show_modes(
     active_controller: Option<Res<ActiveController>>,
     (window, ui_scale): (Query<&Window, With<PrimaryWindow>>, Option<Res<UiScale>>),
     menu_width: Res<MenuWidth>,
-    icons: Res<UiIcons>,
+    (icons, circuits): (Res<UiIcons>, Res<Circuits>),
     cards: Res<ModeCards>,
     mut art: ResMut<VectorArt>,
     mut images: ResMut<Assets<Image>>,
@@ -442,7 +441,7 @@ fn show_modes(
                                     },
                                 ));
                                 card.spawn((
-                                    Text::new(description(mode, lang)),
+                                    Text::new(description(mode, circuits.len(), lang)),
                                     text_font(&font, if big { 20.0 } else { 15.0 }),
                                     TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
                                     TextLayout::justify(Justify::Center),
@@ -499,6 +498,7 @@ fn light_cards(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuits::CIRCUITS;
 
     #[test]
     fn the_modes_are_a_little_wider_than_the_start_menu_at_any_resolution() {
@@ -556,7 +556,7 @@ mod tests {
         for mode in MODES {
             for lang in [Language::Spanish, Language::English] {
                 assert!(!name(mode, lang).is_empty());
-                assert!(!description(mode, lang).is_empty());
+                assert!(!description(mode, CIRCUITS.len(), lang).is_empty());
             }
         }
     }

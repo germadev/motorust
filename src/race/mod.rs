@@ -23,7 +23,7 @@ use crate::bike::{
     Autopilot, BikeState, LocalPlayer, Player, ROSTER, Race, RaceControls, Retired, Rider,
     autopilot,
 };
-use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::circuits::{Circuit, Circuits, CurrentCircuit};
 use crate::menu::GameState;
 use crate::pause;
 use crate::settings::{Action, Difficulty, Settings};
@@ -163,7 +163,7 @@ impl Default for Rules {
 }
 
 /// The championship under way: the race it is on (the index of its track
-/// in [`CIRCUITS`]) and the points of each bike of the [`ROSTER`] so far.
+/// in [`Circuits`]) and the points of each bike of the [`ROSTER`] so far.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct Championship {
     pub round: usize,
@@ -171,9 +171,9 @@ pub struct Championship {
 }
 
 impl Championship {
-    /// Whether it is over: every track raced.
-    pub fn is_over(&self) -> bool {
-        self.round >= CIRCUITS.len()
+    /// Whether it is over: every one of the `tracks` raced.
+    pub fn is_over(&self, tracks: usize) -> bool {
+        self.round >= tracks
     }
 
     /// Scores a race finished in `order` (bikes of the roster, first to
@@ -572,8 +572,8 @@ impl Plugin for RacePlugin {
 }
 
 /// The checkpoints of the track under way (see [`checkpoints`]).
-fn track_checkpoints(current: &CurrentCircuit, track: &Track) -> Vec<f32> {
-    checkpoints(&current.get().checkpoints(), track.lap_length())
+fn track_checkpoints(circuit: &Circuit, track: &Track) -> Vec<f32> {
+    checkpoints(&circuit.checkpoints(), track.lap_length())
 }
 
 /// A new race: the clock at nought and nobody out.
@@ -582,12 +582,13 @@ fn start_race(
     rules: Res<Rules>,
     track: Res<Track>,
     current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     settings: Res<Settings>,
 ) {
     let mut standing = Standing::default();
     if rules.mode == Mode::Checkpoint {
-        let times = CheckpointTimes::on(settings.difficulty).at(current.get().pace);
-        standing.time_left = times.starting(&track_checkpoints(&current, &track));
+        let times = CheckpointTimes::on(settings.difficulty).at(circuits.get(*current).pace);
+        standing.time_left = times.starting(&track_checkpoints(circuits.get(*current), &track));
     }
     commands.insert_resource(standing);
     commands.remove_resource::<Outcome>();
@@ -640,6 +641,7 @@ fn follow_the_race(
     rules: Res<Rules>,
     track: Res<Track>,
     current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     mut settings: ResMut<Settings>,
     mut standing: ResMut<Standing>,
     mut was_started: Local<bool>,
@@ -652,8 +654,8 @@ fn follow_the_race(
     )>,
 ) {
     let lap = track.lap_length();
-    let points = track_checkpoints(&current, &track);
-    let times = CheckpointTimes::on(settings.difficulty).at(current.get().pace);
+    let points = track_checkpoints(circuits.get(*current), &track);
+    let times = CheckpointTimes::on(settings.difficulty).at(circuits.get(*current).pace);
     // Restarted: everyone back to the grid.
     if *was_started && !race.started {
         let left = (rules.mode == Mode::Checkpoint).then(|| times.starting(&points));
@@ -685,7 +687,7 @@ fn follow_the_race(
     standing.clock += time.delta_secs();
     let clock = standing.clock;
     let target = rules.mode.laps(rules.laps);
-    let name = current.get().name;
+    let name = circuits.get(*current).name;
     let mut record = None;
     for (state, _, mut progress, player, local) in &mut bikes {
         let nearest = track.nearest_at(state.position, state.elevation);
@@ -979,6 +981,7 @@ fn finish_the_race(
     rules: Res<Rules>,
     track: Res<Track>,
     current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     mut settings: ResMut<Settings>,
     mut standing: ResMut<Standing>,
     bikes: Query<(
@@ -1022,7 +1025,7 @@ fn finish_the_race(
             .find(|(_, r, ..)| r.0 == rider)
             .map(|(_, _, progress, ..)| progress.clone())
     });
-    let name = current.get().name;
+    let name = circuits.get(*current).name;
     let laps = bikes
         .iter()
         .find(|(_, _, _, player, ..)| *player)
@@ -1216,6 +1219,7 @@ pub fn start_championship(championship: &mut Championship, current: &mut Current
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuits::CIRCUITS;
 
     const LAP: f32 = 3000.0;
     /// Checkpoint gantries at 1000 and 2000 m, and the line.
@@ -1458,7 +1462,7 @@ mod tests {
         assert_eq!(championship.round, 2);
         assert_eq!(&championship.standings()[..3], &[1, 3, 0]);
         championship.round = CIRCUITS.len();
-        assert!(championship.is_over());
+        assert!(championship.is_over(CIRCUITS.len()));
     }
 
     #[test]

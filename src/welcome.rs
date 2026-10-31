@@ -16,7 +16,7 @@ use bevy::ui::UiSystems;
 use bevy::window::PrimaryWindow;
 
 use crate::camera::{CameraGlide, CameraPlayer};
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::legend::{Keys, menu_prompts, music_toggle_prompt, spawn_legend};
@@ -799,10 +799,12 @@ fn flyby_height(scenery: &Scenery, travelled: f32, lap: f32) -> f32 {
 
 /// La cámara recorre la pista despacio, un poco por encima de la carretera,
 /// from just before the line of each track chosen.
+#[allow(clippy::too_many_arguments)]
 fn fly_over_track(
     time: Res<Time>,
     track: Res<Track>,
     circuit: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     camera: Single<(&mut Transform, &mut Projection), With<CameraPlayer>>,
     mut glide: ResMut<CameraGlide>,
     mut travelled: Local<f32>,
@@ -828,7 +830,7 @@ fn fly_over_track(
             .surface_point(index, lateral)
             .lerp(track.surface_point(index + 1, lateral), samples.fract())
     };
-    let height = flyby_height(&circuit.get().scenery, *travelled, length);
+    let height = flyby_height(&circuits.get(*circuit).scenery, *travelled, length);
     let position = at(*travelled, FLYBY_SIDE) + Vec3::Y * height;
     let target = at(*travelled + FLYBY_AHEAD, 0.0) + Vec3::Y * FLYBY_LOOK_HEIGHT;
     let wanted = Transform::from_translation(position).looking_at(target, Vec3::Y);

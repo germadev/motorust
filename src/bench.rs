@@ -41,7 +41,7 @@ use bevy::render::renderer::RenderAdapterInfo;
 use bevy::window::PrimaryWindow;
 
 use crate::bike::{LocalPlayer, Player, Race, autopilot};
-use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::circuits::{Circuit, Circuits, CurrentCircuit};
 use crate::hud::UiFont;
 use crate::menu::GameState;
 use crate::perf_log::{
@@ -247,16 +247,16 @@ pub fn scenarios(tracks: &[usize]) -> Vec<Scenario> {
         .collect()
 }
 
-/// The tracks asked for in `value` (as `0,2`), or all of them.
-pub fn tracks(value: Option<&str>) -> Vec<usize> {
+/// The tracks asked for in `value` (as `0,2`), or all `count` of them.
+pub fn tracks(value: Option<&str>, count: usize) -> Vec<usize> {
     let asked: Vec<usize> = value
         .unwrap_or_default()
         .split(',')
         .filter_map(|track| track.trim().parse().ok())
-        .filter(|&track| track < CIRCUITS.len())
+        .filter(|&track| track < count)
         .collect();
     if asked.is_empty() {
-        (0..CIRCUITS.len()).collect()
+        (0..count).collect()
     } else {
         asked
     }
@@ -319,8 +319,8 @@ pub fn extremes(turns: &[(usize, f32, f32)], averages: &[f32]) -> Option<((f32, 
 
 /// About how long a track's lap is (m): round its control points, a little
 /// shorter than its curve.
-fn rough_length(track: usize) -> f32 {
-    let points = CIRCUITS[track].layout.control_points;
+fn rough_length(track: &Circuit) -> f32 {
+    let points = track.layout.control_points;
     points
         .iter()
         .zip(points.iter().cycle().skip(1))
@@ -460,6 +460,8 @@ pub struct Bench {
     /// rate.
     spots: Vec<(usize, f32, f32)>,
     results: Vec<(Scenario, Option<Summary>, Option<f32>)>,
+    /// The circuits its scenarios' tracks are of.
+    circuits: Circuits,
     /// This machine's name, the folder the results go in, and the file they
     /// are written to as they come (named as the run begins).
     machine: String,
@@ -469,10 +471,17 @@ pub struct Bench {
 }
 
 impl Bench {
-    /// A run of `scenarios`, each measured `measure` s a lap, on `machine`,
-    /// its results written to `folder`; not begun.
-    fn new(scenarios: Vec<Scenario>, measure: f32, machine: String, folder: PathBuf) -> Self {
+    /// A run of `scenarios` of `circuits`, each measured `measure` s a lap,
+    /// on `machine`, its results written to `folder`; not begun.
+    fn new(
+        circuits: Circuits,
+        scenarios: Vec<Scenario>,
+        measure: f32,
+        machine: String,
+        folder: PathBuf,
+    ) -> Self {
         Bench {
+            circuits,
             laps: laps(&scenarios),
             scenarios,
             lap: 0,
@@ -533,7 +542,7 @@ impl Bench {
             "[{:>2}/{}] {} · {}",
             self.lap + 1,
             self.laps.len(),
-            CIRCUITS[first.track].name,
+            self.circuits[first.track].name,
             players_said(first.players)
         )
     }
@@ -581,7 +590,7 @@ impl Bench {
         let first = &tried[0];
         let lap = format!(
             "{} with {}",
-            CIRCUITS[first.track].name,
+            self.circuits[first.track].name,
             players_said(first.players)
         );
         let summaries: Vec<Option<Summary>> = self.stretches.iter().map(Stretch::summary).collect();
@@ -599,7 +608,7 @@ impl Bench {
         for ((scenario, summary), &(sum, over)) in tried.iter().zip(&summaries).zip(&self.cpu) {
             let cpu = (over > 0.0).then(|| sum / over).or(fallback);
             println!("    {:<22} {}", scenario.name, said(summary.as_ref(), cpu));
-            lines.push(row(scenario, summary.as_ref(), cpu));
+            lines.push(row(&self.circuits, scenario, summary.as_ref(), cpu));
             self.results.push((scenario.clone(), *summary, cpu));
         }
         let averages: Vec<f32> = summaries
@@ -643,7 +652,7 @@ impl Bench {
             "BENCH {}/{} · {} · {}",
             self.lap + 1,
             self.laps.len(),
-            CIRCUITS[first.track].name,
+            self.circuits[first.track].name,
             players_said(first.players)
         );
         let (setting, doing) = match self.phase {
@@ -685,7 +694,15 @@ impl Plugin for BenchPlugin {
             .and_then(|value| value.parse().ok())
             .filter(|&seconds: &f32| seconds > 0.0)
             .unwrap_or(MEASURE);
-        let tracks = tracks(std::env::var("MOTORUST_BENCH_TRACKS").ok().as_deref());
+        // The world's circuits, or else (without it) read here.
+        let circuits = *app
+            .world_mut()
+            .get_resource_or_insert_with(Circuits::load)
+            .into_inner();
+        let tracks = tracks(
+            std::env::var("MOTORUST_BENCH_TRACKS").ok().as_deref(),
+            circuits.len(),
+        );
         // In the folder it is run from, or else beside the performance log.
         let results = std::env::current_dir()
             .map(|here| here.join(RESULTS))
@@ -698,6 +715,7 @@ impl Plugin for BenchPlugin {
         // are named.
         app.insert_resource(PerfLog::waiting())
             .insert_resource(Bench::new(
+                circuits,
                 scenarios,
                 measure,
                 machine().trim().to_string(),
@@ -870,20 +888,30 @@ fn machine_lines(
          {TURN_MEASURE} s, each measured {} s at least; about {} min",
         bench.laps.len(),
         bench.measure,
-        minutes(&bench.scenarios, &bench.laps, bench.measure)
+        minutes(
+            &bench.circuits,
+            &bench.scenarios,
+            &bench.laps,
+            bench.measure
+        )
     ));
     lines
 }
 
 /// About how many minutes `laps` of `scenarios` take, each setting measured
 /// `measure` s at least.
-fn minutes(scenarios: &[Scenario], laps: &[Range<usize>], measure: f32) -> u32 {
+fn minutes(
+    circuits: &Circuits,
+    scenarios: &[Scenario],
+    laps: &[Range<usize>],
+    measure: f32,
+) -> u32 {
     let seconds: f32 = laps
         .iter()
         .map(|lap| {
             let settings = lap.len() as f32;
             let turns = settings * (measure / TURN_MEASURE).ceil();
-            let round = rough_length(scenarios[lap.start].track) / RIDING;
+            let round = rough_length(&circuits[scenarios[lap.start].track]) / RIDING;
             SETTING_UP + settings * WARM_TURN + round.max(turns * (TURN_SETTLE + TURN_MEASURE))
         })
         .sum();
@@ -1165,8 +1193,13 @@ fn header() -> String {
 }
 
 /// A line of the table: a scenario and what it measured.
-fn row(scenario: &Scenario, summary: Option<&Summary>, cpu: Option<f32>) -> String {
-    let track = CIRCUITS[scenario.track].name;
+fn row(
+    circuits: &Circuits,
+    scenario: &Scenario,
+    summary: Option<&Summary>,
+    cpu: Option<f32>,
+) -> String {
+    let track = circuits[scenario.track].name;
     let or_dash = |value: Option<f32>, decimals: usize| {
         value.map_or("-".to_string(), |value| format!("{value:.decimals$}"))
     };
@@ -1186,12 +1219,12 @@ fn row(scenario: &Scenario, summary: Option<&Summary>, cpu: Option<f32>) -> Stri
 }
 
 /// The results as a table: a line for each scenario.
-pub fn table(results: &[(Scenario, Option<Summary>, Option<f32>)]) -> String {
+pub fn table(circuits: &Circuits, results: &[(Scenario, Option<Summary>, Option<f32>)]) -> String {
     std::iter::once(header())
         .chain(
             results
                 .iter()
-                .map(|(scenario, summary, cpu)| row(scenario, summary.as_ref(), *cpu)),
+                .map(|(scenario, summary, cpu)| row(circuits, scenario, summary.as_ref(), *cpu)),
         )
         .collect::<Vec<_>>()
         .join("\n")
@@ -1199,7 +1232,7 @@ pub fn table(results: &[(Scenario, Option<Summary>, Option<f32>)]) -> String {
 
 /// Prints the results (they are in their file already).
 fn report(bench: &Bench) {
-    println!("\n{}\n", table(&bench.results));
+    println!("\n{}\n", table(&bench.circuits, &bench.results));
     if let (Some(_), Some(path)) = (&bench.file, &bench.path) {
         println!("Written to {}", path.display());
     }
@@ -1208,10 +1241,11 @@ fn report(bench: &Bench) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuits::CIRCUITS;
 
     #[test]
     fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time() {
-        let all = scenarios(&tracks(None));
+        let all = scenarios(&tracks(None, CIRCUITS.len()));
         assert_eq!(all.len(), 22 * CIRCUITS.len());
         let first = &all[..22];
         assert!(first.iter().all(|scenario| scenario.track == 0));
@@ -1274,6 +1308,7 @@ mod tests {
     fn the_ground_is_left_out_of_the_shadows_only_in_its_turn() {
         let mut app = App::new();
         app.insert_resource(Bench::new(
+            *CIRCUITS,
             scenarios(&[0]),
             MEASURE,
             String::new(),
@@ -1314,7 +1349,13 @@ mod tests {
 
     #[test]
     fn two_samples_are_left_out_where_the_gpu_has_not_got_them() {
-        let mut bench = Bench::new(scenarios(&[0]), MEASURE, String::new(), PathBuf::new());
+        let mut bench = Bench::new(
+            *CIRCUITS,
+            scenarios(&[0]),
+            MEASURE,
+            String::new(),
+            PathBuf::new(),
+        );
         assert_eq!(bench.leave_out(|_| false), 0);
         let left_out = bench.leave_out(|scenario| scenario.antialiasing == Antialiasing::Msaa2);
         assert_eq!(left_out, 1);
@@ -1333,10 +1374,13 @@ mod tests {
 
     #[test]
     fn the_tracks_asked_for_or_all() {
-        assert_eq!(tracks(None), (0..CIRCUITS.len()).collect::<Vec<_>>());
-        assert_eq!(tracks(Some("0, 2")), [0, 2]);
         assert_eq!(
-            tracks(Some("99,x")),
+            tracks(None, CIRCUITS.len()),
+            (0..CIRCUITS.len()).collect::<Vec<_>>()
+        );
+        assert_eq!(tracks(Some("0, 2"), CIRCUITS.len()), [0, 2]);
+        assert_eq!(
+            tracks(Some("99,x"), CIRCUITS.len()),
             (0..CIRCUITS.len()).collect::<Vec<_>>()
         );
     }
@@ -1351,10 +1395,13 @@ mod tests {
             p95: 18.25,
             update: Some(2.5),
         };
-        let table = table(&[
-            (scenario.clone(), Some(summary), Some(34.0)),
-            (scenario, None, None),
-        ]);
+        let table = table(
+            &CIRCUITS,
+            &[
+                (scenario.clone(), Some(summary), Some(34.0)),
+                (scenario, None, None),
+            ],
+        );
         let lines: Vec<&str> = table.lines().collect();
         assert_eq!(lines.len(), 3);
         assert!(lines[0].starts_with("track"));
@@ -1477,9 +1524,9 @@ mod tests {
     fn a_run_takes_about_as_long_as_its_laps() {
         let all = scenarios(&[0]);
         let laps = laps(&all);
-        let minutes = minutes(&all, &laps, MEASURE);
+        let minutes = minutes(&CIRCUITS, &all, &laps, MEASURE);
         // Bahía's two laps: a couple of minutes, not ten.
         assert!((2..=6).contains(&minutes), "{minutes}");
-        assert!(rough_length(0) > 1000.0 && rough_length(0) < 2000.0);
+        assert!(rough_length(&CIRCUITS[0]) > 1000.0 && rough_length(&CIRCUITS[0]) < 2000.0);
     }
 }

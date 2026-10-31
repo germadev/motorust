@@ -4,7 +4,7 @@
 //! What a file gives as a list is read into a `Vec` and leaked, as is each
 //! text, so that a circuit read from a file is as `&'static` as one written
 //! in Rust and the code using it stays as it is. Each file is read once, at
-//! startup ([`super::CIRCUITS`]).
+//! startup ([`super::Circuits::load`]).
 //!
 //! How a file writes what is not plain numbers, lists and structs:
 //!

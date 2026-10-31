@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use super::hud::{clock, ordinal};
 use super::{Championship, Mode, Outcome, POINTS};
 use crate::bike::ROSTER;
-use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::legend::{Keys, menu_prompts, spawn_legend};
@@ -72,15 +72,15 @@ pub fn back_from(mode: Mode) -> GameState {
 }
 
 /// What comes after the page `standings` (or not) of the results of a race
-/// of `mode`, with the championship as it is now.
-pub fn next_after(mode: Mode, standings: bool, championship: &Championship) -> Next {
+/// of `mode`, with the championship as it is now, over `tracks` tracks.
+pub fn next_after(mode: Mode, standings: bool, championship: &Championship, tracks: usize) -> Next {
     if !mode.is_championship() {
         return Next::Again;
     }
     if !standings {
         return Next::Standings;
     }
-    if championship.is_over() {
+    if championship.is_over(tracks) {
         Next::Menu
     } else {
         Next::Race(championship.round)
@@ -95,6 +95,7 @@ fn use_results(
     page: Option<Res<ResultsPage>>,
     mut championship: ResMut<Championship>,
     mut current: ResMut<CurrentCircuit>,
+    circuits: Res<Circuits>,
     mut next: ResMut<NextState<GameState>>,
     mut sounds: MessageWriter<MenuSound>,
 ) {
@@ -118,7 +119,12 @@ fn use_results(
     outcome.settle(&mut championship);
     // On the way out the results go at once: they are not built again
     // while the next screen (or the next track) is set up.
-    match next_after(outcome.mode, page == ResultsPage::Standings, &championship) {
+    match next_after(
+        outcome.mode,
+        page == ResultsPage::Standings,
+        &championship,
+        circuits.len(),
+    ) {
         Next::Standings => commands.insert_resource(ResultsPage::Standings),
         Next::Race(round) => {
             commands.insert_resource(ResultsPage::Leaving);
@@ -145,6 +151,7 @@ fn show_results(
     outcome: Res<Outcome>,
     page: Option<Res<ResultsPage>>,
     championship: Res<Championship>,
+    circuits: Res<Circuits>,
     settings: Res<Settings>,
     device: Res<InputDevice>,
     active_controller: Option<Res<ActiveController>>,
@@ -172,14 +179,16 @@ fn show_results(
     }
     let standings = page == ResultsPage::Standings;
 
-    let track = CIRCUITS[outcome.track].name(lang);
+    let circuit = &circuits[outcome.track];
+    let track = circuit.name(lang);
     let title = if standings {
-        let round = championship.round.min(CIRCUITS.len());
+        let round = championship.round.min(circuits.len());
+        let over = championship.is_over(circuits.len());
         match lang {
-            Language::Spanish if championship.is_over() => "CLASIFICACIÓN FINAL".to_string(),
-            Language::English if championship.is_over() => "FINAL STANDINGS".to_string(),
-            Language::Spanish => format!("CLASIFICACIÓN  ·  {round}/{}", CIRCUITS.len()),
-            Language::English => format!("STANDINGS  ·  {round}/{}", CIRCUITS.len()),
+            Language::Spanish if over => "CLASIFICACIÓN FINAL".to_string(),
+            Language::English if over => "FINAL STANDINGS".to_string(),
+            Language::Spanish => format!("CLASIFICACIÓN  ·  {round}/{}", circuits.len()),
+            Language::English => format!("STANDINGS  ·  {round}/{}", circuits.len()),
         }
     } else if outcome.mode == Mode::Checkpoint {
         match lang {
@@ -195,11 +204,11 @@ fn show_results(
     let lines = if standings {
         standing_lines(&outcome, &championship, lang)
     } else if outcome.mode == Mode::Checkpoint {
-        checkpoint_lines(&outcome, &settings, track, lang)
+        checkpoint_lines(&outcome, &settings, circuit.name, track, lang)
     } else {
         race_lines(&outcome, lang)
     };
-    let next = next_after(outcome.mode, standings, &championship);
+    let next = next_after(outcome.mode, standings, &championship, circuits.len());
     let go_on = match (next, lang) {
         (Next::Standings, Language::Spanish) => "Continuar",
         (Next::Standings, Language::English) => "Continue",
@@ -473,10 +482,10 @@ fn standing_lines(outcome: &Outcome, championship: &Championship, lang: Language
 fn checkpoint_lines(
     outcome: &Outcome,
     settings: &Settings,
+    name: &str,
     track: &str,
     lang: Language,
 ) -> Vec<Line> {
-    let name = CIRCUITS[outcome.track].name;
     let best = settings.records.checkpoint_best(name).unwrap_or(0);
     let lap = settings.records.best_lap(name);
     let mut lines = vec![
@@ -529,6 +538,7 @@ fn checkpoint_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuits::CIRCUITS;
 
     #[test]
     fn the_results_go_to_the_middle_once_everybody_is_in() {
@@ -598,26 +608,35 @@ mod tests {
         let mut championship = Championship::default();
         // Out of a championship: the same race again, or back to the
         // tracks.
-        assert_eq!(next_after(Mode::Race, false, &championship), Next::Again);
         assert_eq!(
-            next_after(Mode::Checkpoint, false, &championship),
+            next_after(Mode::Race, false, &championship, CIRCUITS.len()),
+            Next::Again
+        );
+        assert_eq!(
+            next_after(Mode::Checkpoint, false, &championship, CIRCUITS.len()),
             Next::Again
         );
         assert_eq!(back_from(Mode::Race), GameState::Tracks);
         assert_eq!(back_from(Mode::Arcade), GameState::Modes);
         // A championship: the standings, then its next race...
         assert_eq!(
-            next_after(Mode::Arcade, false, &championship),
+            next_after(Mode::Arcade, false, &championship, CIRCUITS.len()),
             Next::Standings
         );
         championship.score(&[0, 1, 2, 3, 4, 5, 6, 7]);
-        assert_eq!(next_after(Mode::Arcade, true, &championship), Next::Race(1));
+        assert_eq!(
+            next_after(Mode::Arcade, true, &championship, CIRCUITS.len()),
+            Next::Race(1)
+        );
         // ...and after the last one, the menu.
         championship.round = CIRCUITS.len();
-        assert_eq!(next_after(Mode::Arcade, true, &championship), Next::Menu);
+        assert_eq!(
+            next_after(Mode::Arcade, true, &championship, CIRCUITS.len()),
+            Next::Menu
+        );
         // An elimination is on the track chosen, like a race.
         assert_eq!(
-            next_after(Mode::Elimination, false, &championship),
+            next_after(Mode::Elimination, false, &championship, CIRCUITS.len()),
             Next::Again
         );
     }
@@ -638,6 +657,7 @@ mod tests {
             .init_resource::<UiIcons>()
             .init_resource::<Championship>()
             .init_resource::<CurrentCircuit>()
+            .insert_resource(*crate::circuits::CIRCUITS)
             .add_message::<MenuSound>()
             .add_plugins((ResultsPlugin, crate::gamepads::GamepadsPlugin))
             .add_systems(OnExit(GameState::Race), |mut commands: Commands| {

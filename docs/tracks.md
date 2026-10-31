@@ -200,11 +200,10 @@ Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `t
 - `layout`: the road itself (a `Layout` from `src/track.rs`).
 - `scenery`: everything around the road (a `Scenery` from `src/world/scenery.rs`).
 
-`CIRCUITS` in `src/circuits/mod.rs` lists the tracks in the order the track select screen shows them. The first one is also the default track. To add a track:
+`FILES` in `src/circuits/mod.rs` lists the tracks in the order the track select screen shows them; the game reads them once, as it starts, into the `Circuits` resource (`Circuits::load`), and the systems take them from it (`Res<Circuits>`, the one chosen `circuits.get(*current)`). The first one is also the default track. To add a track:
 
-1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `FILES` in `src/circuits/mod.rs`.
+1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `FILES` in `src/circuits/mod.rs`, where it goes in the menu, updating the array length.
 2. If it has a coast, water or mountains of its own, write their functions in a module next to the others, declare it, and name them in `terrain_function` (`src/circuits/mod.rs`); its song, in `music`. A circuit with neither water nor mountains, indoors, names `dry` and `flat`.
-3. Add the track to `CIRCUITS` and update the array length.
 
 #### Circuits in RON
 
@@ -343,7 +342,7 @@ Round the loop (`src/bike/loop_ride.rs`), a bike rides on the running surface: s
 
 ### What `cargo test` checks
 
-Run `cargo test` (or `make test`, see [building.md](building.md)) after any change. Every track in `CIRCUITS` is checked for the following:
+Run `cargo test` (or `make test`, see [building.md](building.md)) after any change. Every track is checked for the following (the tests read them as the game does, into `CIRCUITS`, theirs alone):
 
 - **No impossible corners.** Every corner radius is more than two and a half times the wall distance (the track's own: 18.75 m on Juguetería's narrow road).
 - **No self-crossing.** Distant stretches of the track never come close enough for their walls to meet; there must be room for scenery between them (10 m beyond both walls). The one exception is a stretch passing over a tunnel of another, at least 12 m above it.

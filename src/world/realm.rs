@@ -31,7 +31,7 @@ use super::sky::Sunlight;
 use super::terrain::is_earth_realm;
 use crate::bike::BikeState;
 use crate::camera::CameraPlayer;
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::menu::GameState;
 use crate::track::Track;
 
@@ -370,9 +370,14 @@ impl Plugin for RealmPlugin {
 }
 
 /// The portals of the circuit in use, when it changes.
-fn find_gates(current: Res<CurrentCircuit>, track: Res<Track>, mut gates: ResMut<Gates>) {
+fn find_gates(
+    current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
+    track: Res<Track>,
+    mut gates: ResMut<Gates>,
+) {
     if current.is_changed() || track.is_changed() {
-        gates.0 = self::gates(&track, &current.get().scenery);
+        gates.0 = self::gates(&track, &circuits.get(*current).scenery);
     }
 }
 
