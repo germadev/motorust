@@ -23,7 +23,7 @@ use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 use bevy::window::PrimaryWindow;
 
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::menu::GameState;
 use crate::pause::Pause;
 use crate::race::Rules;
@@ -544,6 +544,7 @@ fn log_performance(
     game_mode: Res<GameMode>,
     pause: Res<Pause>,
     current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     (window, ui_scale, adapter, system, trees): (
         Query<&Window, With<PrimaryWindow>>,
         Option<Res<UiScale>>,
@@ -580,7 +581,7 @@ fn log_performance(
             1
         },
         paused: pause.is_open(),
-        track: current.get().name.to_string(),
+        track: circuits.get(*current).name.to_string(),
         trees: if settings.modelled_trees {
             "new"
         } else {

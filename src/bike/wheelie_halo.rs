@@ -13,7 +13,7 @@ use bevy::{light::NotShadowCaster, prelude::*};
 
 use super::grass_kickup::{puff_image, puff_mesh};
 use super::{BikeState, DespawnOnExit, GameState};
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::geometry::{forward, smoothstep, to_world};
 
 /// How far behind the middle of the bike the rear wheel's hub is (m), and
@@ -74,11 +74,12 @@ impl Plugin for WheelieHaloPlugin {
 fn prepare_halo(
     mut commands: Commands,
     circuit: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Some(color) = circuit.get().scenery.wheelie_halo else {
+    let Some(color) = circuits.get(*circuit).scenery.wheelie_halo else {
         commands.remove_resource::<HaloAssets>();
         return;
     };

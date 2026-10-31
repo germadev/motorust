@@ -920,7 +920,32 @@
             (center: (1620.0, 110.0), radius: 20.0, height: 31.0, skirt: 10.0),
             (center: (1577.1, 151.9), radius: 6.0, height: 38.2, skirt: 8.0),
         ],
-        mountains: "fellowship_road_mountains",
+        mountains: [
+            // Low hills round the horizon.
+            Range(
+                center: (850.0, -80.0),
+                near: 1500.0,
+                far: 2500.0,
+                relief: (low: 52.5, high: 150.0, scale: 380.0, octaves: 4),
+            ),
+            // The Misty Mountains, running north and south, a little ragged,
+            // past the far side of the lap; their peaks over the snow line.
+            Range(
+                center: (0.0, 0.0),
+                near: 2150.0,
+                far: 2750.0,
+                toward: Some((1.0, 0.0)),
+                ragged: Some((amount: 120.0, scale: 900.0, octaves: 2)),
+                relief: (
+                    low: 380.0,
+                    high: 1000.0,
+                    scale: 520.0,
+                    octaves: 4,
+                    offset: (3.0, 3.0),
+                    power: 1.4,
+                ),
+            ),
+        ],
         curbs: [(0.22, 0.45, 0.2), (0.93, 0.88, 0.72)],
         // Wooden fences through the wood the race starts in, along the lanes
         // of Hobbiton and the street of Bree, and where the small props stand

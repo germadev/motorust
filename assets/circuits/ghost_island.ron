@@ -672,7 +672,32 @@
         // Across the sea: the volcano to the north, a lone cone with its
         // flanks sweeping up ever steeper to a crater at its top, and lower
         // mountains round the rest of the horizon, clear of it.
-        mountains: "ghost_island_mountains",
+        mountains: [
+            // Lower mountains round the horizon, clear of the volcano.
+            Range(
+                center: (450.0, -150.0),
+                near: 1900.0,
+                far: 2800.0,
+                clear_of: Some((center: (430.0, -2750.0), radius: 1650.0, from: 1.1, to: 1.7)),
+                relief: (low: 77.0, high: 220.0, scale: 300.0, octaves: 4),
+            ),
+            // The volcano across the strait to the north, as Mount Yōtei over
+            // Hokkaido or Fuji over its lakes: its foot rises out of the sea
+            // just behind the great torii, and from the castle street it
+            // stands over the castle; its top is under snow, the sky clear
+            // enough to see it sharp from across the island. Its flanks
+            // carved into gullies and ridges (a function, in
+            // src/circuits/ghost_island.rs).
+            Cone(
+                center: (430.0, -2750.0),
+                radius: 1650.0,
+                height: 900.0,
+                steepness: 1.7,
+                crater: 40.0,
+                rim: 0.08,
+                relief: Some("ghost_island_volcano_relief"),
+            ),
+        ],
         // Vermilion and white.
         curbs: [(0.86, 0.2, 0.09), (0.95, 0.94, 0.9)],
         // Stone walls along the castle street, the coast and the castle

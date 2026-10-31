@@ -35,7 +35,7 @@
 
 use bevy::prelude::*;
 
-use crate::geometry::{fbm, smoothstep};
+use crate::geometry::fbm;
 
 /// The great lake north-west of the mountain, at the bottom of the open
 /// pit: its middle, its radius (m),
@@ -67,16 +67,6 @@ pub(super) fn water(point: Vec2) -> f32 {
     let shore = LAKE_SHORE * (2.0 * fbm(point / 70.0 + 3.0, 2) - 1.0);
     let to_lake = point.distance(LAKE) - LAKE_RADIUS + shore;
     (to_river - RIVER_WIDTH).min(to_lake)
-}
-
-/// Red mesas and buttes all round the horizon, with flat tops and sheer
-/// sides, as in a desert of the American south-west.
-pub(super) fn mountains(point: Vec2) -> f32 {
-    const CENTER: Vec2 = Vec2::new(-700.0, -310.0);
-    let away = point.distance(CENTER);
-    let shape = fbm(point / 420.0, 3);
-    let mesas = smoothstep(0.47, 0.53, shape) * (0.7 + 0.3 * fbm(point / 900.0 + 7.0, 2));
-    smoothstep(1100.0, 1800.0, away) * mesas * 240.0
 }
 
 #[cfg(test)]

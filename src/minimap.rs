@@ -15,7 +15,7 @@ use bevy::{
 };
 
 use crate::bike::{BikeColor, BikeState, LocalPlayer, Player};
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::hud::UiFont;
 use crate::locale::Language;
 use crate::menu::GameState;
@@ -110,10 +110,14 @@ impl Projection {
 fn create_map(
     mut commands: Commands,
     circuit: Option<Res<CurrentCircuit>>,
+    circuits: Option<Res<Circuits>>,
     track: Res<Track>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let checkpoints = circuit.map(|c| c.get().checkpoints()).unwrap_or_default();
+    let checkpoints = circuit
+        .zip(circuits)
+        .map(|(c, circuits)| circuits.get(*c).checkpoints())
+        .unwrap_or_default();
     commands.insert_resource(TrackMap {
         image: images.add(draw(&track, &checkpoints)),
         projection: Projection::new(&track),
@@ -122,6 +126,7 @@ fn create_map(
 
 fn redraw_map(
     circuit: Option<Res<CurrentCircuit>>,
+    circuits: Option<Res<Circuits>>,
     track: Res<Track>,
     mut map: ResMut<TrackMap>,
     mut images: ResMut<Assets<Image>>,
@@ -130,7 +135,10 @@ fn redraw_map(
     if (!track.is_changed() && !circuit_changed) || track.is_added() {
         return;
     }
-    let checkpoints = circuit.map(|c| c.get().checkpoints()).unwrap_or_default();
+    let checkpoints = circuit
+        .zip(circuits)
+        .map(|(c, circuits)| circuits.get(*c).checkpoints())
+        .unwrap_or_default();
     map.projection = Projection::new(&track);
     images
         .insert(&map.image, draw(&track, &checkpoints))

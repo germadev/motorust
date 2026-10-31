@@ -15,7 +15,7 @@ use super::{Mount, Paint, Parts, Plate, REAR_AXLE, WHEEL_RADIUS, plate};
 use crate::shapes::{Section, section};
 
 /// Forma de la carrocería de una moto.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
 pub enum Design {
     /// Morro afilado con faros rasgados en los costados, retrovisores en la
     /// cúpula y escape corto junto a la rueda.

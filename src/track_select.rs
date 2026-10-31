@@ -9,9 +9,9 @@
 
 use bevy::prelude::*;
 
-use crate::bike::ROSTER;
+use crate::bike::RIDERS;
 use crate::camera::{CameraGlide, CameraPlayer};
-use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::legend::{
@@ -108,6 +108,7 @@ fn spawn_screen(
     map: Res<TrackMap>,
     settings: Res<Settings>,
     rules: Res<Rules>,
+    circuits: Res<Circuits>,
 ) {
     let lang = settings.language;
     let mode = rules.mode;
@@ -150,7 +151,7 @@ fn spawn_screen(
                     ..default()
                 })
                 .with_children(|arrows| {
-                    if CIRCUITS.len() > 1 {
+                    if circuits.len() > 1 {
                         for arrow in ["<", ">"] {
                             arrows.spawn((
                                 Text::new(arrow),
@@ -231,7 +232,7 @@ fn spawn_screen(
                             ..default()
                         })
                         .with_children(|dots| {
-                            for index in 0..CIRCUITS.len() {
+                            for index in 0..circuits.len() {
                                 dots.spawn((
                                     Dot(index),
                                     Node {
@@ -317,9 +318,11 @@ pub fn laps_after(laps: u32, step: i32) -> u32 {
 /// vuelven a los modos de juego.
 /// While the circuit chosen is still on its way ([`CircuitLoading`]),
 /// going on to the bikes waits for it.
+#[allow(clippy::too_many_arguments)]
 fn choose_track(
     mut input: MenuInput,
     mut choice: ResMut<CurrentCircuit>,
+    circuits: Res<Circuits>,
     mut rules: ResMut<Rules>,
     mut next: ResMut<NextState<GameState>>,
     mut sounds: MessageWriter<MenuSound>,
@@ -332,8 +335,8 @@ fn choose_track(
         next.set(GameState::Select);
         return;
     }
-    if request.side != 0 && CIRCUITS.len() > 1 {
-        choice.0 = (choice.0 as i32 + request.side).rem_euclid(CIRCUITS.len() as i32) as usize;
+    if request.side != 0 && circuits.len() > 1 {
+        choice.0 = (choice.0 as i32 + request.side).rem_euclid(circuits.len() as i32) as usize;
         sounds.write(MenuSound::Move);
         *waiting = false;
     }
@@ -362,13 +365,14 @@ fn choose_track(
 /// the most laps) and, in a race, its laps.
 fn show_rules(
     choice: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     rules: Res<Rules>,
     settings: Res<Settings>,
     mut record: Query<&mut Text, (With<TrackRecord>, Without<LapsChosen>)>,
     mut laps: Query<&mut Text, (With<LapsChosen>, Without<TrackRecord>)>,
 ) {
     let lang = settings.language;
-    let name = choice.get().name;
+    let name = circuits.get(*choice).name;
     let records = &settings.records;
     let best = match rules.mode {
         Mode::Checkpoint => records.checkpoint_best(name).map(|laps| match lang {
@@ -398,6 +402,7 @@ fn show_rules(
 #[allow(clippy::too_many_arguments)]
 fn show_track(
     choice: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     track: Res<Track>,
     settings: Res<Settings>,
     mut name: Single<&mut Text, NameFilter>,
@@ -407,7 +412,7 @@ fn show_track(
     loading: Res<CircuitLoading>,
 ) {
     let lang = settings.language;
-    let circuit = choice.get();
+    let circuit = circuits.get(*choice);
     let wanted_name = circuit.name(lang);
     let wanted_description = circuit.description(lang);
     if name.0 != wanted_name {
@@ -423,10 +428,10 @@ fn show_track(
         (Language::Spanish, true) => "Cargando el circuito…".to_string(),
         (Language::English, true) => "Loading the track…".to_string(),
         (Language::Spanish, false) => {
-            format!("{kilometres} km por vuelta   ·   {} motos", ROSTER.len())
+            format!("{kilometres} km por vuelta   ·   {RIDERS} motos")
         }
         (Language::English, false) => {
-            format!("{kilometres} km per lap   ·   {} bikes", ROSTER.len())
+            format!("{kilometres} km per lap   ·   {RIDERS} bikes")
         }
     };
     if length.0 != label {
@@ -547,6 +552,7 @@ mod tests {
             .init_resource::<Rules>()
             .init_resource::<InputDevice>()
             .init_resource::<CurrentCircuit>()
+            .insert_resource(*crate::circuits::CIRCUITS)
             .init_resource::<CircuitLoading>()
             .init_resource::<CameraGlide>()
             .init_resource::<UiIcons>()

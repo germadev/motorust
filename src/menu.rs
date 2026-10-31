@@ -11,7 +11,7 @@ use std::f32::consts::TAU;
 
 use bevy::prelude::*;
 
-use crate::bike::{BikeAssets, BikeState, ROSTER};
+use crate::bike::{BikeAssets, BikeState, RIDERS, Roster};
 use crate::camera::{CameraGlide, CameraPlayer, right_stick};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
@@ -42,7 +42,7 @@ pub enum GameState {
     Race,
 }
 
-/// La moto que ha elegido el jugador en modo individual: su índice en [`ROSTER`].
+/// La moto que ha elegido el jugador en modo individual: su índice en [`Roster`].
 #[derive(Resource, Default)]
 pub struct Choice(pub usize);
 
@@ -112,7 +112,7 @@ fn reset_split_choices(mut split_choices: ResMut<SplitChoices>) {
     split_choices.p2_ready = false;
 }
 
-/// Moto en exposición: su índice en [`ROSTER`].
+/// Moto en exposición: su índice en [`Roster`].
 #[derive(Component)]
 struct Showcase(usize);
 
@@ -144,8 +144,13 @@ struct SplitDot {
 }
 
 /// Las motos en la parrilla de salida, por orden.
-fn spawn_showcase(mut commands: Commands, track: Res<Track>, mut assets: BikeAssets) {
-    for (index, entry) in ROSTER.iter().enumerate() {
+fn spawn_showcase(
+    mut commands: Commands,
+    roster: Res<Roster>,
+    track: Res<Track>,
+    mut assets: BikeAssets,
+) {
+    for (index, entry) in roster.iter().enumerate() {
         let state = BikeState::parked_on(&track, track.grid_slot(index));
         let bike = assets.spawn(&mut commands, entry, state);
         commands
@@ -286,7 +291,7 @@ fn spawn_menu(
                                 ..default()
                             })
                             .with_children(|dots| {
-                                for index in 0..ROSTER.len() {
+                                for index in 0..RIDERS {
                                     dots.spawn((
                                         SplitDot { player: 0, index },
                                         Node {
@@ -410,7 +415,7 @@ fn spawn_menu(
                                 ..default()
                             })
                             .with_children(|dots| {
-                                for index in 0..ROSTER.len() {
+                                for index in 0..RIDERS {
                                     dots.spawn((
                                         SplitDot { player: 1, index },
                                         Node {
@@ -513,7 +518,7 @@ fn spawn_menu(
                             ..default()
                         })
                         .with_children(|dots| {
-                            for index in 0..ROSTER.len() {
+                            for index in 0..RIDERS {
                                 dots.spawn((
                                     Dot(index),
                                     Node {
@@ -668,8 +673,8 @@ fn choose(
         // Player 1
         if !split_choices.p1_ready {
             if p1_action.side != 0 {
-                split_choices.p1 = (split_choices.p1 as i32 + p1_action.side)
-                    .rem_euclid(ROSTER.len() as i32) as usize;
+                split_choices.p1 =
+                    (split_choices.p1 as i32 + p1_action.side).rem_euclid(RIDERS as i32) as usize;
                 choice.0 = split_choices.p1;
                 sounds.write(MenuSound::Move);
             }
@@ -685,8 +690,8 @@ fn choose(
         // Player 2
         if !split_choices.p2_ready {
             if p2_action.side != 0 {
-                split_choices.p2 = (split_choices.p2 as i32 + p2_action.side)
-                    .rem_euclid(ROSTER.len() as i32) as usize;
+                split_choices.p2 =
+                    (split_choices.p2 as i32 + p2_action.side).rem_euclid(RIDERS as i32) as usize;
                 choice.0 = split_choices.p2;
                 sounds.write(MenuSound::Move);
             }
@@ -712,7 +717,7 @@ fn choose(
     } else {
         let request = input.read();
         if request.side != 0 {
-            choice.0 = (choice.0 as i32 + request.side).rem_euclid(ROSTER.len() as i32) as usize;
+            choice.0 = (choice.0 as i32 + request.side).rem_euclid(RIDERS as i32) as usize;
         }
         if request.confirm || request.start {
             sounds.write(MenuSound::Confirm);
@@ -811,6 +816,7 @@ fn orbit_camera(
 /// Nombre, descripción y puntos de la moto elegida en modo individual.
 fn show_choice(
     choice: Res<Choice>,
+    roster: Res<Roster>,
     settings: Res<Settings>,
     game_mode: Res<GameMode>,
     mut texts: Query<(&SingleSelectRole, &mut Text, &mut TextColor)>,
@@ -819,7 +825,7 @@ fn show_choice(
     if *game_mode != GameMode::SinglePlayer {
         return;
     }
-    let entry = &ROSTER[choice.0];
+    let entry = &roster[choice.0];
     let wanted_desc = entry.description(settings.language);
 
     for (role, mut text, mut color) in &mut texts {
@@ -883,6 +889,7 @@ fn show_legend(
 /// Nombre, descripción, estado y puntos de cada moto en modo pantalla dividida.
 fn show_split_choices(
     split_choices: Res<SplitChoices>,
+    roster: Res<Roster>,
     settings: Res<Settings>,
     local_players: Res<LocalPlayersConfig>,
     game_mode: Res<GameMode>,
@@ -894,7 +901,7 @@ fn show_split_choices(
     }
     let lang = settings.language;
 
-    let e1 = &ROSTER[split_choices.p1];
+    let e1 = &roster[split_choices.p1];
     let d1 = e1.description(lang);
     let p1_hint = if split_choices.p1_ready {
         (
@@ -920,7 +927,7 @@ fn show_split_choices(
         )
     };
 
-    let e2 = &ROSTER[split_choices.p2];
+    let e2 = &roster[split_choices.p2];
     let d2 = e2.description(lang);
     let p2_hint = if split_choices.p2_ready {
         (

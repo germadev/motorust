@@ -18,7 +18,7 @@ use super::scenery::{FlowerKind, Span, span};
 use super::terrain::{GroundMesh, Terrain};
 use super::textures::WorldTextures;
 use super::{Basis, Prepared, Roadside, Urgency, dam, foliage, mirror, road, sea, structures};
-use crate::circuits::CIRCUITS;
+use crate::circuits::Circuit;
 use crate::track::Track;
 use std::sync::{Arc, Mutex};
 
@@ -52,11 +52,11 @@ fn stretch_box(track: &Track, stretch: Span) -> (Vec2, Vec2) {
 /// first part of a circuit is: put in the world by [`super::build`], marked
 /// as a look.
 pub(super) fn prepare_preview(
+    circuit: &'static Circuit,
     index: usize,
     textures: &WorldTextures,
     urgency: Urgency,
 ) -> Prepared {
-    let circuit = &CIRCUITS[index];
     let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
     let stretch = stretch(track.lap_length());
@@ -90,6 +90,7 @@ pub(super) fn prepare_preview(
     Prepared {
         basis: Basis {
             index,
+            circuit,
             track: Arc::new(track),
             terrain: Arc::new(terrain),
             shore: Arc::new(shore),
@@ -181,6 +182,7 @@ fn cut_to(mut mesh: Mesh, (min, max): (Vec2, Vec2)) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuits::CIRCUITS;
     use bevy::asset::RenderAssetUsages;
     use bevy::mesh::PrimitiveTopology;
 
@@ -233,7 +235,7 @@ mod tests {
             .iter()
             .position(|circuit| circuit.name == "Fellowship Road")
             .expect("Fellowship Road is a circuit");
-        let look = prepare_preview(index, &textures, Urgency::Now);
+        let look = prepare_preview(&CIRCUITS[index], index, &textures, Urgency::Now);
         let whole = Terrain::on_threads(
             &Track::new(&CIRCUITS[index].layout),
             &CIRCUITS[index].scenery,

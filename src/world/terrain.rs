@@ -236,7 +236,7 @@ impl Terrain {
             .collect();
         let mountain: Vec<f32> = points
             .iter()
-            .map(|&point| smoothstep(2.0, 40.0, (scenery.mountains)(point)))
+            .map(|&point| smoothstep(2.0, 40.0, scenery.mountains.height(point)))
             .collect();
         let hollow = hollows(&xs, &zs, &heights, &mountain);
         let up = ups(&xs, &zs, &heights);
@@ -1297,7 +1297,7 @@ impl<'a> Shaper<'a> {
         if self.scenery.soil == Soil::Floor {
             return self.floor(nearest);
         }
-        let mountains = (self.scenery.mountains)(point);
+        let mountains = self.scenery.mountains.height(point);
         let Some(nearest) = nearest else {
             let wild = self.natural(point) + self.slopes(point) + self.rocks(point) + mountains;
             let wild = self.pit(point, wild);

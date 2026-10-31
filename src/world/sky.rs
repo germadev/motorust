@@ -26,7 +26,7 @@ use super::generate_mipmaps;
 use super::realm::Realm;
 use super::scenery::SkyStyle;
 use crate::camera::CameraPlayer;
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::geometry::{fbm, smoothstep, value_noise};
 
 /// Radio de la cúpula: dentro del plano lejano de la cámara.
@@ -700,6 +700,7 @@ fn lit_from_the_sun(at: Vec3, size: Vec2, sun: Vec3) -> Transform {
 #[allow(clippy::too_many_arguments)]
 pub fn light_the_sky(
     current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     parts: Option<Res<SkyParts>>,
     mut fogs: Query<&mut DistanceFog>,
     mut gradings: Query<&mut ColorGrading>,
@@ -715,7 +716,7 @@ pub fn light_the_sky(
     let Some(parts) = parts else {
         return;
     };
-    let style = current.get().scenery.sky;
+    let style = circuits.get(*current).scenery.sky;
     let palette = Palette::of(style);
     let changed = current.is_changed() || parts.is_added();
     for mut fog in &mut fogs {

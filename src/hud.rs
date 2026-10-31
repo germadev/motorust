@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 
-use crate::circuits::CurrentCircuit;
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::legend::{KeyPrompt, correction_prompt, music_prompt, race_prompts, spawn_legend};
 use crate::menu::GameState;
@@ -415,10 +415,11 @@ fn show_race_legend(
     mut commands: Commands,
     options: Res<DebugOptions>,
     settings: Res<Settings>,
-    (rules, free_music, circuit): (
+    (rules, free_music, circuit, circuits): (
         Option<Res<Rules>>,
         Option<Res<FreeMusic>>,
         Option<Res<CurrentCircuit>>,
+        Option<Res<Circuits>>,
     ),
     pause: Res<Pause>,
     device: Option<Res<InputDevice>>,
@@ -441,9 +442,9 @@ fn show_race_legend(
         .show_legend
         .then(|| race_prompts(active_dev, lang, &settings.controls));
     if rules.is_some_and(|rules| rules.mode == Mode::Free)
-        && let (Some(free_music), Some(circuit)) = (free_music, circuit)
+        && let (Some(free_music), Some(circuit), Some(circuits)) = (free_music, circuit, circuits)
     {
-        let what = free_music.describe(circuit.0, lang);
+        let what = free_music.describe(circuit.0, &circuits, lang);
         wanted
             .get_or_insert_default()
             .push(music_prompt(active_dev, lang, what));

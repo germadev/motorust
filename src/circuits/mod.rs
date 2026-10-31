@@ -6,10 +6,12 @@ pub mod data;
 mod fellowship_road;
 mod ghost_island;
 mod gold_mine;
+#[cfg(test)]
 mod loop_island;
+#[cfg(test)]
 mod moon_base;
-mod turbo_bay;
 
+#[cfg(test)]
 use std::sync::LazyLock;
 
 use bevy::prelude::*;
@@ -103,8 +105,8 @@ impl Circuit {
     }
 }
 
-/// The circuits written in RON, by the names of their files in
-/// `assets/circuits/`, built into the game.
+/// The circuits, by the names of their files in `assets/circuits/`, built
+/// into the game, in the order of the track select screen.
 const FILES: [(&str, &str); 8] = [
     ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
     (
@@ -116,16 +118,16 @@ const FILES: [(&str, &str); 8] = [
         include_str!("../../assets/circuits/loop_island.ron"),
     ),
     (
-        "moon_base.ron",
-        include_str!("../../assets/circuits/moon_base.ron"),
-    ),
-    (
         "gold_mine.ron",
         include_str!("../../assets/circuits/gold_mine.ron"),
     ),
     (
         "ghost_island.ron",
         include_str!("../../assets/circuits/ghost_island.ron"),
+    ),
+    (
+        "moon_base.ron",
+        include_str!("../../assets/circuits/moon_base.ron"),
     ),
     (
         "fellowship_road.ron",
@@ -144,16 +146,10 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
         "dry" => |_| 1000.0,
         "flat" => |_| 0.0,
         "bay_coast" => bay::coast,
-        "bay_mountains" => bay::mountains,
-        "turbo_bay_mountains" => turbo_bay::mountains,
-        "loop_island_mountains" => loop_island::mountains,
-        "moon_base_mountains" => moon_base::mountains,
         "gold_mine_water" => gold_mine::water,
-        "gold_mine_mountains" => gold_mine::mountains,
         "ghost_island_lakes" => ghost_island::lakes,
-        "ghost_island_mountains" => ghost_island::mountains,
+        "ghost_island_volcano_relief" => ghost_island::volcano_gullies,
         "fellowship_road_water" => fellowship_road::water,
-        "fellowship_road_mountains" => fellowship_road::mountains,
         _ => return None,
     })
 }
@@ -177,41 +173,55 @@ fn music(file: &str) -> Option<&'static [u8]> {
     })
 }
 
-/// Las pistas, en el orden de la pantalla de elegir pista: those written in
-/// RON read from their files the first time they are wanted.
-pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
-    let [
-        (bay, bay_file),
-        (turbo_bay, turbo_bay_file),
-        (loop_island, loop_island_file),
-        (moon_base, moon_base_file),
-        (gold_mine, gold_mine_file),
-        (ghost_island, ghost_island_file),
-        (fellowship_road, fellowship_road_file),
-        (toy_store, toy_store_file),
-    ] = FILES;
-    [
-        data::load(bay, bay_file),
-        data::load(turbo_bay, turbo_bay_file),
-        data::load(loop_island, loop_island_file),
-        data::load(gold_mine, gold_mine_file),
-        data::load(ghost_island, ghost_island_file),
-        data::load(moon_base, moon_base_file),
-        data::load(fellowship_road, fellowship_road_file),
-        data::load(toy_store, toy_store_file),
-    ]
-});
+/// Las pistas, en el orden de la pantalla de elegir pista: read from their
+/// files once, when the game starts ([`Circuits::load`]), and kept for as
+/// long as it runs.
+#[derive(Resource, Clone, Copy)]
+pub struct Circuits(&'static [Circuit]);
 
-/// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
+impl Circuits {
+    /// Every circuit, read from its file (see [`data::load`]).
+    pub fn load() -> Self {
+        let circuits: Vec<Circuit> = FILES
+            .iter()
+            .map(|&(name, text)| data::load("circuits", name, text))
+            .collect();
+        Circuits(Vec::leak(circuits))
+    }
+
+    /// The one chosen.
+    pub fn get(&self, current: CurrentCircuit) -> &'static Circuit {
+        self.at(current.0)
+    }
+
+    /// The one at `index`, for as long as the game runs.
+    pub fn at(&self, index: usize) -> &'static Circuit {
+        &self.0[index]
+    }
+}
+
+impl Default for Circuits {
+    fn default() -> Self {
+        Self::load()
+    }
+}
+
+impl std::ops::Deref for Circuits {
+    type Target = [Circuit];
+
+    fn deref(&self) -> &[Circuit] {
+        self.0
+    }
+}
+
+/// The circuits, for the tests: read once, as the game reads them.
+#[cfg(test)]
+pub static CIRCUITS: LazyLock<Circuits> = LazyLock::new(Circuits::load);
+
+/// La pista elegida: su índice en [`Circuits`]. Al cambiarla, el mundo se
 /// vuelve a construir ([`crate::world`]).
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct CurrentCircuit(pub usize);
-
-impl CurrentCircuit {
-    pub fn get(self) -> &'static Circuit {
-        &CIRCUITS[self.0]
-    }
-}
 
 #[cfg(test)]
 mod tests {

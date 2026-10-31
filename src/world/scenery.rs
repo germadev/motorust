@@ -6,6 +6,8 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
+pub use super::mountains::Mountains;
+
 use crate::geometry::smoothstep;
 
 /// Un tramo de la vuelta, en metros desde la meta. Puede pasar por la meta:
@@ -519,9 +521,9 @@ pub struct Scenery {
     pub cuttings: &'static [Cutting],
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub terraces: &'static [Terrace],
-    /// Montañas lejanas que cierran el horizonte.
-    #[serde(deserialize_with = "crate::circuits::data::function")]
-    pub mountains: fn(Vec2) -> f32,
+    /// Montañas lejanas que cierran el horizonte: none if left out.
+    #[serde(default)]
+    pub mountains: Mountains,
     /// Colores de las franjas de los pianos.
     #[serde(deserialize_with = "crate::circuits::data::color_pair")]
     pub curbs: [Color; 2],

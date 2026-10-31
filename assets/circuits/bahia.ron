@@ -94,7 +94,16 @@
             (span: Span(1250.0, 1400.0), side: Right, height: 11.0),
         ],
         // Montañas tierra adentro, al noreste, que cierran el horizonte.
-        mountains: "bay_mountains",
+        mountains: [
+            Range(
+                center: (170.0, -180.0),
+                near: 380.0,
+                far: 1300.0,
+                // Past a line through it, to the north-east.
+                toward: Some((1.0, -1.0)),
+                relief: (low: 104.0, high: 260.0, scale: 300.0, octaves: 4),
+            ),
+        ],
         curbs: [(0.85, 0.08, 0.06), (0.95, 0.95, 0.95)],
         walls: [
             // Paseo marítimo con barandilla abierta al mar en la recta de meta

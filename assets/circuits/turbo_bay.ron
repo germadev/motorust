@@ -415,7 +415,17 @@
             (center: (480.0, -1046.0), radius: 12.0, height: 23.0, skirt: 30.0),
         ],
         // Across the sea, a mountainous coast to the east and the north.
-        mountains: "turbo_bay_mountains",
+        mountains: [
+            Range(
+                center: (280.0, -300.0),
+                near: 1700.0,
+                far: 2600.0,
+                // Only to the east and the north; to the west and the south,
+                // open sea.
+                facing: Some((direction: (0.6, -0.8), from: -0.2, to: 0.5)),
+                relief: (low: 84.0, high: 240.0, scale: 280.0, octaves: 4),
+            ),
+        ],
         curbs: [(0.1, 0.25, 0.75), (0.95, 0.95, 0.95)],
         walls: [
             (span: Span(4304.0, 250.0), side: Left, style: Railing),

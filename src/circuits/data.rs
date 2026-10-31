@@ -1,10 +1,12 @@
 //! Circuits written as data, in RON (`assets/circuits/`): how a file is read
-//! into the same [`Circuit`] the circuits written in Rust are.
+//! into the same [`Circuit`] the circuits written in Rust were. The bikes'
+//! roster (`assets/bikes/roster.ron`, see [`crate::bike::Roster`]) is read
+//! the same way.
 //!
 //! What a file gives as a list is read into a `Vec` and leaked, as is each
 //! text, so that a circuit read from a file is as `&'static` as one written
 //! in Rust and the code using it stays as it is. Each file is read once, at
-//! startup ([`super::CIRCUITS`]).
+//! startup ([`super::Circuits::load`]).
 //!
 //! How a file writes what is not plain numbers, lists and structs:
 //!
@@ -22,25 +24,29 @@
 use bevy::prelude::*;
 use serde::de::{Deserialize, Deserializer, Error};
 
-use super::{Circuit, Song};
+#[cfg(any(doc, test))]
+use super::Circuit;
+use super::Song;
 use crate::world::scenery::{Coast, Span, span};
 
-/// A circuit from its file, `name` (for the messages) holding `text`
-/// (`'static`, as what it has of texts is, see [`Circuit::name`]).
-pub fn parse(name: &str, text: &'static str) -> Result<Circuit, String> {
+/// What a file, `name` (for the messages), holding `text` says: a circuit,
+/// say (`'static`, as what it has of texts is, see [`Circuit::name`]).
+pub fn parse<T: Deserialize<'static>>(name: &str, text: &'static str) -> Result<T, String> {
     ron::from_str(text).map_err(|error| format!("{name}: {error}"))
 }
 
-/// A circuit built into the game from its file in `assets/circuits/`.
+/// What a file built into the game from `assets/FOLDER/` says (a circuit,
+/// from `assets/circuits/`, or the bikes' roster, from `assets/bikes/`).
 ///
 /// In a desktop development build the file is read from the disk if it is
 /// there, so a circuit can be changed and tried again without compiling,
 /// just restarting the game.
-pub fn load(name: &str, built_in: &'static str) -> Circuit {
+pub fn load<T: Deserialize<'static>>(folder: &str, name: &str, built_in: &'static str) -> T {
     #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
     let on_disk = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets/circuits")
+            .join("assets")
+            .join(folder)
             .join(name),
     )
     .ok()
@@ -49,6 +55,12 @@ pub fn load(name: &str, built_in: &'static str) -> Circuit {
     let on_disk: Option<&'static str> = None;
     let text = on_disk.unwrap_or(built_in);
     parse(name, text).unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// A colour's sRGB, as Bevy's `Srgba` (the bikes' colours).
+pub fn srgba<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Srgba, D::Error> {
+    let (red, green, blue) = Rgb::deserialize(deserializer)?;
+    Ok(Srgba::rgb(red, green, blue))
 }
 
 /// A list, leaked.
@@ -123,9 +135,17 @@ pub fn accent<'de, D: Deserializer<'de>>(
     Ok(Option::<(usize, Rgb)>::deserialize(deserializer)?.map(|(from, rgb)| (from, srgb(rgb))))
 }
 
-/// One of the terrain's functions, by name.
-pub fn function<'de, D: Deserializer<'de>>(deserializer: D) -> Result<fn(Vec2) -> f32, D::Error> {
-    named(&String::deserialize(deserializer)?).map_err(D::Error::custom)
+/// One of the terrain's functions: how high, or how far from the water, a
+/// point is.
+pub type TerrainFunction = fn(Vec2) -> f32;
+
+/// One of the terrain's functions, by name, if there is one.
+pub fn optional_function<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<TerrainFunction>, D::Error> {
+    Option::<String>::deserialize(deserializer)?
+        .map(|name| named(&name).map_err(D::Error::custom))
+        .transpose()
 }
 
 fn named(name: &str) -> Result<fn(Vec2) -> f32, String> {
@@ -209,7 +229,7 @@ mod tests {
     #[test]
     fn every_circuit_file_reads() {
         for (name, text) in super::super::FILES {
-            parse(name, text).unwrap_or_else(|error| panic!("{error}"));
+            parse::<Circuit>(name, text).unwrap_or_else(|error| panic!("{error}"));
         }
         assert_eq!(CIRCUITS[0].name, "Bahía GP");
     }
@@ -219,12 +239,27 @@ mod tests {
         let (name, text) = super::super::FILES[0];
         let changed = |from, to| &*String::leak(text.replacen(from, to, 1));
         let unknown = changed("pace:", "speed:");
-        assert!(parse(name, unknown).err().unwrap().contains("speed"));
+        assert!(
+            parse::<Circuit>(name, unknown)
+                .err()
+                .unwrap()
+                .contains("speed")
+        );
         let function = changed("\"bay_coast\"", "\"nowhere\"");
-        assert!(parse(name, function).err().unwrap().contains("nowhere"));
+        assert!(
+            parse::<Circuit>(name, function)
+                .err()
+                .unwrap()
+                .contains("nowhere")
+        );
         // Nor a field the scenery does not have.
         let scenery = changed("scenery: (", "scenery: (lakes: [], ");
-        assert!(parse(name, scenery).err().unwrap().contains("lakes"));
+        assert!(
+            parse::<Circuit>(name, scenery)
+                .err()
+                .unwrap()
+                .contains("lakes")
+        );
     }
 
     #[test]

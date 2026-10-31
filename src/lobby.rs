@@ -782,7 +782,8 @@ mod tests {
                 p1: Some(ControllerBinding::Wasd),
                 p2: Some(ControllerBinding::Arrows),
             })
-            .init_resource::<crate::circuits::CurrentCircuit>();
+            .init_resource::<crate::circuits::CurrentCircuit>()
+            .insert_resource(*crate::circuits::CIRCUITS);
 
         let track = crate::track::Track::new(&crate::circuits::CIRCUITS[0].layout);
         let image = app

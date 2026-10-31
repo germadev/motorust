@@ -43,7 +43,7 @@
 
 use bevy::prelude::*;
 
-use crate::geometry::{fbm, smoothstep};
+use crate::geometry::fbm;
 
 /// The pool of Bywater, below the right of the village, where the Water
 /// widens before it runs on into the Brandywine: its middle and radius
@@ -153,27 +153,15 @@ fn river_banks(points: &[(Vec2, f32)], point: Vec2) -> f32 {
         .fold(f32::MAX, f32::min)
 }
 
-/// Far off: the Misty Mountains to the east, a range of peaks under snow,
-/// and low hills round the rest of the horizon.
-pub(super) fn mountains(point: Vec2) -> f32 {
-    const CENTER: Vec2 = Vec2::new(850.0, -80.0);
-    let hills = smoothstep(1500.0, 2500.0, point.distance(CENTER))
-        * 150.0
-        * (0.35 + 0.65 * fbm(point / 380.0, 4));
-    // Running north and south, a little ragged, past the far side of the
-    // lap; its peaks over the snow line.
-    let range = smoothstep(
-        2150.0,
-        2750.0,
-        point.x + 120.0 * (fbm(point / 900.0, 2) - 0.5),
-    );
-    let peaks = 380.0 + 620.0 * fbm(point / 520.0 + 3.0, 4).powf(1.4);
-    hills.max(range * peaks)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// How high the circuit's mountains stand at `point`, as its file has
+    /// them.
+    fn mountains(point: Vec2) -> f32 {
+        fellowship_road().scenery.mountains.height(point)
+    }
     use crate::circuits::{CIRCUITS, Circuit};
     use crate::track::Track;
     use crate::world::scenery::{Coast, Span, span};

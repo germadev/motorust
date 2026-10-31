@@ -20,7 +20,7 @@ use bevy::audio::AddAudioSource;
 use bevy::prelude::*;
 
 use crate::bike::{BikeInput, BikeState, LocalPlayer, Player};
-use crate::circuits::{Ambience, CIRCUITS, CurrentCircuit};
+use crate::circuits::{Ambience, Circuits, CurrentCircuit};
 use crate::geometry::{approach, forward, smoothstep};
 use crate::menu::{Choice, GameState};
 use crate::pause::Pause;
@@ -511,10 +511,11 @@ fn nearest_listener(listeners: &[(Vec3, Vec3, Vec3)], at: Vec3) -> &(Vec3, Vec3,
 fn surroundings(
     state: Res<State<GameState>>,
     circuit: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     controls: Res<SoundControls>,
 ) {
     let ambience = if *state.get() == GameState::Select {
-        CIRCUITS[circuit.0].ambience
+        circuits.get(*circuit).ambience
     } else {
         Ambience::default()
     };
