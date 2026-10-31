@@ -596,7 +596,15 @@
         ],
         // Red mesas and buttes all round the horizon, with flat tops and
         // sheer sides, as in a desert of the American south-west.
-        mountains: "gold_mine_mountains",
+        mountains: [
+            Range(
+                center: (-700.0, -310.0),
+                near: 1100.0,
+                far: 1800.0,
+                mesas: Some((from: 0.47, to: 0.53, scale: 420.0, octaves: 3)),
+                relief: (low: 168.0, high: 240.0, scale: 900.0, octaves: 2, offset: (7.0, 7.0)),
+            ),
+        ],
         // Rust red and cream.
         curbs: [(0.62, 0.2, 0.08), (0.95, 0.86, 0.62)],
         // Stone parapets along the rim of the pit and up the switchbacks,

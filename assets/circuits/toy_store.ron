@@ -86,8 +86,8 @@
 //
 // Its lap and branches are designed with tools/toy_store_layout.py, which
 // writes their lists into this file (`--write`). How a circuit's file is
-// written: see src/circuits/data.rs. It has no water and no mountains: the
-// game's `dry` and `flat`.
+// written: see src/circuits/data.rs. It has no water (the game's `dry`) and no
+// mountains.
 (
     name: "Juguetería",
     name_en: "Toy Store",
@@ -674,7 +674,6 @@
         soil: Floor,
         greens: Lawn,
         grass_shade: 1.0,
-        mountains: "flat",
         // A slot-car track's red and white kerbs.
         curbs: [(0.88, 0.08, 0.06), (0.96, 0.96, 0.94)],
         // Toy blocks along the north wall, and elsewhere a slot-car track's

@@ -6,9 +6,10 @@ pub mod data;
 mod fellowship_road;
 mod ghost_island;
 mod gold_mine;
+#[cfg(test)]
 mod loop_island;
+#[cfg(test)]
 mod moon_base;
-mod turbo_bay;
 
 #[cfg(test)]
 use std::sync::LazyLock;
@@ -145,16 +146,10 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
         "dry" => |_| 1000.0,
         "flat" => |_| 0.0,
         "bay_coast" => bay::coast,
-        "bay_mountains" => bay::mountains,
-        "turbo_bay_mountains" => turbo_bay::mountains,
-        "loop_island_mountains" => loop_island::mountains,
-        "moon_base_mountains" => moon_base::mountains,
         "gold_mine_water" => gold_mine::water,
-        "gold_mine_mountains" => gold_mine::mountains,
         "ghost_island_lakes" => ghost_island::lakes,
-        "ghost_island_mountains" => ghost_island::mountains,
+        "ghost_island_volcano_relief" => ghost_island::volcano_gullies,
         "fellowship_road_water" => fellowship_road::water,
-        "fellowship_road_mountains" => fellowship_road::mountains,
         _ => return None,
     })
 }

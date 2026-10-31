@@ -135,9 +135,17 @@ pub fn accent<'de, D: Deserializer<'de>>(
     Ok(Option::<(usize, Rgb)>::deserialize(deserializer)?.map(|(from, rgb)| (from, srgb(rgb))))
 }
 
-/// One of the terrain's functions, by name.
-pub fn function<'de, D: Deserializer<'de>>(deserializer: D) -> Result<fn(Vec2) -> f32, D::Error> {
-    named(&String::deserialize(deserializer)?).map_err(D::Error::custom)
+/// One of the terrain's functions: how high, or how far from the water, a
+/// point is.
+pub type TerrainFunction = fn(Vec2) -> f32;
+
+/// One of the terrain's functions, by name, if there is one.
+pub fn optional_function<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<TerrainFunction>, D::Error> {
+    Option::<String>::deserialize(deserializer)?
+        .map(|name| named(&name).map_err(D::Error::custom))
+        .transpose()
 }
 
 fn named(name: &str) -> Result<fn(Vec2) -> f32, String> {

@@ -335,7 +335,23 @@
         ],
         // Distant ringed mountain ranges rising all round the horizon, with
         // a tall peak to the north-east.
-        mountains: "moon_base_mountains",
+        mountains: [
+            Range(
+                center: (380.0, -80.0),
+                near: 1450.0,
+                far: 2600.0,
+                relief: (low: 119.0, high: 340.0, scale: 280.0, octaves: 4, offset: (7.3, 7.3)),
+            ),
+            // The tall peak to the north-east, a crater at its top.
+            Cone(
+                center: (1450.0, -2100.0),
+                radius: 1350.0,
+                height: 520.0,
+                steepness: 1.6,
+                crater: 90.0,
+                rim: 0.14,
+            ),
+        ],
         // Cyan and white.
         curbs: [(0.12, 0.68, 0.96), (0.92, 0.95, 0.98)],
         walls: [

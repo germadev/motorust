@@ -25,28 +25,8 @@
 //!    high-altitude straightaway jump (`4095 m`), and dives -35.6 m back to the
 //!    finish line.
 //!
-//! The circuit is written in RON, `assets/circuits/moon_base.ron`; here is
-//! only the function its file names, its mountains, and tests of it.
-
-use bevy::prelude::*;
-
-use crate::geometry::{fbm, smoothstep};
-
-/// Distant ringed mountain ranges rising all round the horizon, with a tall
-/// peak to the north-east.
-pub(super) fn mountains(point: Vec2) -> f32 {
-    const CENTER: Vec2 = Vec2::new(380.0, -80.0);
-    let away = point - CENTER;
-    let dist = away.length();
-    let ring = smoothstep(1450.0, 2600.0, dist)
-        * 340.0
-        * (0.35 + 0.65 * fbm(point / 280.0 + Vec2::splat(7.3), 4));
-    let crater_peak = Vec2::new(1450.0, -2100.0);
-    let reach = point.distance(crater_peak) / 1350.0;
-    let cone = 520.0 * (1.0 - reach).max(0.0).powf(1.6);
-    let caldera = 90.0 * (1.0 - smoothstep(0.0, 0.14, reach));
-    ring.max(cone - caldera)
-}
+//! The circuit is written in RON, `assets/circuits/moon_base.ron`, its
+//! mountains too; here are tests of it.
 
 #[cfg(test)]
 mod tests {

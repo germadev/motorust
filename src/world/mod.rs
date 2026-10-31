@@ -19,6 +19,7 @@ mod lod;
 mod middle_earth;
 mod mine;
 mod mirror;
+pub mod mountains;
 mod preview;
 mod props;
 mod quads;
