@@ -2,7 +2,9 @@
 """Draws a circuit's layout and height profile, and reports where it may
 not ride well, without building the game.
 
-Reads a circuit's source (`src/circuits/NAME.rs`) and works its lap out as
+Reads a circuit's source (`src/circuits/NAME.rs`, or its file in RON,
+`assets/circuits/NAME.ron`, see `src/circuits/data.rs`, with what of it is
+left in `src/circuits/NAME.rs`) and works its lap out as
 the game does (`src/track.rs`): the centre line through `CONTROL_POINTS`
 (closed centripetal Catmull-Rom, resampled every `SAMPLE_SPACING` metres)
 and the heights along it from `ELEVATION` (Hermite with Catmull-Rom
@@ -12,9 +14,10 @@ out: this is the lap's centre line only.
 - `--plan FILE.png`: the lap from above, north (-Z) up as on the race map,
   with its walls, its control points (red), a label every `--every` metres
   along it with its height, and what the circuit's source draws round it:
-  its coast (`COAST` or `SHORE`), hills (`massif`, brown; `climbed_massif`,
-  green, with their heights), and a dam's lake (`LAKE`) and river
-  (`RIVER`). `--box X0 Z0 X1 Z1` zooms in (metres).
+  its coast (`COAST` or `SHORE`; in RON, an `Outline` or
+  `OutlineWithLakes`), hills (`massif`, brown; `climbed_massif`, green, with
+  their heights), and a dam's lake (`LAKE`) and river (`RIVER`; in RON, the
+  dam's `lake` and `river`). `--box X0 Z0 X1 Z1` zooms in (metres).
 - `--profile FILE.png`: height, grade and the radius of the crests and
   dips along the lap (or `--along FROM TO` of it), with the grade the game
   allows and the crest radius the bike takes off over at its top speed.
@@ -32,6 +35,7 @@ Needs numpy (and matplotlib for the pictures).
 """
 
 import argparse
+import os
 import re
 import sys
 
@@ -60,6 +64,12 @@ NUMBER = r"-?\d+(?:\.\d+)?"
 def const_block(text, name):
     """The body of `const NAME: [...] = [ ... ];`, or None."""
     m = re.search(r"const %s: \[[^\]]*\] = \[(.*?)\n\];" % name, text, re.S)
+    return m.group(1) if m else None
+
+
+def ron_list(text, name):
+    """The body of `name: [ ... ],` in a circuit's RON file, or None."""
+    m = re.search(r"\b%s: \[(.*?)\n\s*\]," % name, text, re.S)
     return m.group(1) if m else None
 
 
@@ -144,8 +154,27 @@ class Lap:
 
     def __init__(self, path):
         self.text = open(path).read()
-        control = vec2s(const_block(self.text, "CONTROL_POINTS"))
-        self.elevation = pairs(const_block(self.text, "ELEVATION"))
+        if path.endswith(".ron"):
+            # Its comments name things too, written as its values are.
+            self.text = re.sub(r"//[^\n]*", "", self.text)
+        self.ron = path.endswith(".ron")
+        if self.ron:
+            # What its file names in Rust (a dam's or a pit's water, say) is
+            # in `src/circuits/NAME.rs`, if there: read with it.
+            source = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "src",
+                "circuits",
+                os.path.basename(path)[: -len(".ron")] + ".rs",
+            )
+            if os.path.exists(source):
+                self.text += open(source).read()
+            control = np.array(pairs(ron_list(self.text, "control_points")))
+            self.elevation = pairs(ron_list(self.text, "elevation"))
+        else:
+            control = vec2s(const_block(self.text, "CONTROL_POINTS"))
+            self.elevation = pairs(const_block(self.text, "ELEVATION"))
         self.line = closed_curve(control, SAMPLE_SPACING)
         self.control = control
         n = len(self.line)
@@ -261,8 +290,33 @@ def plot_plan(lap, out, box, every):
     river = const_block(lap.text, "RIVER")
     if river is not None and len(vec2s(river)) > 1:
         ax.plot(*vec2s(river).T, color="#20a0c0", lw=3)
+    if lap.ron:
+        # A file's coast as an outline, and its dam's lake and river (a
+        # point and a height each: `((x, z), h)`).
+        outline = re.search(r"coast: Outline(?:WithLakes)?\(\[(.*?)\n\s*\]", lap.text, re.S)
+        if outline:
+            ring = closed_curve(np.array(pairs(outline.group(1))), 4.0)
+            ax.plot(*np.vstack([ring, ring[:1]]).T, color="#2a5db0", lw=0.8)
+        lake = ron_list(lap.text, "lake")
+        if lake is not None:
+            ax.fill(*closed_curve(np.array(pairs(lake)), 3.0).T, color="#3060c0", alpha=0.45, lw=0)
+        river = ron_list(lap.text, "river")
+        if river is not None:
+            pattern = r"\(\(\s*(%s),\s*(%s)\s*\)" % (NUMBER, NUMBER)
+            points = np.array([(float(x), float(z)) for x, z in re.findall(pattern, river)])
+            if len(points) > 1:
+                ax.plot(*points.T, color="#20a0c0", lw=3)
     massif = r"(climbed_massif|massif)\(\s*(%s),\s*(%s),\s*(%s),\s*(%s)\s*\)" % ((NUMBER,) * 4)
-    for kind, x, z, r, h in re.findall(massif, lap.text):
+    # In RON: `(center: (x, z), radius: r, height: h)`, `climbed: true` if
+    # the road climbs it.
+    ron_massif = (
+        r"\(center: \((%s), (%s)\), radius: (%s), height: (%s)(, climbed: true)?\)" % ((NUMBER,) * 4)
+    )
+    found = re.findall(massif, lap.text) + [
+        ("climbed_massif" if climbed else "massif", x, z, r, h)
+        for x, z, r, h, climbed in re.findall(ron_massif, lap.text)
+    ]
+    for kind, x, z, r, h in found:
         x, z, r = float(x), float(z), float(r)
         color = "#2f8f2f" if kind == "climbed_massif" else "#8b5a2b"
         ax.add_patch(plt.Circle((x, z), r, fill=False, color=color, ls="--", lw=0.8))

@@ -1,0 +1,779 @@
+// Gold Mine: a lap through a gold mine in a desert at dusk, after Wario's
+// Gold Mine (Mario Kart) and Dragon Mines (Crash Team Racing), with the
+// roads of West Way (Moto Racer) round it: ore carts on rails, timber
+// trestles and headframes, red rock, dunes and a low orange sun. It crosses
+// the mountain twice, in a figure of eight: first through it, by the
+// galleries of the mine, and then over it.
+//
+// 1. The start straight runs north through the mining town, past its
+//    wooden houses, lanterns and a train of ore carts, over a crest where
+//    the bike takes off.
+// 2. Into the dunes: up and down over them, past a gas station on a blind
+//    crest where the bike takes off, and round their far end.
+// 3. South down a narrow red canyon in esses, between sheer walls, to the
+//    east mouth of the excavation, under a trestle where a cart crosses.
+// 4. Through the mountain (900 m), east to west: a timbered gallery, halls
+//    of sandstone, slate and clay, down into the mine and up again, and
+//    twice the road splits three ways, far apart, each way with its own
+//    climb or drop: a high road and a deep one, an upper gallery and a
+//    lower one, and the lap snaking between them. None is clearly the
+//    quickest. Between the splits, a timbered neck runs under the road over
+//    the top.
+// 5. Out of the west mouth and along the rim of a great open pit.
+// 6. The wooden bridge, straight across the lake at the bottom of the pit
+//    for nearly half a kilometre, 18 m over the red water, with a crest in
+//    the middle where the bike takes off.
+// 7. Up the switchbacks of the mountain's north flank, round two hairpins,
+//    and a long sweep onto the top, 55 m up.
+// 8. Over the top, past a headframe, across the road through the mountain
+//    70 m beneath.
+// 9. Down its south-east flank in esses and back into town.
+//
+// Where things are, in metres from the finish line:
+//
+// - the town:                    Span(5780.0, 300.0)
+// - the dunes:                   Span(300.0, 990.0)
+// - the canyon:                  Span(990.0, 1655.0)
+// - the excavation:              Span(1655.0, 2555.0)
+// - the cliff, along the rim
+//   of the pit:                  Span(2555.0, 2905.0)
+// - the wooden bridge:           Span(2905.0, 3425.0), its fences 6 m from
+//                                the middle, narrower than the road
+// - the climb:                   Span(3425.0, 4580.0)
+// - the hairpins:                Span(3600.0, 4200.0)
+// - the gully:                   Span(4200.0, 4390.0)
+// - the summit:                  Span(4580.0, 5000.0)
+// - the descent:                 Span(5000.0, 5780.0)
+// - where the road splits three
+//   ways under the mountain:     1706.0 to 2056.0, and 2156.0 to 2504.0
+//
+// The mine's colours: weathered gold (0.85, 0.62, 0.12), rust red (0.62,
+// 0.2, 0.08) and cream (0.95, 0.86, 0.62).
+//
+// How a circuit's file is written: see src/circuits/data.rs. Its water (the
+// great lake at the bottom of the pit and the river out of it) and its
+// mountains are functions, in src/circuits/gold_mine.rs.
+(
+    name: "Mina Dorada",
+    name_en: "Gold Mine",
+    description: "Inspirada en las minas de Mario Kart y Crash: vagonetas,\nuna montaña cruzada por dentro y por encima, y una corta inundada",
+    description_en: "Inspired by the mines of Mario Kart and Crash: ore carts,\na mountain crossed through and over, and a flooded open pit",
+    // "Toll of the Iron Mile".
+    // A mine in the desert: the wind and the cicadas in the heat.
+    ambience: (
+        sea: 0.0,
+        gulls: 0.0,
+        birds: 0.1,
+        cicadas: 0.75,
+        wind: 0.7,
+    ),
+    song: (file: "gold_mine.mp3", length: 177.9, loudness: -16.8),
+    pace: 1.0,
+    layout: (
+        control_points: [
+            // 1. The start straight, north (-Z) through town.
+            (0.0, 0.0),
+            (0.0, -140.0),
+            (0.0, -280.0),
+            // 2. Into the dunes: a kink to the right, the straight past the gas
+            // station, and round to the left at their far end.
+            (3.0, -380.0),
+            (28.0, -455.0),
+            (52.0, -526.0),
+            (76.0, -597.0),
+            (100.0, -668.0),
+            (116.0, -728.0),
+            (104.0, -782.0),
+            (60.0, -812.0),
+            (0.0, -810.0),
+            (-55.0, -782.0),
+            // 3. South down the red canyon, in esses, to the east mouth.
+            (-100.0, -745.0),
+            (-140.0, -700.0),
+            (-162.0, -645.0),
+            (-158.0, -590.0),
+            (-150.0, -535.0),
+            (-170.0, -470.0),
+            (-205.0, -410.0),
+            (-218.0, -345.0),
+            (-212.0, -288.0),
+            (-238.0, -236.0),
+            // 4. Through the mountain, west: the lap snakes between the ways of two
+            // splits, with the timbered neck between them.
+            (-300.0, -215.0),
+            (-350.0, -215.0),
+            (-391.2, -224.1),
+            (-432.5, -238.9),
+            (-473.8, -237.1),
+            (-515.0, -215.0),
+            (-556.2, -192.9),
+            (-597.5, -191.1),
+            (-638.8, -205.9),
+            (-680.0, -215.0),
+            (-730.0, -215.0),
+            (-780.0, -215.0),
+            (-821.2, -205.9),
+            (-862.5, -191.1),
+            (-903.8, -192.9),
+            (-945.0, -215.0),
+            (-986.2, -237.1),
+            (-1027.5, -238.9),
+            (-1068.8, -224.1),
+            (-1110.0, -215.0),
+            (-1160.0, -215.0),
+            // 5. Out of the west mouth and along the rim of the pit.
+            (-1215.0, -224.0),
+            (-1272.0, -248.0),
+            (-1330.0, -282.0),
+            (-1380.0, -330.0),
+            (-1404.0, -395.0),
+            // 6. The bridge, straight across the lake, north-east.
+            (-1385.0, -460.0),
+            (-1305.0, -543.0),
+            (-1225.0, -626.0),
+            (-1145.0, -709.0),
+            (-1065.0, -792.0),
+            // 7. Up the switchbacks of the north flank: a hairpin to the right, one
+            // to the left, and a long sweep round onto the top.
+            (-1010.0, -845.0),
+            (-950.0, -872.0),
+            (-890.0, -876.0),
+            (-835.0, -876.0),
+            (-780.0, -875.0),
+            (-752.5, -867.6),
+            (-732.4, -847.5),
+            (-725.0, -820.0),
+            (-732.4, -792.5),
+            (-752.5, -772.4),
+            (-780.0, -765.0),
+            (-827.0, -765.0),
+            (-875.0, -765.0),
+            (-902.5, -757.6),
+            (-922.6, -737.5),
+            (-930.0, -710.0),
+            (-922.6, -682.5),
+            (-902.5, -662.4),
+            (-875.0, -655.0),
+            (-825.0, -655.0),
+            (-772.0, -648.0),
+            (-722.0, -622.0),
+            (-678.0, -572.0),
+            (-646.0, -502.0),
+            (-630.0, -422.0),
+            (-640.0, -338.0),
+            (-685.0, -265.0),
+            // 8. Over the top, south, across the road through the mountain beneath.
+            (-730.0, -200.0),
+            (-742.0, -130.0),
+            (-748.0, -50.0),
+            (-722.0, 30.0),
+            // 9. Down the south-east flank, in esses, and back into town.
+            (-660.0, 90.0),
+            (-580.0, 110.0),
+            (-520.0, 160.0),
+            (-440.0, 190.0),
+            (-350.0, 170.0),
+            (-270.0, 200.0),
+            (-180.0, 215.0),
+            (-90.0, 180.0),
+            (-30.0, 132.0),
+            (-4.0, 72.0),
+        ],
+        // Up from town over the dunes and the canyon to the east mouth;
+        // through the mountain, down into the mine and up again; along the
+        // rim of the pit and over the lake; up the switchbacks, 55 m, over
+        // the top and down again into town.
+        elevation: [
+            // Through town, over a crest where the bike flies.
+            (0.0, 2.0),
+            (110.0, 2.4),
+            (185.0, 6.6),
+            (225.0, 5.0),
+            (300.0, 2.6),
+            // Up onto the dunes, over a blind crest on the straight by the gas
+            // station, down into a hollow round the far end and up again.
+            (380.0, 3.4),
+            (450.0, 8.0),
+            (520.0, 13.0),
+            (595.0, 17.2),
+            (635.0, 15.6),
+            (700.0, 13.0),
+            (780.0, 7.0),
+            (860.0, 6.5),
+            (940.0, 11.0),
+            // Rolling up the red canyon to the east mouth.
+            (1010.0, 14.0),
+            (1090.0, 11.5),
+            (1180.0, 15.5),
+            (1270.0, 14.0),
+            (1360.0, 18.5),
+            (1450.0, 17.0),
+            (1540.0, 20.5),
+            (1610.0, 23.0),
+            // Through the mountain: down past the first split to the neck, under
+            // the road over the top, and up past the second.
+            (1660.0, 22.5),
+            (1706.0, 20.0),
+            (2062.0, 8.0),
+            (2112.0, 5.5),
+            (2162.0, 6.5),
+            (2516.0, 18.0),
+            (2566.0, 21.0),
+            // Rolling along the rim of the pit.
+            (2640.0, 24.0),
+            (2740.0, 19.5),
+            (2830.0, 21.5),
+            (2920.0, 18.6),
+            // Over the lake, with a crest in the middle of the bridge where the
+            // bike takes off.
+            (2960.0, 17.8),
+            (3160.0, 17.6),
+            (3230.0, 21.8),
+            (3275.0, 20.4),
+            (3340.0, 18.2),
+            (3400.0, 17.6),
+            // Up the switchbacks and round onto the top.
+            (3480.0, 19.0),
+            (3600.0, 23.6),
+            (3760.0, 29.2),
+            (3880.0, 33.4),
+            (4000.0, 37.6),
+            (4150.0, 42.8),
+            (4300.0, 50.0),
+            (4450.0, 59.0),
+            (4600.0, 68.4),
+            (4716.0, 74.3),
+            // Over the top.
+            (4800.0, 75.5),
+            (4900.0, 75.0),
+            (5000.0, 72.5),
+            // Down the south-east flank, easing past the pueblo, into town.
+            (5100.0, 66.5),
+            (5200.0, 58.0),
+            (5300.0, 50.5),
+            (5380.0, 46.5),
+            (5450.0, 44.5),
+            (5540.0, 37.0),
+            (5640.0, 27.0),
+            (5740.0, 17.0),
+            (5830.0, 8.5),
+            (5900.0, 3.5),
+        ],
+        wall: 11.5,
+        // Hardly banked under the mountain, where the road snakes through
+        // its splits, and less than their curves would have it round the
+        // hairpins, cut into the mountainside.
+        banking: [
+            (from: 1655.0, to: 2555.0, factor: 0.25),
+            (from: 3600.0, to: 4200.0, factor: 0.6),
+        ],
+        // The wooden bridge is narrower than the road: its fences close in
+        // on it.
+        narrows: [(from: 2905.0, to: 3425.0, wall: 6.0)],
+        // Under the mountain the road splits three ways, twice: a way to the
+        // left of the lap and one to its right, past pillars of rock, one
+        // over a hump and the other through a dip. Each runs through points
+        // to one side of the lap (m along the lap and from its centre line
+        // in the comments), from where it leaves the lap to where it joins
+        // it again; its rise is how much higher than the lap beside it it
+        // runs (m along it, m).
+        branches: [
+            // The high road, to the left, from the first split: it runs
+            // straight on where the lap swings right, and out round a wide
+            // curve back to it, over a hump where it is far from the lap,
+            // broad at its top.
+            (
+                from: 1706.0,
+                to: 2056.0,
+                approach: [
+                    // 1718 m, 2 m.
+                    (-361.7, -215.2),
+                    // 1746 m, 15 m.
+                    (-392.9, -209.1),
+                    // 1768 m, 40 m.
+                    (-424.9, -194.2),
+                    // 1829 m, 65 m.
+                    (-455.6, -174.2),
+                    // 1889 m, 64 m.
+                    (-488.6, -155.8),
+                    // 1918 m, 57 m.
+                    (-521.6, -145.6),
+                    // 1935 m, 44 m.
+                    (-554.6, -148.6),
+                    // 1958 m, 25 m.
+                    (-587.6, -165.0),
+                    // 1991 m, 9 m.
+                    (-621.3, -188.9),
+                    // 2021 m, 3 m.
+                    (-646.1, -205.0),
+                    // 2042 m, 0 m.
+                    (-666.4, -212.5),
+                ],
+                rise: [
+                    (55.9, 0.00),
+                    (61.9, 0.01),
+                    (67.9, 0.06),
+                    (73.9, 0.22),
+                    (79.9, 0.51),
+                    (85.9, 0.87),
+                    (91.9, 1.26),
+                    (97.9, 1.65),
+                    (103.9, 2.04),
+                    (109.9, 2.43),
+                    (115.9, 2.82),
+                    (121.9, 3.21),
+                    (127.9, 3.58),
+                    (133.9, 3.92),
+                    (139.9, 4.19),
+                    (145.9, 4.38),
+                    (151.9, 4.50),
+                    (157.9, 4.54),
+                    (163.9, 4.50),
+                    (169.9, 4.37),
+                    (175.9, 4.17),
+                    (181.9, 3.90),
+                    (187.9, 3.56),
+                    (193.9, 3.18),
+                    (199.9, 2.80),
+                    (205.9, 2.41),
+                    (211.9, 2.02),
+                    (217.9, 1.63),
+                    (223.9, 1.24),
+                    (229.9, 0.85),
+                    (235.9, 0.49),
+                    (241.9, 0.21),
+                    (247.9, 0.06),
+                    (253.9, 0.01),
+                    (259.9, 0.00),
+                ],
+            ),
+            // The deep road, to the right, from the first split: it swings
+            // out to the right before the lap does, and back to it late,
+            // through a dip where it is far from the lap, gentle at its
+            // edges.
+            (
+                from: 1706.0,
+                to: 2056.0,
+                approach: [
+                    // 1718 m, -0 m.
+                    (-361.3, -217.0),
+                    // 1748 m, -4 m.
+                    (-389.4, -227.9),
+                    // 1786 m, -14 m.
+                    (-421.7, -250.3),
+                    // 1814 m, -32 m.
+                    (-455.6, -272.1),
+                    // 1836 m, -49 m.
+                    (-488.6, -283.3),
+                    // 1854 m, -60 m.
+                    (-521.6, -280.7),
+                    // 1889 m, -65 m.
+                    (-554.6, -266.7),
+                    // 1967 m, -57 m.
+                    (-587.5, -247.3),
+                    // 2001 m, -29 m.
+                    (-615.7, -228.2),
+                    // 2021 m, -11 m.
+                    (-643.3, -218.3),
+                    // 2042 m, -1 m.
+                    (-666.1, -214.4),
+                ],
+                rise: [
+                    (112.3, 0.00),
+                    (118.3, -0.01),
+                    (124.3, -0.06),
+                    (130.3, -0.14),
+                    (136.3, -0.29),
+                    (142.3, -0.49),
+                    (148.3, -0.75),
+                    (154.3, -1.06),
+                    (160.3, -1.42),
+                    (166.3, -1.80),
+                    (172.3, -2.19),
+                    (178.3, -2.58),
+                    (184.3, -2.97),
+                    (190.3, -3.36),
+                    (196.3, -3.71),
+                    (202.3, -3.97),
+                    (208.3, -4.05),
+                    (214.3, -3.92),
+                    (220.3, -3.63),
+                    (226.3, -3.26),
+                    (232.3, -2.87),
+                    (238.3, -2.48),
+                    (244.3, -2.09),
+                    (250.3, -1.70),
+                    (256.3, -1.32),
+                    (262.3, -0.98),
+                    (268.3, -0.68),
+                    (274.3, -0.43),
+                    (280.3, -0.24),
+                    (286.3, -0.12),
+                    (292.3, -0.04),
+                    (298.3, -0.01),
+                    (304.3, 0.00),
+                ],
+            ),
+            // The upper gallery, to the left, from the second split: it
+            // swings out to the left before the lap does, and back to it
+            // late, over a hump where it is far from the lap, broad at its
+            // top.
+            (
+                from: 2156.0,
+                to: 2504.0,
+                approach: [
+                    // 2166 m, 0 m.
+                    (-789.9, -213.2),
+                    // 2197 m, 4 m.
+                    (-818.5, -202.4),
+                    // 2235 m, 14 m.
+                    (-851.4, -179.8),
+                    // 2264 m, 32 m.
+                    (-885.6, -157.9),
+                    // 2285 m, 49 m.
+                    (-918.6, -146.7),
+                    // 2304 m, 60 m.
+                    (-951.6, -149.3),
+                    // 2338 m, 65 m.
+                    (-984.6, -163.3),
+                    // 2417 m, 57 m.
+                    (-1017.5, -182.7),
+                    // 2450 m, 29 m.
+                    (-1045.2, -202.0),
+                    // 2470 m, 11 m.
+                    (-1072.2, -212.0),
+                    // 2492 m, 1 m.
+                    (-1096.6, -215.5),
+                ],
+                rise: [
+                    (106.3, 0.00),
+                    (112.3, 0.01),
+                    (118.3, 0.06),
+                    (124.3, 0.22),
+                    (130.3, 0.51),
+                    (136.3, 0.87),
+                    (142.3, 1.26),
+                    (148.3, 1.65),
+                    (154.3, 2.04),
+                    (160.3, 2.43),
+                    (166.3, 2.82),
+                    (172.3, 3.20),
+                    (178.3, 3.58),
+                    (184.3, 3.91),
+                    (190.3, 4.17),
+                    (196.3, 4.36),
+                    (202.3, 4.47),
+                    (208.3, 4.50),
+                    (214.3, 4.45),
+                    (220.3, 4.32),
+                    (226.3, 4.11),
+                    (232.3, 3.83),
+                    (238.3, 3.48),
+                    (244.3, 3.11),
+                    (250.3, 2.72),
+                    (256.3, 2.33),
+                    (262.3, 1.94),
+                    (268.3, 1.55),
+                    (274.3, 1.16),
+                    (280.3, 0.77),
+                    (286.3, 0.42),
+                    (292.3, 0.16),
+                    (298.3, 0.04),
+                    (304.3, 0.01),
+                    (310.3, 0.00),
+                ],
+            ),
+            // The lower gallery, to the right, from the second split: it runs
+            // straight on where the lap swings left, and out round a wide
+            // curve back to it, through a dip where it is far from the lap,
+            // gentle at its edges.
+            (
+                from: 2156.0,
+                to: 2504.0,
+                approach: [
+                    // 2166 m, -2 m.
+                    (-790.3, -215.0),
+                    // 2195 m, -15 m.
+                    (-821.9, -221.2),
+                    // 2217 m, -40 m.
+                    (-854.8, -235.9),
+                    // 2279 m, -65 m.
+                    (-885.6, -255.8),
+                    // 2339 m, -64 m.
+                    (-918.6, -274.2),
+                    // 2367 m, -57 m.
+                    (-951.6, -284.4),
+                    // 2384 m, -44 m.
+                    (-984.6, -281.4),
+                    // 2408 m, -25 m.
+                    (-1017.6, -265.0),
+                    // 2440 m, -9 m.
+                    (-1050.8, -241.3),
+                    // 2469 m, -3 m.
+                    (-1075.0, -225.3),
+                    // 2492 m, -0 m.
+                    (-1096.9, -217.4),
+                ],
+                rise: [
+                    (61.9, 0.00),
+                    (67.9, -0.01),
+                    (73.9, -0.06),
+                    (79.9, -0.14),
+                    (85.9, -0.29),
+                    (91.9, -0.49),
+                    (97.9, -0.75),
+                    (103.9, -1.06),
+                    (109.9, -1.42),
+                    (115.9, -1.80),
+                    (121.9, -2.19),
+                    (127.9, -2.58),
+                    (133.9, -2.97),
+                    (139.9, -3.36),
+                    (145.9, -3.72),
+                    (151.9, -4.00),
+                    (157.9, -4.10),
+                    (163.9, -3.98),
+                    (169.9, -3.70),
+                    (175.9, -3.34),
+                    (181.9, -2.95),
+                    (187.9, -2.56),
+                    (193.9, -2.17),
+                    (199.9, -1.78),
+                    (205.9, -1.40),
+                    (211.9, -1.04),
+                    (217.9, -0.73),
+                    (223.9, -0.48),
+                    (229.9, -0.28),
+                    (235.9, -0.14),
+                    (241.9, -0.05),
+                    (247.9, -0.01),
+                    (253.9, 0.00),
+                ],
+            ),
+        ],
+    ),
+    scenery: (
+        coast: Function("gold_mine_water"),
+        hills: 8.0,
+        greens: Lawn,
+        grass_shade: 1.0,
+        massifs: [
+            // The mountain, and the shoulders the road climbs onto it from the
+            // lake and comes down from it to town on.
+            // (Its middle, its radius and its height.)
+            (center: (-720.0, -200.0), radius: 540.0, height: 78.0, climbed: true),
+            (center: (-840.0, -700.0), radius: 250.0, height: 34.0, climbed: true),
+            (center: (-460.0, 160.0), radius: 300.0, height: 50.0, climbed: true),
+            (center: (-140.0, 200.0), radius: 200.0, height: 26.0, climbed: true),
+            // Dunes of red sand round the road out of town.
+            (center: (-60.0, -560.0), radius: 150.0, height: 15.0, climbed: true),
+            (center: (200.0, -600.0), radius: 140.0, height: 17.0, climbed: true),
+            (center: (40.0, -950.0), radius: 170.0, height: 18.0, climbed: true),
+            // Towers of red rock standing up from its slopes and its top, well
+            // away from the roads.
+            (center: (-960.0, -520.0), radius: 60.0, height: 26.0),
+            (center: (-800.0, -440.0), radius: 50.0, height: 22.0),
+            (center: (-1120.0, -420.0), radius: 55.0, height: 24.0),
+            (center: (-500.0, 0.0), radius: 45.0, height: 20.0),
+            (center: (-920.0, -20.0), radius: 45.0, height: 18.0),
+            (center: (-1040.0, 120.0), radius: 60.0, height: 26.0),
+            (center: (-380.0, -500.0), radius: 50.0, height: 22.0),
+            // Red buttes round about: west of the lake, north of the mountain,
+            // south of it, and east of town.
+            (center: (-1600.0, -700.0), radius: 120.0, height: 48.0),
+            (center: (-460.0, -940.0), radius: 120.0, height: 40.0),
+            (center: (-1230.0, 150.0), radius: 140.0, height: 52.0),
+            (center: (-640.0, 480.0), radius: 130.0, height: 55.0),
+            (center: (250.0, -180.0), radius: 110.0, height: 36.0),
+        ],
+        cuttings: [
+            // The sheer walls of the red canyon, down to the east mouth.
+            (span: Span(1000.0, 1690.0), side: Left, height: 36.0),
+            (span: Span(1000.0, 1690.0), side: Right, height: 36.0),
+            // The rock round the west mouth.
+            (span: Span(2520.0, 2595.0), side: Left, height: 30.0),
+            (span: Span(2520.0, 2595.0), side: Right, height: 30.0),
+        ],
+        // Red mesas and buttes all round the horizon, with flat tops and
+        // sheer sides, as in a desert of the American south-west.
+        mountains: "gold_mine_mountains",
+        // Rust red and cream.
+        curbs: [(0.62, 0.2, 0.08), (0.95, 0.86, 0.62)],
+        // Stone parapets along the rim of the pit and up the switchbacks,
+        // timber fences everywhere else.
+        walls: [
+            (span: Span(2555.0, 2905.0), side: Left, style: Stone),
+            (span: Span(2555.0, 2905.0), side: Right, style: Stone),
+            (span: Span(3425.0, 4580.0), side: Left, style: Stone),
+            (span: Span(3425.0, 4580.0), side: Right, style: Stone),
+            (span: Lap, side: Left, style: Timber),
+            (span: Lap, side: Right, style: Timber),
+        ],
+        tunnels: [Span(1655.0, 2555.0)],
+        // Planks on log piers across the lake, and a steel truss over the
+        // gully between the shoulder of the mountain and its flank.
+        bridges: [
+            (span: Span(2905.0, 3425.0), style: Wooden, fence: 1.2),
+            (span: Span(4200.0, 4390.0), style: Truss),
+        ],
+        gantries: [
+            (along: 0.0, color: (0.85, 0.62, 0.12), text: Some("GOLD MINE")),
+            // The checkpoints, about a kilometre apart (none in the
+            // excavation, where the road splits, nor on the bridges): down
+            // the canyon, out on the cliff, off the lake bridge, past the
+            // gully and on the way down to town.
+            (along: 1200.0, color: (0.62, 0.2, 0.08), text: Some("CHECKPOINT")),
+            (along: 2640.0, color: (0.62, 0.2, 0.08), text: Some("CHECKPOINT")),
+            (along: 3540.0, color: (0.62, 0.2, 0.08), text: Some("CHECKPOINT")),
+            (along: 4440.0, color: (0.62, 0.2, 0.08), text: Some("CHECKPOINT")),
+            (along: 5250.0, color: (0.62, 0.2, 0.08), text: Some("CHECKPOINT")),
+        ],
+        billboards: [
+            (
+                along: 110.0,
+                side: Left,
+                text: "GOLD RUSH",
+                color: (0.62, 0.2, 0.08),
+                accent: Some((5, (0.85, 0.62, 0.12))),
+            ),
+            (
+                along: 250.0,
+                side: Right,
+                text: "MOTORUST",
+                color: (0.1, 0.1, 0.12),
+                accent: Some((4, (0.9, 0.4, 0.12))),
+            ),
+            (along: 2720.0, side: Left, text: "DANGER TNT", color: (0.75, 0.1, 0.07)),
+            (
+                along: 5680.0,
+                side: Left,
+                text: "MINE 49",
+                color: (0.25, 0.18, 0.12),
+                accent: Some((5, (0.85, 0.62, 0.12))),
+            ),
+        ],
+        // The mining town: weathered wood, false fronts and porches.
+        houses: (
+            max: 10,
+            paints: [(0.62, 0.45, 0.3), (0.72, 0.56, 0.38), (0.55, 0.36, 0.26), (0.8, 0.66, 0.48)],
+            spans: [Span(5780.0, 300.0)],
+            style: FalseFront,
+        ),
+        grandstands: [(along: 60.0, side: Left, lateral: 16.5, length: 30.0)],
+        soil: Mine,
+        sky: Dusk,
+        // The great lake is the bottom of an open pit, flooded with red
+        // water.
+        water: Iron,
+        pit: Some((benches: 5, step: 3.4, tread: 9.0, spoil: 45.0)),
+        // The roadside of West Way (Moto Racer).
+        desert: Some((
+            // On the right of the blind crest in the dunes.
+            gas_stations: [(along: 600.0, side: Right, lateral: 32.0)],
+            // Oil pumpjacks nodding on the tops of the dunes.
+            pumpjacks: [
+                (position: (-30.0, -560.0), heading: 1.0),
+                (position: (-40.0, -612.0), heading: 1.3),
+                (position: (-45.0, -505.0), heading: 0.8),
+                (position: (215.0, -610.0), heading: -0.6),
+                (position: (195.0, -660.0), heading: -0.3),
+                (position: (30.0, -965.0), heading: 2.0),
+            ],
+            // High over the red canyon, from one wall to the other.
+            overpasses: [(along: 1300.0, height: 14.0)],
+            // On the outside of the bend at the foot of the pueblo's easing.
+            pueblos: [(along: 5450.0, side: Left, lateral: 34.0)],
+            // Diamond warning signs before the bends, on the outside of
+            // each: green for a bend, yellow for a sharp one, red for a
+            // hairpin.
+            curve_signs: [
+                // Round the far end of the dunes.
+                (along: 720.0, direction: Left, color: Red),
+                // The esses of the canyon.
+                (along: 1100.0, direction: Left, color: Green),
+                (along: 1215.0, direction: Right, color: Green),
+                (along: 1495.0, direction: Right, color: Yellow),
+                // Along the rim of the pit, before the bend onto the bridge.
+                (along: 2810.0, direction: Right, color: Green),
+                // The hairpins.
+                (along: 3670.0, direction: Right, color: Red),
+                (along: 3940.0, direction: Left, color: Red),
+                // Down the esses into town.
+                (along: 5065.0, direction: Left, color: Yellow),
+                (along: 5150.0, direction: Right, color: Yellow),
+                (along: 5315.0, direction: Left, color: Green),
+                (along: 5405.0, direction: Right, color: Yellow),
+            ],
+            cacti: (
+                count: 90,
+                // In town, in the dunes, along the cliff, up the climb, over
+                // the summit and down the descent.
+                spans: [
+                    Span(5780.0, 300.0),
+                    Span(300.0, 990.0),
+                    Span(2555.0, 2905.0),
+                    Span(3425.0, 4580.0),
+                    Span(4580.0, 5000.0),
+                    Span(5000.0, 5780.0),
+                ],
+            ),
+            // Blown across the road in town, in the dunes, along the rim of
+            // the pit, over the top and on the way down.
+            tumbleweeds: [
+                (along: 230.0, reach: 35.0),
+                (along: 530.0, reach: 40.0),
+                (along: 930.0, reach: 35.0),
+                (along: 2700.0, reach: 30.0),
+                (along: 4930.0, reach: 35.0),
+                (along: 5250.0, reach: 35.0),
+                (along: 5620.0, reach: 35.0),
+                (along: 5860.0, reach: 30.0),
+            ],
+        )),
+        mine: Some((
+            rails: [
+                // Through town, on the right of the start straight.
+                (span: Span(20.0, 270.0), side: Right, lateral: 17.5, carts: 3),
+                // Out of the west mouth, along the rim of the pit.
+                (span: Span(2600.0, 2800.0), side: Left, lateral: 17.5, carts: 2),
+            ],
+            // In the canyon, just before the east mouth.
+            trestles: [(along: 1625.0)],
+            headframes: [
+                // Over a shaft on the top of the mountain.
+                (along: 4890.0, side: Left, lateral: 48.0),
+                // By the road along the rim of the pit.
+                (along: 2770.0, side: Left, lateral: 46.0),
+            ],
+            lanterns: [
+                (span: Span(5780.0, 300.0), side: Left, lateral: 12.7, every: 28.0),
+                (span: Span(5780.0, 300.0), side: Right, lateral: 12.7, every: 28.0),
+                (span: Span(2555.0, 2905.0), side: Left, lateral: 12.7, every: 40.0),
+                (span: Span(3425.0, 4580.0), side: Left, lateral: 12.7, every: 40.0),
+                // Over the top, once past the road through the mountain
+                // beneath.
+                (span: Span(4830.0, 5000.0), side: Right, lateral: 12.7, every: 40.0),
+                (span: Span(5000.0, 5780.0), side: Left, lateral: 12.7, every: 40.0),
+            ],
+            // From the timbered mouth into a hall of red sandstone, where the
+            // high and deep roads part, and a higher one of slate veined with
+            // gold; a timbered neck under the road over the top; a hall of
+            // clay lined with planks, where the upper and lower galleries
+            // part, one of sandstone again, and timber to the way out.
+            halls: [
+                (span: Span(1712.0, 1880.0), stone: Sandstone, crown: 28.0),
+                (span: Span(1880.0, 2050.0), stone: Slate, crown: 34.0),
+                (span: Span(2162.0, 2330.0), stone: Clay, crown: 24.0),
+                (span: Span(2330.0, 2500.0), stone: Sandstone, crown: 31.0),
+            ],
+            piles: [
+                (along: 160.0, side: Left, lateral: 20.5, kind: Supplies),
+                (along: 840.0, side: Left, lateral: 21.5, kind: Ore),
+                (along: 2700.0, side: Left, lateral: 25.5, kind: Ore),
+                (along: 2900.0, side: Left, lateral: 20.5, kind: Supplies),
+                (along: 4660.0, side: Right, lateral: 23.5, kind: Ore),
+                (along: 5620.0, side: Left, lateral: 20.5, kind: Supplies),
+            ],
+        )),
+    ),
+)

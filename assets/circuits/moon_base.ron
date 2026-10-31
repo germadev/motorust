@@ -1,0 +1,537 @@
+// Base Lunar (Moon Base): a lap that starts at an Earth Space Launch &
+// Deep-Space Observatory Complex in the coastal mountains, crosses an
+// interdimensional portal to a lunar colony in Mare Tranquillitatis, and
+// returns through a second portal to Earth's high peaks.
+//
+// 1. Earth Space Center & Observatory Peak (0..1120 m): the start straight
+//    runs north on Earth past a Saturn-V space launchpad, an astronomical
+//    telescope observatory dome and giant deep-space radio antennas, with
+//    the Moon shining in the night sky overhead. After a straightaway jump
+//    crest (55 m), the road climbs +31 m up the forested Observatory
+//    Mountain (32 m), plunges -31.6 m into the underground Launch Complex
+//    Tunnel (800..1020 m), and reaches the first Interdimensional Portal
+//    (Earth -> Moon, 1120 m).
+// 2. Lunar Colony & Crater Split (1120..2895 m): emerging onto the airless
+//    grey regolith of the Moon (where the blue Earth hangs in the sky),
+//    riders cross a steel truss bridge over a lunar rille, pass pressurized
+//    geodesic biodomes, six-wheeled lunar rovers, and solar arrays, sweep
+//    round the Sea of Tranquillity crater, and climb a two-way Crater Split
+//    (2340..2690 m) to the second Interdimensional Portal (Moon -> Earth,
+//    2895 m).
+// 3. High Earth Summit & Western Mountain Roller-Coaster (2895..4600 m):
+//    back on Earth at 42.5..45.5 m altitude, the road crosses 45 m over the
+//    top of the tunnel, plunges -40 m into a deep forested valley (5.5 m),
+//    climbs +30 m back up the Western Coastal Range (35.6 m), launches off a
+//    high-altitude straightaway jump (4095 m), and dives -35.6 m back to the
+//    finish line.
+//
+// Where things are, in metres from the finish line:
+//
+// - the start sector:            Span(4280.0, 310.0)
+// - the Launch Complex Tunnel:   Span(800.0, 1020.0)
+// - the portal to the Moon:      1120.0
+// - the truss bridge:            Span(1470.0, 1590.0)
+// - the east straight:           Span(1360.0, 1900.0)
+// - the lunar crater turn:       Span(1920.0, 2290.0)
+// - the Crater Split:            2340.2 to 2690.3
+// - the portal back to Earth:    2895.0
+// - the crossing over the
+//   tunnel:                      Span(2970.0, 3140.0)
+// - the west straight:           Span(3860.0, 4340.0)
+//
+// Space center & lunar station colours: orbital cyan (0.12, 0.68, 0.96),
+// titanium white (0.92, 0.95, 0.98), and warning orange (0.92, 0.36, 0.1).
+//
+// How a circuit's file is written: see src/circuits/data.rs. Its mountains
+// are a function, in src/circuits/moon_base.rs.
+(
+    name: "Base Lunar",
+    name_en: "Moon Base",
+    description: "Centro espacial y observatorio en la Tierra con portal a la Luna:\nlanzadera, antenas gigantes, cúpulas de telescopio y base lunar",
+    description_en: "Earth space center and observatory with portal to the Moon:\nlaunchpad, giant radio dishes, telescope domes and lunar base",
+    ambience: (
+        sea: 0.15,
+        gulls: 0.0,
+        birds: 0.28,
+        cicadas: 0.0,
+        wind: 0.28,
+    ),
+    song: (file: "moon_base.mp3", length: 179.6, loudness: -16.5),
+    pace: 1.0,
+    layout: (
+        control_points: [
+            // 1. Earth Space Center start straight (north, -Z) & Observatory Peak climb.
+            (0.0, 0.0),
+            (0.0, -110.0),
+            (0.0, -220.0),
+            (6.0, -300.0),
+            (35.0, -360.0),
+            (90.0, -395.0),
+            (160.0, -400.0),
+            (225.0, -380.0),
+            (290.0, -385.0),
+            (345.0, -420.0),
+            // 2. Underground Launch Complex Tunnel (under the central massif at (550, -430))
+            // followed by the Interdimensional Portal to the Moon at 1120 m.
+            (415.0, -430.0),
+            (480.0, -430.0),
+            (550.0, -430.0),
+            (620.0, -430.0),
+            (690.0, -430.0),
+            // 3. Moon Sector (1120..2895 m): lunar truss bridge, straightaway jump crest,
+            // and sweep around the Sea of Tranquillity crater.
+            (765.0, -430.0),
+            (840.0, -415.0),
+            (895.0, -365.0),
+            (920.0, -290.0),
+            (920.0, -180.0),
+            (920.0, -60.0),
+            (920.0, 60.0),
+            (920.0, 170.0),
+            // 4. Banked sweep clockwise round the lunar crater rim.
+            (920.0, 270.0),
+            (903.0, 338.0),
+            (858.0, 382.0),
+            (807.5, 395.0),
+            (757.0, 382.0),
+            (712.0, 338.0),
+            (695.0, 270.0),
+            // 5. Lunar Crater Split (climbing north along x = 695 m).
+            (695.0, 220.0),
+            (685.9, 178.8),
+            (671.1, 137.5),
+            (672.9, 96.2),
+            (695.0, 55.0),
+            (717.1, 13.8),
+            (718.9, -27.5),
+            (704.1, -68.8),
+            (695.0, -110.0),
+            (695.0, -160.0),
+            // 6. Return through the Earth Portal (2895 m), cross 45 m OVER the tunnel
+            // at (550, -430), and plunge into the deep northern Earth valley.
+            (688.0, -230.0),
+            (658.0, -300.0),
+            (608.0, -368.0),
+            (550.0, -430.0),
+            (485.0, -490.0),
+            (405.0, -535.0),
+            (310.0, -552.0),
+            (200.0, -555.0),
+            (85.0, -548.0),
+            (-25.0, -525.0),
+            (-105.0, -475.0),
+            (-150.0, -395.0),
+            // 7. Climb up the Western Earth Mountain Ridge (x = -165 m), launch off
+            // the high straightaway jump, and dive back to the start straight.
+            (-165.0, -295.0),
+            (-165.0, -185.0),
+            (-165.0, -75.0),
+            (-160.0, 25.0),
+            (-135.0, 98.0),
+            (-75.0, 122.0),
+            (-22.0, 92.0),
+            (-2.0, 50.0),
+        ],
+        elevation: [
+            (0.0, 0.0),
+            // Jump #1: just past the finish line on the Earth Space Center straight.
+            (25.0, 0.3),
+            (55.0, 2.0),
+            (85.0, 0.5),
+            (110.0, 1.0),
+            // Earth Mountain #1: steep +31 m climb up the Observatory Peak and -31.6 m
+            // plunge into the underground tunnel.
+            (160.0, 4.5),
+            (250.0, 13.5),
+            (350.0, 24.0),
+            (420.0, 30.0),
+            (475.0, 32.0),
+            (530.0, 29.5),
+            (610.0, 21.0),
+            (710.0, 10.5),
+            (765.0, 4.5),
+            // Underground Launch Complex Tunnel under the central massif.
+            (800.0, 0.8),
+            (850.0, 0.4),
+            (950.0, 0.4),
+            (1020.0, 0.8),
+            // Climb out of the tunnel to Portal #1 (Earth -> Moon, 1120 m).
+            (1070.0, 4.5),
+            (1120.0, 9.5),
+            // Moon Sector (1120..2895 m): Lunar Truss Bridge, Jump #2, and Crater Split.
+            (1190.0, 14.0),
+            (1320.0, 15.5),
+            (1470.0, 16.0),
+            (1590.0, 16.0),
+            (1615.0, 16.2),
+            (1665.0, 20.0),
+            (1705.0, 17.5),
+            (1820.0, 13.5),
+            (1960.0, 10.0),
+            (2110.0, 8.5),
+            (2250.0, 12.0),
+            (2340.2, 16.5),
+            (2690.3, 28.5),
+            (2760.0, 33.0),
+            (2830.0, 38.5),
+            // Portal #2 (Moon -> Earth, 2895 m) and Earth Mountain #2 (45.5 m overpass
+            // summit above the tunnel at 3056 m).
+            (2895.0, 42.5),
+            (2975.0, 44.8),
+            (3056.0, 45.5),
+            // Steep -40.0 m plunge down into the northern Earth forested valley (5.5 m).
+            (3120.0, 43.0),
+            (3220.0, 33.0),
+            (3330.0, 21.5),
+            (3430.0, 11.5),
+            (3500.0, 6.5),
+            (3555.0, 5.5),
+            // Earth Mountain #3: +30.1 m climb up the Western Earth Mountain Ridge,
+            // high-altitude Jump #3 (4095 m at 35.6 m), and -35.6 m plunge to finish.
+            (3610.0, 8.5),
+            (3700.0, 17.5),
+            (3790.0, 26.5),
+            (3860.0, 31.0),
+            (3960.0, 31.0),
+            (4020.0, 31.4),
+            (4095.0, 35.6),
+            (4135.0, 34.0),
+            (4200.0, 28.5),
+            (4300.0, 18.0),
+            (4400.0, 8.0),
+            (4480.0, 2.0),
+            (4540.0, 0.4),
+        ],
+        wall: 11.5,
+        banking: [
+            // Banked sweep round the Sea of Tranquillity crater rim on the
+            // Moon.
+            (from: 1920.0, to: 2290.0, factor: 2.2),
+            // Level across the Crater Split so the branch joins smoothly.
+            (from: 2340.2, to: 2690.3, factor: 0.25),
+            // Banked final corner onto the Earth start straight.
+            (from: 4340.0, to: 4540.0, factor: 1.5),
+        ],
+        branches: [
+            // High crater-rim alternative route to the left on the Moon half.
+            (
+                from: 2340.2,
+                to: 2690.3,
+                approach: [
+                    (693.2, 210.1),
+                    (682.4, 181.5),
+                    (659.8, 148.6),
+                    (637.9, 114.4),
+                    (626.7, 81.4),
+                    (629.3, 48.4),
+                    (643.3, 15.4),
+                    (662.7, -17.5),
+                    (682.0, -45.2),
+                    (692.0, -72.2),
+                    (695.5, -96.6),
+                ],
+                // Hump rise along it (m along the branch, m over the main
+                // lap).
+                rise: [
+                    (106.3, 0.00),
+                    (112.3, 0.01),
+                    (118.3, 0.06),
+                    (124.3, 0.22),
+                    (130.3, 0.51),
+                    (136.3, 0.87),
+                    (142.3, 1.26),
+                    (148.3, 1.65),
+                    (154.3, 2.04),
+                    (160.3, 2.43),
+                    (166.3, 2.82),
+                    (172.3, 3.20),
+                    (178.3, 3.58),
+                    (184.3, 3.91),
+                    (190.3, 4.17),
+                    (196.3, 4.36),
+                    (202.3, 4.47),
+                    (208.3, 4.50),
+                    (214.3, 4.45),
+                    (220.3, 4.32),
+                    (226.3, 4.11),
+                    (232.3, 3.83),
+                    (238.3, 3.48),
+                    (244.3, 3.11),
+                    (250.3, 2.72),
+                    (256.3, 2.33),
+                    (262.3, 1.94),
+                    (268.3, 1.55),
+                    (274.3, 1.16),
+                    (280.3, 0.77),
+                    (286.3, 0.42),
+                    (292.3, 0.16),
+                    (298.3, 0.04),
+                    (304.3, 0.01),
+                    (310.3, 0.00),
+                ],
+            ),
+        ],
+    ),
+    scenery: (
+        // High plateau margin round the lap, with an indentation under the
+        // bridge (1470..1590 m) so the lunar rille chasm drops away beneath
+        // the truss bridge.
+        coast: AroundTrack([
+            (0.0, 260.0),
+            (1200.0, 260.0),
+            (1420.0, 60.0),
+            (1475.0, -180.0),
+            (1585.0, -180.0),
+            (1640.0, 60.0),
+            (1800.0, 240.0),
+            (2400.0, 260.0),
+            (3100.0, 260.0),
+            (3700.0, 240.0),
+            (4200.0, 240.0),
+            (4550.0, 260.0),
+        ]),
+        hills: 28.0,
+        soil: Lunar,
+        greens: Countryside,
+        grass_shade: 0.5,
+        massifs: [
+            // The central Earth massif that the Launch Complex Tunnel runs under and
+            // the high return road climbs 45 m over.
+            (center: (550.0, -430.0), radius: 220.0, height: 46.0, climbed: true),
+            // Earth mountain massifs supporting the Observatory Peak (32 m), the
+            // Overpass Summit (45.5 m), and the Western Mountain Ridge (35.6 m).
+            (center: (165.0, -395.0), radius: 195.0, height: 34.0, climbed: true),
+            (center: (640.0, -290.0), radius: 210.0, height: 44.0, climbed: true),
+            (center: (400.0, -520.0), radius: 210.0, height: 36.0, climbed: true),
+            (center: (-165.0, -180.0), radius: 220.0, height: 36.0, climbed: true),
+            // Lunar highland massifs supporting the Crater Split and rille rim.
+            (center: (880.0, -340.0), radius: 190.0, height: 20.0, climbed: true),
+            (center: (695.0, 20.0), radius: 220.0, height: 30.0, climbed: true),
+            // Scenic peaks on the Earth and Moon halves.
+            (center: (200.0, -250.0), radius: 65.0, height: 30.0),
+            (center: (430.0, -180.0), radius: 85.0, height: 38.0),
+            (center: (807.5, 210.0), radius: 60.0, height: 24.0),
+            (center: (1120.0, 80.0), radius: 95.0, height: 44.0),
+            (center: (260.0, 140.0), radius: 80.0, height: 32.0),
+            (center: (-340.0, -220.0), radius: 90.0, height: 42.0),
+            (center: (120.0, -720.0), radius: 85.0, height: 36.0),
+        ],
+        cuttings: [
+            // Rock walls flanking the Launch Complex Tunnel portals on Earth.
+            (span: Span(840.0, 1040.0), side: Left, height: 18.0),
+            (span: Span(840.0, 1040.0), side: Right, height: 18.0),
+            // Crater cliff along the Sea of Tranquillity turn on the Moon.
+            (span: Span(1960.0, 2240.0), side: Left, height: 22.0),
+            // Mountain rock cuttings along the Earth northern descent and
+            // final corner.
+            (span: Span(3220.0, 3480.0), side: Left, height: 20.0),
+            (span: Span(4320.0, 4480.0), side: Left, height: 18.0),
+        ],
+        terraces: [
+            // Level pads right beside the Earth start straight for the first
+            // Telescope Observatory Dome and Saturn-V Space Launchpad.
+            (center: (-29.5, -140.0), radius: 26.0, height: 2.8, skirt: 12.0),
+            (center: (28.0, -215.0), radius: 26.0, height: 3.2, skirt: 12.0),
+        ],
+        // Distant ringed mountain ranges rising all round the horizon, with
+        // a tall peak to the north-east.
+        mountains: "moon_base_mountains",
+        // Cyan and white.
+        curbs: [(0.12, 0.68, 0.96), (0.92, 0.95, 0.98)],
+        walls: [
+            (span: Span(4280.0, 310.0), side: Left, style: Stone),
+            (span: Span(4280.0, 310.0), side: Right, style: Stone),
+            (span: Span(2970.0, 3140.0), side: Left, style: Stone),
+            (span: Span(2970.0, 3140.0), side: Right, style: Stone),
+            (span: Lap, side: Left, style: Concrete),
+            (span: Lap, side: Right, style: Concrete),
+        ],
+        tunnels: [Span(800.0, 1020.0)],
+        bridges: [(span: Span(1470.0, 1590.0), style: Truss)],
+        gantries: [
+            (along: 0.0, color: (0.12, 0.68, 0.96), text: Some("SPACE CENTER")),
+            (along: 1090.0, color: (0.92, 0.36, 0.1), text: Some("CHECKPOINT")),
+            (along: 2240.0, color: (0.92, 0.36, 0.1), text: Some("CHECKPOINT")),
+            (along: 3450.0, color: (0.92, 0.36, 0.1), text: Some("CHECKPOINT")),
+        ],
+        billboards: [
+            (
+                along: 440.0,
+                side: Left,
+                text: "OBSERVATORY",
+                color: (0.1, 0.16, 0.28),
+                accent: Some((6, (0.12, 0.68, 0.96))),
+            ),
+            (
+                along: 760.0,
+                side: Left,
+                text: "LAUNCH PAD",
+                color: (0.1, 0.12, 0.18),
+                accent: Some((6, (0.92, 0.36, 0.1))),
+            ),
+            (
+                along: 1095.0,
+                side: Right,
+                text: "MOON PORTAL",
+                color: (0.08, 0.18, 0.34),
+                accent: Some((4, (0.12, 0.68, 0.96))),
+            ),
+            (along: 1900.0, side: Right, text: "MOON BASE", color: (0.08, 0.14, 0.26)),
+            (along: 2310.0, side: Left, text: "CRATER SPLIT", color: (0.92, 0.36, 0.1)),
+            (
+                along: 2870.0,
+                side: Right,
+                text: "EARTH PORTAL",
+                color: (0.1, 0.28, 0.18),
+                accent: Some((5, (0.12, 0.68, 0.96))),
+            ),
+            (along: 3820.0, side: Right, text: "EARTH PEAKS", color: (0.1, 0.26, 0.18)),
+        ],
+        chevrons: [
+            (along: 340.0, side: Left, direction: Right),
+            (along: 410.0, side: Left, direction: Right),
+            (along: 1220.0, side: Left, direction: Right),
+            (along: 1290.0, side: Left, direction: Right),
+            (along: 1980.0, side: Left, direction: Right),
+            (along: 2060.0, side: Left, direction: Right),
+            (along: 2140.0, side: Left, direction: Right),
+            (along: 3200.0, side: Right, direction: Left),
+            (along: 3280.0, side: Right, direction: Left),
+            (along: 3700.0, side: Right, direction: Left),
+            (along: 3780.0, side: Right, direction: Left),
+            (along: 4350.0, side: Right, direction: Left),
+            (along: 4430.0, side: Right, direction: Left),
+        ],
+        brake_markers: [
+            (along: 220.0, side: Left, distance: 100),
+            (along: 270.0, side: Left, distance: 50),
+            (along: 1820.0, side: Left, distance: 100),
+            (along: 1870.0, side: Left, distance: 50),
+            (along: 4220.0, side: Right, distance: 100),
+            (along: 4270.0, side: Right, distance: 50),
+        ],
+        lamps: [
+            (span: Span(4280.0, 310.0), side: Left, lateral: 12.3, every: 26.0),
+            (span: Span(4280.0, 310.0), side: Right, lateral: 12.3, every: 26.0),
+            (span: Span(1360.0, 1900.0), side: Left, lateral: 12.3, every: 32.0),
+            (span: Span(3860.0, 4340.0), side: Right, lateral: 12.3, every: 32.0),
+        ],
+        // Trees, forests and cottages populate the Earth stretch
+        // (2895..4600..1120 m), where `is_earth_realm` is true and
+        // `Terrain::ground` is `Ground::Grass`. Not all green: autumn maples
+        // in crimson, golden ginkgos and almonds and cherries in pink blossom
+        // among the greens.
+        trees: [Broadleaf, Tall, MaritimePine, Poplar, Momiji, Ginkgo, Almond, Sakura],
+        forests: [
+            (span: Span(320.0, 760.0), species: [Tall, Broadleaf, Momiji, Ginkgo]),
+            (span: Span(3140.0, 3840.0), species: [MaritimePine, Broadleaf, Almond, Momiji]),
+            (span: Span(3860.0, 4480.0), species: [Tall, Poplar, Ginkgo, Sakura]),
+        ],
+        houses: (
+            max: 10,
+            paints: [(0.95, 0.92, 0.85), (0.92, 0.82, 0.7), (0.86, 0.9, 0.94)],
+            spans: [Span(320.0, 740.0), Span(3200.0, 4280.0)],
+            style: Cottage,
+        ),
+        grandstands: [
+            (along: 40.0, side: Left, lateral: 25.5, length: 64.0),
+            (along: 2100.0, side: Right, lateral: 25.5, length: 54.0),
+        ],
+        sky: Space,
+        water: Sea,
+        space: Some((
+            // Pressurized geodesic space-station biodomes & command towers
+            // right beside the road (11.5 m + their radius + 2.5 m).
+            biodomes: [
+                (along: 485.0, side: Left, radius: 17.0),
+                (along: 1185.0, side: Right, radius: 17.0),
+                (along: 1315.0, side: Left, radius: 18.0),
+                (along: 1430.0, side: Right, radius: 16.0),
+                (along: 1650.0, side: Right, radius: 18.0),
+                (along: 1795.0, side: Left, radius: 17.0),
+                (along: 1935.0, side: Left, radius: 18.0),
+                (along: 2120.0, side: Left, radius: 17.0),
+                (along: 2265.0, side: Right, radius: 16.0),
+                (along: 2765.0, side: Right, radius: 18.0),
+            ],
+            // Six-wheeled lunar rovers on the Moon (1120..2895 m).
+            rovers: [
+                (along: 1180.0, side: Left, lateral: 20.0, heading: 0.4),
+                (along: 1410.0, side: Right, lateral: 20.0, heading: -0.8),
+                (along: 1760.0, side: Left, lateral: 20.5, heading: 1.5),
+                (along: 1990.0, side: Right, lateral: 20.5, heading: 2.1),
+                (along: 2280.0, side: Left, lateral: 20.0, heading: -1.7),
+                (along: 2790.0, side: Left, lateral: 20.0, heading: -0.4),
+            ],
+            // Giant 27 m deep-space radio antennas right beside the Earth
+            // road (26..30 m from the centerline, oriented toward oncoming
+            // riders).
+            dishes: [
+                (position: (26.0, -95.0), heading: 0.0),
+                (position: (-26.0, -255.0), heading: 0.0),
+                (position: (145.0, -368.0), heading: 0.0),
+                (position: (285.0, -414.0), heading: 0.0),
+                (position: (255.0, -582.0), heading: 0.0),
+                (position: (40.0, -568.0), heading: 0.0),
+                (position: (-192.0, -70.0), heading: 0.0),
+                (position: (-112.0, 145.0), heading: 0.0),
+            ],
+            // Giant astronomical telescope observatory domes (cúpulas con
+            // telescopio) placed right beside the Earth road (28..32 m from
+            // the centerline) and dead ahead on the outside of bends, with
+            // their open shutter slits and 21.5 m telescope tubes aimed toward
+            // oncoming riders.
+            observatories: [
+                (position: (-29.5, -140.0), heading: -2.74),
+                (position: (6.0, -372.0), heading: -2.95),
+                (position: (225.0, -350.0), heading: 1.25),
+                (position: (365.0, -458.0), heading: 2.15),
+                (position: (480.0, -536.0), heading: -1.1),
+                (position: (-195.0, -185.0), heading: -0.45),
+            ],
+            // Space launchpads (lanzaderas espaciales) with 57 m Saturn-V
+            // rockets and red umbilical gantry towers right beside the Earth
+            // road.
+            rockets: [
+                // Facing π.
+                (position: (28.0, -215.0), heading: 3.14159274),
+                // Facing π/2.
+                (position: (320.0, -368.0), heading: 1.57079637),
+                (position: (-135.0, -295.0), heading: 0.0),
+            ],
+            // Overhead Orbital Space-Station Habitat Modules spanning right
+            // across the road on both the Space Center and Lunar Colony
+            // stretches.
+            arches: [
+                (along: 85.0),
+                (along: 195.0),
+                (along: 305.0),
+                (along: 540.0),
+                (along: 1210.0),
+                (along: 1350.0),
+                (along: 1620.0),
+                (along: 1740.0),
+                (along: 1860.0),
+                (along: 2080.0),
+                (along: 2315.0),
+                (along: 2720.0),
+                (along: 3056.0),
+                (along: 4050.0),
+                (along: 4510.0),
+            ],
+            portals: [
+                // First portal: leaves the Earth Space Center onto the Moon.
+                (along: 1120.0),
+                // Second portal: leaves the Moon back to Earth's high summit.
+                (along: 2895.0),
+            ],
+            // Solar panel arrays on the Moon (1120..2895 m).
+            solar_arrays: [
+                (span: Span(1160.0, 1440.0), side: Right, lateral: 19.0, every: 22.0),
+                (span: Span(1620.0, 1900.0), side: Right, lateral: 19.0, every: 22.0),
+                (span: Span(2320.0, 2840.0), side: Right, lateral: 19.0, every: 24.0),
+            ],
+            boulders: (max: 75, spans: [Span(1150.0, 2865.0)]),
+        )),
+    ),
+)

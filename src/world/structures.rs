@@ -1505,7 +1505,7 @@ mod tests {
     #[test]
     fn concrete_bridges_have_a_deck_out_to_the_walls() {
         let mut checked = 0;
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let scenery = &circuit.scenery;
             if !scenery.bridges.iter().any(|bridge| !bridge.style.wooden()) {
                 continue;

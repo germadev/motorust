@@ -943,7 +943,7 @@ mod tests {
 
     #[test]
     fn mine_rails_run_beside_the_road_on_the_ground() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(mine) = &circuit.scenery.mine else {
                 continue;
             };
@@ -974,7 +974,7 @@ mod tests {
 
     #[test]
     fn trestles_run_from_rock_to_rock_high_over_the_road() {
-        for circuit in &CIRCUITS {
+        for circuit in CIRCUITS.iter() {
             let Some(mine) = &circuit.scenery.mine else {
                 continue;
             };

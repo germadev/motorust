@@ -1,0 +1,362 @@
+// Loop Island: a lap inspired by Green Hill, the first zone of Sonic the
+// Hedgehog. A roller coaster of a road, clockwise round an island of green
+// hills under a blue sky, with the sea all around.
+//
+// 1. The start straight runs north between palm trees and sunflowers, with
+//    a crest where the bike takes off just past the line, and over a broad
+//    top where the branch to the loop parts from it.
+// 2. A long right-hander climbs round the island's own loop, and S-bends
+//    roll on east over the hills. On the climb to the top, a branch forks
+//    off to the right, sweeps inside the corner and goes round the loop,
+//    upside down at the top, before it joins the lap again on the S-bends.
+// 3. The road climbs into a tunnel through a checkerboard ridge and comes
+//    out by a waterfall, high above the sea, into a long banked right-hander.
+// 4. Down past a second waterfall, the road turns right and comes down
+//    nearly to the sea, round a round bay with an islet in it, the sea
+//    running in where the road crossed it on a bridge, and back up.
+// 5. Rolling S-bends with totem poles lead down to the south shore: a beach
+//    road with palms, over a lagoon on a wooden bridge narrower than the
+//    road, back to the start.
+//
+// Where things are, in metres from the finish line:
+//
+// - the start straight:      Span(2382.4, 290.0)
+// - the stretch of lap the
+//   branch with the loop
+//   leaves out:              Span(110.0, 637.0), forking off on the climb to
+//                            the top of the start straight, so the turn off
+//                            the lap is a long, gentle one
+// - the tunnel:              Span(770.0, 870.0)
+// - the south shore:         Span(1982.4, 2282.4)
+// - the wooden bridge over
+//   the lagoon:              Span(2032.4, 2222.4), its fences 6.5 m from the
+//                            middle: narrower than the asphalt, a little
+//                            less than the old one over the inlet (6 m), as
+//                            Fellowship Road's old bridges
+//
+// Sonic's colours: blue (0.08, 0.28, 0.85) and gold (1.0, 0.8, 0.1).
+//
+// How a circuit's file is written: see src/circuits/data.rs. Its mountains
+// are a function, in src/circuits/loop_island.rs.
+(
+    name: "Loop Island",
+    name_en: "Loop Island",
+    description: "Inspirada en Sonic: un desvío con un rizo para\ndar la vuelta, tierra a cuadros y cascadas",
+    description_en: "Inspired by Sonic: a branch with a loop to ride,\ncheckered hills and waterfalls",
+    // An island of green hills: birds in the trees, the sea all round.
+    ambience: (
+        sea: 0.55,
+        gulls: 0.35,
+        birds: 0.9,
+        cicadas: 0.25,
+        wind: 0.25,
+    ),
+    song: (file: "loop_island.mp3", length: 176.7, loudness: -13.3),
+    pace: 1.0,
+    layout: (
+        control_points: [
+            // 1. The start straight, north (-Z).
+            (0.0, 0.0),
+            (0.0, -110.0),
+            (0.0, -220.0),
+            (6.0, -300.0),
+            // 2. The long right-hander past the loop, and S-bends east.
+            (35.0, -360.0),
+            (90.0, -395.0),
+            (160.0, -400.0),
+            (225.0, -380.0),
+            (290.0, -385.0),
+            (345.0, -420.0),
+            // 3. Up through the tunnel and round the long right-hander.
+            (390.0, -470.0),
+            (450.0, -500.0),
+            (520.0, -490.0),
+            (565.0, -445.0),
+            (575.0, -380.0),
+            (555.0, -320.0),
+            // 4. Down past the waterfall, and round to the right, down round the
+            // bay: along its north shore, round its far end and back along its
+            // south shore, onto the old way where the bridge over it ended.
+            (520.0, -270.0),
+            (502.0, -252.0),
+            (470.0, -243.0),
+            (425.0, -243.0),
+            (372.0, -236.0),
+            (330.0, -212.0),
+            (313.0, -176.0),
+            (322.0, -140.0),
+            (352.0, -117.0),
+            (400.0, -108.0),
+            (450.0, -109.0),
+            (495.0, -110.0),
+            (525.0, -95.0),
+            // 5. Rolling S-bends down to the south shore, and back to the start.
+            (540.0, -60.0),
+            (530.0, 10.0),
+            (485.0, 55.0),
+            (420.0, 70.0),
+            (355.0, 60.0),
+            (290.0, 80.0),
+            (220.0, 115.0),
+            (140.0, 125.0),
+            (70.0, 120.0),
+            (25.0, 92.0),
+            (3.0, 50.0),
+        ],
+        // Ups and downs all the way round: a crest where the bike takes off
+        // just past the line and a broad top further up the start straight,
+        // gentle rises over the S-bends and along the shore (none to fly off
+        // in a bend), and the high ground of the tunnel.
+        elevation: [
+            (0.0, 0.0),
+            // A crest where the bike takes off flat out, just past the line: it
+            // lands on the straight, well before the branch to the loop forks off.
+            (25.0, 0.3),
+            (55.0, 2.0),
+            (85.0, 0.5),
+            (110.0, 1.0),
+            (160.0, 4.0),
+            // A broad top (over 700 m round: the bike stays on the road even at
+            // its top speed), where the branch to the loop parts from the lap and
+            // turns off on its own: a bike flying there landed in its bend.
+            (195.0, 5.0),
+            (235.0, 4.5),
+            (300.0, 2.5),
+            (380.0, 3.0),
+            (470.0, 7.0),
+            (540.0, 9.0),
+            (600.0, 7.5),
+            (660.0, 10.0),
+            (720.0, 14.0),
+            (780.0, 17.0),
+            (840.0, 18.0),
+            (900.0, 17.0),
+            (980.0, 13.0),
+            (1060.0, 9.0),
+            (1140.0, 6.0),
+            (1200.0, 5.0),
+            // Down nearly to the sea round the bay, 0.8 m over it, and back up.
+            (1270.0, 1.8),
+            (1340.0, -0.6),
+            (1400.0, -1.2),
+            (1480.0, -1.2),
+            (1560.0, -1.0),
+            (1620.0, 0.4),
+            (1680.0, 3.6),
+            // A long, gentle rise over the S-bends: no crest to fly off in them.
+            (1742.4, 8.0),
+            (1802.4, 6.6),
+            (1862.4, 4.0),
+            (1922.4, 3.0),
+            // The shore road rolls gently: its bends come too close together to
+            // land a jump between them.
+            (2002.4, 4.3),
+            (2082.4, 6.4),
+            (2162.4, 4.4),
+            (2202.4, 3.0),
+            (2282.4, 2.0),
+            (2362.4, 0.8),
+        ],
+        wall: 11.5,
+        // The long right-hander after the tunnel and the last corner, banked
+        // like a velodrome.
+        banking: [
+            (from: 880.0, to: 1100.0, factor: 1.6),
+            (from: 2252.4, to: 2392.4, factor: 1.5),
+        ],
+        // The wooden bridge, narrower than the road.
+        narrows: [(from: 2032.4, to: 2222.4, wall: 6.5)],
+        // Inside the first long corner, round the loop.
+        branches: [(
+            from: 110.0,
+            to: 637.0,
+            // A long right-hander (about 160 m radius) round to the
+            // north-east, over the shoulder of the crest and gently down to
+            // the loop.
+            approach: [
+                (0.5, -122.5),
+                (2.0, -135.0),
+                (4.4, -147.3),
+                (7.8, -159.4),
+                (12.2, -171.2),
+                (17.4, -182.6),
+                (23.6, -193.6),
+                (30.6, -204.0),
+                (38.3, -213.9),
+            ],
+            vertical_loop: Some((
+                mouth: (82.2, -258.5),
+                // North-east: -π/4.
+                heading: -0.78539819,
+                height: 5.5,
+                radius: 16.0,
+                shift: -16.0,
+            )),
+            // On north-east, round to the right (200 m radius), straight on
+            // towards the lap, and onto it in a last long right-hander (340 m
+            // radius), climbing gently all the way.
+            exit: [
+                (137.5, -290.6),
+                (146.5, -298.2),
+                (156.3, -305.9),
+                (166.1, -313.6),
+                (175.8, -321.3),
+                (185.6, -329.0),
+                (195.1, -336.2),
+                (204.8, -343.0),
+                (214.7, -349.5),
+                (224.8, -355.7),
+                (235.2, -361.5),
+                (245.7, -366.9),
+                (256.5, -372.0),
+                (267.4, -376.7),
+                (278.4, -381.0),
+            ],
+        )],
+    ),
+    scenery: (
+        // The island: how far out from the centre line the land goes (m).
+        // Round the bay, the sea right beyond the walls (16 m), on the left,
+        // inside the bay (its mouth where the road crossed it on a bridge,
+        // before); along the south shore, the sea running in under the
+        // bridge into a lagoon, 40 m inland past the road.
+        coast: AroundTrack([
+            (0.0, 140.0),
+            (280.0, 160.0),
+            (400.0, 220.0),
+            (700.0, 220.0),
+            (880.0, 140.0),
+            (1050.0, 70.0),
+            (1180.0, 45.0),
+            (1200.0, 30.0),
+            (1230.0, 16.0),
+            (1650.0, 16.0),
+            (1690.0, 40.0),
+            (1822.4, 40.0),
+            (1972.4, 45.0),
+            (1997.4, -40.0),
+            (2237.4, -40.0),
+            (2262.4, 45.0),
+            (2272.4, 45.0),
+            (2322.4, 70.0),
+            (2382.4, 120.0),
+        ]),
+        hills: 20.0,
+        greens: Lawn,
+        grass_shade: 1.0,
+        massifs: [
+            // The ridge the tunnel goes through.
+            (center: (430.0, -505.0), radius: 80.0, height: 32.0),
+            (center: (395.0, -565.0), radius: 60.0, height: 26.0),
+            (center: (475.0, -440.0), radius: 55.0, height: 22.0),
+            // Checkerboard mesas inside the lap.
+            (center: (200.0, -260.0), radius: 70.0, height: 28.0),
+            (center: (330.0, -320.0), radius: 55.0, height: 22.0),
+            (center: (180.0, -50.0), radius: 55.0, height: 16.0),
+            (center: (370.0, -70.0), radius: 50.0, height: 18.0),
+            // Hills behind the loop.
+            (center: (110.0, -520.0), radius: 75.0, height: 30.0),
+            // Islets, and one in the middle of the bay.
+            (center: (-220.0, -160.0), radius: 30.0, height: 12.0),
+            (center: (300.0, 260.0), radius: 28.0, height: 10.0),
+            (center: (418.0, -176.0), radius: 24.0, height: 8.0),
+        ],
+        cuttings: [
+            // The tunnel, with earth on both sides from before the mouth.
+            (span: Span(740.0, 900.0), side: Left, height: 22.0),
+            (span: Span(740.0, 900.0), side: Right, height: 22.0),
+            // The walls the waterfalls pour down.
+            (span: Span(900.0, 995.0), side: Left, height: 18.0),
+            (span: Span(1120.0, 1225.0), side: Right, height: 18.0),
+            // Earth on the inside of the S-bends towards the shore, short of
+            // the lagoon.
+            (span: Span(1912.4, 1987.4), side: Right, height: 14.0),
+        ],
+        // Across the sea, checkerboard mountains to the north and west, as
+        // in the background of Sonic's Green Hill; to the south and east,
+        // open sea.
+        mountains: "loop_island_mountains",
+        // Gold and blue.
+        curbs: [(1.0, 0.8, 0.1), (0.08, 0.28, 0.85)],
+        walls: [
+            // Hedges along the start straight, checkerboard earth elsewhere.
+            (span: Span(2382.4, 290.0), side: Right, style: Hedge),
+            (span: Span(2382.4, 290.0), side: Left, style: Hedge),
+            (span: Lap, side: Left, style: Checkered),
+            (span: Lap, side: Right, style: Checkered),
+        ],
+        tunnels: [Span(770.0, 870.0)],
+        bridges: [(span: Span(2032.4, 2222.4), style: Wooden, fence: 1.2)],
+        gantries: [
+            (along: 0.0, color: (0.08, 0.28, 0.85), text: Some("LOOP ISLAND")),
+            (along: 700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+            // On the bay's south shore, half way round the rest of the lap.
+            (along: 1560.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+        ],
+        billboards: [
+            // Just before the branch forks off to the right.
+            (
+                along: 95.0,
+                side: Right,
+                text: "MOTORUST",
+                color: (0.1, 0.1, 0.12),
+                accent: Some((4, (0.9, 0.4, 0.12))),
+            ),
+            (along: 620.0, side: Left, text: "GO FAST!", color: (0.08, 0.28, 0.85)),
+            (along: 2252.4, side: Right, text: "ZONE 1", color: (0.1, 0.5, 0.2)),
+        ],
+        trees: [Broadleaf],
+        houses: (max: 0, paints: [], style: Cottage),
+        palms: [
+            (span: Span(2382.4, 290.0), side: Left, lateral: 17.5, every: 22.0),
+            (span: Span(110.0, 200.0), side: Right, lateral: 17.5, every: 26.0),
+            (span: Span(300.0, 520.0), side: Left, lateral: 19.5, every: 30.0),
+            // Inside the first long corner, round the branch.
+            (span: Span(220.0, 520.0), side: Right, lateral: 19.5, every: 30.0),
+            (span: Span(1672.4, 1962.4), side: Right, lateral: 17.5, every: 34.0),
+            (span: Span(1982.4, 2282.4), side: Left, lateral: 18.5, every: 20.0),
+            // Further back, among the other trees.
+            (span: Span(2382.4, 290.0), side: Left, lateral: 33.5, every: 24.0),
+            (span: Span(520.0, 740.0), side: Left, lateral: 20.5, every: 28.0),
+            (span: Span(640.0, 740.0), side: Right, lateral: 20.5, every: 28.0),
+            (span: Span(1672.4, 1962.4), side: Left, lateral: 17.5, every: 30.0),
+            (span: Span(1982.4, 2282.4), side: Right, lateral: 31.5, every: 26.0),
+            (span: Span(2282.4, 2382.4), side: Left, lateral: 19.5, every: 22.0),
+        ],
+        boats: [(position: (150.0, 260.0), heading: 1.2, kind: Sailboat)],
+        chevrons: [
+            (along: 1952.4, side: Right, direction: Left),
+            (along: 2257.4, side: Left, direction: Right),
+        ],
+        grandstands: [(along: 70.0, side: Right, lateral: 16.5, length: 32.0)],
+        soil: Checkered,
+        sunflowers: [
+            (span: Span(20.0, 280.0), side: Left, lateral: 14.0, every: 12.0),
+            (span: Span(520.0, 740.0), side: Left, lateral: 14.0, every: 14.0),
+            (span: Span(640.0, 740.0), side: Right, lateral: 14.0, every: 14.0),
+            (span: Span(1982.4, 2282.4), side: Right, lateral: 14.0, every: 12.0),
+        ],
+        totems: [
+            (along: 40.0, side: Left),
+            (along: 690.0, side: Right),
+            (along: 1722.4, side: Left),
+            (along: 1882.4, side: Right),
+            (along: 2322.4, side: Left),
+        ],
+        // The loop to ride is the branch's (see the layout).
+        loops: [
+            // Inland from the south shore.
+            (along: 1912.4, side: Right, lateral: 45.0, radius: 11.0),
+        ],
+        waterfalls: [
+            (along: 945.0, side: Left, width: 16.0),
+            (along: 1175.0, side: Right, width: 14.0),
+        ],
+        sky: Day,
+        water: Sea,
+        cartoon_water: true,
+        // Riding a wheelie, the rear wheel leaves a blue halo behind it, as
+        // Sonic spinning.
+        wheelie_halo: Some((0.2, 0.5, 1.0)),
+    ),
+)

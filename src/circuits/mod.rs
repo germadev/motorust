@@ -2,27 +2,39 @@
 //! está usando.
 
 mod bay;
+pub mod data;
 mod fellowship_road;
 mod ghost_island;
 mod gold_mine;
 mod loop_island;
 mod moon_base;
-mod toy_store;
 mod turbo_bay;
 
+use std::sync::LazyLock;
+
 use bevy::prelude::*;
+use serde::Deserialize;
 
 use crate::locale::Language;
 use crate::track::Layout;
 use crate::world::scenery::Scenery;
 
 /// Una pista para elegir.
+///
+/// Written in Rust, or read from a RON file (see [`data`]).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Circuit {
+    #[serde(deserialize_with = "data::text")]
     pub name: &'static str,
+    #[serde(deserialize_with = "data::text")]
     pub name_en: &'static str,
+    #[serde(deserialize_with = "data::text")]
     pub description: &'static str,
+    #[serde(deserialize_with = "data::text")]
     pub description_en: &'static str,
     /// The music that plays during the race.
+    #[serde(deserialize_with = "data::song")]
     pub song: Song,
     /// What its surroundings sound like, choosing the bike.
     pub ambience: Ambience,
@@ -37,7 +49,8 @@ pub struct Circuit {
 
 /// The sounds of a track's surroundings, heard while choosing the bike
 /// (see [`crate::sound::ambience`]): how much of each, from 0 to 1.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Ambience {
     /// Waves breaking on the shore.
     pub sea: f32,
@@ -90,17 +103,104 @@ impl Circuit {
     }
 }
 
-/// Las pistas, en el orden de la pantalla de elegir pista.
-pub static CIRCUITS: [Circuit; 8] = [
-    bay::BAY,
-    turbo_bay::TURBO_BAY,
-    loop_island::LOOP_ISLAND,
-    gold_mine::GOLD_MINE,
-    ghost_island::GHOST_ISLAND,
-    moon_base::MOON_BASE,
-    fellowship_road::FELLOWSHIP_ROAD,
-    toy_store::TOY_STORE,
+/// The circuits written in RON, by the names of their files in
+/// `assets/circuits/`, built into the game.
+const FILES: [(&str, &str); 8] = [
+    ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
+    (
+        "turbo_bay.ron",
+        include_str!("../../assets/circuits/turbo_bay.ron"),
+    ),
+    (
+        "loop_island.ron",
+        include_str!("../../assets/circuits/loop_island.ron"),
+    ),
+    (
+        "moon_base.ron",
+        include_str!("../../assets/circuits/moon_base.ron"),
+    ),
+    (
+        "gold_mine.ron",
+        include_str!("../../assets/circuits/gold_mine.ron"),
+    ),
+    (
+        "ghost_island.ron",
+        include_str!("../../assets/circuits/ghost_island.ron"),
+    ),
+    (
+        "fellowship_road.ron",
+        include_str!("../../assets/circuits/fellowship_road.ron"),
+    ),
+    (
+        "toy_store.ron",
+        include_str!("../../assets/circuits/toy_store.ron"),
+    ),
 ];
+
+/// The terrain's functions the circuits' files name (see [`data`]).
+fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
+    Some(match name {
+        // No water anywhere, and no mountains: for a circuit indoors.
+        "dry" => |_| 1000.0,
+        "flat" => |_| 0.0,
+        "bay_coast" => bay::coast,
+        "bay_mountains" => bay::mountains,
+        "turbo_bay_mountains" => turbo_bay::mountains,
+        "loop_island_mountains" => loop_island::mountains,
+        "moon_base_mountains" => moon_base::mountains,
+        "gold_mine_water" => gold_mine::water,
+        "gold_mine_mountains" => gold_mine::mountains,
+        "ghost_island_lakes" => ghost_island::lakes,
+        "ghost_island_mountains" => ghost_island::mountains,
+        "fellowship_road_water" => fellowship_road::water,
+        "fellowship_road_mountains" => fellowship_road::mountains,
+        _ => return None,
+    })
+}
+
+/// The songs the circuits' files name, by their files in `assets/music/`.
+fn music(file: &str) -> Option<&'static [u8]> {
+    Some(match file {
+        "bahia.mp3" => include_bytes!("../../assets/music/bahia.mp3"),
+        "turbo_bay.mp3" => include_bytes!("../../assets/music/turbo_bay.mp3"),
+        "loop_island.mp3" => include_bytes!("../../assets/music/loop_island.mp3"),
+        "moon_base.mp3" => include_bytes!("../../assets/music/moon_base.mp3"),
+        "gold_mine.mp3" => include_bytes!("../../assets/music/gold_mine.mp3"),
+        "autumn_gale.mp3" => include_bytes!("../../assets/music/autumn_gale.mp3"),
+        "beyond_the_final_turn.mp3" => {
+            include_bytes!("../../assets/music/beyond_the_final_turn.mp3")
+        }
+        "plastic_velocity_rush.mp3" => {
+            include_bytes!("../../assets/music/plastic_velocity_rush.mp3")
+        }
+        _ => return None,
+    })
+}
+
+/// Las pistas, en el orden de la pantalla de elegir pista: those written in
+/// RON read from their files the first time they are wanted.
+pub static CIRCUITS: LazyLock<[Circuit; 8]> = LazyLock::new(|| {
+    let [
+        (bay, bay_file),
+        (turbo_bay, turbo_bay_file),
+        (loop_island, loop_island_file),
+        (moon_base, moon_base_file),
+        (gold_mine, gold_mine_file),
+        (ghost_island, ghost_island_file),
+        (fellowship_road, fellowship_road_file),
+        (toy_store, toy_store_file),
+    ] = FILES;
+    [
+        data::load(bay, bay_file),
+        data::load(turbo_bay, turbo_bay_file),
+        data::load(loop_island, loop_island_file),
+        data::load(gold_mine, gold_mine_file),
+        data::load(ghost_island, ghost_island_file),
+        data::load(moon_base, moon_base_file),
+        data::load(fellowship_road, fellowship_road_file),
+        data::load(toy_store, toy_store_file),
+    ]
+});
 
 /// La pista elegida: su índice en [`CIRCUITS`]. Al cambiarla, el mundo se
 /// vuelve a construir ([`crate::world`]).

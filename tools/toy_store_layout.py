@@ -2,9 +2,10 @@
 """Draws the Toy Store's lap as a turtle would (straights and arcs, with the
 road's height marked along the way), and its two branches (a way through a
 castle on the diorama table, and a way round a loop of orange track beside
-the north wall), and writes them out as the game wants them:
-`CONTROL_POINTS`, `ELEVATION`, `CASTLE_WAY`, `LOOP_APPROACH`, `LOOP_EXIT`
-and the spans and the loop's mouth for `src/circuits/toy_store.rs`.
+the north wall), and writes them out as the game wants them, into the
+circuit's file, `assets/circuits/toy_store.ron`: its `control_points` and
+`elevation`, the ways of its two branches, where they fork and join (and so
+where the bankings beside them begin and end) and the loop's mouth.
 
 The road is narrow (its walls `WALL` from the centre line, as the circuit's
 `Layout::wall`) and twists. The lap folds over itself (the start straight
@@ -26,14 +27,14 @@ long and as gently bent, so that neither way is quicker.
 
 Usage:
     python3 tools/toy_store_layout.py              # the checks
-    python3 tools/toy_store_layout.py --emit       # the Rust arrays
-    python3 tools/toy_store_layout.py --write      # ... written into the circuit
+    python3 tools/toy_store_layout.py --emit       # the lists, printed
+    python3 tools/toy_store_layout.py --write      # ... written into the circuit's file
     python3 tools/toy_store_layout.py --plan plan.png --profile profile.png
     python3 tools/toy_store_layout.py --pace 760 1500 2140  # a rival's time
 
 `--plan` draws the lap and its branches from above (north, -Z, up),
 coloured by height, with their walls, the furniture of
-`src/circuits/toy_store.rs` and a label every 100 m; `--profile` its height
+`assets/circuits/toy_store.ron` and a label every 100 m; `--profile` its height
 and grade, the stretches under another shaded. `--pace` estimates, with a
 rough model of a good rival (flat out on the straights, as fast round a bend
 as its radius allows, gathering and losing speed at fixed rates), its time
@@ -45,8 +46,6 @@ Needs numpy (and matplotlib for the pictures).
 """
 
 import argparse
-import contextlib
-import io
 import math
 import os
 import re
@@ -105,7 +104,7 @@ HELIX_RADIUS = 36.0
 # mirror image: neither way is the longer or the slower.
 CASTLE_LEAD, CASTLE_BEND, CASTLE_ANGLE, CASTLE_THROUGH = 10.0, 100.0, 20.7, 20.0
 CASTLE_SPAN = 2 * CASTLE_LEAD + 4 * CASTLE_BEND * math.sin(math.radians(CASTLE_ANGLE)) + CASTLE_THROUGH
-CIRCUIT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "circuits", "toy_store.rs")
+CIRCUIT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "circuits", "toy_store.ron")
 
 
 def forward(heading):
@@ -557,73 +556,116 @@ def check_branches(t, line):
         )
 
 
-def emit(points, profile):
-    """`CONTROL_POINTS` and `ELEVATION` as Rust: the points to the
-    centimetre (to the decimetre, 6 m apart, they would bend the curve
-    through them out of true)."""
-    number = lambda v: "0.0" if f"{v:.1f}" == "-0.0" else f"{v:.1f}"
-    print(f"const CONTROL_POINTS: [Vec2; {len(points)}] = [")
-    for x, z in points:
-        print(f"    Vec2::new({centimetres(x)}, {centimetres(z)}),")
-    print("];\n")
-    print(f"const ELEVATION: [(f32, f32); {len(profile)}] = [")
-    for along, height, name in profile:
-        note = f" // {name}" if name else ""
-        print(f"    ({number(along)}, {round(float(height), 2)!r}),{note}")
-    print("];")
+def number(v):
+    """`v` (m) to the decimetre."""
+    return "0.0" if f"{v:.1f}" == "-0.0" else f"{v:.1f}"
 
 
 def centimetres(v):
-    """`v` (m) as Rust, to the centimetre."""
+    """`v` (m) to the centimetre."""
     text = f"{v:.2f}".rstrip("0")
     text = text + "0" if text.endswith(".") else text
     return "0.0" if text == "-0.0" else text
 
 
-def emit_branches(t, line, step):
-    """The branches' spans, control points and loop as Rust."""
-    number = lambda v: "0.0" if f"{v:.1f}" == "-0.0" else f"{v:.1f}"
-    points = lambda name, array: (
-        f"const {name}: [Vec2; {len(array)}] = [\n"
-        + "".join(f"    Vec2::new({centimetres(x)}, {centimetres(z)}),\n" for x, z in array)
-        + "];"
-    )
+def lists(t, points, profile, line, step):
+    """What the tool works out, as the circuit's file writes it: its lists
+    (each item's text, with its comment if it has one), the forks and
+    joins of the branches, and the loop's mouth. The points to the
+    centimetre (to the decimetre, 6 m apart, they would bend the curve
+    through them out of true)."""
+    xz = lambda array: [f"({centimetres(x)}, {centimetres(z)})" for x, z in array]
     way, through = castle_way(t)
     approach, mouth, heading, exit_ = loop_way(t)
     fork = lambda name: along_of(line, step, t.kept[name][0])
-    print(f"const CASTLE: Span = span({number(fork('castle fork'))}, {number(fork('castle join'))});")
-    print(f"const LOOP: Span = span({number(fork('loop fork'))}, {number(fork('loop join'))});")
-    print(points("CASTLE_WAY", way))
-    print(f"// Through the castle: from {through[0].round(1)} to {through[1].round(1)}.")
-    print(points("LOOP_APPROACH", approach))
-    print(f"const LOOP_MOUTH: Vec2 = Vec2::new({number(mouth[0])}, {number(mouth[1])});")
-    print(f"const LOOP_HEADING: f32 = {heading:.4f};")
-    print(points("LOOP_EXIT", exit_))
+    return {
+        "control_points": xz(points),
+        "elevation": [
+            f"({number(along)}, {round(float(height), 2)!r})," + (f" // {name}" if name else "")
+            for along, height, name in profile
+        ],
+        "castle way": xz(way),
+        "loop approach": xz(approach),
+        "loop exit": xz(exit_),
+        "castle": (number(fork("castle fork")), number(fork("castle join"))),
+        "loop": (number(fork("loop fork")), number(fork("loop join"))),
+        "mouth": f"({number(mouth[0])}, {number(mouth[1])})",
+        "heading": f"{heading:.4f}",
+        "through": f"from {through[0].round(1)} to {through[1].round(1)}",
+    }
 
 
-def write(arrays):
-    """Puts `arrays` (what `--emit` prints) into the circuit's source in
-    place of its own: each `const` by its name, the rest of the file as it
-    is. The loop's heading is left as written there (a named angle)."""
+def emit(out):
+    """The lists as the circuit's file writes them."""
+    for name in ("control_points", "elevation", "castle way", "loop approach", "loop exit"):
+        print(f"{name}: [")
+        for item in out[name]:
+            print(f"    {item}" + ("" if item.rstrip().endswith(",") or "//" in item else ","))
+        print("],")
+    print(f"castle: Span{out['castle']}".replace("'", ""))
+    print(f"loop: Span{out['loop']}".replace("'", ""))
+    print(f"loop mouth: {out['mouth']}, heading {out['heading']}")
+    print(f"// Through the castle: {out['through']}.")
+
+
+def replace_list(text, start, items, what):
+    """`text` with the list that opens at `start` (the index of its `[`)
+    holding `items` instead, at the indent of its own."""
+    open_ = text.index("[", start)
+    close = text.index("\n", open_)
+    depth, i = 0, open_
+    while True:
+        depth += {"[": 1, "]": -1}.get(text[i], 0)
+        if depth == 0:
+            break
+        i += 1
+    body = text[close + 1 : i]
+    indent = re.match(r"\s*", body).group(0).strip("\n")
+    end = text.rindex("\n", 0, i)
+    lines = "".join(
+        f"{indent}{item}" + ("" if item.rstrip().endswith(",") or "//" in item else ",") + "\n"
+        for item in items
+    )
+    if not lines:
+        sys.exit(f"nothing to write for {what}")
+    return text[: close + 1] + lines + text[end + 1 :]
+
+
+def write(out):
+    """Puts the lists into the circuit's file in place of its own, the rest
+    of it as it is: its centre line, its heights, the ways of its two
+    branches (the castle's first, the loop's second) and the loop's mouth;
+    and where the branches fork and join, wherever the file has those
+    (their bankings too). The loop's heading is left as written there."""
     text = open(CIRCUIT).read()
-    blocks = re.findall(r"^(const (\w+)[^\n]*?(?:\[\n.*?^\];|;))$", arrays, re.M | re.S)
-    for block, name in blocks:
-        if name == "LOOP_HEADING":
-            continue
-        pattern = re.compile(rf"^const {name}\b[^\n]*?(?:\[\n.*?^\];|;)$", re.M | re.S)
-        text, count = pattern.subn(lambda _: block, text, count=1)
-        if count != 1:
-            sys.exit(f"{name} not found in {CIRCUIT}")
+    text = replace_list(text, text.index("control_points: ["), out["control_points"], "control_points")
+    text = replace_list(text, text.index("elevation: ["), out["elevation"], "elevation")
+    branches = text.index("branches: [")
+    approaches = [m.start() for m in re.finditer(r"approach: \[", text[branches:])]
+    if len(approaches) != 2:
+        sys.exit(f"{CIRCUIT}: not the two branches, the castle's and the loop's")
+    # From the last, so that the first's place stays where it was found.
+    text = replace_list(text, branches + approaches[1], out["loop approach"], "loop approach")
+    text = replace_list(text, branches + approaches[0], out["castle way"], "castle way")
+    text = replace_list(text, text.index("exit: [", branches), out["loop exit"], "loop exit")
+    text, count = re.subn(r"mouth: \([^)]*\)", f"mouth: {out['mouth']}", text, count=1)
+    if count != 1:
+        sys.exit(f"the loop's mouth not found in {CIRCUIT}")
+    # The forks and joins: the branches' own, written over wherever they are.
+    ends = re.findall(r"from: (-?[\d.]+),\s*to: (-?[\d.]+),\s*(?://[^\n]*\s*)*approach:", text[branches:])
+    for (old_from, old_to), (new_from, new_to) in zip(ends, (out["castle"], out["loop"])):
+        for old, new in ((old_from, new_from), (old_to, new_to)):
+            text = re.sub(rf"\b(from|to): {re.escape(old)}(?=[,)\s])", rf"\g<1>: {new}", text)
     open(CIRCUIT, "w").write(text)
-    print(f"written: {', '.join(name for _, name in blocks if name != 'LOOP_HEADING')}")
+    print(f"written into {CIRCUIT}: control_points, elevation, the branches' ways, forks and joins, the loop's mouth")
 
 
 def furniture():
-    """The furniture of the circuit's source: kind, middle, size."""
+    """The furniture of the circuit's file: kind, middle, size."""
     text = open(CIRCUIT).read()
     pattern = (
-        r"kind: FurnitureKind::(\w+),\s*center: Vec2::new\((-?[\d.]+), (-?[\d.]+)\),"
-        r"\s*size: Vec2::new\((-?[\d.]+), (-?[\d.]+)\)"
+        r"kind: (Table|Diorama|Chair|Shelves),\s*center: \((-?[\d.]+), (-?[\d.]+)\),"
+        r"\s*size: \((-?[\d.]+), (-?[\d.]+)\)"
     )
     return [
         (kind, float(x), float(z), float(w), float(d))
@@ -680,11 +722,11 @@ def plot(t, points, line, step, heights, profile, tunnels, plan, profile_out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--emit", action="store_true", help="print the Rust arrays")
+    parser.add_argument("--emit", action="store_true", help="print the lists for the circuit's file")
     parser.add_argument(
         "--write",
         action="store_true",
-        help="write the Rust arrays into src/circuits/toy_store.rs in place of its own",
+        help="write the lists into assets/circuits/toy_store.ron in place of its own",
     )
     parser.add_argument("--plan", help="draw the lap from above to this PNG")
     parser.add_argument("--profile", help="draw the height profile to this PNG")
@@ -700,14 +742,11 @@ def main():
     points, line, step, length, profile, heights = resolve(walk)
     tunnels = under_another(line, step, heights)
     if args.emit or args.write:
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            emit(points, profile)
-            emit_branches(walk, line, step)
+        out = lists(walk, points, profile, line, step)
         if args.write:
-            write(out.getvalue())
+            write(out)
         else:
-            print(out.getvalue(), end="")
+            emit(out)
     else:
         check(line, step, heights, tunnels)
         check_branches(walk, line)

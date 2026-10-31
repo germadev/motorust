@@ -1713,7 +1713,7 @@ mod tests {
 
     #[test]
     fn wooden_bridges_have_their_fence_instead_of_walls() {
-        for circuit in &crate::circuits::CIRCUITS {
+        for circuit in crate::circuits::CIRCUITS.iter() {
             let scenery = &circuit.scenery;
             let lap = Track::new(&circuit.layout).lap_length();
             for bridge in scenery.bridges {

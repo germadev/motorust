@@ -1,0 +1,918 @@
+// Ghost Island: a lap of an island of feudal Japan, after Ghost of
+// Tsushima, its stretches each in a colour of their own. It crosses the
+// castle hill twice, in a figure of eight: first through it, by a tunnel at
+// the end of the castle street, and at the end of the lap over it, 33 m
+// above, through the castle.
+//
+// 1. The castle street, north, over a crest where the bike takes off,
+//    straight at the castle hill and into the tunnel under it, at its foot.
+// 2. Out onto the coast, round to the right, and east along it in esses,
+//    past the great torii standing in the sea.
+// 3. The shrine on the water: a boardwalk, narrower than the road, straight
+//    across an inlet, with a crest in the middle where the bike takes off.
+// 4. Up the susuki hills in esses at up to 12 %, south over their rolling
+//    top, two crests where the bike takes off, and down at 12 % to the lake.
+// 5. Round the lake, clockwise, three sides of it, along a shrine's
+//    vermilion fence on the lake's side: fields of flowers down to the
+//    water, a water wheel on its shore and, on the outside of the bend at
+//    its foot, the great maple over its clearing of red leaves.
+// 6. North from the lake to the temple, where the road splits in two: the
+//    lap snakes through its courtyard and a way to the left swings out
+//    early over a hump.
+// 7. Up the red ridge in bends at up to 12 %, most of the way through a
+//    narrow corridor of torii, as at Fushimi Inari in Kyoto, to its top,
+//    53 m up, and round to the left onto the castle ridge, west.
+// 8. Down along the castle ridge, where the road splits three ways again,
+//    the other way round, and over the tunnel through the castle hill.
+// 9. Up the bamboo hill at 12 %, and down it through the bamboo at 11 % in
+//    a run of tight esses, four bends winding like a river, and round to
+//    the left into the castle street.
+//
+// Where things are, in metres from the finish line:
+//
+// - the castle street:           Span(5821.0, 360.0)
+// - the tunnel through the
+//   castle hill, opening at the
+//   foot of its slope at the end
+//   of the castle street:        Span(360.0, 620.0)
+// - the coast:                   Span(640.0, 1422.0)
+// - the boardwalk:               Span(1422.0, 1622.0), its fences 6 m from
+//                                the middle, narrower than the road
+// - the susuki hills, from the
+//   boardwalk to the lake:       Span(1622.0, 2700.0)
+// - the lake shore:              Span(2700.0, 3400.0)
+// - along the great maple's
+//   clearing, round the foot of
+//   the lake:                    Span(3010.0, 3165.0)
+// - the red ridge:               Span(3764.0, 4322.0)
+// - the corridor of torii up the
+//   red ridge, after Fushimi
+//   Inari's thousand gates:      Span(3830.0, 4120.0), its walls 6.5 m from
+//                                the middle, the gates standing over it
+// - the castle ridge:            Span(4322.0, 4880.0)
+// - the crossing over the
+//   tunnel:                      Span(4672.0, 4880.0)
+// - the bamboo:                  Span(4880.0, 5675.0)
+// - where the road splits: in two by the temple, 3414.0 to 3764.0, and
+//   three ways on the castle ridge, 4322.0 to 4672.0
+//
+// And where things stand (x, z):
+//
+// - the lake the road goes round: middle (870.0, 270.0), its shore 150 m
+//   out, wandering 8 m; the islet in it (885.0, 255.0), with a wayside
+//   shrine (both in src/circuits/ghost_island.rs, with the lake's shore);
+// - the clearing of red leaves under the great maple (875.4, 479.9), beside
+//   the road round the foot of the lake, 35 m from its centre line on the
+//   outside of the bend, away from the water; the middle of the road beside
+//   it (at 3086 m), (874.8, 444.9);
+// - the shrine on the outside of the bend in the bamboo at 5180 m, 28 m from
+//   the road, ahead of the riders coming down to the bend: (-98.9, -305.5);
+// - where the pagoda stands before the corridor of torii (34 m to the right
+//   of the road at 3780 m): (727.9, -126.5);
+// - the islet the great torii stands on, in the sea 56 m from the coast road
+//   (at about 1240 m): (497.0, -892.0).
+//
+// The small props stand 12.8 m from the middle of the road: just past its
+// walls.
+//
+// The island's colours: torii vermilion (0.86, 0.2, 0.09), and white (0.95,
+// 0.94, 0.9).
+//
+// How a circuit's file is written: see src/circuits/data.rs. Its lake and
+// its mountains (the volcano across the strait) are functions, in
+// src/circuits/ghost_island.rs.
+(
+    name: "Ghost Island",
+    name_en: "Ghost Island",
+    description: "Inspirada en Ghost of Tsushima: un castillo cruzado por\ndebajo y por encima, cuestas, un lago entre flores y dos bifurcaciones",
+    description_en: "Inspired by Ghost of Tsushima: a castle crossed under and\nover, steep hills, a lake among flowers and two splits",
+    // "Blade of the Autumn Gale".
+    // An island in autumn: the wind in the grass, birds, the sea and a few
+    // gulls along the coast, and the last cicadas.
+    ambience: (
+        sea: 0.35,
+        gulls: 0.25,
+        birds: 0.6,
+        cicadas: 0.3,
+        wind: 0.65,
+    ),
+    song: (file: "autumn_gale.mp3", length: 175.8, loudness: -15.9),
+    pace: 1.0,
+    layout: (
+        control_points: [
+            // 1. The castle street, north (-Z), and the tunnel under the castle hill.
+            (0.0, 0.0),
+            (0.0, -140.0),
+            (0.0, -280.0),
+            (0.0, -420.0),
+            (0.0, -520.0),
+            (0.0, -620.0),
+            // 2. Out of the tunnel, round to the right onto the coast, and east
+            // along it in esses.
+            (8.0, -700.0),
+            (45.0, -760.0),
+            (110.0, -795.0),
+            (185.0, -800.0),
+            (255.0, -778.0),
+            (325.0, -790.0),
+            (390.0, -828.0),
+            (460.0, -842.0),
+            (530.0, -818.0),
+            (590.0, -800.0),
+            // 3. The shrine's boardwalk, straight across the inlet.
+            (660.0, -800.0),
+            (760.0, -800.0),
+            (860.0, -800.0),
+            // 4. Round to the right, up the susuki hills in esses, and south over
+            // their rolling top.
+            (935.0, -790.0),
+            (990.0, -750.0),
+            (1015.0, -685.0),
+            (1005.0, -615.0),
+            (975.0, -550.0),
+            (975.0, -480.0),
+            (1010.0, -415.0),
+            (1040.0, -345.0),
+            (1045.0, -260.0),
+            (1045.0, -170.0),
+            (1045.0, -80.0),
+            (1045.0, 10.0),
+            (1045.0, 95.0),
+            // 5. Round the lake, clockwise: its east, south and west shores, 175 m
+            // from its middle.
+            (1045.0, 270.0),
+            (1021.6, 357.5),
+            (957.5, 421.6),
+            (870.0, 445.0),
+            (782.5, 421.6),
+            (718.4, 357.5),
+            (695.0, 270.0),
+            // 6. North past the temple: the lap snakes between the ways of its
+            // split, as through the second split of Gold Mine (where the lap climbs
+            // as it does here).
+            (695.0, 220.0),
+            (685.9, 178.8),
+            (671.1, 137.5),
+            (672.9, 96.2),
+            (695.0, 55.0),
+            (717.1, 13.8),
+            (718.9, -27.5),
+            (704.1, -68.8),
+            (695.0, -110.0),
+            (695.0, -160.0),
+            // 7. Up the red ridge in bends, and round to the left at its top.
+            (707.0, -230.0),
+            (705.0, -300.0),
+            (675.0, -360.0),
+            (655.0, -420.0),
+            (630.0, -475.0),
+            (585.0, -512.0),
+            (525.0, -525.0),
+            // 8. West along the castle ridge, through its split (the first split
+            // of Gold Mine, where the lap comes down as it does here), and over the
+            // tunnel.
+            (470.0, -525.0),
+            (428.8, -534.1),
+            (387.5, -548.9),
+            (346.2, -547.1),
+            (305.0, -525.0),
+            (263.8, -502.9),
+            (222.5, -501.1),
+            (181.2, -515.9),
+            (140.0, -525.0),
+            (90.0, -525.0),
+            (-40.0, -523.0),
+            // 9. Up the bamboo hill, and down it in a run of tight esses, four
+            // bends winding like a river, and round to the left into the castle
+            // street.
+            (-58.2, -523.0),
+            (-76.5, -523.0),
+            (-94.5, -523.0),
+            (-112.7, -521.5),
+            (-129.5, -514.7),
+            (-143.8, -503.8),
+            (-157.5, -491.7),
+            (-168.9, -477.6),
+            (-175.6, -460.9),
+            (-175.5, -442.8),
+            (-168.8, -426.2),
+            (-157.3, -412.1),
+            (-143.6, -400.0),
+            (-130.2, -388.0),
+            (-119.2, -373.5),
+            (-113.2, -356.4),
+            (-114.1, -338.5),
+            (-121.5, -322.0),
+            (-133.3, -308.4),
+            (-147.1, -296.4),
+            (-160.4, -284.0),
+            (-170.9, -269.5),
+            (-176.2, -252.1),
+            (-174.5, -234.1),
+            (-166.5, -218.0),
+            (-154.2, -204.5),
+            (-140.4, -192.7),
+            (-127.4, -180.2),
+            (-117.2, -165.1),
+            (-112.8, -147.8),
+            (-115.3, -129.8),
+            (-124.0, -113.9),
+            (-136.4, -100.9),
+            (-150.3, -89.0),
+            (-163.4, -76.3),
+            (-173.1, -61.3),
+            (-178.3, -43.9),
+            (-180.7, -26.0),
+            (-188.0, 45.0),
+            (-155.0, 112.0),
+            (-98.0, 150.0),
+            (-42.0, 138.0),
+            (-9.0, 82.0),
+        ],
+        // Through the tunnel near the sea; rolling along the coast; up the
+        // susuki hills, 30 m, and down to the lake; up past the temple and
+        // the red ridge, 45 m, and down along the castle ridge, over the
+        // tunnel, 33 m above it; up the bamboo hill, 15 m, and down its
+        // esses, 45 m, into the castle street. Up and down at up to 12 %.
+        elevation: [
+            // The castle street, over a crest where the bike flies, and the tunnel.
+            (0.0, 0.0),
+            (110.0, 0.4),
+            (185.0, 4.6),
+            (225.0, 3.0),
+            (300.0, 0.8),
+            (400.0, 0.3),
+            (525.0, 0.5),
+            (640.0, 1.0),
+            // Rolling along the coast.
+            (720.0, 2.0),
+            (840.0, 5.5),
+            (960.0, 8.0),
+            // Down by the shore before the great torii.
+            (1080.0, 6.0),
+            (1200.0, 4.2),
+            (1320.0, 3.4),
+            (1400.0, 1.0),
+            // The boardwalk, at the water's level by the shrine on stilts: 1.6 m
+            // over it.
+            (1470.0, -1.4),
+            (1540.0, -1.4),
+            (1585.0, -1.4),
+            (1650.0, -1.2),
+            // Up the susuki hills, at up to 12 %.
+            (1760.0, 6.0),
+            (1820.0, 9.0),
+            (1900.0, 18.0),
+            (1980.0, 27.0),
+            (2060.0, 32.4),
+            (2125.0, 33.4),
+            (2200.0, 33.6),
+            // Over their top, two crests where the bike flies, shaped like the one
+            // in the castle street.
+            (2270.0, 34.0),
+            (2345.0, 38.2),
+            (2385.0, 36.6),
+            (2460.0, 34.2),
+            (2535.0, 38.4),
+            (2575.0, 36.8),
+            (2620.0, 35.0),
+            // Down to the lake, at up to 12 %, and round it low, just over the
+            // water.
+            (2700.0, 27.4),
+            (2780.0, 18.4),
+            (2860.0, 9.4),
+            (2940.0, 3.4),
+            (3020.0, 1.0),
+            (3100.0, 0.6),
+            (3200.0, 0.8),
+            (3290.0, 3.8),
+            (3364.0, 6.5),
+            // Climbing steadily through the temple's split.
+            (3414.0, 7.0),
+            (3764.0, 19.0),
+            // Up the red ridge, at up to 12 %, and over its top in the bend onto
+            // the castle ridge.
+            (3814.0, 21.0),
+            (3880.0, 26.0),
+            (3960.0, 35.4),
+            (4040.0, 44.6),
+            (4110.0, 49.6),
+            (4170.0, 51.0),
+            (4230.0, 51.2),
+            (4290.0, 49.6),
+            // Down steadily through the castle's split (steeper before it and after
+            // it, so that the road splits where its grade eases), and over the
+            // tunnel.
+            (4322.0, 48.2),
+            (4672.0, 36.2),
+            (4722.0, 34.0),
+            (4780.0, 33.4),
+            (4840.0, 33.6),
+            // Up the bamboo hill at up to 12 %, over its top in the first bend, and
+            // down its esses at 11 % into the castle street.
+            (4900.0, 37.0),
+            (4960.0, 43.5),
+            (5010.0, 47.5),
+            (5050.0, 48.4),
+            (5090.0, 46.5),
+            (5150.0, 40.0),
+            (5230.0, 31.0),
+            (5310.0, 22.0),
+            (5390.0, 13.5),
+            (5460.0, 7.5),
+            (5530.0, 4.2),
+            (5650.0, 2.2),
+            (5800.0, 1.0),
+            (5900.0, 0.3),
+        ],
+        wall: 11.5,
+        // Banked round the lake, and hardly banked where the road splits, as
+        // in Gold Mine.
+        banking: [
+            (from: 2860.0, to: 3300.0, factor: 2.5),
+            (from: 3414.0, to: 3764.0, factor: 0.25),
+            (from: 4322.0, to: 4672.0, factor: 0.25),
+        ],
+        // The shrine's boardwalk and the corridor of torii are narrower than
+        // the road: their walls close in on it.
+        narrows: [
+            (from: 1422.0, to: 1622.0, wall: 6.0),
+            (from: 3830.0, to: 4120.0, wall: 6.5),
+        ],
+        // The road splits in two by the temple, a way to the left of the lap
+        // over a hump, and three ways on the castle ridge: one to the left
+        // and one to the right. Each runs through points to one side of the
+        // lap (m along the lap and from its centre line in the comments),
+        // from where it leaves the lap to where it joins it again: those of
+        // Gold Mine's second split, turned north; its rise is how much higher
+        // than the lap beside it it runs (m along it, m).
+        branches: [
+            // By the temple, to the left: it swings out to the left before
+            // the lap does, and back to it late, over a hump where it is far
+            // from the lap, broad at its top.
+            (
+                from: 3414.0,
+                to: 3764.0,
+                approach: [
+                    // 3426 m, 0 m.
+                    (693.2, 210.1),
+                    // 3456 m, 4 m.
+                    (682.4, 181.5),
+                    // 3494 m, 13 m.
+                    (659.8, 148.6),
+                    // 3522 m, 32 m.
+                    (637.9, 114.4),
+                    // 3544 m, 48 m.
+                    (626.7, 81.4),
+                    // 3562 m, 60 m.
+                    (629.3, 48.4),
+                    // 3598 m, 65 m.
+                    (643.3, 15.4),
+                    // 3676 m, 57 m.
+                    (662.7, -17.5),
+                    // 3710 m, 29 m.
+                    (682.0, -45.2),
+                    // 3728 m, 11 m.
+                    (692.0, -72.2),
+                    // 3752 m, 2 m.
+                    (695.5, -96.6),
+                ],
+                rise: [
+                    (106.3, 0.00),
+                    (112.3, 0.01),
+                    (118.3, 0.06),
+                    (124.3, 0.22),
+                    (130.3, 0.51),
+                    (136.3, 0.87),
+                    (142.3, 1.26),
+                    (148.3, 1.65),
+                    (154.3, 2.04),
+                    (160.3, 2.43),
+                    (166.3, 2.82),
+                    (172.3, 3.20),
+                    (178.3, 3.58),
+                    (184.3, 3.91),
+                    (190.3, 4.17),
+                    (196.3, 4.36),
+                    (202.3, 4.47),
+                    (208.3, 4.50),
+                    (214.3, 4.45),
+                    (220.3, 4.32),
+                    (226.3, 4.11),
+                    (232.3, 3.83),
+                    (238.3, 3.48),
+                    (244.3, 3.11),
+                    (250.3, 2.72),
+                    (256.3, 2.33),
+                    (262.3, 1.94),
+                    (268.3, 1.55),
+                    (274.3, 1.16),
+                    (280.3, 0.77),
+                    (286.3, 0.42),
+                    (292.3, 0.16),
+                    (298.3, 0.04),
+                    (304.3, 0.01),
+                    (310.3, 0.00),
+                ],
+            ),
+            // On the castle ridge, as in Gold Mine's first split, to the
+            // left: it runs straight on where the lap swings right, and out
+            // round a wide curve back to it, over a hump where it is far from
+            // the lap.
+            (
+                from: 4322.0,
+                to: 4672.0,
+                approach: [
+                    // 4334 m, 1 m.
+                    (458.3, -525.2),
+                    // 4362 m, 15 m.
+                    (427.1, -519.1),
+                    // 4384 m, 40 m.
+                    (395.1, -504.2),
+                    // 4446 m, 65 m.
+                    (364.4, -484.2),
+                    // 4506 m, 64 m.
+                    (331.4, -465.8),
+                    // 4534 m, 57 m.
+                    (298.4, -455.6),
+                    // 4550 m, 44 m.
+                    (265.4, -458.6),
+                    // 4574 m, 25 m.
+                    (232.4, -475.0),
+                    // 4608 m, 9 m.
+                    (198.7, -498.9),
+                    // 4636 m, 3 m.
+                    (173.9, -515.0),
+                    // 4658 m, 0 m.
+                    (153.6, -522.5),
+                ],
+                rise: [
+                    (55.9, 0.00),
+                    (61.9, 0.01),
+                    (67.9, 0.06),
+                    (73.9, 0.22),
+                    (79.9, 0.51),
+                    (85.9, 0.87),
+                    (91.9, 1.26),
+                    (97.9, 1.65),
+                    (103.9, 2.04),
+                    (109.9, 2.43),
+                    (115.9, 2.82),
+                    (121.9, 3.21),
+                    (127.9, 3.58),
+                    (133.9, 3.92),
+                    (139.9, 4.19),
+                    (145.9, 4.38),
+                    (151.9, 4.50),
+                    (157.9, 4.54),
+                    (163.9, 4.50),
+                    (169.9, 4.37),
+                    (175.9, 4.17),
+                    (181.9, 3.90),
+                    (187.9, 3.56),
+                    (193.9, 3.18),
+                    (199.9, 2.80),
+                    (205.9, 2.41),
+                    (211.9, 2.02),
+                    (217.9, 1.63),
+                    (223.9, 1.24),
+                    (229.9, 0.85),
+                    (235.9, 0.49),
+                    (241.9, 0.21),
+                    (247.9, 0.06),
+                    (253.9, 0.01),
+                    (259.9, 0.00),
+                ],
+            ),
+            // On the castle ridge, to the right: it swings out to the right
+            // before the lap does, and back to it late, through a dip where
+            // it is far from the lap.
+            (
+                from: 4322.0,
+                to: 4672.0,
+                approach: [
+                    // 4334 m, -0 m.
+                    (458.7, -527.0),
+                    // 4364 m, -4 m.
+                    (430.6, -537.9),
+                    // 4402 m, -14 m.
+                    (398.3, -560.3),
+                    // 4430 m, -32 m.
+                    (364.4, -582.1),
+                    // 4452 m, -48 m.
+                    (331.4, -593.3),
+                    // 4470 m, -60 m.
+                    (298.4, -590.7),
+                    // 4504 m, -65 m.
+                    (265.4, -576.7),
+                    // 4584 m, -57 m.
+                    (232.5, -557.3),
+                    // 4618 m, -29 m.
+                    (204.3, -538.2),
+                    // 4638 m, -11 m.
+                    (176.7, -528.3),
+                    // 4658 m, -2 m.
+                    (153.9, -524.4),
+                ],
+                rise: [
+                    (112.3, 0.00),
+                    (118.3, -0.01),
+                    (124.3, -0.06),
+                    (130.3, -0.14),
+                    (136.3, -0.29),
+                    (142.3, -0.49),
+                    (148.3, -0.75),
+                    (154.3, -1.06),
+                    (160.3, -1.42),
+                    (166.3, -1.80),
+                    (172.3, -2.19),
+                    (178.3, -2.58),
+                    (184.3, -2.97),
+                    (190.3, -3.36),
+                    (196.3, -3.71),
+                    (202.3, -3.97),
+                    (208.3, -4.05),
+                    (214.3, -3.92),
+                    (220.3, -3.63),
+                    (226.3, -3.26),
+                    (232.3, -2.87),
+                    (238.3, -2.48),
+                    (244.3, -2.09),
+                    (250.3, -1.70),
+                    (256.3, -1.32),
+                    (262.3, -0.98),
+                    (268.3, -0.68),
+                    (274.3, -0.43),
+                    (280.3, -0.24),
+                    (286.3, -0.12),
+                    (292.3, -0.04),
+                    (298.3, -0.01),
+                    (304.3, 0.00),
+                ],
+            ),
+        ],
+    ),
+    scenery: (
+        // The island, clockwise from the north-west: the north coast along
+        // the coast road, the inlet the boardwalk crosses, the east coast
+        // beyond the susuki hills, the south coast round the lake and the
+        // castle town, and the west coast beyond the bamboo; and the lake
+        // the road goes round.
+        coast: OutlineWithLakes([
+            (-280.0, -660.0),
+            (-190.0, -765.0),
+            (-80.0, -850.0),
+            (20.0, -870.0),
+            (110.0, -862.0),
+            (250.0, -848.0),
+            (390.0, -872.0),
+            (470.0, -870.0),
+            (560.0, -856.0),
+            (630.0, -856.0),
+            // The inlet, in under the boardwalk and a little way past it.
+            (664.0, -818.0),
+            (680.0, -775.0),
+            (702.0, -738.0),
+            (760.0, -722.0),
+            (818.0, -738.0),
+            (840.0, -775.0),
+            (856.0, -818.0),
+            (900.0, -858.0),
+            (980.0, -878.0),
+            (1070.0, -858.0),
+            (1135.0, -800.0),
+            (1172.0, -700.0),
+            (1195.0, -585.0),
+            (1208.0, -450.0),
+            (1205.0, -300.0),
+            (1212.0, -150.0),
+            (1216.0, 0.0),
+            (1212.0, 150.0),
+            (1200.0, 300.0),
+            (1170.0, 435.0),
+            (1110.0, 545.0),
+            (1010.0, 612.0),
+            (880.0, 640.0),
+            (750.0, 622.0),
+            (640.0, 562.0),
+            (540.0, 470.0),
+            (410.0, 370.0),
+            (260.0, 325.0),
+            (110.0, 312.0),
+            (-40.0, 302.0),
+            (-170.0, 282.0),
+            (-275.0, 215.0),
+            (-330.0, 110.0),
+            (-350.0, -40.0),
+            (-352.0, -220.0),
+            (-345.0, -400.0),
+            (-325.0, -550.0),
+            (-310.0, -610.0),
+            (-298.0, -635.0),
+        ], "ghost_island_lakes"),
+        hills: 22.0,
+        greens: Countryside,
+        grass_shade: 0.36,
+        // The hills, each about as high as the road over its top, so that
+        // the road runs over them and along their flanks, never sunk between
+        // banks cut on both sides.
+        massifs: [
+            // The castle hill the castle street runs into, by a tunnel, and the lap
+            // comes back over (its middle, its radius and its height).
+            (center: (0.0, -530.0), radius: 210.0, height: 34.0, climbed: true),
+            // The castle ridge, east of it, and the red ridge, east of that, which
+            // the road climbs from the temple.
+            (center: (300.0, -530.0), radius: 230.0, height: 42.0, climbed: true),
+            (center: (600.0, -460.0), radius: 260.0, height: 48.0, climbed: true),
+            // The susuki hills.
+            (center: (1040.0, -330.0), radius: 300.0, height: 36.0, climbed: true),
+            (center: (1050.0, 20.0), radius: 240.0, height: 34.0, climbed: true),
+            // The hill of the great maple, rising from the road round the foot of
+            // the lake to the island's south shore.
+            (center: (880.0, 560.0), radius: 140.0, height: 10.0, climbed: true),
+            // The bamboo hill west of the castle, which the road climbs and winds
+            // down, and its lower slopes south of it.
+            (center: (-170.0, -430.0), radius: 190.0, height: 46.0, climbed: true),
+            (center: (-200.0, -230.0), radius: 150.0, height: 22.0, climbed: true),
+            // Crags on the red ridge, away from the road.
+            (center: (520.0, -330.0), radius: 40.0, height: 22.0),
+            (center: (800.0, -420.0), radius: 45.0, height: 24.0),
+            // Stacks of rock standing in the sea off the coast road, and the islet
+            // of the great torii.
+            (center: (300.0, -950.0), radius: 28.0, height: 16.0),
+            (center: (497.0, -892.0), radius: 20.0, height: 10.0),
+        ],
+        cuttings: [
+            // The rock over the tunnel under the castle, from up the hill's
+            // slope, and the rock the road is cut through out of its mouth by
+            // the sea (the other opens at the foot of the hill, under its
+            // slope, not in a wall of rock).
+            (span: Span(420.0, 730.0), side: Left, height: 16.0),
+            (span: Span(420.0, 730.0), side: Right, height: 16.0),
+        ],
+        // The clearing under the great maple, on a knoll rising from the road
+        // beside it, tilted up away from it, so that the tree stands high and
+        // its carpet of leaves faces the riders; and the fishing village's
+        // farmhouses raised a little over the coast road climbing past them,
+        // so that they show over its wall.
+        terraces: [
+            // The top of the great torii's islet, level for it to stand on, a
+            // little under the road.
+            (center: (497.0, -892.0), radius: 10.0, height: 5.5, skirt: 5.0),
+            // The pagoda's ground before the corridor of torii, a little over
+            // the road, so that it stands out as the riders come up at it.
+            (center: (727.9, -126.5), radius: 10.0, height: 25.0, skirt: 10.0),
+            // The shrine in the bamboo, a little over the road.
+            (center: (-98.9, -305.5), radius: 12.0, height: 41.0, skirt: 10.0),
+            (center: (875.4, 479.9), radius: 16.0, height: 9.0, tilt: (0.002, 0.15), skirt: 40.0),
+            (center: (96.6, -760.7), radius: 7.0, height: 9.0, skirt: 10.0),
+            (center: (154.0, -774.4), radius: 7.0, height: 10.9, skirt: 10.0),
+            (center: (213.2, -764.5), radius: 7.0, height: 12.0, skirt: 10.0),
+        ],
+        // Across the sea: the volcano to the north, a lone cone with its
+        // flanks sweeping up ever steeper to a crater at its top, and lower
+        // mountains round the rest of the horizon, clear of it.
+        mountains: "ghost_island_mountains",
+        // Vermilion and white.
+        curbs: [(0.86, 0.2, 0.09), (0.95, 0.94, 0.9)],
+        // Stone walls along the castle street, the coast and the castle
+        // ridge, a hedge round the lake, and timber everywhere else.
+        walls: [
+            // The wall opens into the shrine's vermilion fence on its own
+            // where a small prop stands (see `world::japan`); the stores,
+            // which stand on no plinth, have their openings here.
+            (span: Span(123.0, 137.0), side: Left, style: ShrineFence),
+            (span: Span(313.0, 327.0), side: Right, style: ShrineFence),
+            (span: Span(4180.0, 4262.0), side: Right, style: ShrineFence),
+            (span: Span(4693.0, 4747.0), side: Left, style: ShrineFence),
+            // Along the shore before the great torii, open to the sea: the
+            // gate shows whole, from the water up, as the road swings towards
+            // it, and the bronze lanterns past it at the boardwalk.
+            (span: Span(1090.0, 1402.0), side: Left, style: ShrineFence),
+            (span: Span(5821.0, 360.0), side: Left, style: Stone),
+            (span: Span(5821.0, 360.0), side: Right, style: Stone),
+            (span: Span(640.0, 1422.0), side: Left, style: Stone),
+            (span: Span(640.0, 1422.0), side: Right, style: Stone),
+            // Before the great maple, on the outside of the bend, the
+            // shrine's vermilion fence too: its clearing shows through it.
+            (span: Span(3010.0, 3165.0), side: Left, style: ShrineFence),
+            (span: Span(2700.0, 3400.0), side: Left, style: Hedge),
+            // On the lake's side, a shrine's vermilion fence, low and open:
+            // the flowers and the water show through it.
+            (span: Span(2700.0, 3400.0), side: Right, style: ShrineFence),
+            (span: Span(4322.0, 4880.0), side: Left, style: Stone),
+            (span: Span(4322.0, 4880.0), side: Right, style: Stone),
+            (span: Lap, side: Left, style: Timber),
+            (span: Lap, side: Right, style: Timber),
+        ],
+        tunnels: [Span(360.0, 620.0)],
+        // The shrine's boardwalk, planks on piers across the inlet, low over
+        // the water, its fence low: the shrine on stilts shows over it.
+        bridges: [(span: Span(1422.0, 1622.0), style: Wooden, fence: 0.75)],
+        gantries: [
+            (along: 0.0, color: (0.86, 0.2, 0.09), text: Some("GHOST ISLAND")),
+            // The checkpoints, about a kilometre apart (none on the boardwalk
+            // nor where the road splits): along the coast, up the susuki
+            // hills, by the lake, at the top of the red ridge and down
+            // through the bamboo.
+            (along: 1000.0, color: (0.86, 0.2, 0.09), text: Some("CHECKPOINT")),
+            (along: 2200.0, color: (0.86, 0.2, 0.09), text: Some("CHECKPOINT")),
+            (along: 3150.0, color: (0.86, 0.2, 0.09), text: Some("CHECKPOINT")),
+            (along: 4230.0, color: (0.86, 0.2, 0.09), text: Some("CHECKPOINT")),
+            (along: 5100.0, color: (0.86, 0.2, 0.09), text: Some("CHECKPOINT")),
+        ],
+        billboards: [
+            (
+                along: 250.0,
+                side: Right,
+                text: "MOTORUST",
+                color: (0.1, 0.1, 0.12),
+                accent: Some((4, (0.9, 0.4, 0.12))),
+            ),
+        ],
+        // Maples, ginkgos, cherries, black pines and cedars.
+        trees: [Momiji, Ginkgo, Sakura, BlackPine, Sugi],
+        // Dense forest of cedars and maples up the red ridge, which the
+        // corridor of torii climbs through, as on Mount Inari, and the
+        // bamboo, on both sides of the road down from the castle.
+        forests: [
+            (span: Span(3764.0, 4322.0), species: [Sugi, Momiji]),
+            (span: Span(4880.0, 5675.0), species: [Bamboo]),
+        ],
+        // The castle town: white plaster under tiled roofs (the fishing
+        // village on the coast is of thatched farmhouses, see the props).
+        houses: (
+            max: 8,
+            paints: [(0.94, 0.92, 0.86), (0.88, 0.84, 0.76), (0.55, 0.42, 0.32)],
+            spans: [Span(5821.0, 360.0)],
+            style: Cottage,
+        ),
+        grandstands: [(along: 60.0, side: Left, lateral: 16.5, length: 30.0)],
+        soil: Rock,
+        sky: GoldenHour,
+        water: Sea,
+        japan: Some((
+            // Up the red ridge, as at Fushimi Inari: a gate every 6 m where
+            // the walls close in, and wide ones before and after.
+            corridors: [(span: Span(3830.0, 4120.0), every: 6.0, approach: 30.0, approach_every: 15.0)],
+            // The props of feudal Japan, made with Meshy: landmarks out in
+            // the open, and statues, lanterns, shrines and houses by the
+            // road.
+            props: [
+                // The great torii on its islet in the sea off the coast road, facing
+                // it, ahead of the road as it swings along the shore.
+                (model: GreatTorii, spot: At(position: (497.0, -892.0), heading: 3.1415927), scale: 1.6),
+                // The castle keep on the bamboo hill, on the outside of the bend past
+                // the castle, facing the riders coming over the tunnel: ahead of them
+                // all the way along the castle ridge.
+                (model: CastleKeep, spot: At(position: (-162.1, -527.7), heading: -1.76), scale: 1.6),
+                // The temple and its pagoda before the corridor of torii, both facing
+                // the riders coming up the red ridge at them: the hall stands on the
+                // bank to the left, in the open (among the gates it was hidden), and
+                // the pagoda by the road to the right, on a terrace a little over it.
+                (model: TempleHall, spot: Road(along: 3640.0, lateral: 40.0), facing_riders: true),
+                (model: Pagoda, spot: Road(along: 3780.0, lateral: -34.0), facing_riders: true),
+                // The shrine on stilts in the inlet, beside the boardwalk, and another
+                // on land, on a terrace on the outside of a bend in the bamboo, facing
+                // the riders coming down.
+                (model: StiltShrine, spot: At(position: (760.0, -755.0), heading: 0.0)),
+                (model: StiltShrine, spot: At(position: (-98.9, -305.5), heading: 0.39), scale: 1.5),
+                // The great maple on the outside of the bend round the foot of the
+                // lake, straight ahead all the way down to it: at the far side of its
+                // clearing of red leaves, its crown spreading over it towards the road
+                // and the riders coming, leaning out a little over it; and a stone
+                // lantern either side of the clearing. A wayside shrine on the islet.
+                (model: GreatMaple, spot: At(position: (877.4, 491.8), heading: 1.215), lean: 0.12),
+                (model: StoneLantern, spot: At(position: (857.30005, 476.3), heading: -0.5)),
+                (model: StoneLantern, spot: At(position: (893.30005, 475.5), heading: 0.55)),
+                (model: Hokora, spot: At(position: (885.0, 255.0), heading: 2.36)),
+                // A water wheel on the lake's west shore, ahead past the great maple,
+                // facing the riders coming round from it.
+                (model: WaterWheel, spot: At(position: (745.6, 355.6), heading: -2.44), scale: 1.8),
+                // Fishing boats off the coast.
+                (model: FishingBoat, spot: At(position: (250.0, -925.0), heading: 1.2)),
+                (model: FishingBoat, spot: At(position: (560.0, -935.0), heading: -0.4)),
+                (model: FishingBoat, spot: At(position: (700.0, -870.0), heading: 2.0)),
+                // Stone lanterns along the castle street, before the temple, by the
+                // lake, at the top of the red ridge and at the castle.
+                // The small ones stand right by the road, past the walls where the
+                // shrine's fence opens for them (see the walls).
+                (model: StoneLantern, spot: Road(along: 60.0, lateral: 12.8)),
+                (model: StoneLantern, spot: Road(along: 200.0, lateral: -12.8)),
+                (model: StoneLantern, spot: Road(along: 330.0, lateral: 12.8)),
+                (model: StoneLantern, spot: Road(along: 3395.0, lateral: 12.8)),
+                (model: StoneLantern, spot: Road(along: 3395.0, lateral: -12.8)),
+                (model: StoneLantern, spot: Road(along: 3300.0, lateral: -12.8)),
+                (model: StoneLantern, spot: Road(along: 4280.0, lateral: 12.8)),
+                (model: StoneLantern, spot: Road(along: 4740.0, lateral: 12.8)),
+                // The castle town's stores.
+                (model: SupplyPile, spot: Road(along: 130.0, lateral: 13.5)),
+                (model: SupplyPile, spot: Road(along: 320.0, lateral: -13.5)),
+                // The fishing village: thatched farmhouses inland of the coast road,
+                // each on its terrace, facing the riders coming along it.
+                (model: Minka, spot: At(position: (96.6, -760.7), heading: 1.83)),
+                (model: Minka, spot: At(position: (154.0, -774.4), heading: 1.44)),
+                (model: Minka, spot: At(position: (213.2, -764.5), heading: 1.01)),
+                // Bronze lanterns at either end of the boardwalk.
+                (model: BronzeLantern, spot: Road(along: 1395.0, lateral: 12.8)),
+                (model: BronzeLantern, spot: Road(along: 1395.0, lateral: -12.8)),
+                (model: BronzeLantern, spot: Road(along: 1655.0, lateral: 12.8)),
+                (model: BronzeLantern, spot: Road(along: 1655.0, lateral: -12.8)),
+                // A torii of logs on the top of the susuki hills, facing the riders
+                // coming up at it: it stands against the sky all the way up.
+                (model: LogTorii, spot: Road(along: 2350.0, lateral: 30.0), facing_riders: true),
+                // Guardians at the foot of the corridor of torii.
+                (model: Komainu, spot: Road(along: 3800.0, lateral: 12.8)),
+                (model: Komainu, spot: Road(along: 3800.0, lateral: -12.8)),
+                // An ancient maple on its boulders with a wayside shrine beside it, and
+                // a memorial stone, at the top of the red ridge.
+                (model: AncientMaple, spot: Road(along: 4190.0, lateral: -24.0)),
+                (model: Hokora, spot: Road(along: 4205.0, lateral: -13.5)),
+                (model: Stele, spot: Road(along: 4250.0, lateral: -12.8)),
+                // Braziers at the castle.
+                (model: Brazier, spot: Road(along: 4700.0, lateral: 12.8)),
+                (model: Brazier, spot: Road(along: 4700.0, lateral: -12.8)),
+                // Jizō by the road down through the bamboo.
+                (model: Jizo, spot: Road(along: 4960.0, lateral: 12.8)),
+                (model: Jizo, spot: Road(along: 5160.0, lateral: -12.8)),
+                (model: Jizo, spot: Road(along: 5360.0, lateral: 12.8)),
+                (model: Jizo, spot: Road(along: 5520.0, lateral: -12.8)),
+                // And one more by the castle street.
+                (model: Jizo, spot: Road(along: 5881.0, lateral: 12.8)),
+            ],
+            // The small props over and over along the lap: each stands on
+            // its plinth, with the wall opening for it, so that the road is
+            // lined with them. Every row takes its kinds in turn, so that no
+            // stretch is all of one thing, and the two sides of a stretch are
+            // half a step apart, so they do not stand in pairs facing each
+            // other (but for the guardians, which come in twos). Where one of
+            // the props already stands, or another road runs, there is none.
+            rows: [
+                // The castle street, lit on both sides as a town's is, with a brazier
+                // and a jizō among the lanterns.
+                (models: [StoneLantern, Brazier], row: (span: Span(5821.0, 360.0), side: Left, lateral: 12.8, every: 70.0)),
+                (models: [StoneLantern, Jizo], row: (span: Span(5856.0, 360.0), side: Right, lateral: 12.8, every: 70.0)),
+                // The coast road, on its inland side: the sea's is left open.
+                (models: [Jizo, StoneLantern, Stele], row: (span: Span(640.0, 1422.0), side: Right, lateral: 12.8, every: 115.0)),
+                // The lonely road over the susuki hills: wayside statues, a shrine
+                // and a memorial stone.
+                (models: [Jizo, Hokora, Stele], row: (span: Span(1622.0, 2700.0), side: Left, lateral: 12.8, every: 190.0)),
+                // Round the lake, on the water's side, along the shrine's fence.
+                (models: [StoneLantern, BronzeLantern], row: (span: Span(2700.0, 3400.0), side: Right, lateral: 12.8, every: 85.0)),
+                // Up the red ridge: braziers and memorial stones, and guardians in
+                // twos, one either side, as at the foot of the corridor of torii.
+                (models: [Brazier, Stele], row: (span: Span(3764.0, 4322.0), side: Left, lateral: 12.8, every: 110.0)),
+                (models: [Komainu], row: (span: Span(3764.0, 4322.0), side: Left, lateral: 12.8, every: 150.0)),
+                (models: [Komainu], row: (span: Span(3764.0, 4322.0), side: Right, lateral: 12.8, every: 150.0)),
+                // Down the castle ridge, lit for the night.
+                (models: [Brazier, Komainu, Stele], row: (span: Span(4322.0, 4880.0), side: Left, lateral: 12.8, every: 95.0)),
+                (models: [Brazier, Hokora], row: (span: Span(4369.0, 4880.0), side: Right, lateral: 12.8, every: 95.0)),
+                // Down through the bamboo, where the jizō stand: a shrine and a stone
+                // among them, one side half a step after the other.
+                (models: [Jizo, Hokora], row: (span: Span(4880.0, 5675.0), side: Left, lateral: 12.8, every: 140.0)),
+                (models: [Jizo, Stele], row: (span: Span(4950.0, 5675.0), side: Right, lateral: 12.8, every: 140.0)),
+            ],
+            // Under the great maple, beside the road round the foot of the
+            // lake.
+            maple_grounds: [(center: (875.4, 479.9), radius: 14.0)],
+            // Red maple leaves blowing down up the red ridge, through the
+            // corridor of torii, and round the great maple; white cherry
+            // petals down the castle street.
+            petals: [
+                (area: Road(span: Span(3764.0, 4322.0), reach: 24.0), kind: Maple),
+                (area: Round(center: (875.4, 479.9), radius: 36.0), kind: Maple),
+                // Blowing over the whole bend round the foot of the lake,
+                // along the great maple's clearing.
+                (area: Round(center: (956.8, 422.0), radius: 32.0), kind: Maple),
+                (area: Round(center: (874.8, 444.9), radius: 32.0), kind: Maple),
+                (area: Round(center: (790.0, 425.0), radius: 32.0), kind: Maple),
+                (area: Road(span: Span(5821.0, 360.0), reach: 24.0), kind: Cherry),
+            ],
+            // The fields of flowers, as on the hills of Tsushima and round
+            // the lakes at the foot of Mount Fuji, over most of the island;
+            // where they overlap, the first one listed.
+            flowers: [
+                // White round the great maple, for its reds to stand out.
+                (area: Round(center: (875.4, 479.9), inner: 0.0, outer: 60.0), kinds: [White]),
+                // Red spider lilies on the lake's open shore, seen across the
+                // water.
+                (area: Round(center: (836.0, 100.0), inner: 0.0, outer: 60.0), kinds: [SpiderLily]),
+                // All round the lake, from its water up to the road's fence
+                // (from 4 m inside its shore at its most wandering): carpets
+                // of moss phlox in drifts of magenta, pink, lavender and
+                // white.
+                (area: Round(center: (870.0, 270.0), inner: 138.0, outer: 175.0), kinds: [Phlox]),
+                // A meadow of red spider lilies beside the castle street.
+                (area: Round(center: (110.0, -150.0), inner: 0.0, outer: 110.0), kinds: [SpiderLily]),
+                // The susuki hills, golden with susuki either side of the
+                // road, from its walls out.
+                (area: Road(span: Span(1800.0, 2650.0), near: 11.5, far: 150.0), kinds: [Susuki]),
+                // Yellow rape blossom and white flowers up the slopes over
+                // the coast.
+                (area: Road(span: Span(700.0, 1400.0), near: 11.5, far: 120.0), kinds: [Yellow, White]),
+                // And everywhere else, in broad swathes.
+                (area: Everywhere, kinds: [Phlox, SpiderLily, Yellow, White, Iris]),
+            ],
+        )),
+    ),
+)

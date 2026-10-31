@@ -5,6 +5,7 @@
 use std::f32::consts::TAU;
 
 use bevy::prelude::*;
+use serde::Deserialize;
 
 use crate::geometry::{forward, heading_of, smoothstep, wrap_angle};
 
@@ -17,20 +18,27 @@ use grid::SegmentGrid;
 pub const SURFACE_Y: f32 = 0.05;
 
 /// El trazado de una pista.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Layout {
     /// Puntos de control, en metros sobre el plano XZ y en orden de carrera.
     /// La pista es una curva Catmull-Rom cerrada que pasa por todos ellos.
     /// La salida está en el primero y la recta de meta va hacia -Z.
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub control_points: &'static [Vec2],
     /// Altimetría: altura de la carretera (m) a lo largo de la vuelta (m
     /// desde la línea de meta). Entre puntos se interpola con suavidad.
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub elevation: &'static [(f32, f32)],
     /// Tramos con más (o menos) peralte del que les toca por su curva.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub banking: &'static [Banking],
     /// Alternative routes that leave the lap and join it again.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub branches: &'static [Branch],
     /// Stretches where the walls close in, narrower than the road: a narrow
     /// bridge.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub narrows: &'static [Narrowing],
     /// How far the walls stand from the centre line where nothing closes
     /// them in (m): [`WALL_DISTANCE`] on most tracks, less on a narrow one,
@@ -43,6 +51,8 @@ pub struct Layout {
 /// the walls stand `wall` metres from the centre line, closer than the edge
 /// of the asphalt: a bridge narrower than the road. They close in over the
 /// [`NARROW_EASE`] metres before it and open out over as many after it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Narrowing {
     pub from: f32,
     pub to: f32,
@@ -74,17 +84,26 @@ const NARROW_MARGIN: f32 = 0.5;
 /// it) at some points, smoothly in between, and none at its ends. Its walls
 /// close in further where `narrows` says, as the lap's do (`from` and `to`
 /// in metres along it): through an archway, say.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Branch {
     pub from: f32,
     pub to: f32,
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
     pub approach: &'static [Vec2],
+    #[serde(default)]
     pub vertical_loop: Option<VerticalLoop>,
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub exit: &'static [Vec2],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub rise: &'static [(f32, f32)],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub narrows: &'static [Narrowing],
 }
 
 /// A vertical loop the bikes ride round, upside down at the top.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerticalLoop {
     /// Where the bikes go in: the middle of the running surface at the
     /// bottom (x, z).
@@ -103,6 +122,7 @@ pub struct VerticalLoop {
     /// Whether it has Hot Wheels' boosters, driving the bikes on: one on
     /// its straight lead in, and one on the lap beside it as far along, so
     /// that neither way gains by them (see [`Track::boosters`]).
+    #[serde(default)]
     pub boosters: bool,
 }
 
@@ -131,12 +151,21 @@ pub struct Fork {
 /// Where `grip` is more than 1, the road grips the tyres that much harder
 /// across (as Hot Wheels' banked track does, see [`Track::grip_beside`]),
 /// and may bank as much more steeply.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Banking {
     pub from: f32,
     pub to: f32,
     pub factor: f32,
+    #[serde(default)]
     pub raised: bool,
+    #[serde(default = "one")]
     pub grip: f32,
+}
+
+/// A [`Banking`]'s grip where a circuit's file leaves it out: as any road's.
+fn one() -> f32 {
+    1.0
 }
 
 /// Altura de la línea de meta sobre el nivel del mar: el resto del perfil va
@@ -2147,7 +2176,7 @@ mod tests {
 
     #[test]
     fn walls_of_distant_stretches_do_not_meet() {
-        for circuit in &crate::circuits::CIRCUITS {
+        for circuit in crate::circuits::CIRCUITS.iter() {
             let (name, track) = (circuit.name, Track::new(&circuit.layout));
             let n = track.centerline.len();
             let lap = track.lap_length();
