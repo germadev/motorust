@@ -1174,7 +1174,7 @@ impl<'a> Shaper<'a> {
             .collect();
         let lap = track.lap_length();
         let polygon: Option<Vec<Vec2>> = match scenery.coast {
-            Coast::Function(_) | Coast::Inland(_) => None,
+            Coast::Sea(_) | Coast::Inland(_) => None,
             Coast::AroundTrack(margins) => Some(
                 (0..track.sample_count())
                     .step_by(2)
@@ -1208,7 +1208,7 @@ impl<'a> Shaper<'a> {
     /// Distancia (con signo) a la costa: positiva tierra adentro.
     fn coast(&self, point: Vec2) -> f32 {
         match (&self.scenery.coast, &self.shore) {
-            (Coast::Function(coast) | Coast::Inland(coast), _) => coast(point),
+            (Coast::Sea(waters) | Coast::Inland(waters), _) => waters.distance(point),
             (coast, Some((polygon, min, max))) => {
                 // Lejos de la isla, basta con la distancia a la caja.
                 let outside = (*min - point).max(point - *max).max(Vec2::ZERO);
@@ -1217,7 +1217,7 @@ impl<'a> Shaper<'a> {
                 }
                 let sea = signed_distance(polygon, point);
                 match coast {
-                    Coast::OutlineWithLakes(_, lakes) => sea.min(lakes(point)),
+                    Coast::OutlineWithLakes(_, lakes) => sea.min(lakes.distance(point)),
                     _ => sea,
                 }
             }
@@ -2451,14 +2451,13 @@ mod tests {
     #[test]
     fn gold_mine_s_great_lake_is_the_bottom_of_an_open_pit() {
         let circuit = &CIRCUITS[3];
-        let (Some(pit), &Coast::Function(water)) = (&circuit.scenery.pit, &circuit.scenery.coast)
-        else {
+        let (Some(pit), Coast::Sea(waters)) = (&circuit.scenery.pit, &circuit.scenery.coast) else {
             panic!("Gold Mine has an open pit round its lake");
         };
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let lake = Vec2::new(-1225.0, -626.0);
-        assert!(water(lake) < 0.0 && terrain.height(lake) < SEA_LEVEL);
+        assert!(waters.distance(lake) < 0.0 && terrain.height(lake) < SEA_LEVEL);
         // Out from the middle of the lake, away from the roads, past the
         // water the ground steps up bench by bench to the rim.
         let pitch = pit.tread + pit.step * PIT_FACE;
@@ -2469,7 +2468,7 @@ mod tests {
             let out = Vec2::new(angle.cos(), angle.sin());
             let Some(shore) = (0..600)
                 .map(|m| m as f32)
-                .find(|&m| water(lake + out * m) >= 0.0)
+                .find(|&m| waters.distance(lake + out * m) >= 0.0)
             else {
                 continue;
             };
@@ -2489,7 +2488,7 @@ mod tests {
                 let middle = (bench as f32 + 0.5) * pitch + pit.step * PIT_FACE / 2.0;
                 let along = (0..2400)
                     .map(|q| shore + q as f32 * 0.25)
-                    .find(|&m| water(lake + out * m) >= middle)
+                    .find(|&m| waters.distance(lake + out * m) >= middle)
                     .expect("the ray crosses every bench");
                 let level = foot + (bench + 1) as f32 * pit.step;
                 let ground = terrain.height(lake + out * along);

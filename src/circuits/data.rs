@@ -13,8 +13,10 @@
 //! - a colour as its sRGB, `(0.85, 0.08, 0.06)`;
 //! - a stretch of the lap as `Span(40.0, 340.0)`, or `Lap` for all of it;
 //! - a point as `(x, z)`;
-//! - the terrain's functions (the coast, the mountains) by their names in
-//!   [`super::terrain_function`], as `Function("bay_coast")`: they stay in
+//! - the mountains and the water as shapes with their parameters (see
+//!   [`crate::world::mountains`] and [`crate::world::waters`]);
+//! - what the game adds of its own to them by the name of a function in
+//!   Rust, in [`super::terrain_function`] (a volcano's gullies): it stays in
 //!   Rust, as the music does (`song: (file: "bahia.mp3", ...)`, built in by
 //!   [`super::music`]).
 //!
@@ -28,6 +30,7 @@ use serde::de::{Deserialize, Deserializer, Error};
 use super::Circuit;
 use super::Song;
 use crate::world::scenery::{Coast, Span, span};
+use crate::world::waters::{Islet, Lake, River, Shore, Waters};
 
 /// What a file, `name` (for the messages), holding `text` says: a circuit,
 /// say (`'static`, as what it has of texts is, see [`Circuit::name`]).
@@ -193,29 +196,76 @@ impl From<SpanFile> for Span {
     }
 }
 
-/// How a file writes a [`Coast`]: as it is, the functions by name.
+/// How a file writes a [`Coast`]: its waters' shapes as fields of its own
+/// (`Sea(shores: [...])`, `Inland(lakes: [...], rivers: [...])`), each list
+/// empty if left out.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum CoastFile {
-    Function(String),
+    Sea {
+        #[serde(default)]
+        shores: Vec<Shore>,
+        #[serde(default)]
+        lakes: Vec<Lake>,
+        #[serde(default)]
+        rivers: Vec<River>,
+        #[serde(default)]
+        islets: Vec<Islet>,
+    },
     AroundTrack(Vec<(f32, f32)>),
     Outline(Vec<Vec2>),
-    OutlineWithLakes(Vec<Vec2>, String),
-    Inland(String),
+    OutlineWithLakes {
+        outline: Vec<Vec2>,
+        #[serde(default)]
+        lakes: Vec<Lake>,
+        #[serde(default)]
+        rivers: Vec<River>,
+        #[serde(default)]
+        islets: Vec<Islet>,
+    },
+    Inland {
+        #[serde(default)]
+        lakes: Vec<Lake>,
+        #[serde(default)]
+        rivers: Vec<River>,
+        #[serde(default)]
+        islets: Vec<Islet>,
+    },
 }
 
-impl TryFrom<CoastFile> for Coast {
-    type Error = String;
-
-    fn try_from(file: CoastFile) -> Result<Self, String> {
-        Ok(match file {
-            CoastFile::Function(name) => Coast::Function(named(&name)?),
+impl From<CoastFile> for Coast {
+    fn from(file: CoastFile) -> Self {
+        let waters =
+            |shores: Vec<Shore>, lakes: Vec<Lake>, rivers: Vec<River>, islets: Vec<Islet>| Waters {
+                shores: Vec::leak(shores),
+                lakes: Vec::leak(lakes),
+                rivers: Vec::leak(rivers),
+                islets: Vec::leak(islets),
+            };
+        match file {
+            CoastFile::Sea {
+                shores,
+                lakes,
+                rivers,
+                islets,
+            } => Coast::Sea(waters(shores, lakes, rivers, islets)),
             CoastFile::AroundTrack(shore) => Coast::AroundTrack(Vec::leak(shore)),
             CoastFile::Outline(shore) => Coast::Outline(Vec::leak(shore)),
-            CoastFile::OutlineWithLakes(shore, lakes) => {
-                Coast::OutlineWithLakes(Vec::leak(shore), named(&lakes)?)
-            }
-            CoastFile::Inland(name) => Coast::Inland(named(&name)?),
-        })
+            CoastFile::OutlineWithLakes {
+                outline,
+                lakes,
+                rivers,
+                islets,
+            } => Coast::OutlineWithLakes(
+                Vec::leak(outline),
+                waters(Vec::new(), lakes, rivers, islets),
+            ),
+            CoastFile::Inland {
+                lakes,
+                rivers,
+                islets,
+            } => Coast::Inland(waters(Vec::new(), lakes, rivers, islets)),
+        }
     }
 }
 
@@ -245,9 +295,13 @@ mod tests {
                 .unwrap()
                 .contains("speed")
         );
-        let function = changed("\"bay_coast\"", "\"nowhere\"");
+        // Nor a function the game does not have (Ghost Island's file names
+        // its volcano's gullies).
+        let (volcano, text) = super::super::FILES[4];
+        let function =
+            &*String::leak(text.replacen("\"ghost_island_volcano_relief\"", "\"nowhere\"", 1));
         assert!(
-            parse::<Circuit>(name, function)
+            parse::<Circuit>(volcano, function)
                 .err()
                 .unwrap()
                 .contains("nowhere")

@@ -807,7 +807,101 @@
     // Middle-earth's own props, made with Meshy (see the props), among the
     // walls, bridges, cliffs, forests and waterfalls of the other tracks.
     scenery: (
-        coast: Inland("fellowship_road_water"),
+        // Inland, with no sea: rivers and lakes, as points along them with
+        // how far their banks are from the middle there (m), and lakes with
+        // their middles and radii; their shores wandering a little.
+        coast: Inland(
+            lakes: [
+                // The pool of Bywater, below the right of the village, where
+                // the Water widens before it runs on into the Brandywine.
+                (center: (470.0, -330.0), radius: 30.0, wander: Some((amount: 4.0, scale: 40.0, octaves: 2, offset: (7.0, 7.0))),),
+                // Mirrormere, below Moria's gate.
+                (center: (1350.0, 505.0), radius: 45.0, wander: Some((amount: 4.0, scale: 40.0, octaves: 2, offset: (7.0, 7.0))),),
+                // Nen Hithoel, the lake the Anduin opens into past the kings.
+                (center: (180.0, 500.0), radius: 85.0, wander: Some((amount: 4.0, scale: 40.0, octaves: 2, offset: (7.0, 7.0))),),
+            ],
+            rivers: [
+                // The Water, the stream through Hobbiton, 64 m wide: out of the wood,
+                // along the left of the long sweep down into the village, between
+                // the road and the mill; square under the bridge, along the right
+                // of the sweep on, and away from the road into the pool, and on out
+                // of it into the Brandywine.
+                (
+                    points: [
+                        ((-150.0, 40.0), 8.0),
+                        ((-115.0, -60.0), 9.0),
+                        ((-75.0, -110.0), 12.0),
+                        ((-59.7, -132.0), 16.0),
+                        ((-53.6, -179.1), 22.0),
+                        ((-39.3, -222.1), 28.0),
+                        ((-12.6, -268.1), 32.0),
+                        ((23.7, -307.0), 32.0),
+                        ((67.6, -337.1), 32.0),
+                        ((111.6, -355.1), 32.0),
+                        ((138.2, -362.1), 32.0),
+                        ((154.0, -364.6), 32.0),
+                        ((168.6, -346.7), 32.0),
+                        ((187.2, -312.2), 32.0),
+                        ((205.8, -277.8), 32.0),
+                        ((220.5, -259.8), 32.0),
+                        ((234.5, -261.9), 32.0),
+                        ((256.1, -267.5), 32.0),
+                        ((289.7, -280.1), 32.0),
+                        ((440.0, -345.0), 32.0),
+                        ((470.0, -330.0), 30.0),
+                        ((505.0, -332.0), 16.0),
+                        ((548.0, -330.0), 18.0),
+                    ],
+                    wander: Some((amount: 4.0, scale: 40.0, octaves: 2, offset: (7.0, 7.0))),
+                ),
+                // The Brandywine, north to south under its bridge into a pool.
+                (
+                    points: [
+                        ((600.0, -1100.0), 18.0),
+                        ((570.0, -800.0), 18.0),
+                        ((560.0, -568.0), 18.0),
+                        ((550.0, -330.0), 18.0),
+                        ((520.0, -200.0), 40.0),
+                    ],
+                    wander: Some((amount: 4.0, scale: 40.0, octaves: 2, offset: (7.0, 7.0))),
+                ),
+                // The Bruinen, from the mountains west across the ford into a pool.
+                (
+                    points: [
+                        ((1985.0, -565.0), 22.0),
+                        ((1735.0, -455.0), 22.0),
+                        ((1576.0, -417.0), 22.0),
+                        ((1435.0, -375.0), 22.0),
+                        ((1325.0, -335.0), 22.0),
+                        ((1235.0, -305.0), 40.0),
+                    ],
+                    wander: Some((amount: 4.0, scale: 40.0, octaves: 2, offset: (7.0, 7.0))),
+                ),
+                // The Anduin, from the south into the middle of the road, widening
+                // down the causeway to the kings, narrowing past them through the
+                // gorge in the rock they guard, and turning into the lake.
+                (
+                    points: [
+                        ((680.0, 800.0), 18.0),
+                        ((630.0, 600.0), 18.0),
+                        ((598.0, 470.0), 14.0),
+                        ((578.0, 398.0), 12.0),
+                        ((545.0, 396.5), 45.0),
+                        ((495.0, 389.5), 55.0),
+                        // Between the kings, where the cliffs close in on it, and past them
+                        // through the gorge in the rock.
+                        ((434.0, 372.5), 35.0),
+                        ((405.0, 362.0), 31.0),
+                        ((351.0, 350.0), 29.0),
+                        ((312.0, 360.0), 28.0),
+                        ((282.0, 405.0), 30.0),
+                        ((228.0, 452.0), 30.0),
+                        ((205.0, 478.0), 30.0),
+                    ],
+                    wander: Some((amount: 4.0, scale: 40.0, octaves: 2, offset: (7.0, 7.0))),
+                ),
+            ],
+        ),
         hills: 26.0,
         // A lush green land's greens, deep: lighter, the low sun made them
         // pale and vivid.

@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 
 pub use super::mountains::Mountains;
+pub use super::waters::Waters;
 
 use crate::geometry::smoothstep;
 
@@ -148,12 +149,13 @@ pub struct Terrace {
     pub skirt: f32,
 }
 
-/// Dónde está el mar.
+/// Dónde está el mar, y los lagos y los ríos (see [`Waters`]).
 #[derive(Deserialize)]
-#[serde(try_from = "crate::circuits::data::CoastFile")]
+#[serde(from = "crate::circuits::data::CoastFile")]
 pub enum Coast {
-    /// Distancia con signo a la costa, positiva tierra adentro.
-    Function(fn(Vec2) -> f32),
+    /// The sea beyond its shores, and lakes and rivers if any: how far from
+    /// them, positive on the land.
+    Sea(Waters),
     /// Una isla: tierra dentro del circuito y, por fuera, hasta tantos metros
     /// de la línea central según el punto de la vuelta (pares de metros desde
     /// la meta y distancia; entre ellos se interpola). Con una distancia
@@ -165,16 +167,14 @@ pub enum Coast {
     /// the land drops to the sea right beyond the walls where the shore is
     /// near; an inlet drawn under a bridge brings the sea in under it.
     Outline(&'static [Vec2]),
-    /// An island drawn as with `Outline`, with lakes inside it: the function
-    /// gives the signed distance to their shores, negative in the water, as
-    /// `Function` does to the sea's. The land drops to them right beyond the
-    /// walls where their shores are near, as it does to the sea.
-    OutlineWithLakes(&'static [Vec2], fn(Vec2) -> f32),
-    /// Inland, with no sea: the function gives the signed distance to the
-    /// shores of the rivers and lakes, negative in the water, as `Function`
-    /// does; but, as round an island's lakes, the land drops to them right
-    /// beyond the walls where their shores are near.
-    Inland(fn(Vec2) -> f32),
+    /// An island drawn as with `Outline`, with lakes (and rivers) inside
+    /// it. The land drops to them right beyond the walls where their shores
+    /// are near, as it does to the sea.
+    OutlineWithLakes(&'static [Vec2], Waters),
+    /// Inland, with no sea: its rivers and lakes, if any; but, as round an
+    /// island's lakes, the land drops to them right beyond the walls where
+    /// their shores are near.
+    Inland(Waters),
 }
 
 /// Cómo se cierra la carretera por los lados.

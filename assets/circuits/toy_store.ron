@@ -669,7 +669,8 @@
         ],
     ),
     scenery: (
-        coast: Inland("dry"),
+        // No water.
+        coast: Inland(),
         hills: 0.0,
         soil: Floor,
         greens: Lawn,

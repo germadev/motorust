@@ -1,10 +1,11 @@
 //! Las pistas del juego: el trazado y el escenario de cada una, y cuál se
 //! está usando.
 
-mod bay;
 pub mod data;
+#[cfg(test)]
 mod fellowship_road;
 mod ghost_island;
+#[cfg(test)]
 mod gold_mine;
 #[cfg(test)]
 mod loop_island;
@@ -142,14 +143,8 @@ const FILES: [(&str, &str); 8] = [
 /// The terrain's functions the circuits' files name (see [`data`]).
 fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
     Some(match name {
-        // No water anywhere, and no mountains: for a circuit indoors.
-        "dry" => |_| 1000.0,
         "flat" => |_| 0.0,
-        "bay_coast" => bay::coast,
-        "gold_mine_water" => gold_mine::water,
-        "ghost_island_lakes" => ghost_island::lakes,
         "ghost_island_volcano_relief" => ghost_island::volcano_gullies,
-        "fellowship_road_water" => fellowship_road::water,
         _ => return None,
     })
 }

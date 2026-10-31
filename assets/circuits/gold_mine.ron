@@ -553,7 +553,28 @@
         ],
     ),
     scenery: (
-        coast: Function("gold_mine_water"),
+        // No sea: the great lake north-west of the mountain, at the bottom of
+        // the open pit, its shore wandering; and the river that flows out of
+        // it to the north.
+        coast: Sea(
+            lakes: [
+                (
+                    center: (-1225.0, -626.0),
+                    radius: 235.0,
+                    wander: Some((amount: 18.0, scale: 70.0, octaves: 2, offset: (3.0, 3.0))),
+                ),
+            ],
+            rivers: [
+                (
+                    points: [
+                        ((-1270.0, -830.0), 14.0),
+                        ((-1310.0, -1300.0), 14.0),
+                        ((-1380.0, -1800.0), 14.0),
+                        ((-1480.0, -2400.0), 14.0),
+                    ],
+                ),
+            ],
+        ),
         hills: 8.0,
         greens: Lawn,
         grass_shade: 1.0,

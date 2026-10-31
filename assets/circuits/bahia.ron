@@ -68,7 +68,28 @@
         wall: 11.5,
     ),
     scenery: (
-        coast: Function("bay_coast"),
+        // The sea to the west and to the south of the circuit, beyond shores
+        // bent by waves.
+        coast: Sea(shores: [
+            // The west coast, 95 m west of the start straight.
+            (
+                normal: (1.0, 0.0),
+                offset: 95.0,
+                waves: [
+                    (along: (0.0, 1.0), amplitude: -25.0, length: 97.0),
+                    (along: (0.0, 1.0), amplitude: -12.0, length: 41.0, phase: 1.0),
+                ],
+            ),
+            // The south coast.
+            (
+                normal: (0.0, -1.0),
+                offset: 205.0,
+                waves: [
+                    (along: (1.0, 0.0), amplitude: 20.0, length: 83.0),
+                    (along: (1.0, 0.0), amplitude: 10.0, length: 37.0, phase: 2.0),
+                ],
+            ),
+        ]),
         hills: 16.0,
         greens: Lawn,
         grass_shade: 1.0,

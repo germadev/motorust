@@ -39,6 +39,7 @@ mod textures;
 mod toys;
 mod trees;
 mod tufts;
+pub mod waters;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

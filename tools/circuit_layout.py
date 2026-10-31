@@ -15,7 +15,7 @@ out: this is the lap's centre line only.
   with its walls, its control points (red), a label every `--every` metres
   along it with its height, and what the circuit's source draws round it:
   its coast (`COAST` or `SHORE`; in RON, an `Outline` or
-  `OutlineWithLakes`), hills (`massif`, brown; `climbed_massif`, green, with
+  `OutlineWithLakes`, and the coast's lakes, islets and rivers), hills (`massif`, brown; `climbed_massif`, green, with
   their heights), and a dam's lake (`LAKE`) and river (`RIVER`; in RON, the
   dam's `lake` and `river`). `--box X0 Z0 X1 Z1` zooms in (metres).
 - `--profile FILE.png`: height, grade and the radius of the crests and
@@ -27,7 +27,7 @@ out: this is the lap's centre line only.
   over at top speed.
 
 Usage:
-    python3 tools/circuit_layout.py src/circuits/turbo_bay.rs \\
+    python3 tools/circuit_layout.py assets/circuits/turbo_bay.ron \\
         [--plan plan.png] [--box -80 0 520 820] [--every 50] \\
         [--profile profile.png] [--along 0 600]
 
@@ -293,10 +293,28 @@ def plot_plan(lap, out, box, every):
     if lap.ron:
         # A file's coast as an outline, and its dam's lake and river (a
         # point and a height each: `((x, z), h)`).
-        outline = re.search(r"coast: Outline(?:WithLakes)?\(\[(.*?)\n\s*\]", lap.text, re.S)
+        outline = re.search(r"(?:coast: Outline\(|outline: )\[(.*?)\n\s*\]", lap.text, re.S)
         if outline:
             ring = closed_curve(np.array(pairs(outline.group(1))), 4.0)
             ax.plot(*np.vstack([ring, ring[:1]]).T, color="#2a5db0", lw=0.8)
+        # The coast's lakes and islets (`(center: (x, z), radius: r, ...)`),
+        # and its rivers (a point and how far its banks are each:
+        # `((x, z), w)`), as their middles.
+        coast = re.search(r"\bcoast: (.*?)\n        hills:", lap.text, re.S)
+        if coast:
+            circle = r"\(\s*center: \((%s), (%s)\),\s*radius: (%s)" % ((NUMBER,) * 3)
+            islets = coast.group(1).find("islets:")
+            for match in re.finditer(circle, coast.group(1)):
+                x, z, r = map(float, match.groups())
+                islet = 0 <= islets < match.start()
+                ax.add_patch(
+                    plt.Circle((x, z), r, color="#8b5a2b" if islet else "#3060c0", alpha=0.45, lw=0)
+                )
+            for river in re.findall(r"points: \[(.*?)\n\s*\]", coast.group(1), re.S):
+                pattern = r"\(\(\s*(%s),\s*(%s)\s*\)" % (NUMBER, NUMBER)
+                points = np.array([(float(x), float(z)) for x, z in re.findall(pattern, river)])
+                if len(points) > 1:
+                    ax.plot(*points.T, color="#20a0c0", lw=3)
         lake = ron_list(lap.text, "lake")
         if lake is not None:
             ax.fill(*closed_curve(np.array(pairs(lake)), 3.0).T, color="#3060c0", alpha=0.45, lw=0)
@@ -381,7 +399,7 @@ def plot_profile(lap, out, along_range):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("circuit", help="a circuit's source, e.g. src/circuits/turbo_bay.rs")
+    parser.add_argument("circuit", help="a circuit's file, e.g. assets/circuits/turbo_bay.ron")
     parser.add_argument("--plan", help="draw the lap from above to this PNG")
     parser.add_argument("--box", nargs=4, type=float, metavar=("X0", "Z0", "X1", "Z1"))
     parser.add_argument("--every", type=float, default=100.0, help="label every this many metres")

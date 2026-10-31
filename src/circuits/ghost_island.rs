@@ -29,30 +29,12 @@
 //!    the left into the castle street.
 //!
 //! The circuit is written in RON, `assets/circuits/ghost_island.ron`; here
-//! are only the functions its file names, its lake and its mountains (the
-//! volcano), and tests of it.
+//! is only the function its file names, its volcano's gullies, and tests
+//! of it.
 
 use bevy::prelude::*;
 
 use crate::geometry::{fbm, smoothstep};
-
-/// The lake the road goes round: its middle, the radius of its shore (m)
-/// and how far the shore wanders (m); and the islet in it, with a wayside
-/// shrine.
-const LAKE: Vec2 = Vec2::new(870.0, 270.0);
-const LAKE_RADIUS: f32 = 150.0;
-const LAKE_WANDER: f32 = 8.0;
-const ISLET: Vec2 = Vec2::new(885.0, 255.0);
-const ISLET_RADIUS: f32 = 16.0;
-
-/// How far `point` is from the lake's shore: negative in its water, and
-/// positive on the islet.
-pub(super) fn lakes(point: Vec2) -> f32 {
-    let wander = LAKE_WANDER * (2.0 * fbm(point / 50.0 + 11.0, 2) - 1.0);
-    let lake = point.distance(LAKE) - LAKE_RADIUS + wander;
-    let islet = ISLET_RADIUS - point.distance(ISLET);
-    lake.max(islet)
-}
 
 /// The volcano across the strait to the north (a `Cone` in the circuit's
 /// file): its middle and its radius (m), for its gullies.
@@ -101,6 +83,11 @@ fn volcano_relief(point: Vec2, reach: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The lake the road goes round, and the islet in it: their middles
+    /// (m), as the circuit's file has them.
+    const LAKE: Vec2 = Vec2::new(870.0, 270.0);
+    const ISLET: Vec2 = Vec2::new(885.0, 255.0);
 
     /// The volcano's height (m), as the circuit's file has it.
     const VOLCANO_HEIGHT: f32 = 900.0;
@@ -242,7 +229,7 @@ mod tests {
         let mut round = 0.0;
         for index in 0..track.sample_count() {
             let point = track.centerline()[index];
-            let shore = lakes(point);
+            let shore = lakes.distance(point);
             assert!(shore > 15.0, "{shore} m from the lake at {index}");
             let along = index as f32 * track.step_length();
             if span(2950.0, 3250.0).contains(along, lap) {
@@ -256,8 +243,11 @@ mod tests {
             }
         }
         assert!(round > 450.0, "{round} m round the lake");
-        assert!(lakes(LAKE + Vec2::new(-40.0, 30.0)) < -20.0, "deep water");
-        assert!(lakes(ISLET) > 10.0, "an islet");
+        assert!(
+            lakes.distance(LAKE + Vec2::new(-40.0, 30.0)) < -20.0,
+            "deep water"
+        );
+        assert!(lakes.distance(ISLET) > 10.0, "an islet");
         // The boardwalk crosses the inlet; the water reaches in under it.
         let middle = track.centerline()[track.index_at((BOARDWALK.from + BOARDWALK.to) / 2.0)];
         let shore = crate::track::closed_curve(island, 4.0);
