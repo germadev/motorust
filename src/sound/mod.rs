@@ -73,6 +73,7 @@ impl Plugin for SoundPlugin {
         controls.master.set(MASTER);
         app.add_audio_source::<Mix>()
             .add_audio_source::<music::SongSource>()
+            .init_asset_loader::<music::SongLoader>()
             .insert_resource(SoundControls(controls))
             .add_message::<StartBeep>()
             .add_message::<RaceCue>()

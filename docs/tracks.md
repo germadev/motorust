@@ -194,7 +194,7 @@ Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `t
 
 - `name`: shown on the track select screen.
 - `description`: shown on the track select screen; `\n` breaks the line.
-- `song`: the music for the race, an MP3 in `assets/music/` embedded with `include_bytes!` (a file names it, as `song: (file: "bahia.mp3", length: 178.4, loudness: -16.1)`, and `music` in `src/circuits/mod.rs` builds it in), its `length` in seconds (as `ffprobe` gives it) and its `loudness`: the integrated loudness (LUFS) of its first two minutes above 500 Hz, which `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all sound equally loud over the engine (whose drone covers the lower notes), and well under it.
+- `song`: the music for the race, an MP3 in `assets/music/`, named by its file (`song: (file: "bahia.mp3", length: 178.4, loudness: -16.1)`) and loaded from the content pack as it plays (see `src/content.rs`; a release build has it built in if `assets/pack.txt` lists it), its `length` in seconds (as `ffprobe` gives it) and its `loudness`: the integrated loudness (LUFS) of its first two minutes above 500 Hz, which `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -` prints as `I:` in its summary. The game turns each song up or down by the difference so they all sound equally loud over the engine (whose drone covers the lower notes), and well under it.
 - `ambience`: what its surroundings sound like on the bike select screen: how much sea, seagulls, small birds, cicadas and wind (0 to 1 each).
 - `pace`: how fast the track is ridden against most (1): against the clock, the checkpoints of a slower one, narrow and twisting, give their seconds at that much of the usual pace (`CheckpointTimes::at`), so that a good ride earns as much on it as on the others (Juguetería's is 0.75; every other track's 1).
 - `layout`: the road itself (a `Layout` from `src/track.rs`).
@@ -203,7 +203,7 @@ Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `t
 `FILES` in `src/circuits/mod.rs` lists the tracks in the order the track select screen shows them; the game reads them once, as it starts, into the `Circuits` resource (`Circuits::load`), and the systems take them from it (`Res<Circuits>`, the one chosen `circuits.get(*current)`). The first one is also the default track. To add a track:
 
 1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `FILES` in `src/circuits/mod.rs`, where it goes in the menu, updating the array length.
-2. Name its song in `music` (`src/circuits/mod.rs`). Its water and its mountains are shapes in its file (see `coast` and `mountains` under [Scenery](#scenery)); what it adds of its own to them (a volcano's gullies) is a function in a module next to the others, named in `terrain_function`.
+2. List its song in `assets/pack.txt`, so that a release build has it built in (`every_song_is_in_the_pack` checks it). Its water and its mountains are shapes in its file (see `coast` and `mountains` under [Scenery](#scenery)); what it adds of its own to them (a volcano's gullies) is a function in a module next to the others, named in `terrain_function`.
 
 #### Circuits in RON
 

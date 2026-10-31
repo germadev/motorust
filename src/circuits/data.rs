@@ -16,9 +16,10 @@
 //! - the mountains and the water as shapes with their parameters (see
 //!   [`crate::world::mountains`] and [`crate::world::waters`]);
 //! - what the game adds of its own to them by the name of a function in
-//!   Rust, in [`super::terrain_function`] (a volcano's gullies): it stays in
-//!   Rust, as the music does (`song: (file: "bahia.mp3", ...)`, built in by
-//!   [`super::music`]).
+//!   Rust, in [`super::terrain_function`] (a volcano's gullies);
+//! - a song by the name of its MP3 in `assets/music/` (`song: (file:
+//!   "bahia.mp3", ...)`), loaded from the content pack (see
+//!   [`crate::content`]) when it plays.
 //!
 //! What a file leaves out of the scenery is not there (no tunnels, no
 //! bridges, ...). A file giving a field the game does not know fails.
@@ -46,17 +47,15 @@ pub fn parse<T: Deserialize<'static>>(name: &str, text: &'static str) -> Result<
 /// just restarting the game.
 pub fn load<T: Deserialize<'static>>(folder: &str, name: &str, built_in: &'static str) -> T {
     #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-    let on_disk = std::fs::read_to_string(
+    let text = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("assets")
             .join(folder)
             .join(name),
     )
-    .ok()
-    .map(|text| &*String::leak(text));
+    .map_or(built_in, |text| &*String::leak(text));
     #[cfg(not(all(debug_assertions, not(target_arch = "wasm32"))))]
-    let on_disk: Option<&'static str> = None;
-    let text = on_disk.unwrap_or(built_in);
+    let (text, _) = (built_in, folder);
     parse(name, text).unwrap_or_else(|error| panic!("{error}"))
 }
 
@@ -155,7 +154,7 @@ fn named(name: &str) -> Result<fn(Vec2) -> f32, String> {
     super::terrain_function(name).ok_or_else(|| format!("no terrain function called `{name}`"))
 }
 
-/// A song, its MP3 by the name of its file.
+/// A song, its MP3 by the name of its file in `assets/music/`.
 pub fn song<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Song, D::Error> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -169,10 +168,13 @@ pub fn song<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Song, D::Error
         length,
         loudness,
     } = File::deserialize(deserializer)?;
-    let mp3 = super::music(&file)
-        .ok_or_else(|| D::Error::custom(format!("no song built in called `{file}`")))?;
+    if file.contains(['/', '\\']) || !file.ends_with(".mp3") {
+        return Err(D::Error::custom(format!(
+            "`{file}` is not the name of an MP3 in assets/music/"
+        )));
+    }
     Ok(Song {
-        mp3,
+        file: String::leak(format!("music/{file}")),
         length,
         loudness,
     })
@@ -305,6 +307,14 @@ mod tests {
                 .err()
                 .unwrap()
                 .contains("nowhere")
+        );
+        // Nor a song that is not an MP3 in assets/music/.
+        let song = changed("\"bahia.mp3\"", "\"../bahia.mp3\"");
+        assert!(
+            parse::<Circuit>(name, song)
+                .err()
+                .unwrap()
+                .contains("../bahia.mp3")
         );
         // Nor a field the scenery does not have.
         let scenery = changed("scenery: (", "scenery: (lakes: [], ");

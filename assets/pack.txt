@@ -1,0 +1,22 @@
+# The content pack: the files of assets/ that a release build, and every
+# web build, has built in (see src/content.rs). One path in assets/ a line;
+# a line starting with # is a comment. A desktop development build reads
+# them from the disk instead, so a file the game uses and this list leaves
+# out works there and is missing from a release: the tests check that every
+# file the game names is here.
+
+# The tracks' songs (each named by its circuit's file).
+music/bahia.mp3
+music/turbo_bay.mp3
+music/loop_island.mp3
+music/moon_base.mp3
+music/gold_mine.mp3
+music/autumn_gale.mp3
+music/beyond_the_final_turn.mp3
+music/plastic_velocity_rush.mp3
+
+# Free ride's chill songs and the menus' song (src/sound/music.rs).
+music/chill_velvet_dashboard.mp3
+music/chill_sunlight_on_still_water.mp3
+music/chill_leaves_on_the_still_pond.mp3
+music/menu_asphalt_shift.mp3

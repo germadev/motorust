@@ -765,6 +765,7 @@ mod tests {
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::input::InputPlugin)
             .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(crate::content::ContentPlugin)
             .add_plugins(bevy::asset::AssetPlugin::default())
             .add_plugins(bevy::audio::AudioPlugin::default())
             .init_asset::<Mesh>()

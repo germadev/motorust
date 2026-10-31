@@ -62,7 +62,7 @@ track is 500 m). It is for development only: the lap and the times are
 counted from the finish line as ever, so the first lap is short and its
 time means nothing. See `src/debug_start.rs`.
 
-The executable is self-contained: the 3D models, textures and font are embedded with `include_bytes!`, so you do not need to copy the `assets/` folder to play (see [models.md](models.md)). On Windows the release build opens without a console window (`windows_subsystem = "windows"` in `src/main.rs`); debug builds keep it so log output stays visible.
+The release executable is self-contained: the 3D models, textures and font are embedded with `include_bytes!`, and the music, the content pack (`assets/pack.txt`, see `src/content.rs`), is built in by `build.rs`, so you do not need to copy the `assets/` folder to play (see [models.md](models.md)). A desktop development build (`cargo run`) reads the content pack from this repository's `assets/` instead, and builds none of it in. On Windows the release build opens without a console window (`windows_subsystem = "windows"` in `src/main.rs`); debug builds keep it so log output stays visible.
 
 ## Web version
 

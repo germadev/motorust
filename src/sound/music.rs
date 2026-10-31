@@ -20,12 +20,16 @@
 //! pause menu, and M mutes it with everything else.
 
 use std::io::Cursor;
+use std::sync::Arc;
 
+use bevy::asset::io::Reader;
+use bevy::asset::{AssetLoader, LoadContext};
 use bevy::audio::{AudioSinkPlayback, Decodable, Volume};
 use bevy::prelude::*;
 
 use super::{MASTER, SoundControls, music_gain};
 use crate::circuits::{Circuits, CurrentCircuit, Song};
+use crate::content;
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::pause::Pause;
@@ -61,7 +65,7 @@ pub const CHILL: [ChillSong; 3] = [
     ChillSong {
         name: "Velvet Dashboard",
         song: Song {
-            mp3: include_bytes!("../../assets/music/chill_velvet_dashboard.mp3"),
+            file: "music/chill_velvet_dashboard.mp3",
             length: 176.6,
             loudness: -19.7,
         },
@@ -69,7 +73,7 @@ pub const CHILL: [ChillSong; 3] = [
     ChillSong {
         name: "Sunlight on Still Water",
         song: Song {
-            mp3: include_bytes!("../../assets/music/chill_sunlight_on_still_water.mp3"),
+            file: "music/chill_sunlight_on_still_water.mp3",
             length: 176.4,
             loudness: -18.6,
         },
@@ -77,7 +81,7 @@ pub const CHILL: [ChillSong; 3] = [
     ChillSong {
         name: "Leaves on the Still Pond",
         song: Song {
-            mp3: include_bytes!("../../assets/music/chill_leaves_on_the_still_pond.mp3"),
+            file: "music/chill_leaves_on_the_still_pond.mp3",
             length: 176.9,
             loudness: -17.7,
         },
@@ -86,7 +90,7 @@ pub const CHILL: [ChillSong; 3] = [
 
 /// The menus' song.
 pub const MENU: Song = Song {
-    mp3: include_bytes!("../../assets/music/menu_asphalt_shift.mp3"),
+    file: "music/menu_asphalt_shift.mp3",
     length: 178.2,
     loudness: -19.6,
 };
@@ -210,25 +214,60 @@ impl FreeMusic {
     }
 }
 
-/// A song as a Bevy audio source. It loops by decoding the MP3 again from the
-/// start: Bevy's own looping keeps every decoded sample in memory (about
-/// 60 MB for a 3-minute song).
+/// A song as a Bevy audio source: its MP3, loaded from the content pack
+/// ([`SongLoader`]). It loops by decoding the MP3 again from the start:
+/// Bevy's own looping keeps every decoded sample in memory (about 60 MB for
+/// a 3-minute song).
 #[derive(Asset, TypePath, Clone)]
 pub struct SongSource {
-    mp3: &'static [u8],
+    mp3: Arc<[u8]>,
+}
+
+#[cfg(test)]
+impl SongSource {
+    /// Its MP3.
+    pub fn bytes(&self) -> &[u8] {
+        &self.mp3
+    }
 }
 
 impl Decodable for SongSource {
-    type Decoder = rodio::decoder::LoopedDecoder<Cursor<&'static [u8]>>;
+    type Decoder = rodio::decoder::LoopedDecoder<Cursor<Arc<[u8]>>>;
 
     fn decoder(&self) -> Self::Decoder {
         rodio::Decoder::builder()
-            .with_data(Cursor::new(self.mp3))
+            .with_data(Cursor::new(self.mp3.clone()))
             .with_byte_len(self.mp3.len() as u64)
             .with_hint("mp3")
             .with_gapless(true)
             .build_looped()
             .expect("the songs are valid MP3")
+    }
+}
+
+/// Loads an MP3 as a [`SongSource`]: its bytes, decoded as it plays. (Bevy's
+/// own audio does not read MP3s here: the game decodes them with rodio.)
+#[derive(Default, TypePath)]
+pub struct SongLoader;
+
+impl AssetLoader for SongLoader {
+    type Asset = SongSource;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _context: &mut LoadContext<'_>,
+    ) -> Result<SongSource, Self::Error> {
+        let mut mp3 = Vec::new();
+        reader.read_to_end(&mut mp3).await?;
+        Ok(SongSource { mp3: mp3.into() })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["mp3"]
     }
 }
 
@@ -321,7 +360,7 @@ pub(super) fn play_music(
     pause: Res<Pause>,
     controls: Res<SoundControls>,
     settings: Option<Res<Settings>>,
-    mut songs: ResMut<Assets<SongSource>>,
+    assets: Res<AssetServer>,
     mut playing: Query<(Entity, &mut Music, Option<&mut AudioSink>)>,
 ) {
     let dt = time.delta_secs();
@@ -388,9 +427,9 @@ pub(super) fn play_music(
     if let Some(tune) = tune
         && !started
     {
-        let source = songs.add(SongSource {
-            mp3: tune.song(&circuits).mp3,
-        });
+        // Loaded from the pack as it starts (it fades in meanwhile), and let
+        // go once it has faded out.
+        let source: Handle<SongSource> = assets.load(content::path(tune.song(&circuits).file));
         commands.spawn((
             AudioPlayer(source),
             PlaybackSettings::ONCE.with_volume(Volume::Linear(0.0)),
@@ -431,6 +470,23 @@ mod tests {
             .collect()
     }
 
+    /// A song's MP3, read from the disk.
+    fn mp3(song: &Song) -> Arc<[u8]> {
+        content::read(song.file).into()
+    }
+
+    #[test]
+    fn every_song_is_in_the_pack() {
+        let pack = content::listed();
+        for tune in every_tune() {
+            let file = tune.song(&CIRCUITS).file;
+            assert!(
+                pack.contains(&file),
+                "{tune:?}: {file} not in assets/pack.txt"
+            );
+        }
+    }
+
     #[test]
     fn every_song_is_turned_to_its_loudness() {
         for tune in every_tune() {
@@ -448,14 +504,15 @@ mod tests {
     fn songs_last_as_long_as_they_say_and_loop_back_to_the_start() {
         for tune in every_tune() {
             let song = tune.song(&CIRCUITS);
-            let mut looped = SongSource { mp3: song.mp3 }.decoder();
+            let mp3 = mp3(song);
+            let mut looped = SongSource { mp3: mp3.clone() }.decoder();
             assert_eq!(looped.channels().get(), 2, "{tune:?}");
             assert_eq!(looped.sample_rate().get(), 44_100, "{tune:?}");
 
             // The song once through, then the looped one past its end.
             let once = rodio::Decoder::builder()
-                .with_data(Cursor::new(song.mp3))
-                .with_byte_len(song.mp3.len() as u64)
+                .with_data(Cursor::new(mp3.clone()))
+                .with_byte_len(mp3.len() as u64)
                 .with_hint("mp3")
                 .with_gapless(true)
                 .build()
@@ -499,7 +556,7 @@ mod tests {
 
         for tune in every_tune() {
             let samples: Vec<f32> = SongSource {
-                mp3: tune.song(&CIRCUITS).mp3,
+                mp3: mp3(tune.song(&CIRCUITS)),
             }
             .decoder()
             .take(SAMPLE_RATE as usize * 2 * 60)
@@ -542,9 +599,11 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(content::ContentPlugin)
             .add_plugins(bevy::asset::AssetPlugin::default())
             .add_plugins(bevy::audio::AudioPlugin::default())
             .add_audio_source::<SongSource>()
+            .init_asset_loader::<SongLoader>()
             .init_state::<GameState>()
             .init_resource::<Pause>()
             .insert_resource(CurrentCircuit(2))

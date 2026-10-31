@@ -9,6 +9,7 @@ mod bezier;
 mod bike;
 mod camera;
 mod circuits;
+mod content;
 mod curves_hud;
 mod debug_start;
 mod gamepads;
@@ -183,7 +184,9 @@ fn main() {
         app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
     }
     let (fixed, game) = simulation_clocks();
-    app.add_plugins(plugins)
+    // The content pack's source, before the asset server is built.
+    app.add_plugins(content::ContentPlugin)
+        .add_plugins(plugins)
         .insert_resource(fixed)
         .insert_resource(game)
         .insert_resource(settings::StartedWith::from(&settings))

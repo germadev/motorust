@@ -66,10 +66,12 @@ pub struct Ambience {
     pub wind: f32,
 }
 
-/// A song: an MP3 built into the game ([`crate::sound`] loops it, or, in a
-/// list, plays it through and goes on to the next).
+/// A song: an MP3 of the content pack ([`crate::content`]), which
+/// [`crate::sound`] loops, or, in a list, plays through and goes on to the
+/// next.
 pub struct Song {
-    pub mp3: &'static [u8],
+    /// Its file in `assets/` (`music/bahia.mp3`).
+    pub file: &'static str,
     /// How long it lasts (s), as `ffprobe` gives it.
     pub length: f32,
     /// How loud it sounds over the engines, as mastered: the integrated
@@ -145,25 +147,6 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
     Some(match name {
         "flat" => |_| 0.0,
         "ghost_island_volcano_relief" => ghost_island::volcano_gullies,
-        _ => return None,
-    })
-}
-
-/// The songs the circuits' files name, by their files in `assets/music/`.
-fn music(file: &str) -> Option<&'static [u8]> {
-    Some(match file {
-        "bahia.mp3" => include_bytes!("../../assets/music/bahia.mp3"),
-        "turbo_bay.mp3" => include_bytes!("../../assets/music/turbo_bay.mp3"),
-        "loop_island.mp3" => include_bytes!("../../assets/music/loop_island.mp3"),
-        "moon_base.mp3" => include_bytes!("../../assets/music/moon_base.mp3"),
-        "gold_mine.mp3" => include_bytes!("../../assets/music/gold_mine.mp3"),
-        "autumn_gale.mp3" => include_bytes!("../../assets/music/autumn_gale.mp3"),
-        "beyond_the_final_turn.mp3" => {
-            include_bytes!("../../assets/music/beyond_the_final_turn.mp3")
-        }
-        "plastic_velocity_rush.mp3" => {
-            include_bytes!("../../assets/music/plastic_velocity_rush.mp3")
-        }
         _ => return None,
     })
 }
