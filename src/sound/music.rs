@@ -25,7 +25,7 @@ use bevy::audio::{AudioSinkPlayback, Decodable, Volume};
 use bevy::prelude::*;
 
 use super::{MASTER, SoundControls, music_gain};
-use crate::circuits::{CIRCUITS, CurrentCircuit, Song};
+use crate::circuits::{Circuits, CurrentCircuit, Song};
 use crate::locale::Language;
 use crate::menu::GameState;
 use crate::pause::Pause;
@@ -91,7 +91,7 @@ pub const MENU: Song = Song {
     loudness: -19.6,
 };
 
-/// A song that can play: a track's (an index of [`CIRCUITS`]), a chill one
+/// A song that can play: a track's (an index of [`Circuits`]), a chill one
 /// (of [`CHILL`]) or the menus'.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tune {
@@ -101,9 +101,9 @@ pub enum Tune {
 }
 
 impl Tune {
-    fn song(self) -> &'static Song {
+    fn song(self, circuits: &Circuits) -> &'static Song {
         match self {
-            Tune::Track(index) => &CIRCUITS[index].song,
+            Tune::Track(index) => &circuits.at(index).song,
             Tune::Chill(index) => &CHILL[index].song,
             Tune::Menu => &MENU,
         }
@@ -119,9 +119,9 @@ impl Tune {
     }
 
     /// Its name: the track's, or the song's.
-    pub fn name(self, lang: Language) -> &'static str {
+    pub fn name(self, circuits: &Circuits, lang: Language) -> &'static str {
         match self {
-            Tune::Track(index) => CIRCUITS[index].name(lang),
+            Tune::Track(index) => circuits.at(index).name(lang),
             Tune::Chill(index) => CHILL[index].name,
             Tune::Menu => "Asphalt Shift",
         }
@@ -143,13 +143,13 @@ pub enum MusicMode {
 const MUSIC_MODES: [MusicMode; 3] = [MusicMode::Track, MusicMode::AllTracks, MusicMode::Chill];
 
 impl MusicMode {
-    /// The songs it plays on the track `circuit`, in order: the last one
-    /// is followed by the first.
-    pub fn tunes(self, circuit: usize) -> Vec<Tune> {
+    /// The songs it plays on the track `circuit` of `tracks`, in order: the
+    /// last one is followed by the first.
+    pub fn tunes(self, circuit: usize, tracks: usize) -> Vec<Tune> {
         match self {
             MusicMode::Track => vec![Tune::Track(circuit)],
-            MusicMode::AllTracks => (0..CIRCUITS.len())
-                .map(|step| Tune::Track((circuit + step) % CIRCUITS.len()))
+            MusicMode::AllTracks => (0..tracks)
+                .map(|step| Tune::Track((circuit + step) % tracks))
                 .collect(),
             MusicMode::Chill => (0..CHILL.len()).map(Tune::Chill).collect(),
         }
@@ -176,9 +176,9 @@ pub struct FreeMusic {
 }
 
 impl FreeMusic {
-    /// The song playing on the track `circuit`.
-    pub fn tune(&self, circuit: usize) -> Tune {
-        let tunes = self.mode.tunes(circuit);
+    /// The song playing on the track `circuit` of `tracks`.
+    pub fn tune(&self, circuit: usize, tracks: usize) -> Tune {
+        let tunes = self.mode.tunes(circuit, tracks);
         tunes[self.at % tunes.len()]
     }
 
@@ -194,7 +194,7 @@ impl FreeMusic {
 
     /// What the line at the bottom of free ride says: what plays and, in a
     /// list, the song playing.
-    pub fn describe(&self, circuit: usize, lang: Language) -> String {
+    pub fn describe(&self, circuit: usize, circuits: &Circuits, lang: Language) -> String {
         let music = match lang {
             Language::Spanish => "Música",
             Language::English => "Music",
@@ -204,7 +204,7 @@ impl FreeMusic {
             _ => format!(
                 "{music}: {}  ·  {}",
                 self.mode.name(lang),
-                self.tune(circuit).name(lang)
+                self.tune(circuit, circuits.len()).name(circuits, lang)
             ),
         }
     }
@@ -243,8 +243,8 @@ pub struct Music {
 }
 
 /// How much a song is turned up or down to play at its loudness.
-fn gain(tune: Tune) -> f32 {
-    10f32.powf((tune.loudness() - tune.song().loudness) / 20.0)
+fn gain(tune: Tune, circuits: &Circuits) -> f32 {
+    10f32.powf((tune.loudness() - tune.song(circuits).loudness) / 20.0)
 }
 
 /// Where the fader goes: up while racing on the song's track (lower in the
@@ -315,6 +315,7 @@ pub(super) fn play_music(
     time: Res<Time<Real>>,
     state: Res<State<GameState>>,
     circuit: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     rules: Option<Res<Rules>>,
     mut free: Option<ResMut<FreeMusic>>,
     pause: Res<Pause>,
@@ -326,7 +327,7 @@ pub(super) fn play_music(
     let dt = time.delta_secs();
     let free_ride = rules.is_some_and(|rules| rules.mode == Mode::Free);
     let wanted = |free: Option<&FreeMusic>| match free.filter(|_| free_ride) {
-        Some(free) => free.tune(circuit.0),
+        Some(free) => free.tune(circuit.0, circuits.len()),
         None => Tune::Track(circuit.0),
     };
     let racing = *state.get() == GameState::Race;
@@ -350,10 +351,12 @@ pub(super) fn play_music(
         && free_ride
         && racing
     {
-        let current = free.tune(circuit.0);
+        let current = free.tune(circuit.0, circuits.len());
         over = playing
             .iter()
-            .find(|(_, music, _)| music.tune == current && music.played >= current.song().length)
+            .find(|(_, music, _)| {
+                music.tune == current && music.played >= current.song(&circuits).length
+            })
             .map(|(entity, ..)| entity);
         if let Some(entity) = over {
             commands.entity(entity).despawn();
@@ -378,7 +381,7 @@ pub(super) fn play_music(
         } else if let Some(mut sink) = sink {
             music.played += dt;
             sink.set_volume(Volume::Linear(
-                music.fader * gain(music.tune) * master * music_factor,
+                music.fader * gain(music.tune, &circuits) * master * music_factor,
             ));
         }
     }
@@ -386,7 +389,7 @@ pub(super) fn play_music(
         && !started
     {
         let source = songs.add(SongSource {
-            mp3: tune.song().mp3,
+            mp3: tune.song(&circuits).mp3,
         });
         commands.spawn((
             AudioPlayer(source),
@@ -411,6 +414,7 @@ mod tests {
 
     use super::super::synth::{Controls, Mixer, SAMPLE_RATE, pan};
     use super::*;
+    use crate::circuits::CIRCUITS;
 
     /// Root mean square of the samples, in dB.
     fn rms_db(samples: &[f32]) -> f32 {
@@ -430,10 +434,10 @@ mod tests {
     #[test]
     fn every_song_is_turned_to_its_loudness() {
         for tune in every_tune() {
-            let song = tune.song();
-            let played = song.loudness + 20.0 * gain(tune).log10();
+            let song = tune.song(&CIRCUITS);
+            let played = song.loudness + 20.0 * gain(tune, &CIRCUITS).log10();
             assert!((played - tune.loudness()).abs() < 1e-3, "{tune:?}");
-            assert!(gain(tune) < 1.0, "{tune:?}: turned down");
+            assert!(gain(tune, &CIRCUITS) < 1.0, "{tune:?}: turned down");
         }
         // The chill songs a little quieter than the tracks', the menus'
         // quieter still.
@@ -443,7 +447,7 @@ mod tests {
     #[test]
     fn songs_last_as_long_as_they_say_and_loop_back_to_the_start() {
         for tune in every_tune() {
-            let song = tune.song();
+            let song = tune.song(&CIRCUITS);
             let mut looped = SongSource { mp3: song.mp3 }.decoder();
             assert_eq!(looped.channels().get(), 2, "{tune:?}");
             assert_eq!(looped.sample_rate().get(), 44_100, "{tune:?}");
@@ -495,11 +499,11 @@ mod tests {
 
         for tune in every_tune() {
             let samples: Vec<f32> = SongSource {
-                mp3: tune.song().mp3,
+                mp3: tune.song(&CIRCUITS).mp3,
             }
             .decoder()
             .take(SAMPLE_RATE as usize * 2 * 60)
-            .map(|s| s * gain(tune))
+            .map(|s| s * gain(tune, &CIRCUITS))
             .collect();
             // Its loudest second.
             let loudest = samples
@@ -544,6 +548,7 @@ mod tests {
             .init_state::<GameState>()
             .init_resource::<Pause>()
             .insert_resource(CurrentCircuit(2))
+            .insert_resource(*CIRCUITS)
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
                 100,
             )))
@@ -612,30 +617,30 @@ mod tests {
     #[test]
     fn free_ride_plays_the_track_s_song_then_every_track_s_then_chill() {
         let mut free = FreeMusic::default();
-        assert_eq!(free.tune(2), Tune::Track(2));
+        assert_eq!(free.tune(2, CIRCUITS.len()), Tune::Track(2));
         free.next_mode();
         assert_eq!(free.mode, MusicMode::AllTracks);
         // From this track's, round them all.
-        let tunes = free.mode.tunes(2);
+        let tunes = free.mode.tunes(2, CIRCUITS.len());
         assert_eq!(tunes.len(), CIRCUITS.len());
         assert_eq!(tunes[0], Tune::Track(2));
         assert_eq!(tunes[CIRCUITS.len() - 1], Tune::Track(1));
         free.next_mode();
         assert_eq!(
-            free.mode.tunes(2),
+            free.mode.tunes(2, CIRCUITS.len()),
             [Tune::Chill(0), Tune::Chill(1), Tune::Chill(2)]
         );
         free.at = 4;
-        assert_eq!(free.tune(2), Tune::Chill(1));
+        assert_eq!(free.tune(2, CIRCUITS.len()), Tune::Chill(1));
         assert!(
-            free.describe(2, Language::English)
+            free.describe(2, &CIRCUITS, Language::English)
                 .contains("Sunlight on Still Water")
         );
         // And back to the track's, from the start.
         free.next_mode();
         assert_eq!((free.mode, free.at), (MusicMode::Track, 0));
         assert_eq!(
-            free.describe(2, Language::Spanish),
+            free.describe(2, &CIRCUITS, Language::Spanish),
             "Música: la del circuito"
         );
     }

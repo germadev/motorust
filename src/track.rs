@@ -458,8 +458,9 @@ impl Loop {
     }
 }
 
+/// For the tests: the first circuit's, Bahía's.
+#[cfg(test)]
 impl Default for Track {
-    /// La primera pista, la Bahía.
     fn default() -> Self {
         Self::new(&crate::circuits::CIRCUITS[0].layout)
     }

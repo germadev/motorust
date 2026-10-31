@@ -18,26 +18,8 @@
 //!    beach road with palms, over a lagoon on a wooden bridge narrower than
 //!    the road, back to the start.
 //!
-//! The circuit is written in RON, `assets/circuits/loop_island.ron`; here
-//! is only the function its file names, its mountains, and a test of its
-//! branch.
-
-use bevy::prelude::*;
-
-use crate::geometry::{fbm, smoothstep};
-
-/// Across the sea, checkerboard mountains to the north and west, as in the
-/// background of Sonic's Green Hill; to the south and east, open sea.
-pub(super) fn mountains(point: Vec2) -> f32 {
-    const CENTER: Vec2 = Vec2::new(280.0, -200.0);
-    let away = point - CENTER;
-    let facing = smoothstep(
-        -0.1,
-        0.5,
-        away.normalize_or_zero().dot(Vec2::new(-0.6, -0.8)),
-    );
-    smoothstep(1500.0, 2700.0, away.length()) * facing * 260.0 * (0.4 + 0.6 * fbm(point / 320.0, 4))
-}
+//! The circuit is written in RON, `assets/circuits/loop_island.ron`, its
+//! mountains too; here is a test of its branch.
 
 #[cfg(test)]
 mod tests {

@@ -37,143 +37,17 @@
 //! 12. Amon Hen: past the lake, round to the right over the shoulder of the
 //!     hill, and down onto the start straight, back in the Shire.
 //!
-//! The circuit is written in RON, `assets/circuits/fellowship_road.ron`;
-//! here are only the functions its file names, its water and its
-//! mountains, and tests of it.
+//! The circuit is written in RON, `assets/circuits/fellowship_road.ron`,
+//! its water and its mountains too; here are tests of it.
 
-use bevy::prelude::*;
-
-use crate::geometry::{fbm, smoothstep};
-
-/// The pool of Bywater, below the right of the village, where the Water
-/// widens before it runs on into the Brandywine: its middle and radius
-/// (m).
-const POND: Vec2 = Vec2::new(470.0, -330.0);
-const POND_RADIUS: f32 = 30.0;
-/// The Water, the stream through Hobbiton, 64 m wide: out of the wood,
-/// along the left of the long sweep down into the village, between the
-/// road and the mill; square under the bridge, along the right of the
-/// sweep on, and away from the road into the pool, and on out of it into
-/// the Brandywine.
-const THE_WATER: [(Vec2, f32); 23] = [
-    (Vec2::new(-150.0, 40.0), 8.0),
-    (Vec2::new(-115.0, -60.0), 9.0),
-    (Vec2::new(-75.0, -110.0), 12.0),
-    (Vec2::new(-59.7, -132.0), 16.0),
-    (Vec2::new(-53.6, -179.1), 22.0),
-    (Vec2::new(-39.3, -222.1), 28.0),
-    (Vec2::new(-12.6, -268.1), 32.0),
-    (Vec2::new(23.7, -307.0), 32.0),
-    (Vec2::new(67.6, -337.1), 32.0),
-    (Vec2::new(111.6, -355.1), 32.0),
-    (Vec2::new(138.2, -362.1), 32.0),
-    (Vec2::new(154.0, -364.6), 32.0),
-    (Vec2::new(168.6, -346.7), 32.0),
-    (Vec2::new(187.2, -312.2), 32.0),
-    (Vec2::new(205.8, -277.8), 32.0),
-    (Vec2::new(220.5, -259.8), 32.0),
-    (Vec2::new(234.5, -261.9), 32.0),
-    (Vec2::new(256.1, -267.5), 32.0),
-    (Vec2::new(289.7, -280.1), 32.0),
-    (Vec2::new(440.0, -345.0), 32.0),
-    (Vec2::new(470.0, -330.0), 30.0),
-    (Vec2::new(505.0, -332.0), 16.0),
-    (Vec2::new(548.0, -330.0), 18.0),
-];
-/// Rivers, as points (x, z) along them with how far their banks are from
-/// the middle there (m): the Brandywine, north to south under its bridge
-/// into a pool; the Bruinen, from the mountains west across the ford into
-/// a pool; and the Anduin, from the south into the middle of the road,
-/// widening down the causeway to the kings, narrowing past them through the
-/// gorge in the rock they guard, and turning into the lake.
-const BRANDYWINE_RIVER: [(Vec2, f32); 5] = [
-    (Vec2::new(600.0, -1100.0), 18.0),
-    (Vec2::new(570.0, -800.0), 18.0),
-    (Vec2::new(560.0, -568.0), 18.0),
-    (Vec2::new(550.0, -330.0), 18.0),
-    (Vec2::new(520.0, -200.0), 40.0),
-];
-const BRUINEN_RIVER: [(Vec2, f32); 6] = [
-    (Vec2::new(1985.0, -565.0), 22.0),
-    (Vec2::new(1735.0, -455.0), 22.0),
-    (Vec2::new(1576.0, -417.0), 22.0),
-    (Vec2::new(1435.0, -375.0), 22.0),
-    (Vec2::new(1325.0, -335.0), 22.0),
-    (Vec2::new(1235.0, -305.0), 40.0),
-];
-const ANDUIN: [(Vec2, f32); 13] = [
-    (Vec2::new(680.0, 800.0), 18.0),
-    (Vec2::new(630.0, 600.0), 18.0),
-    (Vec2::new(598.0, 470.0), 14.0),
-    (Vec2::new(578.0, 398.0), 12.0),
-    (Vec2::new(545.0, 396.5), 45.0),
-    (Vec2::new(495.0, 389.5), 55.0),
-    // Between the kings, where the cliffs close in on it, and past them
-    // through the gorge in the rock.
-    (Vec2::new(434.0, 372.5), 35.0),
-    (Vec2::new(405.0, 362.0), 31.0),
-    (Vec2::new(351.0, 350.0), 29.0),
-    (Vec2::new(312.0, 360.0), 28.0),
-    (Vec2::new(282.0, 405.0), 30.0),
-    (Vec2::new(228.0, 452.0), 30.0),
-    (Vec2::new(205.0, 478.0), 30.0),
-];
-/// Mirrormere, below Moria's gate, and Nen Hithoel, the lake the Anduin
-/// opens into past the kings: their middles and radii (m).
-const MIRRORMERE: Vec2 = Vec2::new(1350.0, 505.0);
-const MIRRORMERE_RADIUS: f32 = 45.0;
-const NEN_HITHOEL: Vec2 = Vec2::new(180.0, 500.0);
-const NEN_HITHOEL_RADIUS: f32 = 85.0;
-
-/// How far `point` is from the shores of the rivers and lakes: negative in
-/// their water. Their shores wander a little.
-pub(super) fn water(point: Vec2) -> f32 {
-    let wander = 4.0 * (2.0 * fbm(point / 40.0 + 7.0, 2) - 1.0);
-    let pond = point.distance(POND) - POND_RADIUS;
-    let mirrormere = point.distance(MIRRORMERE) - MIRRORMERE_RADIUS;
-    let lake = point.distance(NEN_HITHOEL) - NEN_HITHOEL_RADIUS;
-    let rivers = [&THE_WATER[..], &BRANDYWINE_RIVER, &BRUINEN_RIVER, &ANDUIN]
-        .into_iter()
-        .map(|river| river_banks(river, point))
-        .fold(f32::MAX, f32::min);
-    pond.min(mirrormere).min(lake).min(rivers) + wander
-}
-
-/// How far `point` is from the banks of a river through `points` (each
-/// with how far its banks are from its middle there): negative in it.
-fn river_banks(points: &[(Vec2, f32)], point: Vec2) -> f32 {
-    points
-        .windows(2)
-        .map(|pair| {
-            let ((a, wide_a), (b, wide_b)) = (pair[0], pair[1]);
-            let ab = b - a;
-            let t = ((point - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
-            point.distance(a + ab * t) - wide_a.lerp(wide_b, t)
-        })
-        .fold(f32::MAX, f32::min)
-}
-
-/// Far off: the Misty Mountains to the east, a range of peaks under snow,
-/// and low hills round the rest of the horizon.
-pub(super) fn mountains(point: Vec2) -> f32 {
-    const CENTER: Vec2 = Vec2::new(850.0, -80.0);
-    let hills = smoothstep(1500.0, 2500.0, point.distance(CENTER))
-        * 150.0
-        * (0.35 + 0.65 * fbm(point / 380.0, 4));
-    // Running north and south, a little ragged, past the far side of the
-    // lap; its peaks over the snow line.
-    let range = smoothstep(
-        2150.0,
-        2750.0,
-        point.x + 120.0 * (fbm(point / 900.0, 2) - 0.5),
-    );
-    let peaks = 380.0 + 620.0 * fbm(point / 520.0 + 3.0, 4).powf(1.4);
-    hills.max(range * peaks)
-}
-
-#[cfg(test)]
 mod tests {
-    use super::*;
+    use bevy::prelude::*;
+
+    /// How high the circuit's mountains stand at `point`, as its file has
+    /// them.
+    fn mountains(point: Vec2) -> f32 {
+        fellowship_road().scenery.mountains.height(point)
+    }
     use crate::circuits::{CIRCUITS, Circuit};
     use crate::track::Track;
     use crate::world::scenery::{Coast, Span, span};
@@ -312,7 +186,7 @@ mod tests {
         let mut wet = vec![0.0; fellowship_road().scenery.bridges.len()];
         for index in 0..track.sample_count() {
             let along = index as f32 * track.step_length();
-            if water(track.centerline()[index]) < 0.0 {
+            if water.distance(track.centerline()[index]) < 0.0 {
                 assert!(on_bridge(along), "wet road at {along} m");
                 for (k, bridge) in fellowship_road().scenery.bridges.iter().enumerate() {
                     if bridge.span.contains(along, lap) {
@@ -337,7 +211,7 @@ mod tests {
             assert!(CAUSEWAY.contains(along, lap));
             let road = track.centerline()[index];
             let beyond = road + (king - road) * 1.25;
-            assert!(water(beyond) < 0.0, "{beyond}");
+            assert!(water.distance(beyond) < 0.0, "{beyond}");
             assert!((20.0..26.0).contains(&king.distance(road)));
         }
     }

@@ -17,7 +17,7 @@ The race uses eight superbikes made with [Meshy](https://www.meshy.ai) from the 
 | Cobra XT | Orange and black | `assets/models/cobra` | `Design::Cobra` | The silencer sits under the tail. |
 | Ronin YS | Blue and black | `assets/models/ronin` | `Design::Ronin` | |
 
-Each `ROSTER` entry also has a description shown on the selection screen (in Spanish, for example "Azul y blanca, como la de la portada de Moto Racer") and a colour, used for the bike's name and its dot on the minimap.
+The roster, `assets/bikes/roster.ron` (read as the game starts into the `Roster` resource, `src/bike/mod.rs`), lists them in the order of the selection screen. Each entry also has a description shown on that screen (in Spanish, for example "Azul y blanca, como la de la portada de Moto Racer") and a colour, used for the bike's name and its dot on the minimap.
 
 Each imported bike has colour, metal/roughness and normal textures and is split into chassis, steering and wheels, so the wheels spin, the fork and handlebars turn, and the suspension works. The tyres that come with the Meshy wheels are lumpy, low-poly rings (their outline wanders by a couple of centimetres, and some carry smudges of the bodywork's colours), so the game cuts them off the wheel and fits round ones made in code (`src/bike/model/tyre.rs`): a surface of revolution 96 segments round, as wide as the old one, sitting on the rim, with the round profile of a MotoGP tyre: an ellipse from one shoulder to the other, the tread running nearly round to the rim (the bike leans over 60 degrees on it) and short sidewalls. They are slicks, as MotoGP races on in the dry (Michelin's Power Slicks): no tread pattern, the rubber a little lighter where it is scrubbed in the middle, and the compound marked as in MotoGP by a band round the sidewall: white on the soft (Kraken RS, Stiletto V4, Azura RZ), none on the medium (Shogun TZ, Falcon KRZ, Ronin YS) and yellow on the hard (Legend 88, Cobra XT). The exhausts have open outlets: the lip of the inner pipe and a hole that darkens to black inside. The rider is posed every frame (`src/bike/model/pilot.rs`): hips on the seat, back over the tank on the straights with the helmet behind the screen, hanging off in corners with the inner knee towards the ground, head turned towards where the bike is going and kept more upright than the bike, and sitting up under braking. Arms and legs use two-bone inverse kinematics, so the hands stay on the grips and the feet on the pegs.
 
@@ -25,7 +25,7 @@ The original GLB files are attached to [the repository's model releases](https:/
 
 ## Code-built designs
 
-The code also keeps four low-poly bikes built entirely in code, each with its code-built rider and liveries. They are not in `ROSTER`, so they no longer appear in races, but they are still built at startup (`Design::ALL`) and can be put back in the roster.
+The code also keeps four low-poly bikes built entirely in code, each with its code-built rider and liveries. They are not in the roster, so they no longer appear in races, but they are still built at startup (`Design::ALL`) and can be put back in it (`design: Afilada`, ...).
 
 | `Design` | Shape |
 |---|---|
@@ -47,7 +47,7 @@ The code also keeps four low-poly bikes built entirely in code, each with its co
 | `TRICOLOR` | Red with a blue side and white pinstripes. |
 | `ROSSO` | Red with a silver tank top. |
 
-Every `ROSTER` entry names a livery, but it is only painted on code-built designs: the imported bikes bring their own textures.
+Every entry of the roster names a livery (`cover`, `flecha`, `diagonal`, `verde`, `tricolor`, `rosso`, named in `livery` in `src/bike/mod.rs`), but it is only painted on code-built designs: the imported bikes bring their own textures.
 
 ## The importer
 
@@ -98,7 +98,7 @@ The rider GLB must be the auto-rigged, skinned one. The script keeps the mesh wi
    Check the output: the triangle count of each part, the exhaust outlets found, and any "fork welded to the fairing" warning.
 3. **`src/bike/model/imported.rs`:** add a `Model` with the `model!` macro, the folder name and the printed `Geometry`; pass `false` as a third argument if the script printed `steers: false`. Add it to the `MODELS` arrays used by the tests here and in `pilot.rs`.
 4. **`src/bike/model/designs.rs`:** add a variant to `Design`, append it to `Design::ALL` (the order must match the variant index; a test checks it), map it to its model in `Design::model()`, and add it to the imported-bike arms of `details()`, `build()` and `plates()`. The compiler points out every `match` that is missing it.
-5. **`src/bike/mod.rs`:** add an `Entry` to `ROSTER` with the name, the description, the colour, the `Design` and a livery (only used by code-built designs). `ROSTER` is a fixed-size array (`[Entry; 8]`) and the starting grid (`GRID`) has eight slots, one per bike, checked by a test; a ninth bike also needs a ninth `GRID` slot (a `Rival` with its skill and lane) and that test updated.
+5. **`assets/bikes/roster.ron`:** add an entry with the name, the description (Spanish and English), the colour (sRGB), the `Design` and a livery (only used by code-built designs). The roster has one bike for each place on the starting grid (`GRID`, eight, `RIDERS`), checked as it is read and by a test; a ninth bike also needs a ninth `GRID` slot (a `Rival` with its skill and lane), and the championship's points (`POINTS`, `Championship::points`) one more.
 6. **Test.** `cargo test` checks that every imported bike has its parts, that the wheels touch the ground with the measured radii, that the exhausts open behind the seat, that the rider has a rigged 23-bone body, and that the hands reach the grips and the feet the pegs whether the rider is tucked in, sitting up or hanging off to either side.
 
 Upload the original GLB files to a model release of the repository so they can be re-imported later, and credit them in `assets/CREDITS.md`.

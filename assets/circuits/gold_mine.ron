@@ -553,7 +553,28 @@
         ],
     ),
     scenery: (
-        coast: Function("gold_mine_water"),
+        // No sea: the great lake north-west of the mountain, at the bottom of
+        // the open pit, its shore wandering; and the river that flows out of
+        // it to the north.
+        coast: Sea(
+            lakes: [
+                (
+                    center: (-1225.0, -626.0),
+                    radius: 235.0,
+                    wander: Some((amount: 18.0, scale: 70.0, octaves: 2, offset: (3.0, 3.0))),
+                ),
+            ],
+            rivers: [
+                (
+                    points: [
+                        ((-1270.0, -830.0), 14.0),
+                        ((-1310.0, -1300.0), 14.0),
+                        ((-1380.0, -1800.0), 14.0),
+                        ((-1480.0, -2400.0), 14.0),
+                    ],
+                ),
+            ],
+        ),
         hills: 8.0,
         greens: Lawn,
         grass_shade: 1.0,
@@ -596,7 +617,15 @@
         ],
         // Red mesas and buttes all round the horizon, with flat tops and
         // sheer sides, as in a desert of the American south-west.
-        mountains: "gold_mine_mountains",
+        mountains: [
+            Range(
+                center: (-700.0, -310.0),
+                near: 1100.0,
+                far: 1800.0,
+                mesas: Some((from: 0.47, to: 0.53, scale: 420.0, octaves: 3)),
+                relief: (low: 168.0, high: 240.0, scale: 900.0, octaves: 2, offset: (7.0, 7.0)),
+            ),
+        ],
         // Rust red and cream.
         curbs: [(0.62, 0.2, 0.08), (0.95, 0.86, 0.62)],
         // Stone parapets along the rim of the pit and up the switchbacks,

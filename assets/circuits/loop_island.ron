@@ -275,7 +275,15 @@
         // Across the sea, checkerboard mountains to the north and west, as
         // in the background of Sonic's Green Hill; to the south and east,
         // open sea.
-        mountains: "loop_island_mountains",
+        mountains: [
+            Range(
+                center: (280.0, -200.0),
+                near: 1500.0,
+                far: 2700.0,
+                facing: Some((direction: (-0.6, -0.8), from: -0.1, to: 0.5)),
+                relief: (low: 104.0, high: 260.0, scale: 320.0, octaves: 4),
+            ),
+        ],
         // Gold and blue.
         curbs: [(1.0, 0.8, 0.1), (0.08, 0.28, 0.85)],
         walls: [

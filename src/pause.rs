@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::circuits::{Circuits, CurrentCircuit};
 use crate::gamepads::ActiveController;
 use crate::hud::UiFont;
 use crate::legend::{Keys, menu_prompts, spawn_legend};
@@ -503,6 +503,7 @@ fn show_pause_menu(
     shown: Query<Entity, With<PauseMenu>>,
     rules: Option<Res<Rules>>,
     current: Option<Res<CurrentCircuit>>,
+    circuits: Option<Res<Circuits>>,
     championship: Option<Res<Championship>>,
 ) {
     if !pause.is_changed()
@@ -566,12 +567,12 @@ fn show_pause_menu(
         .with_children(|menu| {
             spawn_title(menu, &font, title, 52.0);
             // What is being played and where.
-            if let (Some(rules), Some(current)) = (rules, current) {
-                let track = current.get().name(lang);
+            if let (Some(rules), Some(current), Some(circuits)) = (rules, current, circuits) {
+                let track = circuits.get(*current).name(lang);
                 let beside = match championship.filter(|_| rules.mode.is_championship()) {
                     Some(championship) => {
-                        let round = championship.round.min(CIRCUITS.len() - 1) + 1;
-                        format!("{track}  ·  {round}/{}", CIRCUITS.len())
+                        let round = championship.round.min(circuits.len() - 1) + 1;
+                        format!("{track}  ·  {round}/{}", circuits.len())
                     }
                     None => track.to_string(),
                 };

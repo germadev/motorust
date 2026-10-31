@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 
 use super::{Mode, Outcome, Progress, Rules, Standing, Watching};
-use crate::bike::{LocalPlayer, Player, ROSTER, Race, Retired, Rider};
+use crate::bike::{LocalPlayer, Player, Race, Retired, Rider, Roster};
 use crate::geometry::smoothstep;
 use crate::hud::UiFont;
 use crate::locale::Language;
@@ -550,8 +550,10 @@ fn place_among(standing: &Standing, mode: Mode, rider: usize) -> (usize, usize) 
 }
 
 #[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 fn show_race_info(
     rules: Res<Rules>,
+    roster: Res<Roster>,
     race: Res<Race>,
     standing: Res<Standing>,
     settings: Res<Settings>,
@@ -661,7 +663,16 @@ fn show_race_info(
                         node.top = top;
                     }
                 }
-                notice(&rules, &standing, progress, out, false_starts, place, lang)
+                notice(
+                    &rules,
+                    &roster,
+                    &standing,
+                    progress,
+                    out,
+                    false_starts,
+                    place,
+                    lang,
+                )
             }
             _ => (String::new(), color.0),
         };
@@ -758,6 +769,7 @@ fn show_place_total(
 #[allow(clippy::type_complexity)]
 fn show_watched(
     rules: Res<Rules>,
+    roster: Res<Roster>,
     standing: Res<Standing>,
     settings: Res<Settings>,
     watching: Option<Res<Watching>>,
@@ -783,7 +795,7 @@ fn show_watched(
     for (info, mut text) in &mut texts {
         let wanted = match (info, watched, place) {
             (WatchInfo::Caption, Some((watching, progress)), Some(place)) => {
-                let name = ROSTER[watching.rider].name;
+                let name = roster[watching.rider].name;
                 let lap = match lang {
                     Language::Spanish => "VUELTA",
                     Language::English => "LAP",
@@ -809,7 +821,7 @@ fn show_watched(
                         };
                         format!(
                             "{finish}  {}  {}{gap}",
-                            ROSTER[watching.rider].name,
+                            roster[watching.rider].name,
                             ordinal(place)
                         )
                     }
@@ -829,13 +841,14 @@ fn show_watched(
 /// it instead.
 fn show_arrivals(
     rules: Res<Rules>,
+    roster: Res<Roster>,
     standing: Res<Standing>,
     outcome: Option<Res<Outcome>>,
     bikes: Query<(&Rider, &Progress)>,
     mut text: Query<&mut Text, With<Arrivals>>,
 ) {
     let wanted = if matches!(rules.mode, Mode::Race | Mode::Arcade) && outcome.is_none() {
-        arrival_lines(&standing.order, |rider| {
+        arrival_lines(&roster, &standing.order, |rider| {
             bikes
                 .iter()
                 .find(|(r, _)| r.0 == rider)
@@ -853,7 +866,11 @@ fn show_arrivals(
 
 /// A line for each bike of `order` (bikes of the roster) that has crossed
 /// the line at the end (`finished`: when), in order: "1º  Name  1:23.4".
-fn arrival_lines(order: &[usize], finished: impl Fn(usize) -> Option<f32>) -> String {
+fn arrival_lines(
+    roster: &Roster,
+    order: &[usize],
+    finished: impl Fn(usize) -> Option<f32>,
+) -> String {
     let mut arrived: Vec<(usize, f32)> = order
         .iter()
         .filter_map(|&rider| finished(rider).map(|time| (rider, time)))
@@ -866,7 +883,7 @@ fn arrival_lines(order: &[usize], finished: impl Fn(usize) -> Option<f32>) -> St
             format!(
                 "{}   {}   {}",
                 ordinal(index + 1),
-                ROSTER[*rider].name,
+                roster[*rider].name,
                 clock(*time)
             )
         })
@@ -888,8 +905,10 @@ enum Out {
 /// disqualified, back on the grid after a false start (`false_starts`: how
 /// many they have made and are let off), who has just gone out, or a lap
 /// record.
+#[allow(clippy::too_many_arguments)]
 fn notice(
     rules: &Rules,
+    roster: &Roster,
     standing: &Standing,
     progress: &Progress,
     out: Out,
@@ -945,7 +964,7 @@ fn notice(
     if let Some((rider, at)) = standing.last_out
         && standing.clock - at < NOTICE
     {
-        let name = ROSTER[rider].name;
+        let name = roster[rider].name;
         return (
             match lang {
                 Language::Spanish => format!("Eliminado: {name}"),
@@ -973,6 +992,7 @@ fn notice(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bike::ROSTER;
 
     /// What a player's texts at the top left say, put together from their
     /// spans.
@@ -1036,6 +1056,7 @@ mod tests {
             .init_resource::<Settings>()
             .init_resource::<UiFont>()
             .init_resource::<GameMode>()
+            .insert_resource(*ROSTER)
             .insert_resource(Rules {
                 mode: Mode::Race,
                 laps: 1,
@@ -1146,7 +1167,7 @@ mod tests {
             1 => Some(81.2),
             _ => None,
         };
-        let lines = arrival_lines(&[1, 3, 0, 2], finished);
+        let lines = arrival_lines(&ROSTER, &[1, 3, 0, 2], finished);
         assert_eq!(
             lines,
             format!(
@@ -1154,7 +1175,7 @@ mod tests {
                 ROSTER[1].name, ROSTER[3].name
             )
         );
-        assert_eq!(arrival_lines(&[0, 2], finished), "");
+        assert_eq!(arrival_lines(&ROSTER, &[0, 2], finished), "");
     }
 
     #[test]
@@ -1195,6 +1216,7 @@ mod tests {
         let told = |standing: &Standing, progress: &Progress| {
             notice(
                 &rules,
+                &ROSTER,
                 standing,
                 progress,
                 Out::In,
@@ -1232,6 +1254,7 @@ mod tests {
         let said = |out, false_starts| {
             notice(
                 &rules,
+                &ROSTER,
                 &standing,
                 &progress,
                 out,

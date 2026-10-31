@@ -19,6 +19,7 @@ mod lod;
 mod middle_earth;
 mod mine;
 mod mirror;
+pub mod mountains;
 mod preview;
 mod props;
 mod quads;
@@ -38,6 +39,7 @@ mod textures;
 mod toys;
 mod trees;
 mod tufts;
+pub mod waters;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -52,7 +54,7 @@ use bevy::{
     transform::TransformSystems,
 };
 
-use crate::circuits::{CIRCUITS, CurrentCircuit};
+use crate::circuits::{Circuit, Circuits, CurrentCircuit};
 use crate::menu::GameState;
 use crate::settings::{Settings, WEB};
 use crate::track::{Surface, Track};
@@ -83,6 +85,8 @@ impl Plugin for WorldPlugin {
             app.init_asset::<sea::SeaMaterial>()
                 .init_asset::<mirror::MirrorMaterial>();
         }
+        // The circuits, read from their files once, as the game starts.
+        let circuits = Circuits::load();
         let current = CurrentCircuit::default();
         app.add_plugins((
             lamps::LampsPlugin,
@@ -92,8 +96,9 @@ impl Plugin for WorldPlugin {
             relief::ReliefPlugin,
             lawn::LawnPlugin,
         ));
-        app.insert_resource(current)
-            .insert_resource(Track::new(&current.get().layout))
+        app.insert_resource(circuits)
+            .insert_resource(current)
+            .insert_resource(Track::new(&circuits.get(current).layout))
             .init_resource::<Roadsides>()
             .init_resource::<Preparing>()
             .init_resource::<Finishing>()
@@ -156,7 +161,7 @@ impl Plugin for WorldPlugin {
 }
 
 /// What lies beside the roads of each circuit built so far (see
-/// [`Roadside`]), by its index in [`CIRCUITS`]: it comes from the terrain,
+/// [`Roadside`]), by its index in [`Circuits`]: it comes from the terrain,
 /// which is only built once.
 #[derive(Resource, Default)]
 struct Roadsides(HashMap<usize, Roadside>);
@@ -178,7 +183,7 @@ impl Roadside {
     }
 }
 
-/// Cada circuito cargado tiene su entidad raíz con su índice en [`CIRCUITS`].
+/// Cada circuito cargado tiene su entidad raíz con su índice en [`Circuits`].
 #[derive(Component, Debug, PartialEq, Eq)]
 pub struct WorldRoot(pub usize);
 
@@ -221,6 +226,7 @@ struct Prepared {
 #[derive(Clone)]
 struct Basis {
     index: usize,
+    circuit: &'static Circuit,
     track: Arc<Track>,
     terrain: Arc<terrain::Terrain>,
     shore: Arc<sea::ShoreMap>,
@@ -259,8 +265,13 @@ impl Urgency {
 }
 
 /// The first part of circuit `index` (see [`Prepared`]).
-fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -> Prepared {
-    let circuit = &CIRCUITS[index];
+fn prepare(
+    circuits: Circuits,
+    index: usize,
+    textures: &textures::WorldTextures,
+    urgency: Urgency,
+) -> Prepared {
+    let circuit = circuits.at(index);
     let scenery = &circuit.scenery;
     let track = Track::new(&circuit.layout);
     let terrain = terrain::Terrain::on_threads(&track, scenery, urgency.threads());
@@ -314,6 +325,7 @@ fn prepare(index: usize, textures: &textures::WorldTextures, urgency: Urgency) -
     Prepared {
         basis: Basis {
             index,
+            circuit,
             track: Arc::new(track),
             terrain: Arc::new(terrain),
             shore: Arc::new(shore),
@@ -346,7 +358,7 @@ fn realm_ground(terrain: &terrain::Terrain, threads: usize) -> Vec<terrain::Grou
 
 /// The rest of a circuit whose first part is `basis` (see [`Rest`]).
 fn prepare_rest(basis: &Basis, textures: &textures::WorldTextures, urgency: Urgency) -> Rest {
-    let scenery = &CIRCUITS[basis.index].scenery;
+    let scenery = &basis.circuit.scenery;
     let (track, terrain, shore) = (&*basis.track, &*basis.terrain, &*basis.shore);
     let sea_mirror = (!scenery.cartoon_water).then(|| {
         mirror::prepare_mirror(
@@ -443,12 +455,15 @@ impl<T: Send + 'static> Work<T> {
 
 /// The first part of circuit `index` worked out on another thread.
 fn start_preparing(
+    circuits: Circuits,
     index: usize,
     textures: &textures::WorldTextures,
     urgency: Urgency,
 ) -> Work<Prepared> {
     let textures = textures.clone();
-    Work::start(urgency, move |urgency| prepare(index, &textures, urgency))
+    Work::start(urgency, move |urgency| {
+        prepare(circuits, index, &textures, urgency)
+    })
 }
 
 /// The rest of the circuit whose first part is `basis`, worked out on
@@ -465,23 +480,23 @@ fn start_finishing(
 }
 
 /// The first parts of the circuits being prepared, by index in
-/// [`CIRCUITS`].
+/// [`Circuits`].
 #[derive(Resource, Default)]
 struct Preparing(HashMap<usize, Work<Prepared>>);
 
 /// The circuits shown whose rest is still to come, by index in
-/// [`CIRCUITS`]: what it is put in the world with, and the work on it, if
+/// [`Circuits`]: what it is put in the world with, and the work on it, if
 /// it has started.
 #[derive(Resource, Default)]
 struct Finishing(HashMap<usize, (Shown, Option<Work<Rest>>)>);
 
 /// The quick looks at the start of the circuits being prepared (see
-/// [`preview`]), by index in [`CIRCUITS`].
+/// [`preview`]), by index in [`Circuits`].
 #[derive(Resource, Default)]
 struct Previewing(HashMap<usize, Work<Prepared>>);
 
 /// The quick looks at the start of the circuits in the world, by index in
-/// [`CIRCUITS`]: each hidden when its circuit's first part comes, and kept,
+/// [`Circuits`]: each hidden when its circuit's first part comes, and kept,
 /// through the races too, for whenever its circuit is not there (see
 /// [`unload_unused_circuits`]).
 #[derive(Resource, Default)]
@@ -502,13 +517,14 @@ fn previews_wanted(settings: Option<&Settings>) -> bool {
 /// The quick look at the start of circuit `index` worked out on another
 /// thread.
 fn start_previewing(
+    circuits: Circuits,
     index: usize,
     textures: &textures::WorldTextures,
     urgency: Urgency,
 ) -> Work<Prepared> {
     let textures = textures.clone();
     Work::start(urgency, move |urgency| {
-        preview::prepare_preview(index, &textures, urgency)
+        preview::prepare_preview(circuits.at(index), index, &textures, urgency)
     })
 }
 
@@ -519,11 +535,11 @@ fn start_previewing(
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct CircuitLoading(pub bool);
 
-/// How far apart two circuits are in the tracks menu, going round it either
-/// way.
-fn menu_distance(a: usize, b: usize) -> usize {
+/// How far apart two circuits are in the tracks menu of `count`, going
+/// round it either way.
+fn menu_distance(a: usize, b: usize, count: usize) -> usize {
     let apart = a.abs_diff(b);
-    apart.min(CIRCUITS.len() - apart)
+    apart.min(count - apart)
 }
 
 /// Whether the circuits are prepared in the background now: in every menu,
@@ -551,6 +567,7 @@ fn preparing_in_the_menus(state: Option<Res<State<GameState>>>) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn queue_circuits(
     current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     settings: Option<Res<Settings>>,
     roots: Query<&WorldRoot>,
     textures: Res<textures::WorldTextures>,
@@ -568,29 +585,29 @@ fn queue_circuits(
         return;
     }
     let nearest = |indices: &mut dyn Iterator<Item = usize>| {
-        indices.min_by_key(|&index| (menu_distance(index, current.0), index))
+        indices.min_by_key(|&index| (menu_distance(index, current.0, circuits.len()), index))
     };
     let built: HashSet<usize> = roots.iter().map(|root| root.0).collect();
     // A look at the start of each first, seen from the road.
     if previews_wanted(settings.as_deref()) {
-        let unseen = nearest(&mut (0..CIRCUITS.len()).filter(|index| {
+        let unseen = nearest(&mut (0..circuits.len()).filter(|index| {
             !built.contains(index)
                 && !finishing.0.contains_key(index)
                 && !previews.0.contains_key(index)
         }));
         if let Some(index) = unseen {
-            let work = start_previewing(index, &textures, Urgency::Background);
+            let work = start_previewing(*circuits, index, &textures, Urgency::Background);
             previewing.0.insert(index, work);
             return;
         }
     }
-    let unbuilt = nearest(&mut (0..CIRCUITS.len()).filter(|index| {
+    let unbuilt = nearest(&mut (0..circuits.len()).filter(|index| {
         !built.contains(index)
             && !preparing.0.contains_key(index)
             && !finishing.0.contains_key(index)
     }));
     if let Some(index) = unbuilt {
-        let work = start_preparing(index, &textures, Urgency::Background);
+        let work = start_preparing(*circuits, index, &textures, Urgency::Background);
         preparing.0.insert(index, work);
         return;
     }
@@ -613,9 +630,9 @@ fn queue_circuits(
     }
     if previews_wanted(settings.as_deref()) {
         let unseen =
-            nearest(&mut (0..CIRCUITS.len()).filter(|index| !previews.0.contains_key(index)));
+            nearest(&mut (0..circuits.len()).filter(|index| !previews.0.contains_key(index)));
         if let Some(index) = unseen {
-            let work = start_previewing(index, &textures, Urgency::Background);
+            let work = start_previewing(*circuits, index, &textures, Urgency::Background);
             previewing.0.insert(index, work);
         }
     }
@@ -726,10 +743,10 @@ fn complete_now(
     roadsides: &mut Roadsides,
 ) {
     if !built && !finishing.0.contains_key(&index) {
-        let textures = builder.textures.clone();
+        let (textures, circuits) = (builder.textures.clone(), *builder.circuits);
         let prepared = match preparing.0.remove(&index) {
-            Some(work) => work.wait(|| prepare(index, &textures, Urgency::Now)),
-            None => prepare(index, &textures, Urgency::Now),
+            Some(work) => work.wait(|| prepare(circuits, index, &textures, Urgency::Now)),
+            None => prepare(circuits, index, &textures, Urgency::Now),
         };
         let shown = build(commands, prepared, builder, Visibility::Inherited, None);
         roadsides.0.insert(index, shown.basis.roadside.clone());
@@ -826,6 +843,7 @@ fn unload_unused_circuits(
 fn rebuild_world(
     mut commands: Commands,
     current: Res<CurrentCircuit>,
+    circuits: Res<Circuits>,
     state: Option<Res<State<GameState>>>,
     settings: Option<Res<Settings>>,
     mut roots: Query<(Entity, &WorldRoot, &mut Visibility)>,
@@ -860,7 +878,7 @@ fn rebuild_world(
             Visibility::Hidden
         };
     }
-    *track = Track::new(&current.get().layout);
+    *track = Track::new(&circuits.get(*current).layout);
     let in_menu = state.is_some_and(|state| *state.get() == GameState::Tracks);
     if in_menu && !WEB {
         if !found {
@@ -873,11 +891,21 @@ fn rebuild_world(
                     .get(&current.0)
                     .is_none_or(|work| !work.begun())
             {
-                let work = start_previewing(current.0, &builder.textures, Urgency::Now);
+                let work = start_previewing(
+                    *builder.circuits,
+                    current.0,
+                    &builder.textures,
+                    Urgency::Now,
+                );
                 previewing.0.insert(current.0, work);
             }
             if preparing.0.get(&current.0).is_none_or(|work| !work.begun()) {
-                let work = start_preparing(current.0, &builder.textures, Urgency::Now);
+                let work = start_preparing(
+                    *builder.circuits,
+                    current.0,
+                    &builder.textures,
+                    Urgency::Now,
+                );
                 preparing.0.insert(current.0, work);
             }
             loading.set_if_neq(CircuitLoading(true));
@@ -917,7 +945,12 @@ fn build_world(
     mut builder: Builder,
     mut roadsides: ResMut<Roadsides>,
 ) {
-    let prepared = prepare(current.0, &builder.textures, Urgency::Now);
+    let prepared = prepare(
+        *builder.circuits,
+        current.0,
+        &builder.textures,
+        Urgency::Now,
+    );
     let shown = build(
         &mut commands,
         prepared,
@@ -934,6 +967,7 @@ fn build_world(
 /// Lo que hace falta para construir el mundo.
 #[derive(bevy::ecs::system::SystemParam)]
 struct Builder<'w> {
+    circuits: Res<'w, Circuits>,
     textures: Res<'w, textures::WorldTextures>,
     props: Res<'w, japan::ModelledProps>,
     fellowship: Res<'w, middle_earth::FellowshipProps>,
@@ -986,7 +1020,7 @@ fn build(
         builder.relief.share(meadow, &builder.textures.grass);
     }
     let shore_image = builder.images.add(shore_image);
-    let scenery = &CIRCUITS[basis.index].scenery;
+    let scenery = &basis.circuit.scenery;
     let cartoon_sea = builder
         .sea_materials
         .add(basis.shore.material(shore_image, scenery.water));
@@ -1140,7 +1174,7 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
     let Ok(mut world_root) = commands.get_entity(root) else {
         return;
     };
-    let scenery = &CIRCUITS[basis.index].scenery;
+    let scenery = &basis.circuit.scenery;
     let split = realm::splits(scenery);
     let mut assets = Assets3d {
         textures: &builder.textures,
@@ -1253,6 +1287,7 @@ fn spawn_sun(mut commands: Commands) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::circuits::CIRCUITS;
 
     #[test]
     fn circuits_are_prepared_in_the_menus_and_let_go_for_a_race() {
@@ -1675,9 +1710,9 @@ mod tests {
 
     #[test]
     fn the_circuits_nearest_in_the_menu_come_first() {
-        assert_eq!(menu_distance(0, 1), 1);
-        assert_eq!(menu_distance(0, CIRCUITS.len() - 1), 1);
-        assert_eq!(menu_distance(1, 3), 2);
-        assert_eq!(menu_distance(3, 1), 2);
+        assert_eq!(menu_distance(0, 1, CIRCUITS.len()), 1);
+        assert_eq!(menu_distance(0, CIRCUITS.len() - 1, CIRCUITS.len()), 1);
+        assert_eq!(menu_distance(1, 3, CIRCUITS.len()), 2);
+        assert_eq!(menu_distance(3, 1, CIRCUITS.len()), 2);
     }
 }

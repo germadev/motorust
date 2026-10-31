@@ -29,59 +29,12 @@
 //!    70 m beneath.
 //! 9. Down its south-east flank in esses and back into town.
 //!
-//! The circuit is written in RON, `assets/circuits/gold_mine.ron`; here are
-//! only the functions its file names, its water and its mountains, and
-//! tests of it.
+//! The circuit is written in RON, `assets/circuits/gold_mine.ron`, its
+//! water and its mountains too; here are tests of it.
 
-use bevy::prelude::*;
-
-use crate::geometry::{fbm, smoothstep};
-
-/// The great lake north-west of the mountain, at the bottom of the open
-/// pit: its middle, its radius (m),
-/// and how far its shore wanders (m).
-const LAKE: Vec2 = Vec2::new(-1225.0, -626.0);
-const LAKE_RADIUS: f32 = 235.0;
-const LAKE_SHORE: f32 = 18.0;
-/// The river that flows out of the lake to the north, and its width either
-/// way (m).
-const RIVER: [Vec2; 4] = [
-    Vec2::new(-1270.0, -830.0),
-    Vec2::new(-1310.0, -1300.0),
-    Vec2::new(-1380.0, -1800.0),
-    Vec2::new(-1480.0, -2400.0),
-];
-const RIVER_WIDTH: f32 = 14.0;
-
-/// How far `point` is from the water: negative in the lake and the river.
-pub(super) fn water(point: Vec2) -> f32 {
-    let to_river = RIVER
-        .windows(2)
-        .map(|pair| {
-            let (a, b) = (pair[0], pair[1]);
-            let ab = b - a;
-            let t = ((point - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
-            point.distance(a + ab * t)
-        })
-        .fold(f32::MAX, f32::min);
-    let shore = LAKE_SHORE * (2.0 * fbm(point / 70.0 + 3.0, 2) - 1.0);
-    let to_lake = point.distance(LAKE) - LAKE_RADIUS + shore;
-    (to_river - RIVER_WIDTH).min(to_lake)
-}
-
-/// Red mesas and buttes all round the horizon, with flat tops and sheer
-/// sides, as in a desert of the American south-west.
-pub(super) fn mountains(point: Vec2) -> f32 {
-    const CENTER: Vec2 = Vec2::new(-700.0, -310.0);
-    let away = point.distance(CENTER);
-    let shape = fbm(point / 420.0, 3);
-    let mesas = smoothstep(0.47, 0.53, shape) * (0.7 + 0.3 * fbm(point / 900.0 + 7.0, 2));
-    smoothstep(1100.0, 1800.0, away) * mesas * 240.0
-}
-
-#[cfg(test)]
 mod tests {
-    use super::*;
+    use bevy::prelude::*;
+
     use crate::circuits::{CIRCUITS, Circuit};
     use crate::track::Track;
     use crate::world::scenery::{Coast, Span, span};
@@ -92,6 +45,8 @@ mod tests {
     const CLIMB: Span = span(3425.0, 4580.0);
     const SUMMIT: Span = span(4580.0, 5000.0);
     const DESCENT: Span = span(5000.0, 5780.0);
+    /// The great lake at the bottom of the pit: its middle (m).
+    const LAKE: Vec2 = Vec2::new(-1225.0, -626.0);
     /// The mountain the lap crosses through and over: its middle and its
     /// radius (m).
     const MOUNTAIN: Vec2 = Vec2::new(-720.0, -200.0);
@@ -104,7 +59,7 @@ mod tests {
     #[test]
     fn the_road_crosses_the_great_lake_on_the_long_bridge() {
         // The water as the circuit's file has it.
-        let Coast::Function(water) = gold_mine().scenery.coast else {
+        let Coast::Sea(water) = gold_mine().scenery.coast else {
             panic!("Gold Mine's coast is its water");
         };
         let track = Track::new(&gold_mine().layout);
@@ -114,7 +69,7 @@ mod tests {
         let mut wet = 0.0;
         for index in 0..track.sample_count() {
             let along = index as f32 * track.step_length();
-            let over_water = water(track.centerline()[index]) < 0.0;
+            let over_water = water.distance(track.centerline()[index]) < 0.0;
             assert!(
                 !over_water || BRIDGE.contains(along, lap),
                 "wet road at {along} m"
@@ -126,10 +81,10 @@ mod tests {
         assert!(BRIDGE.length(lap) > 450.0);
         assert!(wet > 0.85 * BRIDGE.length(lap), "{wet} m over water");
         // A great lake, and the town dry.
-        assert!(water(LAKE) < -100.0);
-        assert!(water(LAKE + Vec2::new(200.0, 0.0)) < 0.0);
+        assert!(water.distance(LAKE) < -100.0);
+        assert!(water.distance(LAKE + Vec2::new(200.0, 0.0)) < 0.0);
         let town = track.centerline()[track.index_at(150.0)];
-        assert!(water(town) > 100.0, "town is dry");
+        assert!(water.distance(town) > 100.0, "town is dry");
     }
 
     #[test]
