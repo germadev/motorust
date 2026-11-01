@@ -29,7 +29,7 @@ const CURB_RADIUS: f32 = 130.0;
 
 /// How high a wall stands over the road (m): a plinth by the road lifts a
 /// small prop over it (see [`super::japan`]).
-pub(super) const WALL_HEIGHT: f32 = 1.1;
+pub const WALL_HEIGHT: f32 = 1.1;
 /// The leaves of a hedge where the grass is as painted.
 const HEDGE: Color = Color::srgb(0.55, 0.85, 0.4);
 /// Las barreras de hormigón son algo más bajas, y los setos, más altos.
@@ -582,9 +582,11 @@ pub(super) fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) ->
         };
     }
     // Where a small prop stands by the road, the wall is the shrine's low
-    // fence, so that it is seen whole (see `japan`).
-    if let Some(japan) = &scenery.japan
-        && super::japan::prop_fence(japan, lap, along, side)
+    // fence, so that it is seen whole (see `Theme::opens_wall`).
+    if scenery
+        .themes
+        .iter()
+        .any(|(_, theme)| theme.opens_wall(lap, along, side))
     {
         return Some(WallStyle::ShrineFence);
     }
@@ -1682,7 +1684,7 @@ mod tests {
         // wall opens into the shrine's fence for the props by the road.
         let circuit = crate::circuits::CIRCUITS
             .iter()
-            .find(|circuit| circuit.scenery.japan.is_some())
+            .find(|circuit| circuit.name == "Ghost Island")
             .expect("a circuit of feudal Japan");
         let track = Track::new(&circuit.layout);
         let lap = track.lap_length();

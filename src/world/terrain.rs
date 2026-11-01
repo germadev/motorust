@@ -225,7 +225,7 @@ impl Terrain {
         // Lo más caro es buscar la carretera más cercana a cada punto: se
         // reparte entre los núcleos del procesador.
         let heights = on_cores(&points, threads, heights_of);
-        let fields = scenery.flower_fields();
+        let fields = scenery.flowers;
         let flowers = (!fields.is_empty()).then(|| FlowerMap::new(track, fields));
         // And what the ground looks like at each point, but for the way it
         // faces: the flowers in it are worked out with the roads near too.

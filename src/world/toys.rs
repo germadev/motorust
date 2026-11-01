@@ -19,7 +19,7 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use super::Assets3d;
-use super::japan::{Piece, PropPack};
+use super::prop_pack::{Piece, PropPack};
 use super::quads::MeshBuilder;
 use super::scenery::{
     BridgeStyle, Castle, CastleKind, Furniture, FurnitureKind, Mat, MatKind, Scenery, Span, Tower,
@@ -3103,7 +3103,7 @@ mod tests {
     fn bricks_bounds(built: &crate::world::scenery::Bricks) -> (Vec3, Vec3) {
         let mut mesh = MeshBuilder::default();
         super::super::bricks::build(&mut mesh, built, 0);
-        super::super::japan::bounds(&mesh.build())
+        super::super::prop_pack::bounds(&mesh.build())
     }
 
     /// The pieces of Meshy's toys in their packs.
@@ -3121,7 +3121,7 @@ mod tests {
             .iter()
             .find(|piece| piece.name == name)
             .unwrap_or_else(|| panic!("no {name} in the pack"));
-        super::super::japan::bounds(&piece.mesh)
+        super::super::prop_pack::bounds(&piece.mesh)
     }
 
     #[test]
@@ -3144,7 +3144,7 @@ mod tests {
         }
         for piece in &pieces {
             let name = &piece.name;
-            let (low, high) = super::super::japan::bounds(&piece.mesh);
+            let (low, high) = super::super::prop_pack::bounds(&piece.mesh);
             assert!(low.y.abs() < 1e-3, "{name} stands on the ground");
             assert!((low.x + high.x).abs() < 0.05 * (high.x - low.x), "{name}");
             assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");

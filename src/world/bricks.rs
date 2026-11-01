@@ -588,7 +588,7 @@ mod tests {
     fn a_heap_lies_on_the_ground_within_its_reach() {
         let mut mesh = MeshBuilder::default();
         heap(&mut mesh, Vec3::ZERO, 0.4, 16, 3);
-        let (low, high) = super::super::japan::bounds(&mesh.build());
+        let (low, high) = super::super::prop_pack::bounds(&mesh.build());
         assert!(low.y.abs() < 0.01, "{low}");
         let reach = heap_reach(16) + 4.0 * STUD;
         assert!(Vec2::new(low.x, low.z).length() < reach * 1.42, "{low}");
@@ -649,7 +649,7 @@ mod tests {
     fn a_house_is_as_big_as_it_says() {
         let mut mesh = MeshBuilder::default();
         house(&mut mesh, Vec3::ZERO, 0.0, 8, 6, 4, 1);
-        let (low, high) = super::super::japan::bounds(&mesh.build());
+        let (low, high) = super::super::prop_pack::bounds(&mesh.build());
         let (reach, tall) = house_size(8, 6, 4);
         assert!((high.y - tall).abs() < 0.01, "{high} {tall}");
         assert!(low.y.abs() < 0.01);

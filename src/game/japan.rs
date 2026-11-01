@@ -8,28 +8,168 @@
 //! Every prop's colours are in one texture, so they all share one material,
 //! and every kind of prop is one mesh: the hundred gates of a corridor draw
 //! together.
+//!
+//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! writes it in its `themes` as `"japan": (...)`. Its props are a pack of
+//! the engine's ([`crate::world::prop_pack`], `models/props/`); its fields
+//! of flowers and its petals are the scenery's (the engine's).
 
 use bevy::prelude::*;
 
 use std::f32::consts::TAU;
 
-use bevy::light::{NotShadowCaster, NotShadowReceiver};
+use bevy::light::NotShadowReceiver;
 
-use super::Assets3d;
-use super::detail::fading_out;
-use super::flowers::{FlowerPlan, spawn_flowers};
-use super::mirror::MirrorPoint;
-use super::props::Footprint;
-use super::quads::MeshBuilder;
-use super::road::WALL_HEIGHT;
-use super::scenery::{
-    Japan, MapleGround, PetalArea, PetalKind, Petals, Plinth, Prop, PropModel, PropRow, Scenery,
-    Side, Spot, ToriiCorridor, by_road,
-};
-use super::terrain::{SEA_LEVEL, Terrain};
-use crate::bike::model::imported::{read, texture};
 use crate::geometry::{forward, random01};
 use crate::track::{NARROW_EASE, Track, WALL_DISTANCE};
+use crate::world::Assets3d;
+use crate::world::flowers::spawn_flowers;
+use crate::world::mirror::MirrorPoint;
+use crate::world::prop_pack::{PropPack, Turning, facing, in_view, spot};
+use crate::world::props::Footprint;
+use crate::world::quads::MeshBuilder;
+use crate::world::road::WALL_HEIGHT;
+use crate::world::scenery::{Plinth, Prop, Row, Scenery, Side, Span, Spot, by_road};
+use crate::world::terrain::{SEA_LEVEL, Terrain};
+use crate::world::themes::Theme;
+
+/// The pack of its props, in `assets/models/`.
+const PACK: &str = "props";
+
+/// The scenery of feudal Japan, as at Ghost Island (see
+/// [`crate::game::japan`]): corridors of torii over the road, props made
+/// with Meshy standing about, and fields of flowers.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Japan {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub corridors: &'static [ToriiCorridor],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub props: &'static [Prop<PropModel>],
+    /// The small ones over and over along the road (see [`PropRow`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub rows: &'static [PropRow],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub maple_grounds: &'static [MapleGround],
+}
+
+/// A clearing carpeted with red maple leaves, ringed with low logs, as
+/// under a great maple by a lake: its middle (x, z) and the radius of its
+/// ring of logs (m). Its leaves spill a little past the ring. Lay it on
+/// level ground (a [`Terrace`]).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MapleGround {
+    pub center: Vec2,
+    pub radius: f32,
+}
+
+/// A corridor of torii over the road, as at Fushimi Inari: where the walls
+/// close in on the road along `span` (see [`crate::track::Narrowing`]), a
+/// narrow gate every `every` metres; and over the `approach` metres before
+/// and after it, where the road is as wide as ever, a wide gate every
+/// `approach_every` metres.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToriiCorridor {
+    pub span: Span,
+    pub every: f32,
+    pub approach: f32,
+    pub approach_every: f32,
+}
+
+/// One of the props of feudal Japan, made with Meshy (see
+/// [`crate::game::japan`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum PropModel {
+    /// The great torii standing in the sea, as at Itsukushima.
+    GreatTorii,
+    CastleKeep,
+    TempleHall,
+    /// A shrine hall on stilts, over the water.
+    StiltShrine,
+    /// An ancient, gnarled maple on its boulders, with a straw rope round
+    /// its trunk.
+    AncientMaple,
+    /// A great maple, its crown spreading far to one side over the ground,
+    /// as over a clearing of its leaves.
+    GreatMaple,
+    /// A five-storey pagoda.
+    Pagoda,
+    /// A torii of bare logs, with a straw rope and bells.
+    LogTorii,
+    /// A tiny wayside shrine with its small torii.
+    Hokora,
+    /// A stone Jizō in a red bib and cap.
+    Jizo,
+    /// A stone guardian lion-dog.
+    Komainu,
+    BronzeLantern,
+    /// A stone lantern (ishidōrō), mossy.
+    StoneLantern,
+    /// A memorial stone.
+    Stele,
+    /// A fire basket on a tripod.
+    Brazier,
+    /// Rice bales, sake barrels and crates.
+    SupplyPile,
+    FishingBoat,
+    /// A thatched farmhouse.
+    Minka,
+    /// A wooden water wheel on its post, turning.
+    WaterWheel,
+}
+
+impl PropModel {
+    /// Whether it is one of the island's landmarks, to be seen from afar:
+    /// no tree stands in the way of it (see [`crate::game::japan`]).
+    pub fn landmark(self) -> bool {
+        matches!(
+            self,
+            PropModel::GreatTorii
+                | PropModel::CastleKeep
+                | PropModel::TempleHall
+                | PropModel::StiltShrine
+                | PropModel::AncientMaple
+                | PropModel::GreatMaple
+                | PropModel::Pagoda
+                | PropModel::LogTorii
+                | PropModel::Minka
+                | PropModel::WaterWheel
+        )
+    }
+
+    /// What it stands on by the road, so that it shows over the wall:
+    /// stone under the stone ones, wood under the wooden (see
+    /// [`crate::game::japan`]). The big ones need none: they are seen
+    /// over any wall as they are.
+    pub fn plinth(self) -> Option<Plinth> {
+        match self {
+            PropModel::Jizo
+            | PropModel::Komainu
+            | PropModel::Stele
+            | PropModel::StoneLantern
+            | PropModel::BronzeLantern => Some(Plinth::Stone),
+            PropModel::Brazier | PropModel::Hokora => Some(Plinth::Wood),
+            _ => None,
+        }
+    }
+}
+
+/// The same small prop over and over by the road: one every so many
+/// metres of a span, to one side, as the lanterns of a shrine's approach
+/// or the jizō down a hillside road. Each stands as one of [`by_road`],
+/// on its plinth, and the wall opens for it; where another road runs, or
+/// where one of the props put by hand already stands, there is none.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PropRow {
+    /// The kinds it is made of, each in turn: one kind over and over, or
+    /// several, so that a stretch is not all of one thing.
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
+    pub models: &'static [PropModel],
+    pub row: Row,
+}
 
 /// The two gates over the road, and the post of the water wheel, by their
 /// names in `props.bin`; the props are by [`name`].
@@ -42,8 +182,6 @@ const WHEEL_FRAME: &str = "water_wheel_frame";
 /// round a corridor's, just outside them.
 const WIDE_OPENING: f32 = 11.63;
 const ROAD_OPENING: f32 = 6.6;
-/// How fast a water wheel turns (rad/s).
-const WHEEL_RATE: f32 = 0.6;
 /// The plinth a small prop by the road stands on (see [`Plinths`]): how
 /// far its top stands over the road beside it (m), so that the prop is
 /// seen whole over the wall ([`WALL_HEIGHT`]); how high it is over its own
@@ -84,23 +222,6 @@ const LEAVES_LIFT: f32 = 0.06;
 const RING_LOGS: usize = 30;
 const LOG_THICKNESS: f32 = 0.38;
 const LOG_HEIGHT: f32 = 0.3;
-/// Petals in the air: how many to a square metre of ground, over a road
-/// and round a point (thicker, seen from afar); how high they fall from
-/// (m); how fast they fall (m/s, the slowest and the quickest); how far
-/// they sway (m); how far downwind they drift as they fall, per metre
-/// fallen; and how far from a camera they are drawn (m).
-const PETALS_ON_ROAD: f32 = 1.0 / 32.0;
-const PETALS_ROUND: f32 = 1.0 / 5.0;
-const PETAL_FALL_FROM: f32 = 13.0;
-const PETAL_FALL: (f32, f32) = (0.7, 1.5);
-const PETAL_SWAY: (f32, f32) = (0.4, 1.6);
-const PETAL_DRIFT: Vec2 = Vec2::new(0.45, 0.2);
-const PETALS_SEEN: f32 = 170.0;
-
-/// How far down the road the riders are when a prop that faces them
-/// looks at them (m, see [`Prop::facing_riders`]).
-const RIDERS_BACK: f32 = 110.0;
-
 /// How big a prop stands, times the size it was made (`props.bin`), over
 /// what its spot says ([`Prop::scale`]): the wayside shrine came the size
 /// of a doll's house, and the torii of logs stands on a hilltop, to be
@@ -114,11 +235,11 @@ fn size(model: PropModel) -> f32 {
 
 /// How big a prop stands in all, and how far it reaches from its middle
 /// (m), from the box round its mesh.
-fn scale_of(prop: &Prop) -> f32 {
+fn scale_of(prop: &Prop<PropModel>) -> f32 {
     prop.scale * size(prop.model)
 }
 
-fn reach_of(prop: &Prop, low: Vec3, high: Vec3) -> f32 {
+fn reach_of(prop: &Prop<PropModel>, low: Vec3, high: Vec3) -> f32 {
     scale_of(prop) * (high.x - low.x).max(high.z - low.z) / 2.0
 }
 
@@ -171,182 +292,6 @@ const MODELS: [PropModel; 19] = [
     PropModel::WaterWheel,
 ];
 
-/// A piece of a pack: its mesh and the corners of the box round it, in its
-/// own frame, and points over its faces for the water to mirror it (see
-/// [`surface`]).
-pub(super) struct Piece {
-    pub(super) mesh: Handle<Mesh>,
-    pub(super) low: Vec3,
-    pub(super) high: Vec3,
-    pub(super) surface: Vec<MirrorPoint>,
-}
-
-/// How far apart the points over a prop's faces are, at most (m of the
-/// prop as made): a few to each texel of the water's map, however big.
-const SURFACE_SPACING: f32 = 1.2;
-
-/// Points over the faces of `mesh` (in its own frame), at most
-/// [`SURFACE_SPACING`] apart, each with the way its face looks and the
-/// colour of `atlas` there (linear): what the water mirrors of it.
-fn surface(mesh: &Mesh, atlas: &Image) -> Vec<MirrorPoint> {
-    let Some(positions) = mesh
-        .attribute(Mesh::ATTRIBUTE_POSITION)
-        .and_then(|positions| positions.as_float3())
-    else {
-        return Vec::new();
-    };
-    let uvs: Vec<[f32; 2]> = match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
-        Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) => uvs.clone(),
-        _ => vec![[0.0, 0.0]; positions.len()],
-    };
-    let indices: Vec<usize> = match mesh.indices() {
-        Some(indices) => indices.iter().collect(),
-        None => (0..positions.len()).collect(),
-    };
-    let (width, height) = (atlas.width() as usize, atlas.height() as usize);
-    let texels = atlas.data.as_deref().unwrap_or(&[]);
-    let color = |uv: Vec2| -> [f32; 3] {
-        let x = ((uv.x.fract() + 1.0).fract() * width as f32) as usize;
-        let y = ((uv.y.fract() + 1.0).fract() * height as f32) as usize;
-        let at = (y.min(height.saturating_sub(1)) * width + x.min(width.saturating_sub(1))) * 4;
-        match texels.get(at..at + 3) {
-            Some(rgb) => {
-                let srgb = Color::srgb_u8(rgb[0], rgb[1], rgb[2]).to_linear();
-                [srgb.red, srgb.green, srgb.blue]
-            }
-            None => [0.5; 3],
-        }
-    };
-    let mut points = Vec::new();
-    for &corner in indices.as_chunks::<3>().0 {
-        let p = corner.map(|i| Vec3::from(positions[i]));
-        let uv = corner.map(|i| Vec2::from(uvs[i]));
-        let normal = (p[1] - p[0]).cross(p[2] - p[0]).normalize_or_zero();
-        let longest = (p[1] - p[0])
-            .length()
-            .max((p[2] - p[1]).length())
-            .max((p[0] - p[2]).length());
-        let steps = ((longest / SURFACE_SPACING).ceil() as usize).clamp(1, 64);
-        // A small one, its middle.
-        if steps == 1 {
-            points.push(MirrorPoint {
-                at: (p[0] + p[1] + p[2]) / 3.0,
-                normal,
-                color: color((uv[0] + uv[1] + uv[2]) / 3.0),
-            });
-            continue;
-        }
-        for i in 0..=steps {
-            for j in 0..=steps - i {
-                let (a, b) = (i as f32 / steps as f32, j as f32 / steps as f32);
-                let c = 1.0 - a - b;
-                points.push(MirrorPoint {
-                    at: p[0] * c + p[1] * a + p[2] * b,
-                    normal,
-                    color: color(uv[0] * c + uv[1] * a + uv[2] * b),
-                });
-            }
-        }
-    }
-    points
-}
-
-/// A pack of props made with Meshy: their meshes, by name, and their one
-/// material, in the colours of all of them.
-pub(super) struct PropPack {
-    pieces: Vec<(String, Piece)>,
-    pub(super) material: Handle<StandardMaterial>,
-}
-
-impl PropPack {
-    pub(super) fn piece(&self, name: &str) -> &Piece {
-        self.find(name)
-            .unwrap_or_else(|| panic!("no {name} in the pack"))
-    }
-
-    /// Its piece `name`, if it has one.
-    pub(super) fn find(&self, name: &str) -> Option<&Piece> {
-        self.pieces
-            .iter()
-            .find(|(piece, _)| piece == name)
-            .map(|(_, piece)| piece)
-    }
-
-    /// The pack in `bin` (see `tools/import_props.py`) and its colours in
-    /// `color`.
-    pub(super) fn load(world: &mut World, bin: &[u8], color: &[u8]) -> Self {
-        let pack = read(bin);
-        let atlas = texture(color, true);
-        let mut meshes = world.resource_mut::<Assets<Mesh>>();
-        let pieces = pack
-            .meshes
-            .into_iter()
-            .map(|piece| {
-                let (low, high) = bounds(&piece.mesh);
-                let surface = surface(&piece.mesh, &atlas);
-                let mesh = meshes.add(piece.mesh);
-                (
-                    piece.name,
-                    Piece {
-                        mesh,
-                        low,
-                        high,
-                        surface,
-                    },
-                )
-            })
-            .collect();
-        let atlas = world.resource_mut::<Assets<Image>>().add(atlas);
-        let material = world
-            .resource_mut::<Assets<StandardMaterial>>()
-            .add(StandardMaterial {
-                base_color_texture: Some(atlas),
-                perceptual_roughness: 0.85,
-                reflectance: 0.3,
-                ..default()
-            });
-        Self { pieces, material }
-    }
-}
-
-/// The props of feudal Japan.
-#[derive(Resource)]
-pub struct ModelledProps(pub(super) PropPack);
-
-impl FromWorld for ModelledProps {
-    fn from_world(world: &mut World) -> Self {
-        Self(PropPack::load(
-            world,
-            crate::content::file("models/props/props.bin"),
-            crate::content::file("models/props/color.jpg"),
-        ))
-    }
-}
-
-/// The corners of the box round a mesh.
-pub(super) fn bounds(mesh: &Mesh) -> (Vec3, Vec3) {
-    mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-        .and_then(|positions| positions.as_float3())
-        .expect("a prop has positions")
-        .iter()
-        .map(|&p| Vec3::from(p))
-        .fold(
-            (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)),
-            |(low, high), p| (low.min(p), high.max(p)),
-        )
-}
-
-/// A water wheel, turning about its axle.
-#[derive(Component)]
-pub struct Turning;
-
-/// Turns the water wheels.
-pub fn turn_wheels(time: Res<Time>, mut wheels: Query<&mut Transform, With<Turning>>) {
-    for mut wheel in &mut wheels {
-        wheel.rotate_local_z(-WHEEL_RATE * time.delta_secs());
-    }
-}
-
 /// A gate of a corridor of torii: the point of the lap it stands over and
 /// whether it is a wide one (over the road as wide as ever) or a narrow one
 /// (where the walls close in).
@@ -384,20 +329,39 @@ fn corridor_gates(track: &Track, corridor: &ToriiCorridor) -> Vec<Gate> {
     gates
 }
 
-/// The scenery of feudal Japan of a circuit, if it has one. Returns the
-/// ground the props take.
-pub fn spawn_japan(
+impl Theme for Japan {
+    fn spawn(
+        &self,
+        world: &mut ChildSpawnerCommands,
+        track: &Track,
+        terrain: &Terrain,
+        scenery: &Scenery,
+        assets: &mut Assets3d,
+    ) -> Vec<Footprint> {
+        spawn_japan(world, track, terrain, self, scenery, assets)
+    }
+
+    fn opens_wall(&self, lap: f32, along: f32, side: Side) -> bool {
+        prop_fence(self, lap, along, side)
+    }
+
+    fn packs() -> &'static [&'static str] {
+        &[PACK]
+    }
+}
+
+/// The scenery of feudal Japan of a circuit, and the circuit's flowers
+/// among it, clear of its props. Returns the ground the props take.
+fn spawn_japan(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
+    japan: &Japan,
     scenery: &Scenery,
-    flowers: FlowerPlan,
     assets: &mut Assets3d,
 ) -> Vec<Footprint> {
-    let Some(japan) = &scenery.japan else {
-        return Vec::new();
-    };
-    spawn_corridors(world, track, terrain, japan, &assets.props.0);
+    let pack = assets.packs.get(PACK);
+    spawn_corridors(world, track, terrain, japan, pack);
     let mut plinths = Plinths::default();
     let mut taken: Vec<Footprint> = japan
         .props
@@ -408,7 +372,7 @@ pub fn spawn_japan(
                 track,
                 terrain,
                 prop,
-                (&assets.props.0, &mut assets.mirrored),
+                (pack, &mut assets.mirrored),
                 &mut plinths,
             )
         })
@@ -425,13 +389,12 @@ pub fn spawn_japan(
                 track,
                 terrain,
                 &prop,
-                (&assets.props.0, &mut assets.mirrored),
+                (pack, &mut assets.mirrored),
                 &mut plinths,
             ));
         }
     }
     plinths.spawn(world, assets);
-    spawn_petals(world, track, terrain, japan.petals, assets);
     if !japan.maple_grounds.is_empty() {
         let material = assets.materials.add(StandardMaterial {
             perceptual_roughness: 0.9,
@@ -449,8 +412,10 @@ pub fn spawn_japan(
             taken.push((ground.center, ground.radius * LEAVES_SPILL + 2.0));
         }
     }
-    let meadows = spawn_flowers(world, terrain, japan.flowers, flowers, &taken, assets);
-    taken.extend(meadows);
+    if let Some(flowers) = assets.flowers.take() {
+        let meadows = spawn_flowers(world, terrain, scenery.flowers, flowers, &taken, assets);
+        taken.extend(meadows);
+    }
     // No tree in the way of the landmarks, from where the road comes at
     // them (the flowers grow there as anywhere).
     for prop in japan.props.iter().filter(|prop| prop.model.landmark()) {
@@ -458,44 +423,6 @@ pub fn spawn_japan(
         taken.extend(in_view(track, position));
     }
     taken
-}
-
-/// How far a landmark is seen from (m), and how wide of straight ahead
-/// (rad), coming along the road at it.
-const VIEW_RANGE: f32 = 220.0;
-const VIEW_ANGLE: f32 = 0.6;
-/// How wide the ground is kept clear of trees either side of a line from
-/// the road to a landmark (m), and every how far along the road one is
-/// drawn (m).
-pub(super) const VIEW_CLEAR: f32 = 4.5;
-const VIEW_EVERY: f32 = 16.0;
-
-/// The ground to keep clear of trees so that a landmark at `position` is in
-/// view all the way as the road comes at it: along lines from the road,
-/// where it is ahead of the riders, to it, past the road's walls (circles
-/// along each, as footprints for the trees to keep out of).
-pub(super) fn in_view(track: &Track, position: Vec2) -> Vec<Footprint> {
-    let mut clear = Vec::new();
-    let step = track.step_length();
-    let every = (VIEW_EVERY / step).round().max(1.0) as usize;
-    let n = track.sample_count();
-    for index in (0..n).step_by(every) {
-        let here = track.offset_point(index, 0.0);
-        let ahead = (track.offset_point(index + 1, 0.0) - here).normalize_or_zero();
-        let to = position - here;
-        let distance = to.length();
-        if !(WALL_DISTANCE..VIEW_RANGE).contains(&distance) || ahead.angle_to(to).abs() > VIEW_ANGLE
-        {
-            continue;
-        }
-        let toward = to / distance;
-        let mut along = WALL_DISTANCE + VIEW_CLEAR;
-        while along < distance {
-            clear.push((here + toward * along, VIEW_CLEAR));
-            along += VIEW_CLEAR * 1.5;
-        }
-    }
-    clear
 }
 
 /// A clearing of maple leaves (see [`MapleGround`]): a carpet of reds,
@@ -595,33 +522,6 @@ fn spawn_corridors(
             ));
         }
     }
-}
-
-/// Where a prop stands and which way it faces.
-pub(super) fn spot<M>(track: &Track, prop: &Prop<M>) -> (Vec2, Quat) {
-    let (position, facing) = match prop.spot {
-        Spot::Road { along, lateral } => {
-            let index = track.index_at(along);
-            let point = track.offset_point(index, lateral);
-            // The road beside it, or, where it faces the riders, the road
-            // they are coming up at it.
-            let looks = if prop.facing_riders {
-                track.index_at(along - RIDERS_BACK)
-            } else {
-                index
-            };
-            (point, facing(track.offset_point(looks, 0.0) - point))
-        }
-        Spot::Over { along } => {
-            let (point, heading) = track.pose_at(track.index_at(along));
-            (point, facing(forward(heading)))
-        }
-        Spot::At { position, heading } => (position, facing(forward(heading))),
-    };
-    (
-        position,
-        facing * Quat::from_rotation_y(prop.turn) * Quat::from_rotation_z(prop.lean),
-    )
 }
 
 /// The plinths the small props by the road stand on: one mesh for the
@@ -728,7 +628,7 @@ fn row_steps(row: &PropRow, lap: f32) -> impl Iterator<Item = (f32, PropModel)> 
 
 /// The props of the rows ([`PropRow`]): the same small one every so many
 /// metres along a span, and none where another road runs.
-fn row_props(track: &Track, terrain: &Terrain, japan: &Japan) -> Vec<Prop> {
+fn row_props(track: &Track, terrain: &Terrain, japan: &Japan) -> Vec<Prop<PropModel>> {
     let lap = track.lap_length();
     japan
         .rows
@@ -766,7 +666,7 @@ fn side_at(lateral: f32) -> Side {
 /// Whether the wall at `along` on `side` is the shrine's low fence
 /// because a small prop stands there (one put by hand or one of a row):
 /// a wall as high as the prop would hide it, plinth and all.
-pub(super) fn prop_fence(japan: &Japan, lap: f32, along: f32, side: Side) -> bool {
+fn prop_fence(japan: &Japan, lap: f32, along: f32, side: Side) -> bool {
     let apart = |at: f32| {
         let gap = (along - at).rem_euclid(lap);
         gap.min(lap - gap)
@@ -788,7 +688,7 @@ pub(super) fn prop_fence(japan: &Japan, lap: f32, along: f32, side: Side) -> boo
 /// What a prop stands on: a plinth under a small one by the road, so that
 /// it is seen over the wall; nothing under those standing away from it,
 /// where no wall hides them.
-fn stands_on(prop: &Prop) -> Option<Plinth> {
+fn stands_on(prop: &Prop<PropModel>) -> Option<Plinth> {
     match prop.spot {
         Spot::Road { .. } => prop.model.plinth(),
         Spot::Over { .. } | Spot::At { .. } => None,
@@ -799,7 +699,7 @@ fn stands_on(prop: &Prop) -> Option<Plinth> {
 /// it, so that the prop is seen whole over the wall, and over the ground
 /// it stands on, never more than [`PLINTH_MOST`] where the ground falls
 /// away from the road.
-fn plinth_top(track: &Track, prop: &Prop, ground: f32) -> f32 {
+fn plinth_top(track: &Track, prop: &Prop<PropModel>, ground: f32) -> f32 {
     let Spot::Road { along, .. } = prop.spot else {
         return ground;
     };
@@ -810,7 +710,7 @@ fn plinth_top(track: &Track, prop: &Prop, ground: f32) -> f32 {
 /// Where a prop stands and which way it faces: at its spot, and, by the
 /// road, never so close that it overhangs the wall, however big it is
 /// (the bigger ones of the rows stand a little further out).
-fn stand(track: &Track, prop: &Prop, reach: f32) -> (Vec2, Quat) {
+fn stand(track: &Track, prop: &Prop<PropModel>, reach: f32) -> (Vec2, Quat) {
     let (position, rotation) = spot(track, prop);
     let Spot::Road { along, lateral } = prop.spot else {
         return (position, rotation);
@@ -832,7 +732,7 @@ fn spawn_prop(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
-    prop: &Prop,
+    prop: &Prop<PropModel>,
     (props, mirrored): (&PropPack, &mut Vec<MirrorPoint>),
     plinths: &mut Plinths,
 ) -> Footprint {
@@ -881,217 +781,12 @@ fn spawn_prop(
     (position, taken)
 }
 
-/// A petal in the air: the ground under where it falls, how high it falls
-/// from (m), how fast (m/s), where it starts (m into its fall), how far it
-/// sways (m) and how fast (rad/s), and how fast it turns about each axis
-/// (rad/s).
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Petal {
-    ground: Vec3,
-    column: f32,
-    fall: f32,
-    start: f32,
-    sway: f32,
-    sway_rate: f32,
-    spin: Vec3,
-}
-
-impl Petal {
-    /// Where it is `time` seconds in: falling from the top of its column
-    /// to the ground, over and over, swaying round and drifting downwind
-    /// as it falls.
-    fn position(&self, time: f32) -> Vec3 {
-        let fallen = (self.start + time * self.fall).rem_euclid(self.column);
-        let angle = self.start + time * self.sway_rate;
-        let sway = Vec2::new(angle.sin(), (0.7 * angle).cos()) * self.sway;
-        let drift = PETAL_DRIFT * fallen + sway;
-        self.ground + Vec3::new(drift.x, self.column - fallen, drift.y)
-    }
-
-    fn rotation(&self, time: f32) -> Quat {
-        let turn = self.spin * time + Vec3::splat(self.start);
-        Quat::from_euler(EulerRot::YXZ, turn.y, turn.x, turn.z)
-    }
-}
-
-/// Moves the petals in the air: those of the circuit in sight near enough a
-/// camera to be drawn, the others as they come near (where each one is
-/// follows from the time alone).
-pub fn drift_petals(
-    time: Res<Time>,
-    cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
-    mut petals: Query<(&Petal, &InheritedVisibility, &mut Transform)>,
-) {
-    let now = time.elapsed_secs();
-    let eyes: Vec<Vec3> = cameras
-        .iter()
-        .filter(|(camera, _)| camera.is_active)
-        .map(|(_, transform)| transform.translation())
-        .collect();
-    // Past where they are drawn, and the column they fall down and drift
-    // through.
-    let reach = PETALS_SEEN + 20.0 + 2.0 * PETAL_FALL_FROM;
-    petals
-        .par_iter_mut()
-        .for_each(|(petal, visible, mut transform)| {
-            let near = eyes
-                .iter()
-                .any(|eye| eye.distance_squared(petal.ground) < reach * reach);
-            if visible.get() && near {
-                transform.translation = petal.position(now);
-                transform.rotation = petal.rotation(now);
-            }
-        });
-}
-
-/// The petals over each area, each falling over a spot of its own, with
-/// its own pace and sway (see [`Petal`]).
-fn plan_petals(track: &Track, terrain: &Terrain, petals: &Petals, seed: u32) -> Vec<Petal> {
-    let lap = track.lap_length();
-    let (count, spot): (usize, Box<dyn Fn(f32, f32) -> Vec2>) = match petals.area {
-        PetalArea::Road { span, reach } => {
-            let length = span.length(lap);
-            (
-                (length * 2.0 * reach * PETALS_ON_ROAD) as usize,
-                Box::new(move |u: f32, v: f32| {
-                    let index = track.index_at(span.from + u * length);
-                    track.offset_point(index, (2.0 * v - 1.0) * reach)
-                }),
-            )
-        }
-        PetalArea::Round { center, radius } => (
-            (std::f32::consts::PI * radius * radius * PETALS_ROUND) as usize,
-            Box::new(move |u: f32, v: f32| center + Vec2::from_angle(u * TAU) * radius * v.sqrt()),
-        ),
-    };
-    (0..count as u32)
-        .map(|k| {
-            let random = |n: u32| random01(seed.wrapping_add(k * 8 + n));
-            let at = spot(random(0), random(1));
-            let ground = terrain.height(at).max(SEA_LEVEL);
-            Petal {
-                ground: Vec3::new(at.x, ground, at.y),
-                column: PETAL_FALL_FROM * (0.7 + 0.3 * random(2)),
-                fall: PETAL_FALL.0.lerp(PETAL_FALL.1, random(3)),
-                start: random(4) * PETAL_FALL_FROM,
-                sway: PETAL_SWAY.0.lerp(PETAL_SWAY.1, random(5)),
-                sway_rate: 0.8 + 1.2 * random(6),
-                spin: Vec3::new(
-                    1.0 + 3.0 * random(7),
-                    0.5 + 2.0 * random(2),
-                    2.0 * random(5),
-                ),
-            }
-        })
-        .collect()
-}
-
-/// The petals in the air, one mesh and one material for each kind.
-pub(super) fn spawn_petals(
-    world: &mut ChildSpawnerCommands,
-    track: &Track,
-    terrain: &Terrain,
-    petals: &[Petals],
-    assets: &mut Assets3d,
-) {
-    for (number, area) in petals.iter().enumerate() {
-        let (mesh, color) = match area.kind {
-            PetalKind::Maple => (maple_leaf_mesh(), Color::srgb(0.7, 0.22, 0.12)),
-            PetalKind::Cherry => (cherry_petal_mesh(), Color::srgb(0.98, 0.93, 0.95)),
-            PetalKind::Gold => (cherry_petal_mesh(), Color::srgb(0.93, 0.72, 0.24)),
-        };
-        let mesh = assets.meshes.add(mesh);
-        // Unlit: a petal is too small, and turns too fast, to show its
-        // shading, and its back would show dark.
-        let material = assets.materials.add(StandardMaterial {
-            base_color: color,
-            unlit: true,
-            double_sided: true,
-            cull_mode: None,
-            ..default()
-        });
-        let seed = 300_000 + 10_000 * number as u32;
-        for petal in plan_petals(track, terrain, area, seed) {
-            world.spawn((
-                petal,
-                Mesh3d(mesh.clone()),
-                MeshMaterial3d(material.clone()),
-                Transform::from_translation(petal.position(0.0)).with_rotation(petal.rotation(0.0)),
-                NotShadowCaster,
-                fading_out(PETALS_SEEN, 20.0, false),
-            ));
-        }
-    }
-}
-
-/// A maple leaf (m), flat, facing +Z: five pointed lobes round its middle.
-fn maple_leaf_mesh() -> Mesh {
-    const LOBES: usize = 5;
-    const SIZE: f32 = 0.2;
-    let mut builder = MeshBuilder::default();
-    let white = Color::WHITE;
-    for lobe in 0..LOBES {
-        // The lobes fan out above the stalk, the middle one longest.
-        let middle = (lobe as f32 - 2.0) * 0.55;
-        let length = SIZE * (1.0 - 0.2 * (lobe as f32 - 2.0).abs());
-        let tip = Vec2::from_angle(std::f32::consts::FRAC_PI_2 + middle) * length;
-        let side = |turn: f32| {
-            Vec2::from_angle(std::f32::consts::FRAC_PI_2 + middle + turn) * length * 0.45
-        };
-        for (a, b) in [(side(-0.45), tip), (tip, side(0.45))] {
-            builder.triangle(
-                [
-                    (Vec3::ZERO, Vec2::ZERO),
-                    (a.extend(0.0), Vec2::ZERO),
-                    (b.extend(0.0), Vec2::ZERO),
-                ],
-                Vec3::Z,
-                white,
-            );
-        }
-    }
-    builder.build()
-}
-
-/// A cherry petal (m), flat, facing +Z: rounded, notched at its tip.
-fn cherry_petal_mesh() -> Mesh {
-    const SIZE: f32 = 0.11;
-    let outline = [
-        Vec2::new(0.0, 0.0),
-        Vec2::new(0.45, 0.35),
-        Vec2::new(0.55, 0.8),
-        Vec2::new(0.25, 1.0),
-        Vec2::new(0.0, 0.85),
-        Vec2::new(-0.25, 1.0),
-        Vec2::new(-0.55, 0.8),
-        Vec2::new(-0.45, 0.35),
-    ]
-    .map(|p| (p * SIZE * 2.0).extend(0.0));
-    let mut builder = MeshBuilder::default();
-    let middle = Vec3::new(0.0, 0.5 * SIZE * 2.0, 0.0);
-    for i in 0..outline.len() {
-        builder.triangle(
-            [
-                (middle, Vec2::ZERO),
-                (outline[i], Vec2::ZERO),
-                (outline[(i + 1) % outline.len()], Vec2::ZERO),
-            ],
-            Vec3::Z,
-            Color::WHITE,
-        );
-    }
-    builder.build()
-}
-
-/// The rotation that turns a prop's front (+Z) towards `direction` (x, z).
-pub(super) fn facing(direction: Vec2) -> Quat {
-    Quat::from_rotation_y(direction.x.atan2(direction.y))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bike::model::imported::read;
     use crate::circuits::CIRCUITS;
+    use crate::world::prop_pack::{RIDERS_BACK, VIEW_CLEAR, bounds};
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
@@ -1147,52 +842,6 @@ mod tests {
     }
 
     #[test]
-    fn every_prop_has_a_surface_for_the_water_to_mirror_in_its_colours() {
-        let atlas = texture(crate::content::file("models/props/color.jpg"), true);
-        let mut total = 0;
-        for (name, mesh) in pack() {
-            let points = surface(&mesh, &atlas);
-            let (low, high) = bounds(&mesh);
-            assert!(!points.is_empty(), "{name}");
-            // Over its faces, inside its box, a few to each square metre at
-            // most.
-            for point in &points {
-                assert!(
-                    point.at.cmpge(low - 0.01).all() && point.at.cmple(high + 0.01).all(),
-                    "{name}"
-                );
-                assert!(
-                    point.color.iter().all(|c| (0.0..=1.0).contains(c)),
-                    "{name}"
-                );
-            }
-            let size = (high - low).max_element();
-            assert!(points.len() < 60_000, "{name}: {} points", points.len());
-            assert!(
-                points.len() as f32 > size,
-                "{name}: {} points",
-                points.len()
-            );
-            total += points.len();
-        }
-        assert!(total < 400_000, "{total}");
-        // Not all the atlas's colour is grey: a vermilion torii is red.
-        let torii = surface(
-            &pack()
-                .into_iter()
-                .find(|(name, _)| name == "o_torii")
-                .unwrap()
-                .1,
-            &atlas,
-        );
-        let red = torii
-            .iter()
-            .filter(|p| p.color[0] > 2.0 * p.color[1])
-            .count();
-        assert!(red * 3 > torii.len(), "{red} of {}", torii.len());
-    }
-
-    #[test]
     fn the_gates_leave_the_road_clear_under_their_beams() {
         let pack = pack();
         for (name, opening) in [(TORII_WIDE, WIDE_OPENING), (TORII_ROAD, ROAD_OPENING)] {
@@ -1223,7 +872,7 @@ mod tests {
     #[test]
     fn the_corridor_of_torii_stands_round_the_road_beside_its_walls() {
         for circuit in CIRCUITS.iter() {
-            let Some(japan) = &circuit.scenery.japan else {
+            let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);
@@ -1260,7 +909,7 @@ mod tests {
     fn a_clearing_of_maple_leaves_faces_the_road_ringed_with_logs() {
         let mut checked = 0;
         for circuit in CIRCUITS.iter() {
-            let Some(japan) = &circuit.scenery.japan else {
+            let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);
@@ -1310,77 +959,9 @@ mod tests {
     }
 
     #[test]
-    fn a_petal_falls_from_the_top_of_its_column_to_the_ground_swaying() {
-        let petal = Petal {
-            ground: Vec3::new(10.0, 4.0, -20.0),
-            column: 12.0,
-            fall: 1.0,
-            start: 3.0,
-            sway: 1.0,
-            sway_rate: 1.5,
-            spin: Vec3::ONE,
-        };
-        let mut lowest = f32::MAX;
-        for step in 0..2_000 {
-            let at = petal.position(step as f32 * 0.05);
-            assert!(at.y >= 4.0 && at.y <= 16.0, "{at}");
-            let away = Vec2::new(at.x - 10.0, at.z + 20.0).length();
-            assert!(away <= 1.0 * 2f32.sqrt() + PETAL_DRIFT.length() * 12.0 + 1e-3);
-            lowest = lowest.min(at.y);
-        }
-        // It reaches the ground, and starts again at the top.
-        assert!(lowest < 4.1);
-        let before = petal.position(8.99);
-        let after = petal.position(9.01);
-        assert!(after.y > before.y + 11.0, "{before} {after}");
-    }
-
-    #[test]
-    fn petals_drift_over_their_areas_red_and_white() {
-        for circuit in CIRCUITS.iter() {
-            let Some(japan) = &circuit.scenery.japan else {
-                continue;
-            };
-            let track = Track::new(&circuit.layout);
-            let terrain = Terrain::new(&track, &circuit.scenery);
-            let lap = track.lap_length();
-            for kind in [PetalKind::Maple, PetalKind::Cherry] {
-                assert!(
-                    japan.petals.iter().any(|petals| petals.kind == kind),
-                    "{}: {kind:?}",
-                    circuit.name
-                );
-            }
-            for (number, petals) in japan.petals.iter().enumerate() {
-                let planned = plan_petals(&track, &terrain, petals, number as u32 * 7);
-                assert!(planned.len() > 100, "{}: {}", circuit.name, planned.len());
-                for petal in &planned {
-                    let at = Vec2::new(petal.ground.x, petal.ground.z);
-                    assert!((petal.ground.y - terrain.height(at).max(SEA_LEVEL)).abs() < 1e-3);
-                    match petals.area {
-                        PetalArea::Road { span, reach } => {
-                            let nearest = track.nearest(at);
-                            assert!(nearest.distance <= reach + 0.5);
-                            // Over the stretch, give or take its reach
-                            // (round a bend, the nearest point of the road
-                            // can be a little past its ends).
-                            let around =
-                                crate::world::scenery::span(span.from - reach, span.to + reach);
-                            assert!(around.contains(track.along(&nearest), lap));
-                        }
-                        PetalArea::Round { center, radius } => {
-                            assert!(at.distance(center) <= radius + 1e-3);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
     fn no_tree_stands_in_the_way_of_a_landmark() {
         for circuit in CIRCUITS.iter() {
-            let Some(japan) = &circuit.scenery.japan else {
+            let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);
@@ -1406,7 +987,7 @@ mod tests {
     #[test]
     fn props_stand_clear_of_the_roads_and_in_the_water_where_they_should() {
         for circuit in CIRCUITS.iter() {
-            let Some(japan) = &circuit.scenery.japan else {
+            let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);
@@ -1441,7 +1022,7 @@ mod tests {
         let pack = pack();
         let mut stood = 0;
         for circuit in CIRCUITS.iter() {
-            let Some(japan) = &circuit.scenery.japan else {
+            let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);
@@ -1482,7 +1063,7 @@ mod tests {
     #[test]
     fn a_prop_that_faces_the_riders_looks_down_the_road_they_come_up() {
         for circuit in CIRCUITS.iter() {
-            let Some(japan) = &circuit.scenery.japan else {
+            let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);
@@ -1517,9 +1098,9 @@ mod tests {
     fn the_rows_fill_the_road_without_crowding_what_stands_already() {
         let circuit = CIRCUITS
             .iter()
-            .find(|circuit| circuit.scenery.japan.is_some())
+            .find(|circuit| circuit.scenery.themes.get::<Japan>().is_some())
             .expect("a circuit of feudal Japan");
-        let japan = circuit.scenery.japan.as_ref().unwrap();
+        let japan = circuit.scenery.themes.get::<Japan>().unwrap();
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let pack = pack();

@@ -24,8 +24,8 @@ use bevy::{
 
 use super::Assets3d;
 use super::detail::fading_out;
-use super::flowers::{FlowerPlan, spawn_flowers};
-use super::japan::{PropPack, Turning, in_view, spawn_petals, spot};
+use super::flowers::spawn_flowers;
+use super::prop_pack::{PropPack, Turning, in_view, spot};
 use super::props::Footprint;
 use super::quads::MeshBuilder;
 use super::scenery::{Glow, MiddleEarthModel, Prop, RockArch, Scenery, Shaft, Spot};
@@ -347,7 +347,6 @@ pub fn spawn_middle_earth(
     track: &Track,
     terrain: &Terrain,
     scenery: &Scenery,
-    flowers: FlowerPlan,
     assets: &mut Assets3d,
 ) -> Vec<Footprint> {
     let Some(middle_earth) = &scenery.middle_earth else {
@@ -483,16 +482,11 @@ pub fn spawn_middle_earth(
             ));
         }
     }
-    spawn_petals(world, track, terrain, middle_earth.petals, assets);
-    let meadows = spawn_flowers(
-        world,
-        terrain,
-        middle_earth.flowers,
-        flowers,
-        &taken,
-        assets,
-    );
-    taken.extend(meadows);
+    // The circuit's flowers, clear of its props.
+    if let Some(flowers) = assets.flowers.take() {
+        let meadows = spawn_flowers(world, terrain, scenery.flowers, flowers, &taken, assets);
+        taken.extend(meadows);
+    }
     // No tree in the way of the landmarks, from where the road comes at
     // them.
     for prop in middle_earth.props.iter().filter(|p| landmark(p.model)) {
@@ -1333,7 +1327,7 @@ mod tests {
     use crate::bike::model::imported::read;
     use crate::circuits::CIRCUITS;
     use crate::track::WALL_DISTANCE;
-    use crate::world::japan::{VIEW_CLEAR, bounds};
+    use crate::world::prop_pack::{VIEW_CLEAR, bounds};
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {

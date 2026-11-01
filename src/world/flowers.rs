@@ -578,7 +578,7 @@ mod tests {
     fn in_flower() -> Vec<(&'static Circuit, Track, Terrain)> {
         CIRCUITS
             .iter()
-            .filter(|circuit| !circuit.scenery.flower_fields().is_empty())
+            .filter(|circuit| !circuit.scenery.flowers.is_empty())
             .map(|circuit| {
                 let track = Track::new(&circuit.layout);
                 let terrain = Terrain::new(&track, &circuit.scenery);
@@ -597,7 +597,7 @@ mod tests {
             .find(|circuit| circuit.name == "Ghost Island")
             .unwrap();
         let track = Track::new(&circuit.layout);
-        let fields = circuit.scenery.japan.as_ref().unwrap().flowers;
+        let fields = circuit.scenery.flowers;
         let map = FlowerMap::new(&track, fields);
         let f = fields
             .iter()
@@ -664,7 +664,7 @@ mod tests {
             .filter(|(circuit, ..)| {
                 circuit
                     .scenery
-                    .flower_fields()
+                    .flowers
                     .iter()
                     .any(|field| matches!(field.area, FlowerArea::Everywhere))
             })
@@ -713,7 +713,7 @@ mod tests {
                 "{}: grass between the fields: {share}",
                 circuit.name
             );
-            for field in circuit.scenery.flower_fields() {
+            for field in circuit.scenery.flowers {
                 for kind in field.kinds {
                     assert!(kinds.contains(kind), "{}: no {kind:?}", circuit.name);
                 }

@@ -624,10 +624,12 @@ pub struct Scenery {
     /// `None` for none (see `crate::bike::wheelie_halo`).
     #[serde(deserialize_with = "crate::circuits::data::optional_color", default)]
     pub wheelie_halo: Option<Color>,
-    /// The scenery of feudal Japan, from models made with Meshy, or `None`:
-    /// see [`Japan`].
-    #[serde(default)]
-    pub japan: Option<Japan>,
+    /// Fields of flowers (see [`crate::world::flowers`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub flowers: &'static [FlowerField],
+    /// Petals, or leaves, drifting down (see [`crate::world::petals`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub petals: &'static [Petals],
     /// The scenery of Middle-earth, from models made with Meshy, or `None`:
     /// see [`MiddleEarth`].
     #[serde(default)]
@@ -665,36 +667,6 @@ impl Scenery {
             .as_ref()
             .map_or(&[], |middle_earth| middle_earth.rock_tints)
     }
-
-    /// The fields of flowers, of feudal Japan or of Middle-earth.
-    pub fn flower_fields(&self) -> &'static [FlowerField] {
-        match (&self.japan, &self.middle_earth) {
-            (Some(japan), _) => japan.flowers,
-            (None, Some(middle_earth)) => middle_earth.flowers,
-            (None, None) => &[],
-        }
-    }
-}
-
-/// The scenery of feudal Japan, as at Ghost Island (see
-/// [`crate::world::japan`]): corridors of torii over the road, props made
-/// with Meshy standing about, and fields of flowers.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Japan {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub corridors: &'static [ToriiCorridor],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub props: &'static [Prop],
-    /// The small ones over and over along the road (see [`PropRow`]).
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub rows: &'static [PropRow],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub maple_grounds: &'static [MapleGround],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub petals: &'static [Petals],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub flowers: &'static [FlowerField],
 }
 
 /// A field of flowers (see [`crate::world::flowers`]): the ground in
@@ -788,109 +760,6 @@ pub enum PetalKind {
     Gold,
 }
 
-/// A clearing carpeted with red maple leaves, ringed with low logs, as
-/// under a great maple by a lake: its middle (x, z) and the radius of its
-/// ring of logs (m). Its leaves spill a little past the ring. Lay it on
-/// level ground (a [`Terrace`]).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MapleGround {
-    pub center: Vec2,
-    pub radius: f32,
-}
-
-/// A corridor of torii over the road, as at Fushimi Inari: where the walls
-/// close in on the road along `span` (see [`crate::track::Narrowing`]), a
-/// narrow gate every `every` metres; and over the `approach` metres before
-/// and after it, where the road is as wide as ever, a wide gate every
-/// `approach_every` metres.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ToriiCorridor {
-    pub span: Span,
-    pub every: f32,
-    pub approach: f32,
-    pub approach_every: f32,
-}
-
-/// One of the props of feudal Japan, made with Meshy (see
-/// [`crate::world::japan`]).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum PropModel {
-    /// The great torii standing in the sea, as at Itsukushima.
-    GreatTorii,
-    CastleKeep,
-    TempleHall,
-    /// A shrine hall on stilts, over the water.
-    StiltShrine,
-    /// An ancient, gnarled maple on its boulders, with a straw rope round
-    /// its trunk.
-    AncientMaple,
-    /// A great maple, its crown spreading far to one side over the ground,
-    /// as over a clearing of its leaves.
-    GreatMaple,
-    /// A five-storey pagoda.
-    Pagoda,
-    /// A torii of bare logs, with a straw rope and bells.
-    LogTorii,
-    /// A tiny wayside shrine with its small torii.
-    Hokora,
-    /// A stone Jizō in a red bib and cap.
-    Jizo,
-    /// A stone guardian lion-dog.
-    Komainu,
-    BronzeLantern,
-    /// A stone lantern (ishidōrō), mossy.
-    StoneLantern,
-    /// A memorial stone.
-    Stele,
-    /// A fire basket on a tripod.
-    Brazier,
-    /// Rice bales, sake barrels and crates.
-    SupplyPile,
-    FishingBoat,
-    /// A thatched farmhouse.
-    Minka,
-    /// A wooden water wheel on its post, turning.
-    WaterWheel,
-}
-
-impl PropModel {
-    /// Whether it is one of the island's landmarks, to be seen from afar:
-    /// no tree stands in the way of it (see [`crate::world::japan`]).
-    pub fn landmark(self) -> bool {
-        matches!(
-            self,
-            PropModel::GreatTorii
-                | PropModel::CastleKeep
-                | PropModel::TempleHall
-                | PropModel::StiltShrine
-                | PropModel::AncientMaple
-                | PropModel::GreatMaple
-                | PropModel::Pagoda
-                | PropModel::LogTorii
-                | PropModel::Minka
-                | PropModel::WaterWheel
-        )
-    }
-
-    /// What it stands on by the road, so that it shows over the wall:
-    /// stone under the stone ones, wood under the wooden (see
-    /// [`crate::world::japan`]). The big ones need none: they are seen
-    /// over any wall as they are.
-    pub fn plinth(self) -> Option<Plinth> {
-        match self {
-            PropModel::Jizo
-            | PropModel::Komainu
-            | PropModel::Stele
-            | PropModel::StoneLantern
-            | PropModel::BronzeLantern => Some(Plinth::Stone),
-            PropModel::Brazier | PropModel::Hokora => Some(Plinth::Wood),
-            _ => None,
-        }
-    }
-}
-
 /// What a small prop by the road stands on, so that it is seen over the
 /// road's wall: a block of stone, or a deck of planks.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -908,11 +777,11 @@ pub enum Plinth {
 /// radians from that about its foot (anticlockwise seen from above: one by
 /// the road turned to face the riders coming along it), and leaning `lean`
 /// radians towards its side that was -X as made (a tree leaning out over
-/// what its crown spreads over). Its model is one of feudal Japan's
-/// ([`PropModel`]) or of Middle-earth's ([`MiddleEarthModel`]).
+/// what its crown spreads over). Its model is one of a theme's (feudal
+/// Japan's, Middle-earth's).
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Prop<M = PropModel> {
+pub struct Prop<M> {
     pub model: M,
     pub spot: Spot,
     #[serde(default = "as_made")]
@@ -961,21 +830,6 @@ pub const fn by_road<M: Copy>(model: M, along: f32, lateral: f32) -> Prop<M> {
     }
 }
 
-/// The same small prop over and over by the road: one every so many
-/// metres of a span, to one side, as the lanterns of a shrine's approach
-/// or the jizō down a hillside road. Each stands as one of [`by_road`],
-/// on its plinth, and the wall opens for it; where another road runs, or
-/// where one of the props put by hand already stands, there is none.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PropRow {
-    /// The kinds it is made of, each in turn: one kind over and over, or
-    /// several, so that a stretch is not all of one thing.
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
-    pub models: &'static [PropModel],
-    pub row: Row,
-}
-
 /// The scenery of Middle-earth, as at Fellowship Road (see
 /// [`crate::world::middle_earth`]): props made with Meshy standing about,
 /// hobbit holes in their grassy banks, fields of flowers and leaves
@@ -985,10 +839,6 @@ pub struct PropRow {
 pub struct MiddleEarth {
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub props: &'static [Prop<MiddleEarthModel>],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub flowers: &'static [FlowerField],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub petals: &'static [Petals],
     /// Footpaths of bare earth, as between the hobbit holes: each a line of
     /// points (x, z) over the ground.
     #[serde(deserialize_with = "crate::circuits::data::paths", default)]

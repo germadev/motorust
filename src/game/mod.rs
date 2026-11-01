@@ -5,6 +5,7 @@
 //! `ROADMAP.md`); a test keeps it so.
 
 pub mod desert;
+pub mod japan;
 pub mod mine;
 pub mod space;
 
@@ -17,6 +18,7 @@ use crate::world::themes;
 /// added); again does nothing.
 pub fn register_themes() {
     themes::register::<desert::Desert>("desert");
+    themes::register::<japan::Japan>("japan");
     themes::register::<mine::Mine>("mine");
     themes::register::<space::Space>("space");
 }

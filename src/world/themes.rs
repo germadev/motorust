@@ -30,7 +30,7 @@ use serde::de::{DeserializeOwned, DeserializeSeed, Deserializer, Error, MapAcces
 
 use super::Assets3d;
 use super::props::Footprint;
-use super::scenery::Scenery;
+use super::scenery::{Scenery, Side};
 use super::terrain::Terrain;
 use crate::track::Track;
 
@@ -67,14 +67,35 @@ pub trait Theme: Any + Send + Sync {
         let _ = (world, track, terrain, scenery, assets);
         Vec::new()
     }
+
+    /// Whether the road's wall at `along` (m along a lap `lap` long), on
+    /// `side`, opens into a low fence for what it puts there, so that it is
+    /// seen over it (a small prop on its plinth). Worked out on the thread
+    /// that prepares the circuit.
+    fn opens_wall(&self, lap: f32, along: f32, side: Side) -> bool {
+        let _ = (lap, along, side);
+        false
+    }
+
+    /// The packs of props it places, by their folders in `assets/models/`
+    /// (see [`super::prop_pack::PropPacks`]), loaded as the game starts.
+    fn packs() -> &'static [&'static str]
+    where
+        Self: Sized,
+    {
+        &[]
+    }
 }
 
 /// How a registered theme is read from a file.
 type Reader = fn(&mut dyn erased_serde::Deserializer<'_>) -> Result<Box<dyn Theme>, String>;
 
-/// The themes registered, by their names, in the order they were: each its
-/// type and how it is read.
-static REGISTERED: RwLock<Vec<(&'static str, TypeId, Reader)>> = RwLock::new(Vec::new());
+/// A theme registered: its name, its type, how it is read and the packs of
+/// props it places.
+type Registered = (&'static str, TypeId, Reader, &'static [&'static str]);
+
+/// The themes registered, in the order they were.
+static REGISTERED: RwLock<Vec<Registered>> = RwLock::new(Vec::new());
 
 /// Registers the theme `T` under `name`: a circuit's file then writes it in
 /// its `themes` by that name. Registering it again does nothing; another
@@ -91,9 +112,9 @@ pub fn register<T: Theme + DeserializeOwned>(name: &'static str) {
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     match registered.iter().find(|(taken, ..)| *taken == name) {
-        Some((_, other, _)) if *other == TypeId::of::<T>() => {}
+        Some((_, other, ..)) if *other == TypeId::of::<T>() => {}
         Some(_) => panic!("two themes registered as `{name}`"),
-        None => registered.push((name, TypeId::of::<T>(), read::<T>)),
+        None => registered.push((name, TypeId::of::<T>(), read::<T>, T::packs())),
     }
 }
 
@@ -104,7 +125,24 @@ fn reader(name: &str) -> Option<Reader> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .iter()
         .find(|(registered, ..)| *registered == name)
-        .map(|&(.., reader)| reader)
+        .map(|&(_, _, reader, _)| reader)
+}
+
+/// The packs of props the themes registered place, each once.
+pub fn packs() -> Vec<&'static str> {
+    let mut packs: Vec<&'static str> = Vec::new();
+    for &(.., named) in REGISTERED
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+    {
+        for &pack in named {
+            if !packs.contains(&pack) {
+                packs.push(pack);
+            }
+        }
+    }
+    packs
 }
 
 /// The names of the themes registered, for the messages.

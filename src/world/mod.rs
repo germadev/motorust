@@ -7,19 +7,20 @@ mod bricks;
 mod cavern;
 mod dam;
 pub mod detail;
-mod flowers;
+pub mod flowers;
 mod foliage;
-mod japan;
 mod lamps;
 pub mod landmarks;
 mod lawn;
 pub mod lettering;
 mod lod;
 mod middle_earth;
-mod mirror;
+pub mod mirror;
 pub mod mountains;
+pub mod petals;
 pub mod portals;
 mod preview;
+pub mod prop_pack;
 pub mod props;
 pub mod quads;
 pub mod realm;
@@ -115,7 +116,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<CircuitLoading>()
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
-            .init_resource::<japan::ModelledProps>()
+            .init_resource::<prop_pack::PropPacks>()
             .init_resource::<middle_earth::FellowshipProps>()
             .init_resource::<toys::ToyModels>()
             .init_resource::<Sea>()
@@ -131,8 +132,8 @@ impl Plugin for WorldPlugin {
                     sky::light_the_sky,
                     portals::spin_portals,
                     toys::run_trains,
-                    japan::turn_wheels,
-                    japan::drift_petals,
+                    prop_pack::turn_wheels,
+                    petals::drift_petals,
                     spawn_prepared_circuit,
                 ),
             )
@@ -1013,7 +1014,7 @@ fn build_world(
 struct Builder<'w> {
     circuits: Res<'w, Circuits>,
     textures: Res<'w, textures::WorldTextures>,
-    props: Res<'w, japan::ModelledProps>,
+    packs: Res<'w, prop_pack::PropPacks>,
     fellowship: Res<'w, middle_earth::FellowshipProps>,
     toy_models: Res<'w, toys::ToyModels>,
     sea: Res<'w, Sea>,
@@ -1084,7 +1085,8 @@ fn build(
     });
     let mut assets = Assets3d {
         textures: &builder.textures,
-        props: &builder.props,
+        packs: &builder.packs,
+        flowers: None,
         fellowship: &builder.fellowship,
         toys: &builder.toy_models,
         meshes: &mut builder.meshes,
@@ -1222,7 +1224,8 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
     let split = realm::splits(scenery);
     let mut assets = Assets3d {
         textures: &builder.textures,
-        props: &builder.props,
+        packs: &builder.packs,
+        flowers: None,
         fellowship: &builder.fellowship,
         toys: &builder.toy_models,
         meshes: &mut builder.meshes,
@@ -1292,8 +1295,9 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
 /// Dónde guardar las mallas, los materiales y las imágenes del mundo.
 pub struct Assets3d<'a> {
     pub textures: &'a textures::WorldTextures,
-    /// The props made with Meshy (see [`japan`] and [`middle_earth`]).
-    pub props: &'a japan::ModelledProps,
+    /// The packs of props made with Meshy the themes place (see
+    /// [`prop_pack`]).
+    pub packs: &'a prop_pack::PropPacks,
     pub fellowship: &'a middle_earth::FellowshipProps,
     /// The toys made with Meshy (see [`toys`]).
     pub toys: &'a toys::ToyModels,
@@ -1305,6 +1309,11 @@ pub struct Assets3d<'a> {
     /// the sea to mirror (see [`mirror::PreparedMirror::stand_up`]).
     pub mirrored: Vec<mirror::MirrorPoint>,
     pub mirrored_leaves: Vec<mirror::MirrorPoint>,
+    /// The circuit's fields of flowers, as they were prepared, while they
+    /// are still to be put in the world: a theme puts them among its own,
+    /// clear of what it put (see [`flowers::spawn_flowers`]), or the world
+    /// does after the themes.
+    pub flowers: Option<flowers::FlowerPlan>,
 }
 
 /// El sol, en el mismo sitio que en la foto del cielo, y la luz ambiente.

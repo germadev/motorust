@@ -1150,6 +1150,96 @@
             (span: Span(3900.1, 4055.1), stone: Masonry, crown: 34.0, width: 16.0),
             (span: Span(4055.1, 4153.1), stone: Cave, crown: 20.0, width: 4.0),
         ],
+        // The fields of flowers: in the hobbit holes' gardens; white and yellow
+        // through the Shire's fields (not Hobbiton's lawns, kept green),
+        // irises round the pond; gold tussock grass up Weathertop and down to the
+        // ford, and silver in the Anduin's gorge, as on the hills of Otago where
+        // the film was made. And the grass not green everywhere: leaves fallen
+        // under the trees of the wood at the start, Rivendell's and Lothlórien's,
+        // and the grass worn down to bare earth round Bree, and both round Amon
+        // Hen, each in patches with grass between them; and on the shoulders of
+        // the roads, fallen leaves or bare earth in patches.
+        flowers: [
+            (area: Round(center: (470.0, -330.0), inner: 22.0, outer: 42.0), kinds: [Iris]),
+            (
+                area: Road(span: Span(867.0, 1085.1), near: 14.0, far: 60.0),
+                kinds: [White, Yellow],
+            ),
+            (area: Road(span: Span(1329.1, 2360.1), near: 14.0, far: 120.0), kinds: [Susuki]),
+            (area: Road(span: Span(4587.1, 4900.1), near: 14.0, far: 60.0), kinds: [Susuki]),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (261.4, -443.5), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (219.8, -425.4), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (178.4, -411.7), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (138.2, -429.6), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (388.2, -480.6), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (391.2, -453.6), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (406.0, -421.3), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            // A hobbit hole's garden.
+            (
+                area: Round(center: (381.6, -602.7), inner: 0.0, outer: 4.0),
+                kinds: [Phlox, White],
+            ),
+            (
+                area: Road(span: Span(5645.1, 140.0), near: 14.0, far: 90.0),
+                kinds: [FallenLeaves],
+            ),
+            (area: Road(span: Span(1085.1, 1299.1), near: 12.0, far: 70.0), kinds: [BareEarth]),
+            (
+                area: Road(span: Span(2360.1, 2819.1), near: 14.0, far: 120.0),
+                kinds: [FallenLeaves],
+            ),
+            (
+                area: Road(span: Span(4133.1, 4587.1), near: 14.0, far: 120.0),
+                kinds: [FallenLeaves],
+            ),
+            (
+                area: Road(span: Span(5235.1, 5645.1), near: 14.0, far: 100.0),
+                kinds: [FallenLeaves, BareEarth],
+            ),
+            // The shoulders of the roads, between the asphalt and the walls: not
+            // all grass, but in patches leaves fallen under the trees of the wood
+            // at the start, Rivendell's and Lothlórien's, and earth worn bare
+            // everywhere else, with as much grass between them.
+            (area: Shoulders(span: Span(5645.1, 140.0)), kinds: [FallenLeaves, BareEarth]),
+            (area: Shoulders(span: Span(2360.1, 2819.1)), kinds: [FallenLeaves, BareEarth]),
+            (area: Shoulders(span: Span(4133.1, 4587.1)), kinds: [FallenLeaves]),
+            (area: Shoulders(span: Lap), kinds: [BareEarth]),
+        ],
+        // Leaves blowing down through Rivendell, red and gold, and
+        // through Lothlórien, the mallorns' gold.
+        petals: [
+            (area: Road(span: Span(2360.1, 2819.1), reach: 24.0), kind: Maple),
+            (area: Road(span: Span(2510.1, 2819.1), reach: 24.0), kind: Gold),
+            (area: Road(span: Span(4133.1, 4587.1), reach: 24.0), kind: Gold),
+        ],
         middle_earth: Some((
             // The props of Middle-earth, made with Meshy, in the order of the lap:
             // where the road comes at them, and those with a front turned to face the
@@ -1307,96 +1397,6 @@
                     scale: 1.3,
                     turn: 1.5707964,
                 ),
-            ],
-            // The fields of flowers: in the hobbit holes' gardens; white and yellow
-            // through the Shire's fields (not Hobbiton's lawns, kept green),
-            // irises round the pond; gold tussock grass up Weathertop and down to the
-            // ford, and silver in the Anduin's gorge, as on the hills of Otago where
-            // the film was made. And the grass not green everywhere: leaves fallen
-            // under the trees of the wood at the start, Rivendell's and Lothlórien's,
-            // and the grass worn down to bare earth round Bree, and both round Amon
-            // Hen, each in patches with grass between them; and on the shoulders of
-            // the roads, fallen leaves or bare earth in patches.
-            flowers: [
-                (area: Round(center: (470.0, -330.0), inner: 22.0, outer: 42.0), kinds: [Iris]),
-                (
-                    area: Road(span: Span(867.0, 1085.1), near: 14.0, far: 60.0),
-                    kinds: [White, Yellow],
-                ),
-                (area: Road(span: Span(1329.1, 2360.1), near: 14.0, far: 120.0), kinds: [Susuki]),
-                (area: Road(span: Span(4587.1, 4900.1), near: 14.0, far: 60.0), kinds: [Susuki]),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (261.4, -443.5), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (219.8, -425.4), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (178.4, -411.7), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (138.2, -429.6), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (388.2, -480.6), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (391.2, -453.6), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (406.0, -421.3), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                // A hobbit hole's garden.
-                (
-                    area: Round(center: (381.6, -602.7), inner: 0.0, outer: 4.0),
-                    kinds: [Phlox, White],
-                ),
-                (
-                    area: Road(span: Span(5645.1, 140.0), near: 14.0, far: 90.0),
-                    kinds: [FallenLeaves],
-                ),
-                (area: Road(span: Span(1085.1, 1299.1), near: 12.0, far: 70.0), kinds: [BareEarth]),
-                (
-                    area: Road(span: Span(2360.1, 2819.1), near: 14.0, far: 120.0),
-                    kinds: [FallenLeaves],
-                ),
-                (
-                    area: Road(span: Span(4133.1, 4587.1), near: 14.0, far: 120.0),
-                    kinds: [FallenLeaves],
-                ),
-                (
-                    area: Road(span: Span(5235.1, 5645.1), near: 14.0, far: 100.0),
-                    kinds: [FallenLeaves, BareEarth],
-                ),
-                // The shoulders of the roads, between the asphalt and the walls: not
-                // all grass, but in patches leaves fallen under the trees of the wood
-                // at the start, Rivendell's and Lothlórien's, and earth worn bare
-                // everywhere else, with as much grass between them.
-                (area: Shoulders(span: Span(5645.1, 140.0)), kinds: [FallenLeaves, BareEarth]),
-                (area: Shoulders(span: Span(2360.1, 2819.1)), kinds: [FallenLeaves, BareEarth]),
-                (area: Shoulders(span: Span(4133.1, 4587.1)), kinds: [FallenLeaves]),
-                (area: Shoulders(span: Lap), kinds: [BareEarth]),
-            ],
-            // Leaves blowing down through Rivendell, red and gold, and
-            // through Lothlórien, the mallorns' gold.
-            petals: [
-                (area: Road(span: Span(2360.1, 2819.1), reach: 24.0), kind: Maple),
-                (area: Road(span: Span(2510.1, 2819.1), reach: 24.0), kind: Gold),
-                (area: Road(span: Span(4133.1, 4587.1), reach: 24.0), kind: Gold),
             ],
             paths: [
                 // The footpaths of Hobbiton, of bare earth: from the road past the bridge

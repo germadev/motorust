@@ -62,6 +62,8 @@ pub fn spawn_props(
     for row in scenery.hotels {
         occupied.extend(spawn_hotels(world, track, terrain, row, assets));
     }
+    // The circuit's flowers, for a theme to put among its own.
+    assets.flowers = Some(flowers);
     // The portals between the realms, then what the circuit's themes put
     // by the road (see `super::themes`).
     occupied.extend(super::portals::spawn_portals(
@@ -80,22 +82,26 @@ pub fn spawn_props(
         &mut occupied,
         assets,
     );
-    // The flowers are of feudal Japan or of Middle-earth.
-    let (japanese, middle) = if scenery.japan.is_some() {
-        (flowers, FlowerPlan::default())
-    } else {
-        (FlowerPlan::default(), flowers)
-    };
+    super::petals::spawn_petals(world, track, terrain, scenery.petals, assets);
     if let Some(store) = &scenery.toys {
         super::toys::spawn_trains(world, store, assets);
         super::toys::spawn_models(world, store, assets);
     }
-    occupied.extend(super::japan::spawn_japan(
-        world, track, terrain, scenery, japanese, assets,
-    ));
     occupied.extend(super::middle_earth::spawn_middle_earth(
-        world, track, terrain, scenery, middle, assets,
+        world, track, terrain, scenery, assets,
     ));
+    // The flowers no theme put among its own, clear of all put so far.
+    if let Some(flowers) = assets.flowers.take() {
+        let meadows = super::flowers::spawn_flowers(
+            world,
+            terrain,
+            scenery.flowers,
+            flowers,
+            &occupied,
+            assets,
+        );
+        occupied.extend(meadows);
+    }
     let houses = place_houses(track, terrain, &scenery.houses, &occupied);
     for house in &houses {
         spawn_house(
