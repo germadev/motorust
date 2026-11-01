@@ -219,7 +219,7 @@ A circuit's file has the fields of `Circuit`, `Layout` and `Scenery` by their na
 
 A file has no constants: where the Rust named a stretch once and used it often (`CREST`, `TUNNEL.from + 60.0`), the file writes the numbers, and says in a comment at its top where things are (as `turbo_bay.ron` does).
 
-A field the game does not know is refused: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, so a change shows with a restart, without compiling; a release build and the web carry the files built in.
+A field the game does not know is refused: `every_circuit_file_reads` (`cargo test`) reads every file, so a mistake fails there and not in the game. In a desktop development build (`cargo run`) the file is read from the disk, and read again when it changes there: saved, the circuit is built again a moment later, without compiling or restarting (in a race, once it is over); a mistake in it is told in the log, and the game goes on with the circuit as it was; a release build and the web carry the files built in.
 
 When a different track is picked, the world is rebuilt from its `Circuit` (see [architecture.md](architecture.md)).
 

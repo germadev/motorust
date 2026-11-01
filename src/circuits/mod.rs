@@ -11,6 +11,7 @@ mod gold_mine;
 mod loop_island;
 #[cfg(test)]
 mod moon_base;
+pub mod reload;
 
 #[cfg(test)]
 use std::sync::LazyLock;
@@ -115,15 +116,17 @@ const LIST: &str = "circuits/circuits.ron";
 
 /// The circuits' files, each its path in the content pack and its text, in
 /// the order of the track select screen.
-fn files() -> Vec<(String, &'static str)> {
-    let names: Vec<String> =
-        data::parse(LIST, content::text(LIST)).unwrap_or_else(|error| panic!("{error}"));
+pub(crate) fn files() -> Result<Vec<(String, &'static str)>, String> {
+    let names: Vec<String> = data::parse(LIST, content::try_text(LIST)?)?;
+    if names.is_empty() {
+        return Err(format!("{LIST}: no circuits"));
+    }
     names
         .into_iter()
         .map(|name| {
             let path = format!("circuits/{name}");
-            let text = content::text(&path);
-            (path, text)
+            let text = content::try_text(&path)?;
+            Ok((path, text))
         })
         .collect()
 }
@@ -145,13 +148,22 @@ pub struct Circuits(&'static [Circuit]);
 
 impl Circuits {
     /// Every circuit, read from its file in the content pack (see [`data`]
-    /// and [`crate::content`]).
+    /// and [`crate::content`]). It stops the game, saying why, if one of
+    /// them is wrong.
     pub fn load() -> Self {
-        let circuits: Vec<Circuit> = files()
+        files()
+            .and_then(|files| Self::parse(&files))
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// The circuits the `files` hold (each its path and its text, in the
+    /// menu's order), or what is wrong with them.
+    pub fn parse(files: &[(String, &'static str)]) -> Result<Self, String> {
+        let circuits = files
             .iter()
-            .map(|(path, text)| data::parse(path, text).unwrap_or_else(|error| panic!("{error}")))
-            .collect();
-        Circuits(Vec::leak(circuits))
+            .map(|(path, text)| data::parse(path, text))
+            .collect::<Result<Vec<Circuit>, String>>()?;
+        Ok(Circuits(Vec::leak(circuits)))
     }
 
     /// The one chosen.

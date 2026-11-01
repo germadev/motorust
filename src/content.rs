@@ -95,6 +95,18 @@ mod built_in {
 /// for as long as the game runs. It stops the game, saying why, if the pack
 /// has no such file.
 pub fn file(path: &str) -> &'static [u8] {
+    try_file(path).unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// A text file of the pack (a circuit, the roster, an SVG), as [`file`].
+pub fn text(path: &str) -> &'static str {
+    try_text(path).unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// A file of the pack, as [`file`], or what is wrong: for what is read
+/// again while the game runs (a circuit changed on the disk), where a
+/// mistake is told and the game goes on.
+pub fn try_file(path: &str) -> Result<&'static [u8], String> {
     #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
     {
         on_disk::file(path)
@@ -109,39 +121,75 @@ pub fn file(path: &str) -> &'static [u8] {
         FILES
             .get(path)
             .copied()
-            .unwrap_or_else(|| panic!("{path}: not in the content pack (assets/pack.txt)"))
+            .ok_or_else(|| format!("{path}: not in the content pack (assets/pack.txt)"))
     }
 }
 
-/// A text file of the pack (a circuit, the roster, an SVG), as [`file`].
-pub fn text(path: &str) -> &'static str {
-    std::str::from_utf8(file(path)).unwrap_or_else(|error| panic!("{path}: {error}"))
+/// A text file of the pack, as [`try_file`].
+pub fn try_text(path: &str) -> Result<&'static str, String> {
+    std::str::from_utf8(try_file(path)?).map_err(|error| format!("{path}: {error}"))
 }
 
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+pub use on_disk::{modified, reread};
+
 /// The pack's files read from the disk, in a desktop development build:
-/// each once, kept for as long as the game runs.
+/// each once, kept for as long as the game runs, unless it is read again
+/// ([`reread`], a file changed on the disk).
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 mod on_disk {
     use std::collections::HashMap;
-    use std::path::Path;
-    use std::sync::{LazyLock, Mutex};
+    use std::path::{Path, PathBuf};
+    use std::sync::{LazyLock, Mutex, MutexGuard};
+    use std::time::SystemTime;
 
     static READ: LazyLock<Mutex<HashMap<String, &'static [u8]>>> = LazyLock::new(Default::default);
 
-    pub fn file(path: &str) -> &'static [u8] {
-        assert!(
-            super::listed().contains(&path),
-            "{path}: not in the content pack (assets/pack.txt), so a release build would not have it"
-        );
-        let mut read = READ.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        read.entry(path.to_string()).or_insert_with(|| {
-            let on_disk = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("assets")
-                .join(path);
-            let bytes = std::fs::read(&on_disk)
-                .unwrap_or_else(|error| panic!("{}: {error}", on_disk.display()));
-            Vec::leak(bytes)
-        })
+    fn read_so_far() -> MutexGuard<'static, HashMap<String, &'static [u8]>> {
+        READ.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Where a file of the pack is on the disk.
+    fn on_disk(path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join(path)
+    }
+
+    /// A file listed in the pack, from the disk.
+    fn read(path: &str) -> Result<&'static [u8], String> {
+        if !super::listed().contains(&path) {
+            return Err(format!(
+                "{path}: not in the content pack (assets/pack.txt), so a release build would not have it"
+            ));
+        }
+        let on_disk = on_disk(path);
+        let bytes =
+            std::fs::read(&on_disk).map_err(|error| format!("{}: {error}", on_disk.display()))?;
+        Ok(Vec::leak(bytes))
+    }
+
+    pub fn file(path: &str) -> Result<&'static [u8], String> {
+        if let Some(&bytes) = read_so_far().get(path) {
+            return Ok(bytes);
+        }
+        let bytes = read(path)?;
+        Ok(*read_so_far().entry(path.to_string()).or_insert(bytes))
+    }
+
+    /// A file of the pack read from the disk again, in place of what was
+    /// read before (which stays, for whatever still holds it), from now on.
+    pub fn reread(path: &str) -> Result<&'static [u8], String> {
+        let bytes = read(path)?;
+        read_so_far().insert(path.to_string(), bytes);
+        Ok(bytes)
+    }
+
+    /// When a file of the pack was last changed on the disk, if it is there.
+    pub fn modified(path: &str) -> Option<SystemTime> {
+        std::fs::metadata(on_disk(path))
+            .and_then(|metadata| metadata.modified())
+            .ok()
     }
 }
 
@@ -200,6 +248,19 @@ mod tests {
         assert_eq!(roster, read("bikes/roster.ron"));
         assert!(std::ptr::eq(roster, file("bikes/roster.ron")), "read once");
         assert!(text("circuits/circuits.ron").contains("\"bahia.ron\""));
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_file_read_again_takes_the_place_of_the_one_before() {
+        let path = "circuits/circuits.ron";
+        let before = file(path);
+        let again = reread(path).unwrap();
+        assert_eq!(again, before, "the same bytes, as nothing changed");
+        assert!(std::ptr::eq(file(path), again), "from now on");
+        assert!(modified(path).is_some());
+        assert!(reread("music/the_iron_paddock.mp3").is_err(), "not listed");
+        assert!(try_file("nowhere.ron").is_err());
     }
 
     #[test]

@@ -260,7 +260,7 @@ mod tests {
     /// here and not in the game.
     #[test]
     fn every_circuit_file_reads() {
-        for (name, text) in super::super::files() {
+        for (name, text) in super::super::files().unwrap() {
             parse::<Circuit>(&name, text).unwrap_or_else(|error| panic!("{error}"));
         }
         assert_eq!(CIRCUITS[0].name, "Bahía GP");
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn mistakes_are_told() {
-        let files = super::super::files();
+        let files = super::super::files().unwrap();
         let (name, text) = (&*files[0].0, files[0].1);
         let changed = |from, to| &*String::leak(text.replacen(from, to, 1));
         let unknown = changed("pace:", "speed:");

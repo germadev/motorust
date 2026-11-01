@@ -54,6 +54,7 @@ use bevy::{
     transform::TransformSystems,
 };
 
+use crate::circuits::reload::CircuitsReloaded;
 use crate::circuits::{Circuit, Circuits, CurrentCircuit};
 use crate::menu::GameState;
 use crate::settings::{Settings, WEB};
@@ -96,6 +97,14 @@ impl Plugin for WorldPlugin {
             relief::ReliefPlugin,
             lawn::LawnPlugin,
         ));
+        // In a desktop development build, read again when their files
+        // change on the disk.
+        #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+        app.init_resource::<crate::circuits::reload::Watch>()
+            .add_systems(
+                PreUpdate,
+                crate::circuits::reload::watch.before(forget_reloaded_circuits),
+            );
         app.insert_resource(circuits)
             .insert_resource(current)
             .insert_resource(Track::new(&circuits.get(current).layout))
@@ -112,7 +121,8 @@ impl Plugin for WorldPlugin {
             .init_resource::<toys::ToyModels>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
-            .add_systems(PreUpdate, rebuild_world)
+            .add_message::<CircuitsReloaded>()
+            .add_systems(PreUpdate, (forget_reloaded_circuits, rebuild_world).chain())
             .add_systems(
                 Update,
                 (
@@ -832,6 +842,45 @@ fn unload_unused_circuits(
     });
 }
 
+/// The circuits read again ([`CircuitsReloaded`], their files changed on
+/// the disk) are forgotten: what was built of them goes, with their looks
+/// at the start, what lies beside their roads and the work on them; and
+/// the one chosen, if it is among them, is built again
+/// ([`rebuild_world`]). The others are prepared again in the menus as
+/// ever.
+#[allow(clippy::too_many_arguments)]
+fn forget_reloaded_circuits(
+    mut commands: Commands,
+    mut reloaded: MessageReader<CircuitsReloaded>,
+    mut current: ResMut<CurrentCircuit>,
+    roots: Query<(Entity, &WorldRoot)>,
+    mut roadsides: ResMut<Roadsides>,
+    mut preparing: ResMut<Preparing>,
+    mut finishing: ResMut<Finishing>,
+    mut previewing: ResMut<Previewing>,
+    mut previews: ResMut<PreviewRoots>,
+) {
+    for CircuitsReloaded(changed) in reloaded.read() {
+        for (entity, root) in &roots {
+            if changed.contains(&root.0) {
+                commands.entity(entity).despawn();
+            }
+        }
+        for index in changed {
+            roadsides.0.remove(index);
+            preparing.0.remove(index);
+            finishing.0.remove(index);
+            previewing.0.remove(index);
+            if let Some(entity) = previews.0.remove(index) {
+                commands.entity(entity).despawn();
+            }
+        }
+        if changed.contains(&current.0) {
+            current.set_changed();
+        }
+    }
+}
+
 /// Al cambiar de pista: actualiza el trazado y conmuta la visibilidad entre
 /// las pistas cargadas en caché, o, si no estuviera, la construye. In the
 /// tracks menu it is not waited for: it is prepared on a thread of its own
@@ -1480,6 +1529,52 @@ mod tests {
             "{shown} {}",
             pieces(&mut app)
         );
+    }
+
+    #[test]
+    fn a_circuit_read_again_is_built_again() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(bevy::state::app::StatesPlugin)
+            .add_plugins(bevy::asset::AssetPlugin::default())
+            .init_asset::<Mesh>()
+            .init_asset::<StandardMaterial>()
+            .init_asset::<Image>()
+            .init_state::<GameState>()
+            .add_plugins(WorldPlugin);
+        app.update();
+        let mut roots = app.world_mut().query::<(Entity, &WorldRoot)>();
+        let built: Vec<(Entity, usize)> = roots
+            .iter(app.world())
+            .map(|(entity, root)| (entity, root.0))
+            .collect();
+        assert_eq!(built.len(), 1);
+        assert_eq!(built[0].1, 0);
+
+        // The first circuit's file edited (its name), and read again.
+        let mut files = crate::circuits::files().unwrap();
+        files[0].1 = String::leak(files[0].1.replacen("Bahía GP", "Bahía GP 2", 1));
+        let edited = Circuits::parse(&files).unwrap();
+        app.insert_resource(edited)
+            .world_mut()
+            .write_message(CircuitsReloaded(vec![0]));
+        app.update();
+        app.update();
+        let rebuilt: Vec<(Entity, usize)> = roots
+            .iter(app.world())
+            .map(|(entity, root)| (entity, root.0))
+            .collect();
+        assert_eq!(rebuilt.len(), 1, "built again, once");
+        assert_eq!(rebuilt[0].1, 0);
+        assert_ne!(rebuilt[0].0, built[0].0, "a new one");
+        assert!(app.world().resource::<Roadsides>().0.contains_key(&0));
+        assert_eq!(app.world().resource::<Circuits>().at(0).name, "Bahía GP 2");
+
+        // One that was not built is forgotten with nothing to do.
+        app.world_mut().write_message(CircuitsReloaded(vec![3]));
+        app.update();
+        let kept: Vec<Entity> = roots.iter(app.world()).map(|(entity, _)| entity).collect();
+        assert_eq!(kept, [rebuilt[0].0], "the one chosen stays");
     }
 
     /// A world with the tracks menu seen as `view`.
