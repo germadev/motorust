@@ -12,26 +12,378 @@
 //! circuit away from the main thread (see [`store_pieces`] and
 //! [`bridge_pieces`]); the room's walls and ceiling cast no shadow, so that
 //! the light from overhead comes in (see [`spawn_room`]).
+//!
+//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! writes it in its `themes` as `"toys": (...)`. Meshy's toys are two packs
+//! of the engine's (`models/toys/` and `models/toys2/`). The indoor floor,
+//! the light and the toy tracks' bridges and walls are the engine's
+//! (`Soil::Floor`, `SkyStyle::Indoor`, `BridgeStyle::SlotTrack`, ...).
 
 use std::f32::consts::{PI, TAU};
 
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
-use super::Assets3d;
-use super::prop_pack::{Piece, PropPack};
-use super::quads::MeshBuilder;
-use super::scenery::{
-    BridgeStyle, Castle, CastleKind, Furniture, FurnitureKind, Mat, MatKind, Scenery, Span, Tower,
-    Toy, ToyKind, ToyLoop, ToyStore, Train, Wagon,
-};
-use super::structures::indices;
-use super::textures::{
+use crate::geometry::random01;
+use crate::track::{BASE_ELEVATION, LOOP_WALL, Loop, Track, closed_curve};
+use crate::world::Assets3d;
+use crate::world::prop_pack::{Piece, PropPacks};
+use crate::world::props::Footprint;
+use crate::world::quads::MeshBuilder;
+use crate::world::scenery::{BridgeStyle, Scenery, Side, Span, WallStyle};
+use crate::world::structures::indices;
+use crate::world::terrain::Terrain;
+use crate::world::textures::{
     CARTON, DOLL_BOXES, DOTTED_BOX, GAME_BOX, JIGSAW_BOX, SPACE_BOX, TOY_BOXES, WHITE_BOX,
     WorldTextures,
 };
-use crate::geometry::random01;
-use crate::track::{BASE_ELEVATION, LOOP_WALL, Loop, Track, closed_curve};
+use crate::world::themes::Theme;
+
+/// The inside of a toy store (see [`crate::game::toys`]): the room, with
+/// shelves of boxed toys round its walls and lamps in its ceiling; the
+/// furniture the roads run on (tables, chairs and a tall shelving unit), the
+/// tower a slide winds round, electric trains, castles of plastic bricks,
+/// loops of orange track, mats on the floor and toys about. Heights are
+/// the road's, as [`crate::track::Layout::elevation`]'s: the floor is at 0.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToyStore {
+    /// The corners of the room's floor (x, z): the least and the most.
+    pub room: (Vec2, Vec2),
+    /// How high its ceiling is over the floor (m).
+    pub ceiling: f32,
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub furniture: &'static [Furniture],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub towers: &'static [Tower],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub trains: &'static [Train],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub castles: &'static [Castle],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub loops: &'static [ToyLoop],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub mats: &'static [Mat],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub toys: &'static [Toy],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub bricks: &'static [Bricks],
+    /// Its way in, if it is seen: a front of glass in a wall, the car park
+    /// outside it.
+    #[serde(default)]
+    pub entrance: Option<Entrance>,
+}
+
+/// A shop's way in, in the wall of its room at the greatest z: a front of
+/// glass from `from` to `to` along it (x), sliding doors in it round
+/// `doors` (x), out onto a car park in the daylight (see
+/// `world::shopfront`).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Entrance {
+    pub from: f32,
+    pub to: f32,
+    pub doors: f32,
+}
+
+/// A piece of furniture: a box `size` across (x and z before it is turned
+/// `heading`, as a road's heading), its top `top` over the floor, at
+/// `center` (x, z).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Furniture {
+    pub kind: FurnitureKind,
+    pub center: Vec2,
+    pub size: Vec2,
+    pub heading: f32,
+    pub top: f32,
+    #[serde(deserialize_with = "crate::circuits::data::color")]
+    pub color: Color,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum FurnitureKind {
+    /// A table on four legs: the slot-car track lies on its top.
+    Table,
+    /// A table whose top is a green baseplate of plastic bricks, studded,
+    /// as a diorama's, castles on it.
+    Diorama,
+    /// A chair on four legs, its back on its left side (along x).
+    Chair,
+    /// A tall shelving unit, as down the middle of a shop, its shelves full
+    /// of boxed toys on both sides: the road runs along its top.
+    Shelves,
+}
+
+/// A tower a spiral road winds round, carrying it on brackets: a slide's,
+/// as a fairground's helter-skelter, or Hot Wheels' blue column.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tower {
+    pub kind: TowerKind,
+    pub center: Vec2,
+    pub radius: f32,
+    /// How high its top is over the floor (m): a helter-skelter's eaves,
+    /// under its pointed roof.
+    pub height: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum TowerKind {
+    /// Striped red and white under a pointed roof.
+    HelterSkelter,
+    /// A blue column with a cap.
+    Column,
+}
+
+/// An electric train going round and round its track, a closed curve
+/// through `track` (x, z), on whatever stands under it, `height` over the
+/// floor: a locomotive and `wagons` wagons of `wagon` at `speed` (m/s).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Train {
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
+    pub track: &'static [Vec2],
+    pub height: f32,
+    pub wagon: Wagon,
+    pub wagons: u32,
+    pub speed: f32,
+}
+
+/// What a train's locomotive pulls: Meshy's (see `tools/import_toys.py`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum Wagon {
+    /// A green coach, longer than the locomotive.
+    Coach,
+    /// A red open wagon loaded with crates.
+    Freight,
+}
+
+/// A castle of plastic bricks `size` across (x and z before it is turned
+/// `heading`, its front along +z), standing `base` over the floor: one of
+/// Meshy's, as big as fits; or one a road runs through (see
+/// [`CastleKind::Through`]).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Castle {
+    pub center: Vec2,
+    pub size: Vec2,
+    pub heading: f32,
+    pub base: f32,
+    pub kind: CastleKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum CastleKind {
+    /// Meshy's castle: walls and towers round a keep, its gate on its
+    /// front.
+    Big,
+    /// Meshy's small castle: a round tower under a red roof, its gate on
+    /// its front.
+    Tower,
+    /// Grey bricks with red roofs on its towers built round a road, which
+    /// runs along it (the way `heading` says, as a road's), in under a
+    /// gatehouse at one end and out under another at the other, between its
+    /// walls.
+    Through,
+}
+
+/// A loop of orange toy track on a blue stand, to look at: standing up,
+/// facing along `heading`, `radius` round, `base` over the floor.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToyLoop {
+    pub center: Vec2,
+    pub heading: f32,
+    pub radius: f32,
+    pub base: f32,
+}
+
+/// Something lying on the floor: a mat of foam tiles in bright colours, or
+/// a rug of one colour, `size` across, turned `heading`.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Mat {
+    pub center: Vec2,
+    pub size: Vec2,
+    pub heading: f32,
+    pub kind: MatKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug, serde::Deserialize)]
+pub enum MatKind {
+    Foam,
+    Rug(#[serde(deserialize_with = "crate::circuits::data::color")] Color),
+}
+
+/// A toy standing about, turned `heading` (its front along +z), `base` over
+/// the floor, as big as `scale` says: times the size it was made at, for
+/// one Meshy made (see `tools/import_toys.py`), or times its own size
+/// (about a metre) for one built in code.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Toy {
+    pub kind: ToyKind,
+    pub position: Vec2,
+    pub heading: f32,
+    pub scale: f32,
+    pub base: f32,
+}
+
+/// Something built of plastic bricks as big as the studs of the diorama's
+/// baseplate (see `world::bricks`), standing `base` over the floor at
+/// `position` (x, z), turned `heading` (its front along +z).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bricks {
+    pub kind: BrickKind,
+    pub position: Vec2,
+    pub heading: f32,
+    pub base: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum BrickKind {
+    /// `count` bricks spilled in a heap: most lying flat, a few on their
+    /// sides, some stacked on others.
+    Heap { count: u32 },
+    /// A tower of `count` bricks stacked crosswise, as a child stacks them.
+    Tower { count: u32 },
+    /// A little house `width` studs across its front and `depth` deep, its
+    /// walls `courses` bricks high, a door in its front and windows round
+    /// it, under a roof stepping up to its ridge.
+    House {
+        width: u32,
+        depth: u32,
+        courses: u32,
+    },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum ToyKind {
+    /// A stack of wooden blocks with letters on them.
+    Blocks,
+    /// A beach ball in segments of bright colours.
+    Ball,
+    /// A teddy bear, sitting, a red bow under its chin (Meshy's).
+    Bear,
+    /// A rubber duck (Meshy's).
+    Duck,
+    /// A tin robot standing guard, blue (Meshy's).
+    Robot,
+    /// A spinning top in stripes (Meshy's).
+    Top,
+    /// A biplane hanging from the ceiling on its strings, `base` the height
+    /// of its middle (Meshy's).
+    Plane,
+    /// A toy helicopter hanging from the ceiling, as the biplane (Meshy's).
+    Helicopter,
+    /// A stack of black tyres, as round a racetrack.
+    Tyres,
+    /// A pirate ship, its sails striped red and white (Meshy's).
+    Ship,
+    /// A plush giraffe standing tall (Meshy's).
+    Giraffe,
+    /// A doll's house of three storeys, its front painted in pastel colours
+    /// (Meshy's).
+    Dollhouse,
+    /// A toy fire engine with its ladder (Meshy's).
+    FireTruck,
+    /// A winged mechanical pegasus (Meshy's).
+    Pegasus,
+    /// A monster truck made as a crocodile (Meshy's).
+    CrocCar,
+    /// A garage playset, its storeys stacked up a tower, yellow ramps
+    /// spiralling down its side (Meshy's).
+    Garage,
+    /// A toy railway station, its platform under a canopy along its front
+    /// (Meshy's).
+    Station,
+    /// A toy railway's mountain, a tunnel through it along its front and
+    /// back (Meshy's): a train's track runs through it, along it, its
+    /// middle on its tunnel.
+    TunnelMountain,
+    /// A rocking horse, white with a red saddle (Meshy's).
+    RockingHorse,
+    /// A nutcracker soldier standing guard (Meshy's).
+    Nutcracker,
+    /// A yellow toy dump truck (Meshy's).
+    DumpTruck,
+    /// A play teepee of striped canvas on its poles (Meshy's).
+    Teepee,
+    /// A tyrannosaurus (Meshy's), its head reaching out over the road beside
+    /// it, well over the bikes: the one toy that does.
+    Trex,
+    /// A toy rocket standing on its fins, red and white (Meshy's).
+    Rocket,
+    /// A wooden toy chest, its lid open, full of toys (Meshy's).
+    ToyChest,
+    /// A jack-in-the-box, its clown sprung out of it (Meshy's).
+    JackInBox,
+    /// A xylophone lying on the floor, its bars in the colours of the
+    /// rainbow, its two mallets beside them (Meshy's).
+    Xylophone,
+    /// A giant robot standing guard at the shop's door, as tall as the
+    /// glass beside it is (Meshy's).
+    GiantRobot,
+    /// The shop's checkout counter: its till and card reader on top, sweets
+    /// and drinks on shelves along its front, for those queueing (Meshy's).
+    CheckoutCounter,
+    /// A shopping trolley, red-handled; in a row of them, nested (Meshy's).
+    ShoppingCart,
+    /// A potted plant, a leafy tree in a white pot (Meshy's).
+    PottedPlant,
+}
+
+/// The toy store's own systems: the trains going round.
+pub struct ToysPlugin;
+
+impl Plugin for ToysPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, run_trains);
+    }
+}
+
+impl Theme for ToyStore {
+    /// The furniture, the toy tracks' decks and what carries them, the
+    /// shelves, the castles and the toys standing about, and the shop's
+    /// front, in a few big meshes.
+    fn pieces(
+        &self,
+        track: &Track,
+        scenery: &Scenery,
+        within: Option<Span>,
+        textures: &WorldTextures,
+    ) -> Vec<(Mesh, StandardMaterial)> {
+        let mut pieces = bridge_pieces(track, scenery, self, within);
+        pieces.extend(store_pieces(track, scenery, self, textures));
+        pieces.extend(super::shopfront::pieces(self));
+        pieces
+    }
+
+    /// The room's walls and ceiling, round it all.
+    fn spawn_around(&self, world: &mut ChildSpawnerCommands, assets: &mut Assets3d) {
+        spawn_room(world, self, assets);
+    }
+
+    /// Meshy's toys, and the trains.
+    fn spawn(
+        &self,
+        world: &mut ChildSpawnerCommands,
+        _track: &Track,
+        _terrain: &Terrain,
+        _scenery: &Scenery,
+        assets: &mut Assets3d,
+    ) -> Vec<Footprint> {
+        spawn_trains(world, self, assets);
+        spawn_models(world, self, assets);
+        Vec::new()
+    }
+
+    fn packs() -> &'static [&'static str] {
+        &PACKS
+    }
+}
 
 /// The height over the sea of something `height` over the floor: the
 /// heights of a toy store are the road's, the floor at 0.
@@ -998,7 +1350,7 @@ fn wall_runs(store: &ToyStore) -> Vec<(Vec2, Vec2, Vec2)> {
 
 /// The meshes the shelves are built into: their frames, balls and cages
 /// (`solid`), soft toys (`fabric`) and boxes (`boxes`, textured with the
-/// fronts of [`super::textures::toy_boxes`]).
+/// fronts of `textures::toy_boxes`).
 struct Stock<'a> {
     solid: &'a mut MeshBuilder,
     fabric: &'a mut MeshBuilder,
@@ -1264,7 +1616,7 @@ struct Shelf {
 }
 
 /// What boxes a shelf of boxed toys is stocked with (see [`boxed`]): their fronts (of
-/// [`super::textures::toy_boxes`]), how wide (m), and how tall and how deep
+/// `textures::toy_boxes`), how wide (m), and how tall and how deep
 /// (of the shelf's room and depth) each kind of box is, between the least
 /// and the most; how many of each kind side by side; and how many of every
 /// hundred places in a row are sold out, empty.
@@ -1319,7 +1671,7 @@ fn between((low, high): (f32, f32), t: f32) -> f32 {
     low + (high - low) * t
 }
 
-/// The texture of the front of [`super::textures::toy_boxes`]' design
+/// The texture of the front of `textures::toy_boxes`' design
 /// `design` (its least corner and its size), and of a plain stretch of its
 /// colour, along its foot.
 fn design_uv(design: u32) -> ((Vec2, Vec2), (Vec2, Vec2)) {
@@ -1945,7 +2297,7 @@ fn shelving_unit(stock: &mut Stock, furniture: &Furniture, seed: u32) {
 fn tower(mesh: &mut MeshBuilder, tower: &Tower) {
     let base = Vec3::new(tower.center.x, y(0.0), tower.center.y);
     match tower.kind {
-        super::scenery::TowerKind::HelterSkelter => {
+        TowerKind::HelterSkelter => {
             let bands = (tower.height / 4.0).round().max(1.0);
             cylinder(mesh, base, tower.radius, tower.height, 16, |t| {
                 if (t * bands).floor() as i32 % 2 == 0 {
@@ -1958,7 +2310,7 @@ fn tower(mesh: &mut MeshBuilder, tower: &Tower) {
             cone(mesh, eaves, tower.radius + 3.0, 9.0, 16, SLIDE_YELLOW);
             cylinder(mesh, eaves + Vec3::Y * 9.0, 0.3, 4.0, 6, |_| SLIDE_RED);
         }
-        super::scenery::TowerKind::Column => {
+        TowerKind::Column => {
             cylinder(mesh, base, tower.radius, tower.height, 16, |_| PILLAR_BLUE);
             cylinder(
                 mesh,
@@ -2078,7 +2430,7 @@ fn gatehouses(
 }
 
 /// The blue stand of a loop the bikes ride (see
-/// [`super::landmarks::spawn_ridden_loops`]), as a toy loop's: a post
+/// [`spawn_ridden_loops`](crate::world::landmarks::spawn_ridden_loops)), as a toy loop's: a post
 /// either side of it, beyond its edges (its running surface drifts from the
 /// way in to the way out), up to its middle, on a foot, and a bar across
 /// between them through its middle.
@@ -2416,7 +2768,7 @@ const WALL_BLOCK: f32 = 1.9;
 /// of the lap where the wall is of them, on the road's level, turned a
 /// little this way or that, each with its own letter on its faces.
 ///
-/// [`WallStyle::Blocks`]: super::scenery::WallStyle::Blocks
+/// [`WallStyle::Blocks`]: WallStyle::Blocks
 fn block_walls(mesh: &mut MeshBuilder, track: &Track, scenery: &Scenery) {
     let lap = track.lap_length();
     for index in 0..track.sample_count() {
@@ -2428,16 +2780,15 @@ fn block_walls(mesh: &mut MeshBuilder, track: &Track, scenery: &Scenery) {
         if booster {
             continue;
         }
-        for side in [super::scenery::Side::Left, super::scenery::Side::Right] {
-            if super::road::wall_style(scenery, lap, along, side)
-                != Some(super::scenery::WallStyle::Blocks)
+        for side in [Side::Left, Side::Right] {
+            if crate::world::road::wall_style(scenery, lap, along, side) != Some(WallStyle::Blocks)
             {
                 continue;
             }
             let lateral = side.sign() * (track.wall_at(index) + WALL_BLOCK / 2.0);
             let at = track.surface_point(index, lateral) + Vec3::Y * WALL_BLOCK / 2.0;
             let (_, heading) = track.pose_at(index);
-            let n = index as u32 * 2 + u32::from(side == super::scenery::Side::Left);
+            let n = index as u32 * 2 + u32::from(side == Side::Left);
             let letter = (random01(n * 13) * 16.0) as u32 % 16;
             textured_box(
                 mesh,
@@ -2514,34 +2865,15 @@ const RAIL_TOP: f32 = 0.6;
 
 /// The toys made with Meshy (see `tools/import_toys.py`), in two packs,
 /// each with its atlas and its material: the first one's is full.
-#[derive(Resource)]
-pub struct ToyModels([PropPack; 2]);
+const PACKS: [&str; 2] = ["toys", "toys2"];
 
-impl FromWorld for ToyModels {
-    fn from_world(world: &mut World) -> Self {
-        Self([
-            PropPack::load(
-                world,
-                crate::content::file("models/toys/props.bin"),
-                crate::content::file("models/toys/color.jpg"),
-            ),
-            PropPack::load(
-                world,
-                crate::content::file("models/toys2/props.bin"),
-                crate::content::file("models/toys2/color.jpg"),
-            ),
-        ])
-    }
-}
-
-impl ToyModels {
-    /// Meshy's toy `name`, and the material of the pack it is in.
-    fn piece(&self, name: &str) -> (&Piece, &Handle<StandardMaterial>) {
-        self.0
-            .iter()
-            .find_map(|pack| pack.find(name).map(|piece| (piece, &pack.material)))
-            .unwrap_or_else(|| panic!("no {name} in the toys' packs"))
-    }
+/// Meshy's toy `name`, and the material of the pack it is in.
+fn piece<'a>(packs: &'a PropPacks, name: &str) -> (&'a Piece, &'a Handle<StandardMaterial>) {
+    PACKS
+        .iter()
+        .map(|pack| packs.get(pack))
+        .find_map(|pack| pack.find(name).map(|piece| (piece, &pack.material)))
+        .unwrap_or_else(|| panic!("no {name} in the toys' packs"))
 }
 
 /// Which of Meshy's castles a castle of `kind` is, if it is one: each its
@@ -2581,9 +2913,9 @@ fn fitted(piece: &Piece, size: Vec2, heading: f32, at: Vec2, base: f32) -> Trans
 /// ceiling, its underside as high as it says (its strings are with the rest
 /// of the store, see [`toy`]).
 pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: &mut Assets3d) {
-    let models = assets.toys;
+    let packs = assets.packs;
     let mut spawn = |name: &str, transform: Transform| {
-        let (piece, material) = models.piece(name);
+        let (piece, material) = piece(packs, name);
         world.spawn((
             Mesh3d(piece.mesh.clone()),
             MeshMaterial3d(material.clone()),
@@ -2594,7 +2926,7 @@ pub fn spawn_models(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: 
         let Some(name) = castle_model(castle.kind) else {
             continue;
         };
-        let (piece, _) = models.piece(name);
+        let (piece, _) = piece(packs, name);
         spawn(
             name,
             fitted(
@@ -2626,11 +2958,14 @@ pub fn spawn_trains(world: &mut ChildSpawnerCommands, store: &ToyStore, assets: 
         let path = std::sync::Arc::new(closed_curve(train.track, 1.0));
         let mut behind = 0.0;
         for car in 0..=train.wagons {
-            let (piece, material) = assets.toys.piece(if car == 0 {
-                LOCOMOTIVE
-            } else {
-                wagon_model(train.wagon)
-            });
+            let (piece, material) = piece(
+                assets.packs,
+                if car == 0 {
+                    LOCOMOTIVE
+                } else {
+                    wagon_model(train.wagon)
+                },
+            );
             let length = piece.high.z - piece.low.z;
             world.spawn((
                 Mesh3d(piece.mesh.clone()),
@@ -2689,7 +3024,7 @@ mod tests {
         CIRCUITS
             .iter()
             .filter_map(|circuit| {
-                let store = circuit.scenery.toys.as_ref()?;
+                let store = circuit.scenery.themes.get::<ToyStore>()?;
                 Some((circuit.name, store, Track::new(&circuit.layout)))
             })
             .collect()
@@ -3100,10 +3435,10 @@ mod tests {
     }
 
     /// The corners of the box round what is built of bricks at `built`.
-    fn bricks_bounds(built: &crate::world::scenery::Bricks) -> (Vec3, Vec3) {
+    fn bricks_bounds(built: &Bricks) -> (Vec3, Vec3) {
         let mut mesh = MeshBuilder::default();
         super::super::bricks::build(&mut mesh, built, 0);
-        super::super::prop_pack::bounds(&mesh.build())
+        crate::world::prop_pack::bounds(&mesh.build())
     }
 
     /// The pieces of Meshy's toys in their packs.
@@ -3121,7 +3456,7 @@ mod tests {
             .iter()
             .find(|piece| piece.name == name)
             .unwrap_or_else(|| panic!("no {name} in the pack"));
-        super::super::prop_pack::bounds(&piece.mesh)
+        crate::world::prop_pack::bounds(&piece.mesh)
     }
 
     #[test]
@@ -3144,7 +3479,7 @@ mod tests {
         }
         for piece in &pieces {
             let name = &piece.name;
-            let (low, high) = super::super::prop_pack::bounds(&piece.mesh);
+            let (low, high) = crate::world::prop_pack::bounds(&piece.mesh);
             assert!(low.y.abs() < 1e-3, "{name} stands on the ground");
             assert!((low.x + high.x).abs() < 0.05 * (high.x - low.x), "{name}");
             assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");

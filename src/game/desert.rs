@@ -154,7 +154,7 @@ pub struct Pumpjack {
 
 /// A concrete highway viaduct across the road `along` the lap, the bottom
 /// of its deck `height` metres over the road, from one rock wall into the
-/// other on columns beyond the walls (put a [`Cutting`] on both sides
+/// other on columns beyond the walls (put a [`Cutting`](crate::world::scenery::Cutting) on both sides
 /// first).
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]

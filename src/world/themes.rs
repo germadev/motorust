@@ -30,8 +30,9 @@ use serde::de::{DeserializeOwned, DeserializeSeed, Deserializer, Error, MapAcces
 
 use super::Assets3d;
 use super::props::Footprint;
-use super::scenery::{Scenery, Side};
+use super::scenery::{Scenery, Side, Span};
 use super::terrain::Terrain;
+use super::textures::WorldTextures;
 use crate::track::Track;
 
 /// When a theme's things are put in the world, among the engine's own.
@@ -66,6 +67,28 @@ pub trait Theme: Any + Send + Sync {
     ) -> Vec<Footprint> {
         let _ = (world, track, terrain, scenery, assets);
         Vec::new()
+    }
+
+    /// What it builds of the circuit's structures, worked out with the rest
+    /// of them on the thread that prepares the circuit (of its roads, those
+    /// `within` a stretch of the lap, if only those are wanted): meshes
+    /// each with its material, put in the world with the circuit's first
+    /// part.
+    fn pieces(
+        &self,
+        track: &Track,
+        scenery: &Scenery,
+        within: Option<Span>,
+        textures: &WorldTextures,
+    ) -> Vec<(Mesh, StandardMaterial)> {
+        let _ = (track, scenery, within, textures);
+        Vec::new()
+    }
+
+    /// What it puts round it all with the ground, in the circuit's first
+    /// part (a room's walls and ceiling).
+    fn spawn_around(&self, world: &mut ChildSpawnerCommands, assets: &mut Assets3d) {
+        let _ = (world, assets);
     }
 
     /// Whether the road's wall at `along` (m along a lap `lap` long), on

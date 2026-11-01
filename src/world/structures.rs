@@ -255,7 +255,7 @@ pub fn structure_pieces(
     }
     for bridge in scenery.bridges.iter().filter(|bridge| wanted(&bridge.span)) {
         // A dam's crest is the dam (see `dam`), and a toy track's deck and
-        // supports are the toy store's (see `toys`).
+        // supports are the toy store's theme's (`ToyStore::pieces`).
         if matches!(
             bridge.style,
             BridgeStyle::Dam
@@ -311,10 +311,9 @@ pub fn structure_pieces(
             },
         ));
     }
-    if let Some(store) = &scenery.toys {
-        pieces.extend(super::toys::bridge_pieces(track, scenery, store, within));
-        pieces.extend(super::toys::store_pieces(track, scenery, store, textures));
-        pieces.extend(super::shopfront::pieces(store));
+    // What the circuit's themes build (see `super::themes`).
+    for (_, theme) in scenery.themes.iter() {
+        pieces.extend(theme.pieces(track, scenery, within, textures));
     }
     (pieces, lamps, ground)
 }
@@ -393,7 +392,7 @@ fn passing_over(
 }
 
 /// Los puntos del trazado de un tramo, en orden de carrera.
-pub(super) fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
+pub fn indices(track: &Track, span: Span, lap: f32) -> Vec<usize> {
     let first = track.index_at(span.from);
     let count = (span.length(lap) / track.step_length()).round() as usize;
     (0..=count)

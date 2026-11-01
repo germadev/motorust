@@ -19,7 +19,7 @@ use super::{Circuits, CurrentCircuit, LIST};
 use crate::menu::GameState;
 
 /// Which circuits were read again, by their indices in
-/// [`Circuits`](super::Circuits) (before
+/// [`super::Circuits`] (before
 /// and after: one the list no longer has is among them).
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct CircuitsReloaded(pub Vec<usize>);

@@ -237,8 +237,8 @@ pub enum Soil {
     Lunar,
     /// The floor of a room, indoors: flat boards, with no rock, sand nor
     /// grass; its tunnels are what stands over the road (a table, another
-    /// stretch of the road), which draw nothing of their own (see
-    /// [`ToyStore`]).
+    /// stretch of the road), which draw nothing of their own (the toy
+    /// store's, a theme's).
     Floor,
 }
 
@@ -260,7 +260,7 @@ pub enum SkyStyle {
     Space,
     /// Indoors, under a ceiling: no sky, no sun and no clouds, but the
     /// light of the lamps from overhead, white and warm, softly filling the
-    /// shade, as in a shop (see [`ToyStore`]).
+    /// shade, as in a shop (the toy store's).
     Indoor,
 }
 
@@ -330,7 +330,7 @@ pub enum BridgeStyle {
     Dam,
     /// A slot-car track: its dark plastic with the slots and their rails,
     /// lying on the furniture under it, or carried over the floor on blue
-    /// lattice pillars, between red and white borders (see [`ToyStore`]).
+    /// lattice pillars, between red and white borders (the toy store's).
     SlotTrack,
     /// Hot Wheels' orange track, with its chevrons, on blue pillars, between
     /// its raised edges.
@@ -636,10 +636,6 @@ pub struct Scenery {
     /// Where the granite is of another colour (see [`RockTint`]).
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub rock_tints: &'static [RockTint],
-    /// The inside of a toy store, if the road runs through one: see
-    /// [`ToyStore`].
-    #[serde(default)]
-    pub toys: Option<ToyStore>,
     /// The scenery a game adds of its own, by the names its themes were
     /// registered under (see [`crate::world::themes`]).
     #[serde(default)]
@@ -991,302 +987,6 @@ pub struct BrakeMarker {
 #[serde(deny_unknown_fields)]
 pub struct Portal {
     pub along: f32,
-}
-
-/// The inside of a toy store (see [`crate::world::toys`]): the room, with
-/// shelves of boxed toys round its walls and lamps in its ceiling; the
-/// furniture the roads run on (tables, chairs and a tall shelving unit), the
-/// tower a slide winds round, electric trains, castles of plastic bricks,
-/// loops of orange track, mats on the floor and toys about. Heights are
-/// the road's, as [`crate::track::Layout::elevation`]'s: the floor is at 0.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ToyStore {
-    /// The corners of the room's floor (x, z): the least and the most.
-    pub room: (Vec2, Vec2),
-    /// How high its ceiling is over the floor (m).
-    pub ceiling: f32,
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub furniture: &'static [Furniture],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub towers: &'static [Tower],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub trains: &'static [Train],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub castles: &'static [Castle],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub loops: &'static [ToyLoop],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub mats: &'static [Mat],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub toys: &'static [Toy],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub bricks: &'static [Bricks],
-    /// Its way in, if it is seen: a front of glass in a wall, the car park
-    /// outside it.
-    #[serde(default)]
-    pub entrance: Option<Entrance>,
-}
-
-/// A shop's way in, in the wall of its room at the greatest z: a front of
-/// glass from `from` to `to` along it (x), sliding doors in it round
-/// `doors` (x), out onto a car park in the daylight (see
-/// `world::shopfront`).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Entrance {
-    pub from: f32,
-    pub to: f32,
-    pub doors: f32,
-}
-
-/// A piece of furniture: a box `size` across (x and z before it is turned
-/// `heading`, as a road's heading), its top `top` over the floor, at
-/// `center` (x, z).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Furniture {
-    pub kind: FurnitureKind,
-    pub center: Vec2,
-    pub size: Vec2,
-    pub heading: f32,
-    pub top: f32,
-    #[serde(deserialize_with = "crate::circuits::data::color")]
-    pub color: Color,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum FurnitureKind {
-    /// A table on four legs: the slot-car track lies on its top.
-    Table,
-    /// A table whose top is a green baseplate of plastic bricks, studded,
-    /// as a diorama's, castles on it.
-    Diorama,
-    /// A chair on four legs, its back on its left side (along x).
-    Chair,
-    /// A tall shelving unit, as down the middle of a shop, its shelves full
-    /// of boxed toys on both sides: the road runs along its top.
-    Shelves,
-}
-
-/// A tower a spiral road winds round, carrying it on brackets: a slide's,
-/// as a fairground's helter-skelter, or Hot Wheels' blue column.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Tower {
-    pub kind: TowerKind,
-    pub center: Vec2,
-    pub radius: f32,
-    /// How high its top is over the floor (m): a helter-skelter's eaves,
-    /// under its pointed roof.
-    pub height: f32,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum TowerKind {
-    /// Striped red and white under a pointed roof.
-    HelterSkelter,
-    /// A blue column with a cap.
-    Column,
-}
-
-/// An electric train going round and round its track, a closed curve
-/// through `track` (x, z), on whatever stands under it, `height` over the
-/// floor: a locomotive and `wagons` wagons of `wagon` at `speed` (m/s).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Train {
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
-    pub track: &'static [Vec2],
-    pub height: f32,
-    pub wagon: Wagon,
-    pub wagons: u32,
-    pub speed: f32,
-}
-
-/// What a train's locomotive pulls: Meshy's (see `tools/import_toys.py`).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum Wagon {
-    /// A green coach, longer than the locomotive.
-    Coach,
-    /// A red open wagon loaded with crates.
-    Freight,
-}
-
-/// A castle of plastic bricks `size` across (x and z before it is turned
-/// `heading`, its front along +z), standing `base` over the floor: one of
-/// Meshy's, as big as fits; or one a road runs through (see
-/// [`CastleKind::Through`]).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Castle {
-    pub center: Vec2,
-    pub size: Vec2,
-    pub heading: f32,
-    pub base: f32,
-    pub kind: CastleKind,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum CastleKind {
-    /// Meshy's castle: walls and towers round a keep, its gate on its
-    /// front.
-    Big,
-    /// Meshy's small castle: a round tower under a red roof, its gate on
-    /// its front.
-    Tower,
-    /// Grey bricks with red roofs on its towers built round a road, which
-    /// runs along it (the way `heading` says, as a road's), in under a
-    /// gatehouse at one end and out under another at the other, between its
-    /// walls.
-    Through,
-}
-
-/// A loop of orange toy track on a blue stand, to look at: standing up,
-/// facing along `heading`, `radius` round, `base` over the floor.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ToyLoop {
-    pub center: Vec2,
-    pub heading: f32,
-    pub radius: f32,
-    pub base: f32,
-}
-
-/// Something lying on the floor: a mat of foam tiles in bright colours, or
-/// a rug of one colour, `size` across, turned `heading`.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Mat {
-    pub center: Vec2,
-    pub size: Vec2,
-    pub heading: f32,
-    pub kind: MatKind,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug, Deserialize)]
-pub enum MatKind {
-    Foam,
-    Rug(#[serde(deserialize_with = "crate::circuits::data::color")] Color),
-}
-
-/// A toy standing about, turned `heading` (its front along +z), `base` over
-/// the floor, as big as `scale` says: times the size it was made at, for
-/// one Meshy made (see `tools/import_toys.py`), or times its own size
-/// (about a metre) for one built in code.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Toy {
-    pub kind: ToyKind,
-    pub position: Vec2,
-    pub heading: f32,
-    pub scale: f32,
-    pub base: f32,
-}
-
-/// Something built of plastic bricks as big as the studs of the diorama's
-/// baseplate (see `world::bricks`), standing `base` over the floor at
-/// `position` (x, z), turned `heading` (its front along +z).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Bricks {
-    pub kind: BrickKind,
-    pub position: Vec2,
-    pub heading: f32,
-    pub base: f32,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum BrickKind {
-    /// `count` bricks spilled in a heap: most lying flat, a few on their
-    /// sides, some stacked on others.
-    Heap { count: u32 },
-    /// A tower of `count` bricks stacked crosswise, as a child stacks them.
-    Tower { count: u32 },
-    /// A little house `width` studs across its front and `depth` deep, its
-    /// walls `courses` bricks high, a door in its front and windows round
-    /// it, under a roof stepping up to its ridge.
-    House {
-        width: u32,
-        depth: u32,
-        courses: u32,
-    },
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum ToyKind {
-    /// A stack of wooden blocks with letters on them.
-    Blocks,
-    /// A beach ball in segments of bright colours.
-    Ball,
-    /// A teddy bear, sitting, a red bow under its chin (Meshy's).
-    Bear,
-    /// A rubber duck (Meshy's).
-    Duck,
-    /// A tin robot standing guard, blue (Meshy's).
-    Robot,
-    /// A spinning top in stripes (Meshy's).
-    Top,
-    /// A biplane hanging from the ceiling on its strings, `base` the height
-    /// of its middle (Meshy's).
-    Plane,
-    /// A toy helicopter hanging from the ceiling, as the biplane (Meshy's).
-    Helicopter,
-    /// A stack of black tyres, as round a racetrack.
-    Tyres,
-    /// A pirate ship, its sails striped red and white (Meshy's).
-    Ship,
-    /// A plush giraffe standing tall (Meshy's).
-    Giraffe,
-    /// A doll's house of three storeys, its front painted in pastel colours
-    /// (Meshy's).
-    Dollhouse,
-    /// A toy fire engine with its ladder (Meshy's).
-    FireTruck,
-    /// A winged mechanical pegasus (Meshy's).
-    Pegasus,
-    /// A monster truck made as a crocodile (Meshy's).
-    CrocCar,
-    /// A garage playset, its storeys stacked up a tower, yellow ramps
-    /// spiralling down its side (Meshy's).
-    Garage,
-    /// A toy railway station, its platform under a canopy along its front
-    /// (Meshy's).
-    Station,
-    /// A toy railway's mountain, a tunnel through it along its front and
-    /// back (Meshy's): a train's track runs through it, along it, its
-    /// middle on its tunnel.
-    TunnelMountain,
-    /// A rocking horse, white with a red saddle (Meshy's).
-    RockingHorse,
-    /// A nutcracker soldier standing guard (Meshy's).
-    Nutcracker,
-    /// A yellow toy dump truck (Meshy's).
-    DumpTruck,
-    /// A play teepee of striped canvas on its poles (Meshy's).
-    Teepee,
-    /// A tyrannosaurus (Meshy's), its head reaching out over the road beside
-    /// it, well over the bikes: the one toy that does.
-    Trex,
-    /// A toy rocket standing on its fins, red and white (Meshy's).
-    Rocket,
-    /// A wooden toy chest, its lid open, full of toys (Meshy's).
-    ToyChest,
-    /// A jack-in-the-box, its clown sprung out of it (Meshy's).
-    JackInBox,
-    /// A xylophone lying on the floor, its bars in the colours of the
-    /// rainbow, its two mallets beside them (Meshy's).
-    Xylophone,
-    /// A giant robot standing guard at the shop's door, as tall as the
-    /// glass beside it is (Meshy's).
-    GiantRobot,
-    /// The shop's checkout counter: its till and card reader on top, sweets
-    /// and drinks on shelves along its front, for those queueing (Meshy's).
-    CheckoutCounter,
-    /// A shopping trolley, red-handled; in a row of them, nested (Meshy's).
-    ShoppingCart,
-    /// A potted plant, a leafy tree in a white pot (Meshy's).
-    PottedPlant,
 }
 
 #[cfg(test)]

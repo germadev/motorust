@@ -47,7 +47,7 @@ const CURTAIN_LAYERS: [usize; 2] = [4, 5];
 const ALL_LAYERS: [usize; 6] = [0, MOON_LAYER, EARTH_LAYER, OVERVIEW_LAYER, 4, 5];
 
 /// How high over the road the middle of a portal's ring is (m), and the
-/// radius of its curtain (m), as `super::space` builds them.
+/// radius of its curtain (m), as `super::portals` builds them.
 pub const GATE_HEIGHT: f32 = 4.2;
 pub const CURTAIN_RADIUS: f32 = 10.3;
 /// Near a portal the realm is the side of its curtain one is on: within
@@ -192,7 +192,7 @@ impl Gates {
     }
 }
 
-/// The portals along `track`, as `super::space` puts them, on a split
+/// The portals along `track`, as `super::portals` puts them, on a split
 /// circuit.
 fn gates(track: &Track, scenery: &Scenery) -> Vec<Gate> {
     if !splits(scenery) {

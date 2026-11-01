@@ -15,7 +15,7 @@
 //!
 //! Two ways to have one:
 //!
-//! - [`file`] and [`text`], at once, for what the game needs as it starts
+//! - [`file()`] and [`text`], at once, for what the game needs as it starts
 //!   (the circuits and the roster, the textures, the models, the fonts);
 //! - through Bevy's asset server, from the asset source [`SOURCE`]
 //!   (`content://music/bahia.mp3`, see [`path`]), loaded in the background,
@@ -98,12 +98,12 @@ pub fn file(path: &str) -> &'static [u8] {
     try_file(path).unwrap_or_else(|error| panic!("{error}"))
 }
 
-/// A text file of the pack (a circuit, the roster, an SVG), as [`file`].
+/// A text file of the pack (a circuit, the roster, an SVG), as [`file()`].
 pub fn text(path: &str) -> &'static str {
     try_text(path).unwrap_or_else(|error| panic!("{error}"))
 }
 
-/// A file of the pack, as [`file`], or what is wrong: for what is read
+/// A file of the pack, as [`file()`], or what is wrong: for what is read
 /// again while the game runs (a circuit changed on the disk), where a
 /// mistake is told and the game goes on.
 pub fn try_file(path: &str) -> Result<&'static [u8], String> {

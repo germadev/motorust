@@ -11,11 +11,11 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 
 use bevy::prelude::*;
 
-use super::quads::MeshBuilder;
-use super::scenery::{BrickKind, Bricks, Scenery, Side, WallStyle};
-use super::toys::{runs, y};
+use super::toys::{BrickKind, Bricks, runs, y};
 use crate::geometry::random01;
 use crate::track::Track;
+use crate::world::quads::MeshBuilder;
+use crate::world::scenery::{Scenery, Side, WallStyle};
 
 /// How far apart a brick's studs are (m): as the diorama baseplate's.
 pub const STUD: f32 = 1.2;
@@ -472,7 +472,7 @@ pub fn walls(mesh: &mut MeshBuilder, track: &Track, scenery: &Scenery) {
     for side in [Side::Left, Side::Right] {
         let of_bricks: Vec<usize> = (0..n)
             .filter(|&i| {
-                super::road::wall_style(scenery, lap, i as f32 * step, side)
+                crate::world::road::wall_style(scenery, lap, i as f32 * step, side)
                     == Some(WallStyle::Bricks)
             })
             .collect();
@@ -588,7 +588,7 @@ mod tests {
     fn a_heap_lies_on_the_ground_within_its_reach() {
         let mut mesh = MeshBuilder::default();
         heap(&mut mesh, Vec3::ZERO, 0.4, 16, 3);
-        let (low, high) = super::super::prop_pack::bounds(&mesh.build());
+        let (low, high) = crate::world::prop_pack::bounds(&mesh.build());
         assert!(low.y.abs() < 0.01, "{low}");
         let reach = heap_reach(16) + 4.0 * STUD;
         assert!(Vec2::new(low.x, low.z).length() < reach * 1.42, "{low}");
@@ -602,7 +602,13 @@ mod tests {
         // none of them by an arch over the road.
         let circuit = crate::circuits::CIRCUITS
             .iter()
-            .find(|circuit| circuit.scenery.toys.is_some())
+            .find(|circuit| {
+                circuit
+                    .scenery
+                    .themes
+                    .get::<super::super::toys::ToyStore>()
+                    .is_some()
+            })
             .expect("a toy store");
         let track = Track::new(&circuit.layout);
         let mut mesh = MeshBuilder::default();
@@ -649,7 +655,7 @@ mod tests {
     fn a_house_is_as_big_as_it_says() {
         let mut mesh = MeshBuilder::default();
         house(&mut mesh, Vec3::ZERO, 0.0, 8, 6, 4, 1);
-        let (low, high) = super::super::prop_pack::bounds(&mesh.build());
+        let (low, high) = crate::world::prop_pack::bounds(&mesh.build());
         let (reach, tall) = house_size(8, 6, 4);
         assert!((high.y - tall).abs() < 0.01, "{high} {tall}");
         assert!(low.y.abs() < 0.01);

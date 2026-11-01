@@ -3,7 +3,6 @@
 //! un cielo de verano. Al cambiar de pista se vuelve a construir.
 
 mod boosters;
-mod bricks;
 mod cavern;
 mod dam;
 pub mod detail;
@@ -28,14 +27,12 @@ pub(crate) mod road;
 pub mod scenery;
 mod sea;
 mod shadow_fade;
-mod shopfront;
 mod shoulders;
 pub mod sky;
 pub(crate) mod structures;
 pub mod terrain;
 pub mod textures;
 pub mod themes;
-mod toys;
 mod trees;
 mod tufts;
 pub mod waters;
@@ -116,7 +113,6 @@ impl Plugin for WorldPlugin {
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
             .init_resource::<prop_pack::PropPacks>()
-            .init_resource::<toys::ToyModels>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
             .add_message::<CircuitsReloaded>()
@@ -129,7 +125,6 @@ impl Plugin for WorldPlugin {
                     sky::drift_clouds,
                     sky::light_the_sky,
                     portals::spin_portals,
-                    toys::run_trains,
                     prop_pack::turn_wheels,
                     petals::drift_petals,
                     spawn_prepared_circuit,
@@ -1013,7 +1008,6 @@ struct Builder<'w> {
     circuits: Res<'w, Circuits>,
     textures: Res<'w, textures::WorldTextures>,
     packs: Res<'w, prop_pack::PropPacks>,
-    toy_models: Res<'w, toys::ToyModels>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
     mirror_materials: ResMut<'w, Assets<mirror::MirrorMaterial>>,
@@ -1084,7 +1078,6 @@ fn build(
         textures: &builder.textures,
         packs: &builder.packs,
         flowers: None,
-        toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -1116,9 +1109,10 @@ fn build(
             for (mesh, material) in lakes {
                 world.spawn((Mesh3d(mesh), MeshMaterial3d(material), NotShadowCaster));
             }
-            // Indoors, the room's walls and ceiling round it all.
-            if let Some(store) = &scenery.toys {
-                toys::spawn_room(world, store, &mut assets);
+            // What the themes put round it all (a room's walls and
+            // ceiling, indoors).
+            for (_, theme) in scenery.themes.iter() {
+                theme.spawn_around(world, &mut assets);
             }
             for (mesh, material) in pieces {
                 // What is see-through or glows (light, dust) casts no
@@ -1222,7 +1216,6 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
         textures: &builder.textures,
         packs: &builder.packs,
         flowers: None,
-        toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
         images: &mut builder.images,
@@ -1293,8 +1286,6 @@ pub struct Assets3d<'a> {
     /// The packs of props made with Meshy the themes place (see
     /// [`prop_pack`]).
     pub packs: &'a prop_pack::PropPacks,
-    /// The toys made with Meshy (see [`toys`]).
-    pub toys: &'a toys::ToyModels,
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub images: &'a mut Assets<Image>,

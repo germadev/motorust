@@ -4,11 +4,14 @@
 //! its own, the engine's apart (step 4 of the engine's split,
 //! `ROADMAP.md`); a test keeps it so.
 
+pub mod bricks;
 pub mod desert;
 pub mod japan;
 pub mod middle_earth;
 pub mod mine;
+pub mod shopfront;
 pub mod space;
+pub mod toys;
 
 use bevy::prelude::*;
 
@@ -23,6 +26,7 @@ pub fn register_themes() {
     themes::register::<middle_earth::MiddleEarth>("middle_earth");
     themes::register::<mine::Mine>("mine");
     themes::register::<space::Space>("space");
+    themes::register::<toys::ToyStore>("toys");
 }
 
 /// The game's own systems: its themes' (what moves in them).
@@ -31,7 +35,12 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         register_themes();
-        app.add_plugins((desert::DesertPlugin, mine::MinePlugin, space::SpacePlugin));
+        app.add_plugins((
+            desert::DesertPlugin,
+            mine::MinePlugin,
+            space::SpacePlugin,
+            toys::ToysPlugin,
+        ));
     }
 }
 

@@ -83,10 +83,6 @@ pub fn spawn_props(
         assets,
     );
     super::petals::spawn_petals(world, track, terrain, scenery.petals, assets);
-    if let Some(store) = &scenery.toys {
-        super::toys::spawn_trains(world, store, assets);
-        super::toys::spawn_models(world, store, assets);
-    }
     // The flowers no theme put among its own, clear of all put so far.
     if let Some(flowers) = assets.flowers.take() {
         let meadows = super::flowers::spawn_flowers(

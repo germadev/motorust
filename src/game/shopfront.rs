@@ -17,10 +17,9 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use bevy::prelude::*;
 
-use super::quads::MeshBuilder;
-use super::scenery::{Entrance, ToyStore};
-use super::toys::{ball_of, y};
+use super::toys::{Entrance, ToyStore, ball_of, y};
 use crate::geometry::random01;
+use crate::world::quads::MeshBuilder;
 
 /// How high the glass reaches (m over the floor): the opening in the wall,
 /// the frame's head in it.
@@ -1283,7 +1282,7 @@ mod tests {
         CIRCUITS
             .iter()
             .filter_map(|circuit| {
-                let store = circuit.scenery.toys.as_ref()?;
+                let store = circuit.scenery.themes.get::<ToyStore>()?;
                 Some((circuit.name, store, store.entrance.as_ref()?))
             })
             .collect()

@@ -5,7 +5,7 @@ statues and great trees.
 
 Reads one GLB per prop (a single textured mesh, normalised to a unit box)
 and writes to `assets/models/fellowship/` what the game loads
-(`src/world/middle_earth.rs`), as `tools/import_props.py` does for Ghost
+(`src/game/middle_earth.rs`), as `tools/import_props.py` does for Ghost
 Island's:
 
 - `props.bin`: every prop as a piece named after it, centred on the origin

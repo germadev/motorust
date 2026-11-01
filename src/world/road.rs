@@ -28,7 +28,7 @@ const PAINT_LIFT: f32 = 0.012;
 const CURB_RADIUS: f32 = 130.0;
 
 /// How high a wall stands over the road (m): a plinth by the road lifts a
-/// small prop over it (see [`super::japan`]).
+/// small prop over it (a theme's, see [`super::themes::Theme::opens_wall`]).
 pub const WALL_HEIGHT: f32 = 1.1;
 /// The leaves of a hedge where the grass is as painted.
 const HEDGE: Color = Color::srgb(0.55, 0.85, 0.4);
@@ -548,7 +548,7 @@ fn spawn_toy_tracks(
 
 /// Cómo se cierra la carretera a un lado en un punto de la vuelta, o `None`
 /// si no hay muro (en los túneles, que tienen sus paredes).
-pub(super) fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<WallStyle> {
+pub fn wall_style(scenery: &Scenery, lap: f32, along: f32, side: Side) -> Option<WallStyle> {
     // Indoors, a tunnel is only a stretch under something else: the road
     // has its borders there as anywhere.
     if scenery.soil != Soil::Floor && scenery.tunnels.iter().any(|span| span.contains(along, lap)) {

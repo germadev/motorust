@@ -185,7 +185,7 @@ pub fn spawn_ridden_loops(
         return Vec::new();
     }
     // A toy's (indoors): Hot Wheels' orange track, its edges and the ring
-    // under it of orange plastic, on a blue stand (see `toys`).
+    // under it of orange plastic, on a blue stand (the toy store's theme).
     let asphalt = assets.materials.add(StandardMaterial {
         base_color_texture: Some(if toy {
             assets.textures.orange_track.clone()

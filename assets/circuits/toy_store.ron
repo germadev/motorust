@@ -720,372 +720,375 @@
         water: Sea,
         // No water to mirror anything: the sea lies under the floor.
         cartoon_water: true,
-        toys: Some((
-            room: ((-175.0, -335.0), (380.0, 130.0)),
-            ceiling: 55.0,
-            // In the south wall, the glass ahead of the bikes coming down the east
-            // side onto the train table, along it to the shop's doors, and along
-            // the left of the road round it, close by.
-            entrance: Some((from: 168.0, to: 344.0, doors: 320.0)),
-            furniture: [
-                // The chair the road climbs onto from the floor, its back to the
-                // north.
-                (
-                    kind: Chair,
-                    center: (109.0, -202.0),
-                    size: (24.0, 18.0),
-                    heading: 0.0,
-                    top: 5.1,
-                    color: (0.86, 0.16, 0.12),
-                ),
-                // The first table, two pushed together: esses across the one and a
-                // hairpin onto the other, the floor road running under both
-                // between their legs.
-                (
-                    kind: Table,
-                    center: (280.5, -195.0),
-                    size: (169.0, 70.0),
-                    heading: 0.0,
-                    top: 13.2,
-                    color: (0.24, 0.52, 0.3),
-                ),
-                (
-                    kind: Table,
-                    center: (317.5, -145.5),
-                    size: (95.0, 29.0),
-                    heading: 0.0,
-                    top: 13.2,
-                    color: (0.24, 0.52, 0.3),
-                ),
-                // The diorama, over the start straight, its castles on it.
-                (
-                    kind: Diorama,
-                    center: (70.0, -131.5),
-                    size: (364.0, 67.0),
-                    heading: 0.0,
-                    top: 13.4,
-                    color: (0.86, 0.16, 0.12),
-                ),
-                // The tall shelving unit the road runs along the top of.
-                (
-                    kind: Shelves,
-                    center: (-146.0, -226.0),
-                    size: (20.0, 24.0),
-                    heading: 0.0,
-                    top: 38.6,
-                    color: (0.94, 0.94, 0.92),
-                ),
-                // The train table, the road along it at the shop's doors and the
-                // glass, round beside its train and straight off its edge.
-                (
-                    kind: Table,
-                    center: (207.0, 66.0),
-                    size: (146.0, 108.0),
-                    heading: 0.0,
-                    top: 8.2,
-                    color: (1.0, 0.8, 0.22),
-                ),
-                // A low table of blue sea beside the start straight, a pirate ship
-                // on it.
-                (
-                    kind: Table,
-                    center: (55.0, -55.0),
-                    size: (80.0, 60.0),
-                    heading: 0.0,
-                    top: 4.0,
-                    color: (0.2, 0.5, 0.85),
-                ),
-            ],
-            towers: [
-                (kind: Column, center: (-110.0, -178.0), radius: 8.0, height: 41.0),
-                (kind: HelterSkelter, center: (-116.0, -270.0), radius: 12.0, height: 46.0),
-            ],
-            trains: [
-                // On its rug in the middle of the floor, by the road coming down
-                // the east side: coaches, past a station and through a tunnel, on
-                // a straight there.
-                (
-                    track: [
-                        (158.0, -80.0),
-                        (178.0, -80.0),
-                        (198.0, -80.0),
-                        (218.0, -80.0),
-                        (238.0, -80.0),
-                        (250.0, -65.0),
-                        (238.0, -50.0),
-                        (218.0, -50.0),
-                        (198.0, -50.0),
-                        (178.0, -50.0),
-                        (158.0, -50.0),
-                        (146.0, -65.0),
-                    ],
-                    height: 0.0,
-                    wagon: Coach,
-                    wagons: 4,
-                    speed: 12.0,
-                ),
-                // On the train table, right beside the road along it: wagons of
-                // crates, on an oval reaching out towards the road's walls.
-                (
-                    track: [
-                        (160.0, 60.0),
-                        (190.0, 60.0),
-                        (220.0, 60.0),
-                        (238.0, 60.0),
-                        (249.0, 73.0),
-                        (238.0, 86.0),
-                        (220.0, 86.0),
-                        (190.0, 86.0),
-                        (160.0, 86.0),
-                        (149.0, 73.0),
-                    ],
-                    height: 8.2,
-                    wagon: Freight,
-                    wagons: 4,
-                    speed: 8.0,
-                ),
-            ],
-            castles: [
-                // The castle the way to the left runs through, in at one gate and
-                // out at the other.
-                (
-                    center: (117.3, -129.1),
-                    size: (24.0, 36.0),
-                    heading: 1.5707964,
-                    base: 13.4,
-                    kind: Through,
-                ),
-                // Its gate to the lap.
-                (
-                    center: (-60.0, -114.0),
-                    size: (28.0, 23.0),
-                    heading: 3.1415927,
-                    base: 13.4,
-                    kind: Big,
-                ),
-                // Two towers either side of the lap where it comes onto the
-                // diorama, their gates to it.
-                (center: (240.0, -156.0), size: (7.6, 7.6), heading: 0.0, base: 13.4, kind: Tower),
-                (
-                    center: (240.0, -128.0),
-                    size: (7.6, 7.6),
-                    heading: 3.1415927,
-                    base: 13.4,
-                    kind: Tower,
-                ),
-            ],
-            mats: [
-                (center: (-95.0, 0.0), size: (120.0, 180.0), heading: 0.0, kind: Foam),
-                (
-                    center: (198.0, -65.0),
-                    size: (124.0, 52.0),
-                    heading: 0.0,
-                    kind: Rug((0.45, 0.62, 0.86)),
-                ),
-            ],
-            toys: [
-                // Meshy's, by the road: a tin robot standing by the start straight
-                // and a teddy bear sitting by it, turned to the bikes coming.
-                (kind: Robot, position: (-13.0, -25.0), heading: 1.0, scale: 1.0, base: 0.0),
-                (kind: Bear, position: (-19.0, 35.0), heading: 1.2, scale: 1.0, base: 0.0),
-                // The pirate ship on its sea beside the start straight, its bow to
-                // the start, and a duck afloat by it.
-                (kind: Ship, position: (26.0, -55.0), heading: 0.15, scale: 1.0, base: 4.0),
-                (kind: Duck, position: (50.0, -35.0), heading: -2.2, scale: 1.0, base: 4.0),
-                // A duck and her ducklings by the last straight, going the bikes'
-                // way.
-                (kind: Duck, position: (40.0, 67.0), heading: -1.5707964, scale: 1.0, base: 0.0),
-                (kind: Duck, position: (51.0, 68.0), heading: -1.7707964, scale: 0.6, base: 0.0),
-                (kind: Duck, position: (60.0, 68.0), heading: -1.3207964, scale: 0.6, base: 0.0),
-                // A plush giraffe standing tall south of the north wall's road,
-                // turned to the bikes coming along it; a fire engine at the
-                // north-east corner, facing the road; a crocodile monster truck by
-                // the start straight, facing it as if to race; a doll's house
-                // inside the last bend, its front to the home straight; and a
-                // mechanical pegasus on the first table, by its hairpin.
-                (kind: Giraffe, position: (158.0, -262.0), heading: -2.4, scale: 1.0, base: 0.0),
-                (
-                    kind: FireTruck,
-                    position: (288.0, -260.0),
-                    heading: -1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (kind: CrocCar, position: (-18.0, -85.0), heading: 1.5707964, scale: 1.0, base: 0.0),
-                (kind: Dollhouse, position: (95.0, 55.0), heading: 0.0, scale: 1.0, base: 0.0),
-                (kind: Pegasus, position: (320.0, -178.0), heading: -2.0, scale: 1.0, base: 13.2),
-                // A tyrannosaurus beside the home straight, its head reaching out
-                // over the road, well over the bikes; a rocket by the road to the
-                // chair; a teepee by the start straight; a dump truck by the north
-                // wall's road, facing the bikes coming; a toy chest by the start
-                // straight, its open front to the road.
-                (kind: Trex, position: (45.0, 119.7), heading: 3.1415927, scale: 1.0, base: 0.0),
-                (kind: Rocket, position: (95.0, -183.0), heading: 3.1415927, scale: 1.0, base: 0.0),
-                (kind: Teepee, position: (-19.5, 62.0), heading: 1.5707964, scale: 1.0, base: 0.0),
-                (
-                    kind: DumpTruck,
-                    position: (205.0, -278.0),
-                    heading: -1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (kind: ToyChest, position: (19.0, 22.0), heading: -1.5707964, scale: 1.0, base: 0.0),
-                // A giant robot standing guard inside the shop's door, turned to
-                // the bikes coming down the east side; a jack-in-the-box and a
-                // xylophone on the floor by the start straight.
-                (kind: GiantRobot, position: (354.0, 98.0), heading: -2.6, scale: 1.0, base: 0.0),
-                // By the doors: the checkout counter east of them, its front with
-                // the sweets to the room; a row of trolleys before the glass west of
-                // them, nested; a potted plant at either end of the glass.
-                (
-                    kind: CheckoutCounter,
-                    position: (364.0, 116.0),
-                    heading: 3.1415927,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (
-                    kind: ShoppingCart,
-                    position: (286.0, 123.0),
-                    heading: 1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (
-                    kind: ShoppingCart,
-                    position: (290.5, 123.0),
-                    heading: 1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (
-                    kind: ShoppingCart,
-                    position: (295.0, 123.0),
-                    heading: 1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (kind: PottedPlant, position: (122.0, 121.0), heading: 0.4, scale: 1.0, base: 0.0),
-                (kind: PottedPlant, position: (373.0, 122.0), heading: -0.7, scale: 1.0, base: 0.0),
-                (
-                    kind: JackInBox,
-                    position: (-17.0, -55.0),
-                    heading: 1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (kind: Xylophone, position: (22.0, 2.0), heading: -1.3207964, scale: 1.0, base: 0.0),
-                // The floor train's station, its platform along the track, and
-                // its tunnel through a mountain on the other straight.
-                (kind: Station, position: (198.0, -88.8), heading: 0.0, scale: 1.0, base: 0.0),
-                (
-                    kind: TunnelMountain,
-                    position: (198.0, -50.0),
-                    heading: 1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                // Two nutcrackers on guard either side of the road where it comes
-                // off the slide; a garage playset by the road down the east side;
-                // a rocking horse by the start straight, side on to it.
-                (kind: Nutcracker, position: (-65.0, -313.0), heading: 0.0, scale: 1.0, base: 0.0),
-                (
-                    kind: Nutcracker,
-                    position: (-65.0, -287.0),
-                    heading: 3.1415927,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (
-                    kind: Garage,
-                    position: (298.0, -105.0),
-                    heading: -1.5707964,
-                    scale: 1.0,
-                    base: 0.0,
-                ),
-                (kind: RockingHorse, position: (-19.0, 4.0), heading: 0.0, scale: 1.0, base: 0.0),
-                // Spinning tops on the first table, among its esses.
-                (kind: Top, position: (229.0, -214.0), heading: 0.0, scale: 1.0, base: 13.2),
-                (kind: Top, position: (289.0, -199.0), heading: 1.0, scale: 0.85, base: 13.2),
-                (kind: Top, position: (325.0, -214.0), heading: 2.0, scale: 1.0, base: 13.2),
-                // Hanging from the ceiling over the floor's roads, their
-                // undersides well over the bikes, clear of the high roads: a
-                // biplane over the start straight and another over the road
-                // coming down the east side, each flying the bikes' way, and the
-                // helicopter over the last straight.
-                (kind: Plane, position: (0.0, -45.0), heading: 3.1415927, scale: 1.0, base: 16.0),
-                (kind: Plane, position: (264.0, -55.0), heading: 0.0, scale: 1.0, base: 18.0),
-                (
-                    kind: Helicopter,
-                    position: (90.0, 82.0),
-                    heading: -1.5707964,
-                    scale: 1.0,
-                    base: 20.0,
-                ),
-                // Built in code: blocks, balls and tyres.
-                (kind: Blocks, position: (-60.0, -40.0), heading: 0.3, scale: 6.0, base: 0.0),
-                // In the middle of the last bend.
-                (kind: Blocks, position: (40.0, 40.0), heading: -0.4, scale: 6.0, base: 0.0),
-                (kind: Ball, position: (-120.0, -60.0), heading: 0.0, scale: 8.0, base: 0.0),
-                (kind: Ball, position: (110.0, -5.0), heading: 1.0, scale: 7.0, base: 0.0),
-                // Tyres round the outside of the floor's corners.
-                (kind: Tyres, position: (-20.0, -215.0), heading: 0.8, scale: 3.0, base: 0.0),
-                (kind: Tyres, position: (285.0, -315.0), heading: -0.8, scale: 3.0, base: 0.0),
-                (kind: Tyres, position: (358.0, 106.0), heading: 0.4, scale: 3.0, base: 0.0),
-                (kind: Tyres, position: (-20.0, 100.0), heading: 1.57, scale: 3.0, base: 0.0),
-            ],
-            bricks: [
-                // A village of little houses of bricks on the diorama, round its
-                // castles, turned to the road.
-                (
-                    kind: House(width: 10, depth: 6, courses: 4),
-                    position: (-95.0, -108.0),
-                    heading: 3.1415927,
-                    base: 13.4,
-                ),
-                (
-                    kind: House(width: 10, depth: 6, courses: 4),
-                    position: (-25.0, -110.0),
-                    heading: 3.1415927,
-                    base: 13.4,
-                ),
-                (
-                    kind: House(width: 10, depth: 6, courses: 4),
-                    position: (50.0, -106.0),
-                    heading: 3.1415927,
-                    base: 13.4,
-                ),
-                (
-                    kind: House(width: 10, depth: 6, courses: 4),
-                    position: (82.0, -106.0),
-                    heading: 3.1415927,
-                    base: 13.4,
-                ),
-                (
-                    kind: House(width: 10, depth: 6, courses: 4),
-                    position: (150.0, -106.0),
-                    heading: 3.1415927,
-                    base: 13.4,
-                ),
-                (
-                    kind: House(width: 10, depth: 6, courses: 4),
-                    position: (183.0, -107.0),
-                    heading: 3.1415927,
-                    base: 13.4,
-                ),
-                // Towers of bricks stacked crosswise by the start straight, on the
-                // first table and on the train table.
-                (kind: Tower(count: 9), position: (15.0, -12.0), heading: 0.3, base: 0.0),
-                (kind: Tower(count: 7), position: (300.0, -226.0), heading: 1.1, base: 13.2),
-                (kind: Tower(count: 6), position: (200.0, 73.0), heading: -0.4, base: 8.2),
-                // Heaps of them spilled on the floor by the road: inside the
-                // north-east corner, by the road to the chair, beside the start
-                // straight and by the road down the east side.
-                (kind: Heap(count: 14), position: (242.0, -272.0), heading: 0.0, base: 0.0),
-                (kind: Heap(count: 14), position: (60.0, -180.0), heading: 1.0, base: 0.0),
-                (kind: Heap(count: 14), position: (-26.0, -62.0), heading: 2.0, base: 0.0),
-                (kind: Heap(count: 12), position: (243.0, -10.0), heading: 0.5, base: 0.0),
-            ],
-        )),
+        // The game's own themes (see src/world/themes.rs).
+        themes: {
+            "toys": (
+                room: ((-175.0, -335.0), (380.0, 130.0)),
+                ceiling: 55.0,
+                // In the south wall, the glass ahead of the bikes coming down the east
+                // side onto the train table, along it to the shop's doors, and along
+                // the left of the road round it, close by.
+                entrance: Some((from: 168.0, to: 344.0, doors: 320.0)),
+                furniture: [
+                    // The chair the road climbs onto from the floor, its back to the
+                    // north.
+                    (
+                        kind: Chair,
+                        center: (109.0, -202.0),
+                        size: (24.0, 18.0),
+                        heading: 0.0,
+                        top: 5.1,
+                        color: (0.86, 0.16, 0.12),
+                    ),
+                    // The first table, two pushed together: esses across the one and a
+                    // hairpin onto the other, the floor road running under both
+                    // between their legs.
+                    (
+                        kind: Table,
+                        center: (280.5, -195.0),
+                        size: (169.0, 70.0),
+                        heading: 0.0,
+                        top: 13.2,
+                        color: (0.24, 0.52, 0.3),
+                    ),
+                    (
+                        kind: Table,
+                        center: (317.5, -145.5),
+                        size: (95.0, 29.0),
+                        heading: 0.0,
+                        top: 13.2,
+                        color: (0.24, 0.52, 0.3),
+                    ),
+                    // The diorama, over the start straight, its castles on it.
+                    (
+                        kind: Diorama,
+                        center: (70.0, -131.5),
+                        size: (364.0, 67.0),
+                        heading: 0.0,
+                        top: 13.4,
+                        color: (0.86, 0.16, 0.12),
+                    ),
+                    // The tall shelving unit the road runs along the top of.
+                    (
+                        kind: Shelves,
+                        center: (-146.0, -226.0),
+                        size: (20.0, 24.0),
+                        heading: 0.0,
+                        top: 38.6,
+                        color: (0.94, 0.94, 0.92),
+                    ),
+                    // The train table, the road along it at the shop's doors and the
+                    // glass, round beside its train and straight off its edge.
+                    (
+                        kind: Table,
+                        center: (207.0, 66.0),
+                        size: (146.0, 108.0),
+                        heading: 0.0,
+                        top: 8.2,
+                        color: (1.0, 0.8, 0.22),
+                    ),
+                    // A low table of blue sea beside the start straight, a pirate ship
+                    // on it.
+                    (
+                        kind: Table,
+                        center: (55.0, -55.0),
+                        size: (80.0, 60.0),
+                        heading: 0.0,
+                        top: 4.0,
+                        color: (0.2, 0.5, 0.85),
+                    ),
+                ],
+                towers: [
+                    (kind: Column, center: (-110.0, -178.0), radius: 8.0, height: 41.0),
+                    (kind: HelterSkelter, center: (-116.0, -270.0), radius: 12.0, height: 46.0),
+                ],
+                trains: [
+                    // On its rug in the middle of the floor, by the road coming down
+                    // the east side: coaches, past a station and through a tunnel, on
+                    // a straight there.
+                    (
+                        track: [
+                            (158.0, -80.0),
+                            (178.0, -80.0),
+                            (198.0, -80.0),
+                            (218.0, -80.0),
+                            (238.0, -80.0),
+                            (250.0, -65.0),
+                            (238.0, -50.0),
+                            (218.0, -50.0),
+                            (198.0, -50.0),
+                            (178.0, -50.0),
+                            (158.0, -50.0),
+                            (146.0, -65.0),
+                        ],
+                        height: 0.0,
+                        wagon: Coach,
+                        wagons: 4,
+                        speed: 12.0,
+                    ),
+                    // On the train table, right beside the road along it: wagons of
+                    // crates, on an oval reaching out towards the road's walls.
+                    (
+                        track: [
+                            (160.0, 60.0),
+                            (190.0, 60.0),
+                            (220.0, 60.0),
+                            (238.0, 60.0),
+                            (249.0, 73.0),
+                            (238.0, 86.0),
+                            (220.0, 86.0),
+                            (190.0, 86.0),
+                            (160.0, 86.0),
+                            (149.0, 73.0),
+                        ],
+                        height: 8.2,
+                        wagon: Freight,
+                        wagons: 4,
+                        speed: 8.0,
+                    ),
+                ],
+                castles: [
+                    // The castle the way to the left runs through, in at one gate and
+                    // out at the other.
+                    (
+                        center: (117.3, -129.1),
+                        size: (24.0, 36.0),
+                        heading: 1.5707964,
+                        base: 13.4,
+                        kind: Through,
+                    ),
+                    // Its gate to the lap.
+                    (
+                        center: (-60.0, -114.0),
+                        size: (28.0, 23.0),
+                        heading: 3.1415927,
+                        base: 13.4,
+                        kind: Big,
+                    ),
+                    // Two towers either side of the lap where it comes onto the
+                    // diorama, their gates to it.
+                    (center: (240.0, -156.0), size: (7.6, 7.6), heading: 0.0, base: 13.4, kind: Tower),
+                    (
+                        center: (240.0, -128.0),
+                        size: (7.6, 7.6),
+                        heading: 3.1415927,
+                        base: 13.4,
+                        kind: Tower,
+                    ),
+                ],
+                mats: [
+                    (center: (-95.0, 0.0), size: (120.0, 180.0), heading: 0.0, kind: Foam),
+                    (
+                        center: (198.0, -65.0),
+                        size: (124.0, 52.0),
+                        heading: 0.0,
+                        kind: Rug((0.45, 0.62, 0.86)),
+                    ),
+                ],
+                toys: [
+                    // Meshy's, by the road: a tin robot standing by the start straight
+                    // and a teddy bear sitting by it, turned to the bikes coming.
+                    (kind: Robot, position: (-13.0, -25.0), heading: 1.0, scale: 1.0, base: 0.0),
+                    (kind: Bear, position: (-19.0, 35.0), heading: 1.2, scale: 1.0, base: 0.0),
+                    // The pirate ship on its sea beside the start straight, its bow to
+                    // the start, and a duck afloat by it.
+                    (kind: Ship, position: (26.0, -55.0), heading: 0.15, scale: 1.0, base: 4.0),
+                    (kind: Duck, position: (50.0, -35.0), heading: -2.2, scale: 1.0, base: 4.0),
+                    // A duck and her ducklings by the last straight, going the bikes'
+                    // way.
+                    (kind: Duck, position: (40.0, 67.0), heading: -1.5707964, scale: 1.0, base: 0.0),
+                    (kind: Duck, position: (51.0, 68.0), heading: -1.7707964, scale: 0.6, base: 0.0),
+                    (kind: Duck, position: (60.0, 68.0), heading: -1.3207964, scale: 0.6, base: 0.0),
+                    // A plush giraffe standing tall south of the north wall's road,
+                    // turned to the bikes coming along it; a fire engine at the
+                    // north-east corner, facing the road; a crocodile monster truck by
+                    // the start straight, facing it as if to race; a doll's house
+                    // inside the last bend, its front to the home straight; and a
+                    // mechanical pegasus on the first table, by its hairpin.
+                    (kind: Giraffe, position: (158.0, -262.0), heading: -2.4, scale: 1.0, base: 0.0),
+                    (
+                        kind: FireTruck,
+                        position: (288.0, -260.0),
+                        heading: -1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (kind: CrocCar, position: (-18.0, -85.0), heading: 1.5707964, scale: 1.0, base: 0.0),
+                    (kind: Dollhouse, position: (95.0, 55.0), heading: 0.0, scale: 1.0, base: 0.0),
+                    (kind: Pegasus, position: (320.0, -178.0), heading: -2.0, scale: 1.0, base: 13.2),
+                    // A tyrannosaurus beside the home straight, its head reaching out
+                    // over the road, well over the bikes; a rocket by the road to the
+                    // chair; a teepee by the start straight; a dump truck by the north
+                    // wall's road, facing the bikes coming; a toy chest by the start
+                    // straight, its open front to the road.
+                    (kind: Trex, position: (45.0, 119.7), heading: 3.1415927, scale: 1.0, base: 0.0),
+                    (kind: Rocket, position: (95.0, -183.0), heading: 3.1415927, scale: 1.0, base: 0.0),
+                    (kind: Teepee, position: (-19.5, 62.0), heading: 1.5707964, scale: 1.0, base: 0.0),
+                    (
+                        kind: DumpTruck,
+                        position: (205.0, -278.0),
+                        heading: -1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (kind: ToyChest, position: (19.0, 22.0), heading: -1.5707964, scale: 1.0, base: 0.0),
+                    // A giant robot standing guard inside the shop's door, turned to
+                    // the bikes coming down the east side; a jack-in-the-box and a
+                    // xylophone on the floor by the start straight.
+                    (kind: GiantRobot, position: (354.0, 98.0), heading: -2.6, scale: 1.0, base: 0.0),
+                    // By the doors: the checkout counter east of them, its front with
+                    // the sweets to the room; a row of trolleys before the glass west of
+                    // them, nested; a potted plant at either end of the glass.
+                    (
+                        kind: CheckoutCounter,
+                        position: (364.0, 116.0),
+                        heading: 3.1415927,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (
+                        kind: ShoppingCart,
+                        position: (286.0, 123.0),
+                        heading: 1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (
+                        kind: ShoppingCart,
+                        position: (290.5, 123.0),
+                        heading: 1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (
+                        kind: ShoppingCart,
+                        position: (295.0, 123.0),
+                        heading: 1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (kind: PottedPlant, position: (122.0, 121.0), heading: 0.4, scale: 1.0, base: 0.0),
+                    (kind: PottedPlant, position: (373.0, 122.0), heading: -0.7, scale: 1.0, base: 0.0),
+                    (
+                        kind: JackInBox,
+                        position: (-17.0, -55.0),
+                        heading: 1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (kind: Xylophone, position: (22.0, 2.0), heading: -1.3207964, scale: 1.0, base: 0.0),
+                    // The floor train's station, its platform along the track, and
+                    // its tunnel through a mountain on the other straight.
+                    (kind: Station, position: (198.0, -88.8), heading: 0.0, scale: 1.0, base: 0.0),
+                    (
+                        kind: TunnelMountain,
+                        position: (198.0, -50.0),
+                        heading: 1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    // Two nutcrackers on guard either side of the road where it comes
+                    // off the slide; a garage playset by the road down the east side;
+                    // a rocking horse by the start straight, side on to it.
+                    (kind: Nutcracker, position: (-65.0, -313.0), heading: 0.0, scale: 1.0, base: 0.0),
+                    (
+                        kind: Nutcracker,
+                        position: (-65.0, -287.0),
+                        heading: 3.1415927,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (
+                        kind: Garage,
+                        position: (298.0, -105.0),
+                        heading: -1.5707964,
+                        scale: 1.0,
+                        base: 0.0,
+                    ),
+                    (kind: RockingHorse, position: (-19.0, 4.0), heading: 0.0, scale: 1.0, base: 0.0),
+                    // Spinning tops on the first table, among its esses.
+                    (kind: Top, position: (229.0, -214.0), heading: 0.0, scale: 1.0, base: 13.2),
+                    (kind: Top, position: (289.0, -199.0), heading: 1.0, scale: 0.85, base: 13.2),
+                    (kind: Top, position: (325.0, -214.0), heading: 2.0, scale: 1.0, base: 13.2),
+                    // Hanging from the ceiling over the floor's roads, their
+                    // undersides well over the bikes, clear of the high roads: a
+                    // biplane over the start straight and another over the road
+                    // coming down the east side, each flying the bikes' way, and the
+                    // helicopter over the last straight.
+                    (kind: Plane, position: (0.0, -45.0), heading: 3.1415927, scale: 1.0, base: 16.0),
+                    (kind: Plane, position: (264.0, -55.0), heading: 0.0, scale: 1.0, base: 18.0),
+                    (
+                        kind: Helicopter,
+                        position: (90.0, 82.0),
+                        heading: -1.5707964,
+                        scale: 1.0,
+                        base: 20.0,
+                    ),
+                    // Built in code: blocks, balls and tyres.
+                    (kind: Blocks, position: (-60.0, -40.0), heading: 0.3, scale: 6.0, base: 0.0),
+                    // In the middle of the last bend.
+                    (kind: Blocks, position: (40.0, 40.0), heading: -0.4, scale: 6.0, base: 0.0),
+                    (kind: Ball, position: (-120.0, -60.0), heading: 0.0, scale: 8.0, base: 0.0),
+                    (kind: Ball, position: (110.0, -5.0), heading: 1.0, scale: 7.0, base: 0.0),
+                    // Tyres round the outside of the floor's corners.
+                    (kind: Tyres, position: (-20.0, -215.0), heading: 0.8, scale: 3.0, base: 0.0),
+                    (kind: Tyres, position: (285.0, -315.0), heading: -0.8, scale: 3.0, base: 0.0),
+                    (kind: Tyres, position: (358.0, 106.0), heading: 0.4, scale: 3.0, base: 0.0),
+                    (kind: Tyres, position: (-20.0, 100.0), heading: 1.57, scale: 3.0, base: 0.0),
+                ],
+                bricks: [
+                    // A village of little houses of bricks on the diorama, round its
+                    // castles, turned to the road.
+                    (
+                        kind: House(width: 10, depth: 6, courses: 4),
+                        position: (-95.0, -108.0),
+                        heading: 3.1415927,
+                        base: 13.4,
+                    ),
+                    (
+                        kind: House(width: 10, depth: 6, courses: 4),
+                        position: (-25.0, -110.0),
+                        heading: 3.1415927,
+                        base: 13.4,
+                    ),
+                    (
+                        kind: House(width: 10, depth: 6, courses: 4),
+                        position: (50.0, -106.0),
+                        heading: 3.1415927,
+                        base: 13.4,
+                    ),
+                    (
+                        kind: House(width: 10, depth: 6, courses: 4),
+                        position: (82.0, -106.0),
+                        heading: 3.1415927,
+                        base: 13.4,
+                    ),
+                    (
+                        kind: House(width: 10, depth: 6, courses: 4),
+                        position: (150.0, -106.0),
+                        heading: 3.1415927,
+                        base: 13.4,
+                    ),
+                    (
+                        kind: House(width: 10, depth: 6, courses: 4),
+                        position: (183.0, -107.0),
+                        heading: 3.1415927,
+                        base: 13.4,
+                    ),
+                    // Towers of bricks stacked crosswise by the start straight, on the
+                    // first table and on the train table.
+                    (kind: Tower(count: 9), position: (15.0, -12.0), heading: 0.3, base: 0.0),
+                    (kind: Tower(count: 7), position: (300.0, -226.0), heading: 1.1, base: 13.2),
+                    (kind: Tower(count: 6), position: (200.0, 73.0), heading: -0.4, base: 8.2),
+                    // Heaps of them spilled on the floor by the road: inside the
+                    // north-east corner, by the road to the chair, beside the start
+                    // straight and by the road down the east side.
+                    (kind: Heap(count: 14), position: (242.0, -272.0), heading: 0.0, base: 0.0),
+                    (kind: Heap(count: 14), position: (60.0, -180.0), heading: 1.0, base: 0.0),
+                    (kind: Heap(count: 14), position: (-26.0, -62.0), heading: 2.0, base: 0.0),
+                    (kind: Heap(count: 12), position: (243.0, -10.0), heading: 0.5, base: 0.0),
+                ],
+            ),
+        },
     ),
 )

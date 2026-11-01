@@ -56,7 +56,7 @@ pub struct Japan {
 /// A clearing carpeted with red maple leaves, ringed with low logs, as
 /// under a great maple by a lake: its middle (x, z) and the radius of its
 /// ring of logs (m). Its leaves spill a little past the ring. Lay it on
-/// level ground (a [`Terrace`]).
+/// level ground (a [`Terrace`](crate::world::scenery::Terrace)).
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapleGround {
