@@ -18,8 +18,8 @@
 //! - what the game adds of its own to them by the name of a function in
 //!   Rust, in [`super::terrain_function`] (a volcano's gullies);
 //! - a song by the name of its MP3 in `assets/music/` (`song: (file:
-//!   "bahia.mp3", ...)`), loaded from the content pack (see
-//!   [`crate::content`]) when it plays.
+//!   "bahia.mp3", ...)`, none if left out), loaded from the content pack
+//!   (see [`crate::content`]) when it plays.
 //!
 //! What a file leaves out of the scenery is not there (no tunnels, no
 //! bridges, ...). A file giving a field the game does not know fails.
@@ -134,30 +134,44 @@ fn named(name: &str) -> Result<fn(Vec2) -> f32, String> {
     super::terrain_function(name).ok_or_else(|| format!("no terrain function called `{name}`"))
 }
 
-/// A song, its MP3 by the name of its file in `assets/music/`.
-pub fn song<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Song, D::Error> {
-    #[derive(serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct File {
-        file: String,
-        length: f32,
-        loudness: f32,
+/// How a file writes a [`Song`]: its MP3 by the name of its file in
+/// `assets/music/`, how long it lasts and how loud it is.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SongFile {
+    file: String,
+    length: f32,
+    loudness: f32,
+}
+
+impl TryFrom<SongFile> for Song {
+    type Error = String;
+
+    fn try_from(
+        SongFile {
+            file,
+            length,
+            loudness,
+        }: SongFile,
+    ) -> Result<Self, String> {
+        if file.contains(['/', '\\']) || !file.ends_with(".mp3") {
+            return Err(format!(
+                "`{file}` is not the name of an MP3 in assets/music/"
+            ));
+        }
+        Ok(Song {
+            file: String::leak(format!("music/{file}")),
+            length,
+            loudness,
+        })
     }
-    let File {
-        file,
-        length,
-        loudness,
-    } = File::deserialize(deserializer)?;
-    if file.contains(['/', '\\']) || !file.ends_with(".mp3") {
-        return Err(D::Error::custom(format!(
-            "`{file}` is not the name of an MP3 in assets/music/"
-        )));
-    }
-    Ok(Song {
-        file: String::leak(format!("music/{file}")),
-        length,
-        loudness,
-    })
+}
+
+/// A song a file may leave out, written as itself when it is there (a
+/// circuit's: the engine runs a circuit with none).
+pub fn some_song<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Song>, D::Error> {
+    let file = SongFile::deserialize(deserializer)?;
+    Song::try_from(file).map(Some).map_err(D::Error::custom)
 }
 
 /// How a file writes a [`Span`].

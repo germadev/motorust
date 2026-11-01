@@ -839,7 +839,8 @@ fn machine_lines(
     settings: &Settings,
 ) -> Vec<String> {
     let mut lines = vec![format!(
-        "motorust {} benchmark on {}",
+        "{} {} benchmark on {}",
+        crate::game_info::info().folder,
         crate::BUILD,
         if bench.machine.is_empty() {
             "this machine"

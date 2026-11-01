@@ -2348,6 +2348,18 @@ mod tests {
         assert!(parse(livery).err().unwrap().contains("nowhere"));
         let unknown = changed("design:", "model:");
         assert!(parse(unknown).err().unwrap().contains("model"));
+        // A model by a folder with none in it, or not a folder.
+        let nowhere = changed("design: Model(\"shogun\")", "design: Model(\"nowhere\")");
+        let error = parse(nowhere).map(|entries| entries.len());
+        assert!(
+            error
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("models/nowhere/model.ron")),
+            "{error:?}"
+        );
+        let path = changed("design: Model(\"shogun\")", "design: Model(\"../shogun\")");
+        assert!(parse(path).err().unwrap().contains("../shogun"));
     }
 
     const DT: f32 = 1.0 / 120.0;

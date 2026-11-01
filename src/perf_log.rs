@@ -461,7 +461,7 @@ pub(crate) fn folder() -> Option<PathBuf> {
             None => var("HOME")?.join(".config"),
         }
     };
-    Some(base.join("motorust").join("logs"))
+    Some(base.join(crate::game_info::info().folder).join("logs"))
 }
 
 impl PerfLog {
@@ -519,7 +519,8 @@ impl PerfLog {
             };
             let _ = writeln!(
                 file,
-                "# motorust {} perf log, unix time {since}",
+                "# {} {} perf log, unix time {since}",
+                crate::game_info::info().folder,
                 crate::BUILD
             );
             let _ = writeln!(file, "# {}", heading());

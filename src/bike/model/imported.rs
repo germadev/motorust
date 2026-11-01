@@ -1,6 +1,8 @@
 //! Modelos 3D importados: las motos y sus pilotos hechos con Meshy, ya
-//! preparados para el juego por `tools/import_models.py` e incrustados en el
-//! ejecutable.
+//! preparados para el juego por `tools/import_models.py`, each in its folder
+//! of `assets/models/` in the content pack, its measures in its
+//! `model.ron`. The roster names one by its folder (`design:
+//! Model("shogun")`, see [`super::Design`]).
 //!
 //! El script deja cada moto en cuatro piezas (chasis, dirección y ruedas) en
 //! el espacio de la moto, más las bocas de sus escapes, y su piloto con sus
@@ -21,17 +23,47 @@ use super::{Geometry, Mount, Parts, tyre};
 use crate::world::generate_mipmaps;
 
 /// Una moto de Meshy ya preparada: sus cuatro piezas, sus texturas, su
-/// piloto y sus medidas.
-pub(super) struct Model {
+/// piloto y sus medidas. Read from its folder's `model.ron` the first time
+/// it is named ([`model`]), and kept for as long as the game runs.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Model {
     pub geometry: Geometry,
     /// Si la horquilla y el manillar giran con la dirección. En las motos con
     /// la horquilla soldada al carenado no se pueden separar, y no giran.
+    #[serde(default = "turns")]
     pub steers: bool,
+    /// The slicks it wears.
+    #[serde(default)]
+    pub tyres: tyre::Compound,
     /// Its folder in `assets/models/`, in the content pack.
+    #[serde(skip)]
     folder: &'static str,
+    /// Its place among the models named so far (see [`models`]).
+    #[serde(skip)]
+    index: usize,
 }
 
+fn turns() -> bool {
+    true
+}
+
+/// Each model is read once, so two names of the same folder are the same
+/// model.
+impl PartialEq for Model {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+
+impl Eq for Model {}
+
 impl Model {
+    /// Its place among the models named so far, in the order they were.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
     /// A file of its folder, from the content pack.
     fn file(&self, name: &str) -> &'static [u8] {
         crate::content::file(&format!("models/{}/{name}", self.folder))
@@ -62,145 +94,37 @@ impl Model {
     }
 }
 
-/// Un modelo de `assets/models/CARPETA/`, sus ficheros en el paquete de
-/// contenido ([`crate::content`]).
-macro_rules! model {
-    ($folder:literal, $geometry:expr) => {
-        model!($folder, $geometry, true)
-    };
-    ($folder:literal, $geometry:expr, $steers:expr) => {
-        Model {
-            geometry: $geometry,
-            steers: $steers,
-            folder: $folder,
-        }
-    };
+/// The models named so far, in the order they were.
+static MODELS: std::sync::Mutex<Vec<&'static Model>> = std::sync::Mutex::new(Vec::new());
+
+/// The model in `assets/models/FOLDER/`, read from its `model.ron` the
+/// first time it is named, the same one after; or what is wrong.
+pub fn model(folder: &str) -> Result<&'static Model, String> {
+    let mut models = MODELS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(&model) = models.iter().find(|model| model.folder == folder) {
+        return Ok(model);
+    }
+    if folder.is_empty() || folder.contains(['/', '\\', '.']) {
+        return Err(format!("`{folder}` is not a folder of assets/models/"));
+    }
+    let path = format!("models/{folder}/model.ron");
+    let mut model: Model = crate::circuits::data::parse(&path, crate::content::try_text(&path)?)?;
+    model.folder = String::leak(folder.to_string());
+    model.index = models.len();
+    let model: &'static Model = Box::leak(Box::new(model));
+    models.push(model);
+    Ok(model)
 }
 
-// Medidas sacadas por `tools/import_models.py`. Las de la Shogun TZ se midieron a
-// mano sobre el modelo y el script las usa de referencia para las demás.
-
-/// Shogun TZ, azul y blanca.
-pub(super) static SHOGUN: Model = model!(
-    "shogun",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.2826, -0.70),
-        rear_axle: Vec3::new(0.0, 0.313, 0.68),
-        front_radius: 0.2882,
-        rear_radius: 0.313,
-        steering_head: Vec3::new(0.0, 0.8883, -0.423),
-        grip: Vec3::new(0.33, 0.79, -0.36),
-        peg: Vec3::new(0.16, 0.36, 0.27),
-        seat: Vec3::new(0.0, 0.91, 0.2),
-    }
-);
-
-/// Kraken RS, verde.
-pub(super) static KRAKEN: Model = model!(
-    "kraken",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.2871, -0.7),
-        rear_axle: Vec3::new(0.0, 0.3129, 0.68),
-        front_radius: 0.2927,
-        rear_radius: 0.3099,
-        steering_head: Vec3::new(0.0, 0.92, -0.4326),
-        grip: Vec3::new(0.2913, 0.8336, -0.3921),
-        peg: Vec3::new(0.16, 0.3798, 0.245),
-        seat: Vec3::new(0.0, 0.9298, 0.175),
-    }
-);
-
-/// Falcon KRZ, roja, azul y blanca.
-pub(super) static FALCON: Model = model!(
-    "falcon",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.2923, -0.7),
-        rear_axle: Vec3::new(0.0, 0.3324, 0.68),
-        front_radius: 0.2953,
-        rear_radius: 0.3294,
-        steering_head: Vec3::new(0.0, 0.9637, -0.4209),
-        grip: Vec3::new(0.2656, 0.83, -0.391),
-        peg: Vec3::new(0.16, 0.4183, 0.27),
-        seat: Vec3::new(0.0, 0.9683, 0.2),
-    }
-);
-
-/// Stiletto V4, roja.
-pub(super) static STILETTO: Model = model!(
-    "stiletto",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.2837, -0.7),
-        rear_axle: Vec3::new(0.0, 0.3305, 0.68),
-        front_radius: 0.2929,
-        rear_radius: 0.3173,
-        steering_head: Vec3::new(0.0, 0.9508, -0.4631),
-        grip: Vec3::new(0.2548, 0.8416, -0.447),
-        peg: Vec3::new(0.16, 0.4206, 0.27),
-        seat: Vec3::new(0.0, 0.9706, 0.2),
-    }
-);
-
-/// Legend 88, blanca y roja. Su horquilla viene soldada al carenado: la
-/// dirección no gira.
-pub(super) static LEGEND: Model = model!(
-    "legend",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.2866, -0.7),
-        rear_axle: Vec3::new(0.0, 0.3113, 0.68),
-        front_radius: 0.2866,
-        rear_radius: 0.3083,
-        steering_head: Vec3::new(0.0, 0.8895, -0.4316),
-        grip: Vec3::new(0.2759, 0.8466, -0.4571),
-        peg: Vec3::new(0.16, 0.3689, 0.245),
-        seat: Vec3::new(0.0, 0.9189, 0.175),
-    },
-    false
-);
-
-/// Cobra XT, naranja y negra.
-pub(super) static COBRA: Model = model!(
-    "cobra",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.281, -0.7),
-        rear_axle: Vec3::new(0.0, 0.3063, 0.68),
-        front_radius: 0.2901,
-        rear_radius: 0.3063,
-        steering_head: Vec3::new(0.0, 0.8891, -0.3867),
-        grip: Vec3::new(0.2891, 0.8138, -0.3693),
-        peg: Vec3::new(0.16, 0.3236, 0.295),
-        seat: Vec3::new(0.0, 0.8736, 0.225),
-    }
-);
-
-/// Ronin YS, azul y negra.
-pub(super) static RONIN: Model = model!(
-    "ronin",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.2809, -0.7),
-        rear_axle: Vec3::new(0.0, 0.3107, 0.68),
-        front_radius: 0.2855,
-        rear_radius: 0.3097,
-        steering_head: Vec3::new(0.0, 0.8746, -0.4629),
-        grip: Vec3::new(0.2643, 0.7959, -0.4458),
-        peg: Vec3::new(0.16, 0.3693, 0.27),
-        seat: Vec3::new(0.0, 0.9193, 0.2),
-    }
-);
-
-/// Azura RZ, amarilla.
-pub(super) static AZURA: Model = model!(
-    "azura",
-    Geometry {
-        front_axle: Vec3::new(0.0, 0.2966, -0.7),
-        rear_axle: Vec3::new(0.0, 0.3082, 0.68),
-        front_radius: 0.2936,
-        rear_radius: 0.3082,
-        steering_head: Vec3::new(0.0, 0.9079, -0.41),
-        grip: Vec3::new(0.29, 0.8285, -0.3881),
-        peg: Vec3::new(0.16, 0.3682, 0.22),
-        seat: Vec3::new(0.0, 0.9182, 0.15),
-    }
-);
+/// Every model named so far, in the order they were (their [`Model::index`]).
+pub fn models() -> Vec<&'static Model> {
+    MODELS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
 
 /// Una malla de un paquete, con su nombre.
 pub(crate) struct PackedMesh {
@@ -474,13 +398,31 @@ pub(super) fn build(parts: &mut Parts, model: &Model, materials: &Materials) {
 mod tests {
     use super::*;
 
-    const MODELS: [&Model; 8] = [
-        &SHOGUN, &KRAKEN, &FALCON, &STILETTO, &AZURA, &LEGEND, &COBRA, &RONIN,
-    ];
+    #[test]
+    fn a_model_is_read_from_its_folder_once() {
+        let shogun = model("shogun").unwrap();
+        assert!(std::ptr::eq(shogun, model("shogun").unwrap()), "once");
+        assert_eq!(shogun.geometry.rear_axle, Vec3::new(0.0, 0.313, 0.68));
+        assert!(shogun.steers);
+        assert_eq!(shogun.tyres, tyre::Compound::Medium);
+        let legend = model("legend").unwrap();
+        assert!(!legend.steers, "its fork welded to the fairing");
+        assert_eq!(legend.tyres, tyre::Compound::Hard);
+        assert_ne!(shogun, legend);
+        assert!(models().contains(&shogun) && models().contains(&legend));
+    }
+
+    /// The roster's models.
+    fn roster_models() -> Vec<&'static Model> {
+        super::super::designs::every()
+            .into_iter()
+            .filter_map(super::super::Design::model)
+            .collect()
+    }
 
     #[test]
     fn bikes_have_their_parts_and_wheels_on_the_ground() {
-        for model in MODELS {
+        for model in roster_models() {
             let pack = read(model.bike());
             let names: Vec<&str> = pack.meshes.iter().map(|m| m.name.as_str()).collect();
             assert_eq!(
@@ -521,7 +463,7 @@ mod tests {
 
     #[test]
     fn exhausts_open_at_the_back_of_the_silencers() {
-        for model in MODELS {
+        for model in roster_models() {
             let pack = read(model.bike());
             let exhaust = &pack.meshes[4].mesh;
             let Some(VertexAttributeValues::Float32x3(positions)) =
@@ -551,7 +493,7 @@ mod tests {
 
     #[test]
     fn pilots_have_a_rigged_body() {
-        for model in MODELS {
+        for model in roster_models() {
             let pack = read(model.pilot());
             assert_eq!(pack.meshes.len(), 1);
             assert!(

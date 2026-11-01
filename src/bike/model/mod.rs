@@ -51,7 +51,8 @@ pub const TAIL: f32 = REAR_AXLE.z + WHEEL_RADIUS;
 
 /// Medidas de una moto que usan las animaciones: dónde están los ejes y la
 /// pipa de la dirección, cuánto miden las ruedas y dónde apoya el piloto.
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Geometry {
     pub front_axle: Vec3,
     pub rear_axle: Vec3,
@@ -292,7 +293,7 @@ pub struct BikeBlueprint {
     running_gear: Vec<Part>,
     /// Piezas rígidas del piloto hecho por código: casco, joroba y botas.
     rider_parts: Vec<Part>,
-    /// Carrocerías, en el orden de [`Design::ALL`].
+    /// Carrocerías, en el orden de [`Design::all`] ([`Design::index`]).
     bodies: Vec<Body>,
     /// Cubo de 1 m y esfera de 1 m de diámetro, que se escalan a cada pieza.
     cube: Handle<Mesh>,
@@ -321,8 +322,12 @@ impl FromWorld for BikeBlueprint {
                     .add(material)
             })
             .collect();
-        let mut imports: Vec<_> = Design::ALL
-            .into_iter()
+        // Every design: the roster read first, which names the models.
+        world.init_resource::<crate::bike::Roster>();
+        let designs = Design::all();
+        let mut imports: Vec<_> = designs
+            .iter()
+            .copied()
             .map(|design| {
                 design.model().map(|model| {
                     let body =
@@ -356,7 +361,7 @@ impl FromWorld for BikeBlueprint {
         let running_gear = std::mem::take(&mut parts.list);
         rider::build_rigid_parts(&mut parts);
         let rider_parts = std::mem::take(&mut parts.list);
-        let bodies = Design::ALL
+        let bodies = designs
             .into_iter()
             .zip(imports.iter_mut())
             .map(|(design, import)| {
@@ -1077,7 +1082,7 @@ mod tests {
 
     #[test]
     fn every_bike_reaches_no_further_than_its_nose_and_tail() {
-        for design in Design::ALL {
+        for design in designs::every() {
             let geometry = design.model().map_or(STANDARD, |model| model.geometry);
             let front = -geometry.front_axle.z + geometry.front_radius;
             let back = geometry.rear_axle.z + geometry.rear_radius;
@@ -1113,7 +1118,7 @@ mod tests {
 
     #[test]
     fn plates_face_outwards() {
-        for plate in Design::ALL.into_iter().flat_map(designs::plates) {
+        for plate in designs::every().into_iter().flat_map(designs::plates) {
             let normal = plate.frame.rotation * Vec3::Z;
             let outwards = plate.frame.translation * Vec3::new(1.0, 0.0, 1.0);
             assert!(normal.dot(outwards) > 0.0);

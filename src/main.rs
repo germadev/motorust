@@ -12,6 +12,7 @@ mod circuits;
 mod content;
 mod curves_hud;
 mod debug_start;
+mod game_info;
 mod gamepads;
 mod geometry;
 mod hud;
@@ -79,16 +80,20 @@ pub const BUILD: &str = concat!(
 fn init_crash_handler() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        // What the game is called, if it was read before it fell.
+        let (title, folder) = game_info::read_already()
+            .map_or(("The game", "game"), |game| (game.title, game.folder));
+        let report = format!("{folder}-crash.log");
         let msg = format!(
-            "Motorust {BUILD} se ha cerrado por un error:\n\n{info}\n\nSe ha guardado un informe en motorust-crash.log."
+            "{title} {BUILD} se ha cerrado por un error:\n\n{info}\n\nSe ha guardado un informe en {report}."
         );
-        let _ = std::fs::write("motorust-crash.log", &msg);
+        let _ = std::fs::write(&report, &msg);
 
         #[cfg(windows)]
         {
             if let Ok(appdata) = std::env::var("APPDATA") {
                 let path = std::path::PathBuf::from(appdata)
-                    .join("motorust")
+                    .join(folder)
                     .join("crash.log");
                 if let Some(parent) = path.parent() {
                     let _ = std::fs::create_dir_all(parent);
@@ -99,7 +104,7 @@ fn init_crash_handler() {
             use std::ffi::OsStr;
             use std::os::windows::ffi::OsStrExt;
 
-            let title: Vec<u16> = OsStr::new("Motorust - Error")
+            let title: Vec<u16> = OsStr::new(&format!("{title} - Error"))
                 .encode_wide()
                 .chain(Some(0))
                 .collect();
@@ -147,6 +152,8 @@ fn main() {
     #[cfg(target_os = "macos")]
     latency::begin();
 
+    // What the game is called (its folder holds the settings), read now.
+    game_info::info();
     // Los ajustes guardados deciden cómo se abre la ventana.
     let settings = settings::Settings::load();
     // The benchmark rides the tracks on its own, with the player's settings

@@ -682,19 +682,16 @@ mod tests {
     use super::super::MAX_LOOK;
     use super::*;
 
-    const MODELS: [&Model; 8] = [
-        &imported::SHOGUN,
-        &imported::KRAKEN,
-        &imported::FALCON,
-        &imported::STILETTO,
-        &imported::AZURA,
-        &imported::LEGEND,
-        &imported::COBRA,
-        &imported::RONIN,
-    ];
+    /// The roster's models (the first, the Shogun, the measures' reference).
+    fn models() -> Vec<&'static Model> {
+        super::super::designs::every()
+            .into_iter()
+            .filter_map(Design::model)
+            .collect()
+    }
 
     fn skeleton() -> Skeleton {
-        skeleton_of(&imported::SHOGUN)
+        skeleton_of(models()[0])
     }
 
     fn skeleton_of(model: &Model) -> Skeleton {
@@ -702,7 +699,7 @@ mod tests {
     }
 
     fn stance() -> Stance {
-        stance_on(&imported::SHOGUN)
+        stance_on(models()[0])
     }
 
     fn stance_on(model: &Model) -> Stance {
@@ -726,7 +723,7 @@ mod tests {
 
     #[test]
     fn hands_reach_the_grips_and_feet_the_pegs_on_every_bike() {
-        for model in MODELS {
+        for model in models() {
             let skeleton = skeleton_of(model);
             for (hang, look, sit_up, tuck) in [
                 (0.0, 0.0, 0.0, 0.0),
@@ -749,7 +746,7 @@ mod tests {
 
     #[test]
     fn right_foot_reaches_the_ground_when_stopped() {
-        for model in MODELS {
+        for model in models() {
             let skeleton = skeleton_of(model);
             let geometry = model.geometry;
             let foot_ground = Vec3::new(0.38, 0.19, geometry.seat.z);

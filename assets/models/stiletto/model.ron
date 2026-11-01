@@ -1,0 +1,20 @@
+// The Stiletto V4, red.
+// Made with Meshy and prepared by tools/import_models.py, which measured
+// it: where its axles, steering head, grips, pegs and seat are (m, in the
+// bike's space) and how big its wheels are (the Shogun's by hand, the
+// script's reference for the others); whether its fork and bars turn with
+// the steering; and the slicks it wears (Soft, Medium or Hard).
+(
+    geometry: (
+        front_axle: (0.0, 0.2837, -0.7),
+        rear_axle: (0.0, 0.3305, 0.68),
+        front_radius: 0.2929,
+        rear_radius: 0.3173,
+        steering_head: (0.0, 0.9508, -0.4631),
+        grip: (0.2548, 0.8416, -0.447),
+        peg: (0.16, 0.4206, 0.27),
+        seat: (0.0, 0.9706, 0.2),
+    ),
+    steers: true,
+    tyres: Soft,
+)

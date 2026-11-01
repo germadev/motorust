@@ -15,7 +15,11 @@ use super::{Mount, Paint, Parts, Plate, REAR_AXLE, WHEEL_RADIUS, plate};
 use crate::shapes::{Section, section};
 
 /// Forma de la carrocería de una moto.
+///
+/// A file (the roster) names a design built in code by its name, `Afilada`,
+/// and a model by its folder in `assets/models/`, `Model("shogun")`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(try_from = "DesignFile")]
 pub enum Design {
     /// Morro afilado con faros rasgados en los costados, retrovisores en la
     /// cúpula y escape corto junto a la rueda.
@@ -28,54 +32,77 @@ pub enum Design {
     /// Faro central en rombo, quilla oscura, retrovisores y un escape grande
     /// y hexagonal.
     Rombo,
-    /// Modelos 3D hechos con Meshy a partir de las láminas, cada uno con su
-    /// piloto (ver `imported`): la Shogun TZ azul y blanca, la Kraken RS verde, la
-    /// Falcon KRZ roja, azul y blanca, la Stiletto V4 roja, la Azura RZ amarilla, la
-    /// Legend 88 blanca y roja, la Cobra XT naranja y la Ronin YS azul.
-    Shogun,
-    Kraken,
-    Falcon,
-    Stiletto,
-    Azura,
-    Legend,
-    Cobra,
-    Ronin,
+    /// A model made elsewhere (with Meshy), with its own rider (see
+    /// [`imported`]).
+    Model(&'static Model),
+}
+
+/// How a file writes a [`Design`].
+#[derive(serde::Deserialize)]
+enum DesignFile {
+    Afilada,
+    Escudo,
+    Alerones,
+    Rombo,
+    Model(String),
+}
+
+impl TryFrom<DesignFile> for Design {
+    type Error = String;
+
+    fn try_from(file: DesignFile) -> Result<Self, String> {
+        Ok(match file {
+            DesignFile::Afilada => Design::Afilada,
+            DesignFile::Escudo => Design::Escudo,
+            DesignFile::Alerones => Design::Alerones,
+            DesignFile::Rombo => Design::Rombo,
+            DesignFile::Model(folder) => Design::Model(imported::model(&folder)?),
+        })
+    }
 }
 
 impl Design {
-    pub const ALL: [Design; 12] = [
+    /// The designs built in code.
+    pub const BUILT_IN_CODE: [Design; 4] = [
         Design::Afilada,
         Design::Escudo,
         Design::Alerones,
         Design::Rombo,
-        Design::Shogun,
-        Design::Kraken,
-        Design::Falcon,
-        Design::Stiletto,
-        Design::Azura,
-        Design::Legend,
-        Design::Cobra,
-        Design::Ronin,
     ];
 
-    pub fn index(self) -> usize {
-        self as usize
+    /// Every design: those built in code, then the models named so far (by
+    /// the roster), in the order of [`Design::index`].
+    pub fn all() -> Vec<Design> {
+        Self::BUILT_IN_CODE
+            .into_iter()
+            .chain(imported::models().into_iter().map(Design::Model))
+            .collect()
     }
 
-    /// El modelo de Meshy de los diseños importados.
-    pub(super) fn model(self) -> Option<&'static Model> {
+    pub fn index(self) -> usize {
         match self {
-            Design::Afilada | Design::Escudo | Design::Alerones | Design::Rombo => None,
-            Design::Shogun => Some(&imported::SHOGUN),
-            Design::Kraken => Some(&imported::KRAKEN),
-            Design::Falcon => Some(&imported::FALCON),
-            Design::Stiletto => Some(&imported::STILETTO),
-            Design::Azura => Some(&imported::AZURA),
-            Design::Legend => Some(&imported::LEGEND),
-            Design::Cobra => Some(&imported::COBRA),
-            Design::Ronin => Some(&imported::RONIN),
+            Design::Afilada => 0,
+            Design::Escudo => 1,
+            Design::Alerones => 2,
+            Design::Rombo => 3,
+            Design::Model(model) => Self::BUILT_IN_CODE.len() + model.index(),
         }
     }
+
+    /// El modelo de los diseños importados.
+    pub(super) fn model(self) -> Option<&'static Model> {
+        match self {
+            Design::Model(model) => Some(model),
+            _ => None,
+        }
+    }
+}
+
+/// Every design, the roster's models among them, for the tests.
+#[cfg(test)]
+pub fn every() -> Vec<Design> {
+    let _ = &*crate::bike::ROSTER;
+    Design::all()
 }
 
 /// Contornos de las piezas facetadas (ver [`crate::shapes::faceted`]): de -1
@@ -178,14 +205,7 @@ pub(super) fn details(design: Design) -> &'static [Detail] {
         Design::Escudo => ESCUDO_DETAILS,
         Design::Alerones => ALERONES_DETAILS,
         Design::Rombo => ROMBO_DETAILS,
-        Design::Shogun
-        | Design::Kraken
-        | Design::Falcon
-        | Design::Stiletto
-        | Design::Azura
-        | Design::Legend
-        | Design::Cobra
-        | Design::Ronin => &[],
+        Design::Model(_) => &[],
     }
 }
 
@@ -368,14 +388,7 @@ pub(super) fn build(parts: &mut Parts, design: Design) {
         Design::Escudo => escudo(parts),
         Design::Alerones => alerones(parts),
         Design::Rombo => rombo(parts),
-        Design::Shogun
-        | Design::Kraken
-        | Design::Falcon
-        | Design::Stiletto
-        | Design::Azura
-        | Design::Legend
-        | Design::Cobra
-        | Design::Ronin => unreachable!("las motos importadas no se hacen por código"),
+        Design::Model(_) => unreachable!("las motos importadas no se hacen por código"),
     }
 }
 
@@ -384,14 +397,7 @@ pub(super) fn plates(design: Design) -> Vec<Plate> {
     let (y, z) = match design {
         Design::Afilada | Design::Escudo | Design::Rombo => (0.55, -0.18),
         Design::Alerones => (0.54, -0.18),
-        Design::Shogun
-        | Design::Kraken
-        | Design::Falcon
-        | Design::Stiletto
-        | Design::Azura
-        | Design::Legend
-        | Design::Cobra
-        | Design::Ronin => return Vec::new(),
+        Design::Model(_) => return Vec::new(),
     };
     let x = SIDE_HALF_WIDTH + 0.003;
     vec![
@@ -966,7 +972,7 @@ mod tests {
 
     #[test]
     fn designs_index_in_order() {
-        for (index, design) in Design::ALL.into_iter().enumerate() {
+        for (index, design) in every().into_iter().enumerate() {
             assert_eq!(design.index(), index);
         }
     }

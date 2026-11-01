@@ -471,12 +471,13 @@ pub fn spawn_title(parent: &mut ChildSpawnerCommands, font: &UiFont, title: &str
     ));
 }
 
-/// El título del juego: «MOTO» en blanco y «RUST» en naranja óxido, con
-/// una sombra más marcada.
+/// El título del juego ([`crate::game_info::Logo`]): its first part in
+/// white and the rest in rust orange («MOTO» and «RUST»), con una sombra más
+/// marcada.
 pub fn spawn_logo(parent: &mut ChildSpawnerCommands, font: &UiFont, size: f32) {
     parent
         .spawn((
-            Text::new("MOTO"),
+            Text::new(crate::game_info::info().logo.plain),
             text_font(font, size),
             TextShadow {
                 offset: Vec2::splat(5.0),
@@ -488,7 +489,7 @@ pub fn spawn_logo(parent: &mut ChildSpawnerCommands, font: &UiFont, size: f32) {
             },
         ))
         .with_child((
-            TextSpan::new("RUST"),
+            TextSpan::new(crate::game_info::info().logo.accent),
             text_font(font, size),
             TextColor(RUST_ORANGE),
         ));

@@ -81,6 +81,7 @@ impl Plugin for SoundPlugin {
             .init_resource::<ControlsTest>()
             .init_resource::<Blip>()
             .init_resource::<music::FreeMusic>()
+            .init_resource::<music::Songs>()
             .add_systems(OnEnter(GameState::Race), music::reset_free_music)
             .add_systems(Startup, start_mixer)
             .add_systems(

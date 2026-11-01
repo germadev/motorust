@@ -361,7 +361,7 @@ pub struct MenuWidth(pub f32);
 
 impl Default for MenuWidth {
     fn default() -> Self {
-        Self(advance("MOTORUST", TITLE_SIZE).round())
+        Self(advance(&crate::game_info::info().logo.text(), TITLE_SIZE).round())
     }
 }
 

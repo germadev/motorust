@@ -38,9 +38,9 @@ pub struct Circuit {
     pub description: &'static str,
     #[serde(deserialize_with = "data::text")]
     pub description_en: &'static str,
-    /// The music that plays during the race.
-    #[serde(deserialize_with = "data::song")]
-    pub song: Song,
+    /// The music that plays during the race, if it has any.
+    #[serde(default, deserialize_with = "data::some_song")]
+    pub song: Option<Song>,
     /// What its surroundings sound like, choosing the bike.
     pub ambience: Ambience,
     /// How fast it is ridden against most tracks (1): against the clock,
@@ -71,6 +71,8 @@ pub struct Ambience {
 /// A song: an MP3 of the content pack ([`crate::content`]), which
 /// [`crate::sound`] loops, or, in a list, plays through and goes on to the
 /// next.
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(try_from = "data::SongFile")]
 pub struct Song {
     /// Its file in `assets/` (`music/bahia.mp3`).
     pub file: &'static str,

@@ -1,0 +1,20 @@
+// The Shogun TZ, blue and white.
+// Made with Meshy and prepared by tools/import_models.py, which measured
+// it: where its axles, steering head, grips, pegs and seat are (m, in the
+// bike's space) and how big its wheels are (the Shogun's by hand, the
+// script's reference for the others); whether its fork and bars turn with
+// the steering; and the slicks it wears (Soft, Medium or Hard).
+(
+    geometry: (
+        front_axle: (0.0, 0.2826, -0.70),
+        rear_axle: (0.0, 0.313, 0.68),
+        front_radius: 0.2882,
+        rear_radius: 0.313,
+        steering_head: (0.0, 0.8883, -0.423),
+        grip: (0.33, 0.79, -0.36),
+        peg: (0.16, 0.36, 0.27),
+        seat: (0.0, 0.91, 0.2),
+    ),
+    steers: true,
+    tyres: Medium,
+)

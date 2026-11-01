@@ -14,7 +14,8 @@ music/autumn_gale.mp3
 music/beyond_the_final_turn.mp3
 music/plastic_velocity_rush.mp3
 
-# Free ride's chill songs and the menus' song (src/sound/music.rs).
+# The menus' song and free ride's chill songs, and their list.
+music/music.ron
 music/chill_velvet_dashboard.mp3
 music/chill_sunlight_on_still_water.mp3
 music/chill_leaves_on_the_still_pond.mp3
@@ -35,48 +36,56 @@ circuits/toy_store.ron
 bikes/roster.ron
 
 # The bikes and riders modelled with Meshy (src/bike/model/imported.rs).
+models/shogun/model.ron
 models/shogun/bike.bin
 models/shogun/base_color.jpg
 models/shogun/metallic_roughness.jpg
 models/shogun/normal.jpg
 models/shogun/pilot.bin
 models/shogun/pilot_color.jpg
+models/kraken/model.ron
 models/kraken/bike.bin
 models/kraken/base_color.jpg
 models/kraken/metallic_roughness.jpg
 models/kraken/normal.jpg
 models/kraken/pilot.bin
 models/kraken/pilot_color.jpg
+models/falcon/model.ron
 models/falcon/bike.bin
 models/falcon/base_color.jpg
 models/falcon/metallic_roughness.jpg
 models/falcon/normal.jpg
 models/falcon/pilot.bin
 models/falcon/pilot_color.jpg
+models/stiletto/model.ron
 models/stiletto/bike.bin
 models/stiletto/base_color.jpg
 models/stiletto/metallic_roughness.jpg
 models/stiletto/normal.jpg
 models/stiletto/pilot.bin
 models/stiletto/pilot_color.jpg
+models/legend/model.ron
 models/legend/bike.bin
 models/legend/base_color.jpg
 models/legend/metallic_roughness.jpg
 models/legend/normal.jpg
 models/legend/pilot.bin
 models/legend/pilot_color.jpg
+models/cobra/model.ron
 models/cobra/bike.bin
 models/cobra/base_color.jpg
 models/cobra/metallic_roughness.jpg
 models/cobra/normal.jpg
 models/cobra/pilot.bin
 models/cobra/pilot_color.jpg
+models/ronin/model.ron
 models/ronin/bike.bin
 models/ronin/base_color.jpg
 models/ronin/metallic_roughness.jpg
 models/ronin/normal.jpg
 models/ronin/pilot.bin
 models/ronin/pilot_color.jpg
+models/azura/model.ron
 models/azura/bike.bin
 models/azura/base_color.jpg
 models/azura/metallic_roughness.jpg
@@ -110,6 +119,9 @@ textures/milky_way.jpg
 textures/moon.jpg
 textures/earth.jpg
 textures/earth_clouds.jpg
+
+# The game's identity (src/game_info.rs).
+game.ron
 
 # The UI: its font, the start menu's helmet, the gamepads' art and the
 # window's icon.

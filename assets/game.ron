@@ -1,0 +1,16 @@
+// The game's identity: what the engine calls it and where it keeps its
+// files.
+//
+// - title: the window's title, and the crash report's;
+// - folder: the name of its folder for the settings and the logs (in
+//   ~/.config, Application Support or %APPDATA%), and of its crash report
+//   (FOLDER-crash.log);
+// - logo: the title on the start menu, its first part in white and the
+//   rest in rust orange;
+// - icon: the window's icon, a PNG in the content pack (none if left out).
+(
+    title: "Motorust",
+    folder: "motorust",
+    logo: (plain: "MOTO", accent: "RUST"),
+    icon: Some("icon-256.png"),
+)

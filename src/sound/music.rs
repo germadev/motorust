@@ -1,5 +1,5 @@
-//! Music: each track has its own song ([`crate::circuits::Song`]), which
-//! loops for the whole race. Every song is turned up or down so that they
+//! Music: each track has its own song ([`crate::circuits::Song`]), if any,
+//! which loops for the whole race. Every song is turned up or down so that they
 //! all sound as loud over the engines: to the same loudness, [`LOUDNESS`],
 //! above 500 Hz, where the engines' drone does not cover it. Below that,
 //! songs with heavy bass carry more, and a song measured over all of it
@@ -8,13 +8,15 @@
 //! at least 10 dB under the player's engine flat out.
 //!
 //! The menus (the welcome screen, the lobby, the modes and the tracks) have
-//! a song of their own, [`MENU`], low; choosing the bike has none: the
-//! sounds of the track's surroundings ([`super::ambience`]) instead.
+//! a song of their own, [`Songs::menu`], low; choosing the bike has none:
+//! the sounds of the track's surroundings ([`super::ambience`]) instead.
+//! The songs that are not a track's are named in `assets/music/music.ron`
+//! ([`Songs`]); where there is none, nothing plays.
 //!
 //! In free ride, Y (on a gamepad, the top face button) changes what plays
 //! ([`FreeMusic`]): the track's song, the songs of every track one after
-//! another from this one's, or three chill songs ([`CHILL`]), a little
-//! quieter ([`CHILL_LOUDNESS`]).
+//! another from this one's, or the chill songs ([`Songs::chill`]), a little
+//! quieter ([`CHILL_LOUDNESS`]); only what has songs to play.
 //!
 //! It fades in when the race starts and out when leaving it, drops in the
 //! pause menu, and M mutes it with everything else.
@@ -54,49 +56,37 @@ const FADE_OUT: f32 = 1.0;
 pub const MUSIC_KEY: KeyCode = KeyCode::KeyY;
 pub const MUSIC_BUTTON: GamepadButton = GamepadButton::North;
 
-/// A chill song: its name and the song.
-pub struct ChillSong {
+/// A song with a name of its own (the menus', a chill one).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NamedSong {
+    #[serde(deserialize_with = "crate::circuits::data::text")]
     pub name: &'static str,
     pub song: Song,
 }
 
-/// The chill songs, in the order they play.
-pub const CHILL: [ChillSong; 3] = [
-    ChillSong {
-        name: "Velvet Dashboard",
-        song: Song {
-            file: "music/chill_velvet_dashboard.mp3",
-            length: 176.6,
-            loudness: -19.7,
-        },
-    },
-    ChillSong {
-        name: "Sunlight on Still Water",
-        song: Song {
-            file: "music/chill_sunlight_on_still_water.mp3",
-            length: 176.4,
-            loudness: -18.6,
-        },
-    },
-    ChillSong {
-        name: "Leaves on the Still Pond",
-        song: Song {
-            file: "music/chill_leaves_on_the_still_pond.mp3",
-            length: 176.9,
-            loudness: -17.7,
-        },
-    },
-];
+/// The music that is not a track's own, read from `assets/music/music.ron`
+/// in the content pack as the game starts: the menus' song, if any, and the
+/// chill songs, in the order they play.
+#[derive(Resource, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields, bound(deserialize = "'de: 'static"))]
+pub struct Songs {
+    pub menu: Option<NamedSong>,
+    pub chill: Vec<NamedSong>,
+}
 
-/// The menus' song.
-pub const MENU: Song = Song {
-    file: "music/menu_asphalt_shift.mp3",
-    length: 178.2,
-    loudness: -19.6,
-};
+/// The file it is read from, in the content pack.
+const SONGS_FILE: &str = "music/music.ron";
+
+impl Default for Songs {
+    fn default() -> Self {
+        crate::circuits::data::parse(SONGS_FILE, content::text(SONGS_FILE))
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+}
 
 /// A song that can play: a track's (an index of [`Circuits`]), a chill one
-/// (of [`CHILL`]) or the menus'.
+/// (of [`Songs::chill`]) or the menus'.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tune {
     Track(usize),
@@ -105,11 +95,12 @@ pub enum Tune {
 }
 
 impl Tune {
-    fn song(self, circuits: &Circuits) -> &'static Song {
+    /// Its song, if there is one (a track may have none, and the menus).
+    fn song(self, circuits: &Circuits, songs: &Songs) -> Option<Song> {
         match self {
-            Tune::Track(index) => &circuits.at(index).song,
-            Tune::Chill(index) => &CHILL[index].song,
-            Tune::Menu => &MENU,
+            Tune::Track(index) => circuits.at(index).song,
+            Tune::Chill(index) => songs.chill.get(index).map(|named| named.song),
+            Tune::Menu => songs.menu.as_ref().map(|named| named.song),
         }
     }
 
@@ -123,11 +114,11 @@ impl Tune {
     }
 
     /// Its name: the track's, or the song's.
-    pub fn name(self, circuits: &Circuits, lang: Language) -> &'static str {
+    pub fn name(self, circuits: &Circuits, songs: &Songs, lang: Language) -> &'static str {
         match self {
             Tune::Track(index) => circuits.at(index).name(lang),
-            Tune::Chill(index) => CHILL[index].name,
-            Tune::Menu => "Asphalt Shift",
+            Tune::Chill(index) => songs.chill.get(index).map_or("", |named| named.name),
+            Tune::Menu => songs.menu.as_ref().map_or("", |named| named.name),
         }
     }
 }
@@ -147,16 +138,22 @@ pub enum MusicMode {
 const MUSIC_MODES: [MusicMode; 3] = [MusicMode::Track, MusicMode::AllTracks, MusicMode::Chill];
 
 impl MusicMode {
-    /// The songs it plays on the track `circuit` of `tracks`, in order: the
-    /// last one is followed by the first.
-    pub fn tunes(self, circuit: usize, tracks: usize) -> Vec<Tune> {
-        match self {
+    /// The songs it plays on the track `circuit`, in order: the last one is
+    /// followed by the first. Only songs there are: none, if there are none
+    /// (a track with no song, no chill songs).
+    pub fn tunes(self, circuit: usize, circuits: &Circuits, songs: &Songs) -> Vec<Tune> {
+        let tracks = circuits.len();
+        let tunes: Vec<Tune> = match self {
             MusicMode::Track => vec![Tune::Track(circuit)],
             MusicMode::AllTracks => (0..tracks)
                 .map(|step| Tune::Track((circuit + step) % tracks))
                 .collect(),
-            MusicMode::Chill => (0..CHILL.len()).map(Tune::Chill).collect(),
-        }
+            MusicMode::Chill => (0..songs.chill.len()).map(Tune::Chill).collect(),
+        };
+        tunes
+            .into_iter()
+            .filter(|tune| tune.song(circuits, songs).is_some())
+            .collect()
     }
 
     pub fn name(self, lang: Language) -> &'static str {
@@ -180,36 +177,46 @@ pub struct FreeMusic {
 }
 
 impl FreeMusic {
-    /// The song playing on the track `circuit` of `tracks`.
-    pub fn tune(&self, circuit: usize, tracks: usize) -> Tune {
-        let tunes = self.mode.tunes(circuit, tracks);
-        tunes[self.at % tunes.len()]
+    /// The song playing on the track `circuit`, if it has any to play.
+    pub fn tune(&self, circuit: usize, circuits: &Circuits, songs: &Songs) -> Option<Tune> {
+        let tunes = self.mode.tunes(circuit, circuits, songs);
+        (!tunes.is_empty()).then(|| tunes[self.at % tunes.len()])
     }
 
-    /// The next of what it plays, from its first song.
-    fn next_mode(&mut self) {
+    /// The next of what it plays, from its first song: one that has songs
+    /// to play on the track `circuit`, if any does.
+    fn next_mode(&mut self, circuit: usize, circuits: &Circuits, songs: &Songs) {
         let index = MUSIC_MODES
             .iter()
             .position(|&m| m == self.mode)
             .unwrap_or(0);
-        self.mode = MUSIC_MODES[(index + 1) % MUSIC_MODES.len()];
+        self.mode = (1..=MUSIC_MODES.len())
+            .map(|step| MUSIC_MODES[(index + step) % MUSIC_MODES.len()])
+            .find(|mode| !mode.tunes(circuit, circuits, songs).is_empty())
+            .unwrap_or(MusicMode::Track);
         self.at = 0;
     }
 
     /// What the line at the bottom of free ride says: what plays and, in a
     /// list, the song playing.
-    pub fn describe(&self, circuit: usize, circuits: &Circuits, lang: Language) -> String {
+    pub fn describe(
+        &self,
+        circuit: usize,
+        circuits: &Circuits,
+        songs: &Songs,
+        lang: Language,
+    ) -> String {
         let music = match lang {
             Language::Spanish => "Música",
             Language::English => "Music",
         };
-        match self.mode {
-            MusicMode::Track => format!("{music}: {}", self.mode.name(lang)),
-            _ => format!(
+        match (self.mode, self.tune(circuit, circuits, songs)) {
+            (MusicMode::AllTracks | MusicMode::Chill, Some(tune)) => format!(
                 "{music}: {}  ·  {}",
                 self.mode.name(lang),
-                self.tune(circuit, circuits.len()).name(circuits, lang)
+                tune.name(circuits, songs, lang)
             ),
+            _ => format!("{music}: {}", self.mode.name(lang)),
         }
     }
 }
@@ -275,15 +282,16 @@ impl AssetLoader for SongLoader {
 #[derive(Component)]
 pub struct Music {
     tune: Tune,
+    song: Song,
     /// From 0 (silent) to 1 (full volume).
     fader: f32,
     /// How long it has played (s), to go on to the next song of a list.
     played: f32,
 }
 
-/// How much a song is turned up or down to play at its loudness.
-fn gain(tune: Tune, circuits: &Circuits) -> f32 {
-    10f32.powf((tune.loudness() - tune.song(circuits).loudness) / 20.0)
+/// How much `tune`'s `song` is turned up or down to play at its loudness.
+fn gain(tune: Tune, song: Song) -> f32 {
+    10f32.powf((tune.loudness() - song.loudness) / 20.0)
 }
 
 /// Where the fader goes: up while racing on the song's track (lower in the
@@ -333,18 +341,20 @@ pub(super) fn change_free_music(
     keyboard: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     pause: Res<Pause>,
+    (circuit, circuits, songs): (Res<CurrentCircuit>, Res<Circuits>, Res<Songs>),
     mut free: ResMut<FreeMusic>,
 ) {
     let free_ride = rules.is_some_and(|rules| rules.mode == Mode::Free);
     let pressed = keyboard.just_pressed(MUSIC_KEY)
         || gamepads.iter().any(|pad| pad.just_pressed(MUSIC_BUTTON));
     if free_ride && pressed && !pause.is_open() {
-        free.next_mode();
+        free.next_mode(circuit.0, &circuits, &songs);
     }
 }
 
 /// Starts the song of the screen: the menus', the track's in the race (in
-/// free ride, the one [`FreeMusic`] says), none choosing the bike. Moves its
+/// free ride, the one [`FreeMusic`] says), none choosing the bike, nor
+/// where there is no song. Moves its
 /// fader, goes on to the next song of a list once one is over, and lets
 /// each go once it has faded out. Real time, which keeps running in the
 /// pause menu.
@@ -355,6 +365,7 @@ pub(super) fn play_music(
     state: Res<State<GameState>>,
     circuit: Res<CurrentCircuit>,
     circuits: Res<Circuits>,
+    songs: Res<Songs>,
     rules: Option<Res<Rules>>,
     mut free: Option<ResMut<FreeMusic>>,
     pause: Res<Pause>,
@@ -366,8 +377,8 @@ pub(super) fn play_music(
     let dt = time.delta_secs();
     let free_ride = rules.is_some_and(|rules| rules.mode == Mode::Free);
     let wanted = |free: Option<&FreeMusic>| match free.filter(|_| free_ride) {
-        Some(free) => free.tune(circuit.0, circuits.len()),
-        None => Tune::Track(circuit.0),
+        Some(free) => free.tune(circuit.0, &circuits, &songs),
+        None => Some(Tune::Track(circuit.0)),
     };
     let racing = *state.get() == GameState::Race;
     // M mutes the music too.
@@ -390,12 +401,10 @@ pub(super) fn play_music(
         && free_ride
         && racing
     {
-        let current = free.tune(circuit.0, circuits.len());
+        let current = free.tune(circuit.0, &circuits, &songs);
         over = playing
             .iter()
-            .find(|(_, music, _)| {
-                music.tune == current && music.played >= current.song(&circuits).length
-            })
+            .find(|(_, music, _)| Some(music.tune) == current && music.played >= music.song.length)
             .map(|(entity, ..)| entity);
         if let Some(entity) = over {
             commands.entity(entity).despawn();
@@ -403,7 +412,7 @@ pub(super) fn play_music(
         }
     }
     let tune = match state.get() {
-        GameState::Race => Some(wanted(free.as_deref())),
+        GameState::Race => wanted(free.as_deref()),
         GameState::Select => None,
         _ => Some(Tune::Menu),
     };
@@ -420,21 +429,23 @@ pub(super) fn play_music(
         } else if let Some(mut sink) = sink {
             music.played += dt;
             sink.set_volume(Volume::Linear(
-                music.fader * gain(music.tune, &circuits) * master * music_factor,
+                music.fader * gain(music.tune, music.song) * master * music_factor,
             ));
         }
     }
     if let Some(tune) = tune
         && !started
+        && let Some(song) = tune.song(&circuits, &songs)
     {
         // Loaded from the pack as it starts (it fades in meanwhile), and let
         // go once it has faded out.
-        let source: Handle<SongSource> = assets.load(content::path(tune.song(&circuits).file));
+        let source: Handle<SongSource> = assets.load(content::path(song.file));
         commands.spawn((
             AudioPlayer(source),
             PlaybackSettings::ONCE.with_volume(Volume::Linear(0.0)),
             Music {
                 tune,
+                song,
                 fader: 0.0,
                 played: 0.0,
             },
@@ -461,12 +472,19 @@ mod tests {
         10.0 * power.log10()
     }
 
-    /// Every song of the game.
-    fn every_tune() -> Vec<Tune> {
-        (0..CIRCUITS.len())
+    /// The songs not a track's, read once.
+    static SONGS: std::sync::LazyLock<Songs> = std::sync::LazyLock::new(Songs::default);
+
+    /// Every song of the game, with its tune.
+    fn every_tune() -> Vec<(Tune, Song)> {
+        let tunes: Vec<Tune> = (0..CIRCUITS.len())
             .map(Tune::Track)
-            .chain((0..CHILL.len()).map(Tune::Chill))
+            .chain((0..SONGS.chill.len()).map(Tune::Chill))
             .chain([Tune::Menu])
+            .collect();
+        tunes
+            .into_iter()
+            .filter_map(|tune| Some((tune, tune.song(&CIRCUITS, &SONGS)?)))
             .collect()
     }
 
@@ -478,8 +496,8 @@ mod tests {
     #[test]
     fn every_song_is_in_the_pack() {
         let pack = content::listed();
-        for tune in every_tune() {
-            let file = tune.song(&CIRCUITS).file;
+        for (tune, song) in every_tune() {
+            let file = song.file;
             assert!(
                 pack.contains(&file),
                 "{tune:?}: {file} not in assets/pack.txt"
@@ -489,11 +507,10 @@ mod tests {
 
     #[test]
     fn every_song_is_turned_to_its_loudness() {
-        for tune in every_tune() {
-            let song = tune.song(&CIRCUITS);
-            let played = song.loudness + 20.0 * gain(tune, &CIRCUITS).log10();
+        for (tune, song) in every_tune() {
+            let played = song.loudness + 20.0 * gain(tune, song).log10();
             assert!((played - tune.loudness()).abs() < 1e-3, "{tune:?}");
-            assert!(gain(tune, &CIRCUITS) < 1.0, "{tune:?}: turned down");
+            assert!(gain(tune, song) < 1.0, "{tune:?}: turned down");
         }
         // The chill songs a little quieter than the tracks', the menus'
         // quieter still.
@@ -502,9 +519,8 @@ mod tests {
 
     #[test]
     fn songs_last_as_long_as_they_say_and_loop_back_to_the_start() {
-        for tune in every_tune() {
-            let song = tune.song(&CIRCUITS);
-            let mp3 = mp3(song);
+        for (tune, song) in every_tune() {
+            let mp3 = mp3(&song);
             let mut looped = SongSource { mp3: mp3.clone() }.decoder();
             assert_eq!(looped.channels().get(), 2, "{tune:?}");
             assert_eq!(looped.sample_rate().get(), 44_100, "{tune:?}");
@@ -554,14 +570,12 @@ mod tests {
             .collect();
         let engine = rms_db(&mix);
 
-        for tune in every_tune() {
-            let samples: Vec<f32> = SongSource {
-                mp3: mp3(tune.song(&CIRCUITS)),
-            }
-            .decoder()
-            .take(SAMPLE_RATE as usize * 2 * 60)
-            .map(|s| s * gain(tune, &CIRCUITS))
-            .collect();
+        for (tune, song) in every_tune() {
+            let samples: Vec<f32> = SongSource { mp3: mp3(&song) }
+                .decoder()
+                .take(SAMPLE_RATE as usize * 2 * 60)
+                .map(|s| s * gain(tune, song))
+                .collect();
             // Its loudest second.
             let loudest = samples
                 .chunks(SAMPLE_RATE as usize * 2)
@@ -608,6 +622,7 @@ mod tests {
             .init_resource::<Pause>()
             .insert_resource(CurrentCircuit(2))
             .insert_resource(*CIRCUITS)
+            .init_resource::<Songs>()
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
                 100,
             )))
@@ -675,33 +690,82 @@ mod tests {
 
     #[test]
     fn free_ride_plays_the_track_s_song_then_every_track_s_then_chill() {
+        let (circuits, songs) = (&*CIRCUITS, &*SONGS);
         let mut free = FreeMusic::default();
-        assert_eq!(free.tune(2, CIRCUITS.len()), Tune::Track(2));
-        free.next_mode();
+        assert_eq!(free.tune(2, circuits, songs), Some(Tune::Track(2)));
+        free.next_mode(2, circuits, songs);
         assert_eq!(free.mode, MusicMode::AllTracks);
         // From this track's, round them all.
-        let tunes = free.mode.tunes(2, CIRCUITS.len());
+        let tunes = free.mode.tunes(2, circuits, songs);
         assert_eq!(tunes.len(), CIRCUITS.len());
         assert_eq!(tunes[0], Tune::Track(2));
         assert_eq!(tunes[CIRCUITS.len() - 1], Tune::Track(1));
-        free.next_mode();
+        free.next_mode(2, circuits, songs);
         assert_eq!(
-            free.mode.tunes(2, CIRCUITS.len()),
+            free.mode.tunes(2, circuits, songs),
             [Tune::Chill(0), Tune::Chill(1), Tune::Chill(2)]
         );
         free.at = 4;
-        assert_eq!(free.tune(2, CIRCUITS.len()), Tune::Chill(1));
+        assert_eq!(free.tune(2, circuits, songs), Some(Tune::Chill(1)));
         assert!(
-            free.describe(2, &CIRCUITS, Language::English)
+            free.describe(2, circuits, songs, Language::English)
                 .contains("Sunlight on Still Water")
         );
         // And back to the track's, from the start.
-        free.next_mode();
+        free.next_mode(2, circuits, songs);
         assert_eq!((free.mode, free.at), (MusicMode::Track, 0));
         assert_eq!(
-            free.describe(2, &CIRCUITS, Language::Spanish),
+            free.describe(2, circuits, songs, Language::Spanish),
             "Música: la del circuito"
         );
+    }
+
+    #[test]
+    fn with_no_songs_nothing_plays_and_free_ride_keeps_to_what_has_some() {
+        // A track with no song, and no chill songs.
+        let mut files = crate::circuits::files().unwrap();
+        files[0].1 = String::leak(
+            files[0]
+                .1
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("song:"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        let circuits = Circuits::parse(&files).unwrap();
+        assert!(circuits.at(0).song.is_none());
+        let songs = Songs {
+            menu: None,
+            chill: Vec::new(),
+        };
+        let mut free = FreeMusic::default();
+        assert_eq!(free.tune(0, &circuits, &songs), None, "the track has none");
+        // Every track's: the others'.
+        free.next_mode(0, &circuits, &songs);
+        assert_eq!(free.mode, MusicMode::AllTracks);
+        assert_eq!(free.tune(0, &circuits, &songs), Some(Tune::Track(1)));
+        // No chill, and the track's has none: every track's still, the
+        // only one with songs to play here.
+        free.next_mode(0, &circuits, &songs);
+        assert_eq!(free.mode, MusicMode::AllTracks);
+        // On a track with a song, the track's again after it.
+        free.next_mode(1, &circuits, &songs);
+        assert_eq!(free.mode, MusicMode::Track);
+
+        // In the menus and on that track, nothing plays.
+        let mut app = music_app();
+        app.insert_resource(circuits)
+            .insert_resource(songs)
+            .insert_resource(CurrentCircuit(0));
+        for _ in 0..10 {
+            app.update();
+        }
+        assert!(songs_playing(&mut app).is_empty(), "no menus' song");
+        go_to(&mut app, GameState::Race);
+        for _ in 0..10 {
+            app.update();
+        }
+        assert!(songs_playing(&mut app).is_empty(), "no track's song");
     }
 
     #[test]
@@ -724,7 +788,7 @@ mod tests {
         // Played through: the next one, at once.
         let mut query = app.world_mut().query::<&mut Music>();
         for mut music in query.iter_mut(app.world_mut()) {
-            music.played = CHILL[0].song.length;
+            music.played = SONGS.chill[0].song.length;
         }
         app.update();
         app.update();

@@ -56,9 +56,10 @@ const IMAGE: UVec2 = UVec2::new(128, 256);
 
 /// The compound of a slick, marked as MotoGP marks it: a band round the
 /// sidewall, white on the soft, none on the medium, yellow on the hard.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 pub enum Compound {
     Soft,
+    #[default]
     Medium,
     Hard,
 }
@@ -66,13 +67,10 @@ pub enum Compound {
 impl Compound {
     pub const ALL: [Compound; 3] = [Compound::Soft, Compound::Medium, Compound::Hard];
 
-    /// The tyres each imported bike wears.
+    /// The tyres a bike wears: an imported one's own, the medium on the
+    /// others.
     pub fn of(design: Design) -> Self {
-        match design {
-            Design::Kraken | Design::Stiletto | Design::Azura => Compound::Soft,
-            Design::Legend | Design::Cobra => Compound::Hard,
-            _ => Compound::Medium,
-        }
+        design.model().map_or(Compound::Medium, |model| model.tyres)
     }
 
     /// The colour of the band round the sidewalls (sRGB), if it has one.
@@ -469,7 +467,7 @@ mod tests {
 
     #[test]
     fn the_imported_bikes_wear_every_compound() {
-        let worn: Vec<Compound> = Design::ALL
+        let worn: Vec<Compound> = super::super::designs::every()
             .into_iter()
             .filter(|design| design.model().is_some())
             .map(Compound::of)

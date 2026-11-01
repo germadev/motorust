@@ -18,7 +18,7 @@ use crate::pause::{DebugOptions, Pause};
 use crate::race::{Mode, Rules};
 use crate::render_scale::{NativeShare, drawn_size, render_percent};
 use crate::settings::{Antialiasing, GrassTiling, Relief, Settings};
-use crate::sound::music::FreeMusic;
+use crate::sound::music::{FreeMusic, Songs};
 use crate::speedometer::{SpeedometerPlugin, spawn_speedometer};
 use crate::ui::{InputDevice, UiIcons, current_active_device};
 use crate::welcome::GameMode;
@@ -414,11 +414,12 @@ fn show_race_legend(
     mut commands: Commands,
     options: Res<DebugOptions>,
     settings: Res<Settings>,
-    (rules, free_music, circuit, circuits): (
+    (rules, free_music, circuit, circuits, songs): (
         Option<Res<Rules>>,
         Option<Res<FreeMusic>>,
         Option<Res<CurrentCircuit>>,
         Option<Res<Circuits>>,
+        Option<Res<Songs>>,
     ),
     pause: Res<Pause>,
     device: Option<Res<InputDevice>>,
@@ -441,9 +442,10 @@ fn show_race_legend(
         .show_legend
         .then(|| race_prompts(active_dev, lang, &settings.controls));
     if rules.is_some_and(|rules| rules.mode == Mode::Free)
-        && let (Some(free_music), Some(circuit), Some(circuits)) = (free_music, circuit, circuits)
+        && let (Some(free_music), Some(circuit), Some(circuits), Some(songs)) =
+            (free_music, circuit, circuits, songs)
     {
-        let what = free_music.describe(circuit.0, &circuits, lang);
+        let what = free_music.describe(circuit.0, &circuits, &songs, lang);
         wanted
             .get_or_insert_default()
             .push(music_prompt(active_dev, lang, what));

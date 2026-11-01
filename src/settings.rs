@@ -1336,9 +1336,10 @@ impl Settings {
     /// La ventana del juego con estos ajustes.
     pub fn window(&self) -> Window {
         let mut window = Window {
-            title: "Motorust".into(),
-            // En la web se dibuja en el canvas de la página y lo llena.
-            canvas: WEB.then(|| "#motorust".into()),
+            title: crate::game_info::info().title.into(),
+            // En la web se dibuja en el canvas de la página y lo llena (the
+            // canvas with the game's folder's name as its id).
+            canvas: WEB.then(|| format!("#{}", crate::game_info::info().folder)),
             fit_canvas_to_parent: true,
             // As chosen in Options (Bevy's 2 at first; 1 is less lag).
             desired_maximum_frame_latency: NonZero::new(
@@ -1562,7 +1563,11 @@ mod storage {
                 None => var("HOME")?.join(".config"),
             }
         };
-        Some(folder.join("motorust").join("ajustes.ron"))
+        Some(
+            folder
+                .join(crate::game_info::info().folder)
+                .join("ajustes.ron"),
+        )
     }
 }
 
@@ -1847,7 +1852,11 @@ fn set_window_icon(
     let Some(window) = windows.get_window(entity) else {
         return;
     };
-    if let Ok(image) = image::load_from_memory(crate::content::file("icon-256.png")) {
+    let Some(icon) = crate::game_info::info().icon else {
+        *done = true;
+        return;
+    };
+    if let Ok(image) = image::load_from_memory(crate::content::file(icon)) {
         let rgba = image.into_rgba8();
         let (width, height) = rgba.dimensions();
         if let Ok(icon) = winit::window::Icon::from_rgba(rgba.into_raw(), width, height) {
