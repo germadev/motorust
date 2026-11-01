@@ -4,7 +4,7 @@
 //! code ([`DEMO_ROSTER`]). A test of the engine that needs a circuit or a
 //! bike takes them from here, and an app of the engine's plugins is given
 //! them before its plugins are added ([`demo_content`]), so that it reads
-//! nothing of the game's. (Step 4c of the engine's split, `ROADMAP.md`.)
+//! nothing of a game's.
 
 use std::path::Path;
 use std::sync::LazyLock;

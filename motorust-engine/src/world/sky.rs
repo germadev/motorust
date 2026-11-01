@@ -39,9 +39,9 @@ const LOWEST_ELEVATION: f32 = -0.25;
 /// derecha en la recta de meta (0 es el norte, -Z; π/2 el este, +X).
 const SUN_ELEVATION: f32 = 0.834;
 const SUN_AZIMUTH: f32 = 0.75 * std::f32::consts::PI;
-/// Where the sun stands on Turbo Bay's Mediterranean afternoon (heading and
-/// height, as above): high in the north-north-west, so the face of its dam,
-/// which looks north down the gorge, is in the sun.
+/// Where the sun stands on a Mediterranean afternoon (heading and height,
+/// as above): high in the north-north-west, so that the face of a dam
+/// looking north down a gorge is in the sun.
 pub const MEDITERRANEAN_SUN: (f32, f32) = (1.9 * std::f32::consts::PI, 0.72);
 
 /// The colours of the sky (sRGB): overhead, a little above the horizon, and
@@ -185,8 +185,8 @@ impl Palette {
             // shadow over the next and the fronts of the hills glow, the
             // shade cool, filled by the sky a little less than on a summer
             // day, so that what the sun lights from behind (the halls and
-            // the rock at the head of Rivendell's valley, ahead of the
-            // riders coming south) is not dull; the sky blue
+            // the rock at the head of a valley, ahead of the riders
+            // coming south) is not dull; the sky blue
             // overhead, golden towards the sun and the horizon, a warm haze
             // fading the hills one behind another; and the picture graded as
             // a film is, less saturated, with more contrast, a little warm,

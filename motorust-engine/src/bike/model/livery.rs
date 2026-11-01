@@ -126,9 +126,8 @@ pub enum Stripe {
     Crown { half_width: f32, color: Color },
 }
 
-/// La del jugador: azul y blanca como la de la portada de Moto Racer, con el
-/// 8 en una placa amarilla, repartida como en la lámina de la Shogun TZ: cúpula,
-/// depósito y colín azules, el costado blanco y filetes rojos.
+/// The player's: blue and white, with the 8 on a yellow plate: the screen,
+/// the tank and the tail blue, the side white, with red pinstripes.
 pub const COVER: Livery = Livery {
     number: 8,
     plate: Color::srgb(1.0, 0.8, 0.05),
@@ -284,7 +283,7 @@ pub const DIAGONAL: Livery = Livery {
 const LIME: Color = Color::srgb(0.38, 0.75, 0.1);
 const ALMOST_BLACK: Color = Color::srgb(0.06, 0.06, 0.07);
 
-/// Verde lima con el carenado abierto en negro, como la lámina de la Kraken RS.
+/// Lime green, the fairing opened in black.
 pub const VERDE: Livery = Livery {
     number: 10,
     plate: GLOSS_WHITE,
@@ -325,7 +324,7 @@ pub const VERDE: Livery = Livery {
 const RACING_RED: Color = Color::srgb(0.8, 0.06, 0.08);
 const RACING_BLUE: Color = Color::srgb(0.1, 0.17, 0.55);
 
-/// Rojo con un costado azul y filetes blancos, como la lámina de la Falcon KRZ.
+/// Red with a blue side and white pinstripes.
 pub const TRICOLOR: Livery = Livery {
     number: 33,
     plate: GLOSS_WHITE,
@@ -398,7 +397,7 @@ pub const TRICOLOR: Livery = Livery {
 
 const ROSSO_RED: Color = Color::srgb(0.86, 0.08, 0.06);
 
-/// Rojo con el lomo del depósito plateado, como la lámina de la Stiletto V4.
+/// Red, the top of the tank silver.
 pub const ROSSO: Livery = Livery {
     number: 63,
     plate: GLOSS_WHITE,

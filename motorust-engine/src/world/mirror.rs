@@ -3,7 +3,7 @@
 //! looks across it, stirred by a faint ripple near the camera, as a
 //! reservoir's. A dam's lake is drawn so (see [`super::dam`]), and so is
 //! the sea, unless Options > Graphics > Water says otherwise (or the track
-//! is Loop Island, whose sea is always the cartoon one, see
+//! is a circuit whose sea is always the cartoon one, see
 //! [`super::sea`]).
 //!
 //! What the water mirrors is mapped from above with the rest of the circuit,

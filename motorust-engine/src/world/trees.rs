@@ -1,5 +1,5 @@
 //! The trees modelled with Meshy, one for each species and a fir for the
-//! forests (prepared by `tools/import_trees.py`: about four hundred
+//! forests (prepared by the game's importer: about four hundred
 //! triangles each, as tall as the classic ones, their colours in one
 //! texture). Options > Graphics chooses between them and the classic trees
 //! built in code ([`super::props`]); every tree is planted with both looks

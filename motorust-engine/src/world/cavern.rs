@@ -1,4 +1,4 @@
-//! An excavation, a mine's or Moria's (see [`super::scenery::Hall`]):
+//! An excavation, a mine's or great halls' (see [`super::scenery::Hall`]):
 //! galleries and halls hewn through the rock, with high, rough roofs, pillars of rock left
 //! between the roads where a branch takes another way through (see
 //! [`crate::track::Fork`]), and stone of several kinds along it (see
@@ -16,8 +16,8 @@
 //! of the rock: the top of the mesa it is cut into, and its faces round the
 //! two mouths, framed with timber.
 //!
-//! The halls of Moria are dug alike (see [`super::scenery::Scenery::halls`]),
-//! but some of dwarves' masonry and some natural caves, and wider than the
+//! Great halls are dug alike (see [`super::scenery::Scenery::halls`]),
+//! but some of masonry and some natural caves, and wider than the
 //! road: it runs through them between low walls of their stone, under
 //! roofs far above (see [`Hall::width`]), past rows of great pillars.
 
@@ -327,7 +327,7 @@ pub fn stone_at(halls: &[Hall], lap: f32, point: Vec2, along: f32) -> Stone {
         .map_or(Stone::Timbered, |hall| hall.stone)
 }
 
-/// How much wider than the road a mine's excavation, or Moria's, is `along`
+/// How much wider than the road an excavation, a mine's or great halls', is `along`
 /// a lap of `lap` metres, either side (m): as wide as each of its halls,
 /// blending from one to the next as their roofs do (see [`Hall::width`]).
 pub fn excavation_width(halls: &[Hall], lap: f32, along: f32) -> f32 {
@@ -1484,8 +1484,8 @@ impl Painter<'_> {
 pub mod tests {
     use super::*;
 
-    /// The excavation of Gold Mine, and its track.
-    pub fn gold_mine(
+    /// The circuit with a mine's excavation, its track and its scenery.
+    pub fn with_a_mine(
         circuits: &'static crate::circuits::Circuits,
     ) -> (Track, &'static crate::world::scenery::Scenery) {
         let circuit = circuits
@@ -1495,8 +1495,9 @@ pub mod tests {
         (Track::new(&circuit.layout), &circuit.scenery)
     }
 
-    /// The halls of Moria, through Fellowship Road's mountain, and its track.
-    pub fn moria(
+    /// The circuit with great halls dug through its mountain, its track and
+    /// its scenery.
+    pub fn with_great_halls(
         circuits: &'static crate::circuits::Circuits,
     ) -> (Track, &'static crate::world::scenery::Scenery) {
         let circuit = circuits
@@ -1509,10 +1510,10 @@ pub mod tests {
         (Track::new(&circuit.layout), &circuit.scenery)
     }
 
-    pub fn moria_s_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars_on(
+    pub fn a_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
-        let (track, scenery) = moria(circuits);
+        let (track, scenery) = with_great_halls(circuits);
         let halls = scenery.excavation().unwrap();
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, halls);
@@ -1558,7 +1559,7 @@ pub mod tests {
     pub fn the_halls_are_high_and_the_galleries_lower_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
-        let (track, scenery) = gold_mine(circuits);
+        let (track, scenery) = with_a_mine(circuits);
         let halls = scenery.halls;
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, halls);
@@ -1592,7 +1593,7 @@ pub mod tests {
     pub fn the_walls_stand_where_the_bikes_hit_them_with_the_roof_above_a_rider_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
-        let (track, scenery) = gold_mine(circuits);
+        let (track, scenery) = with_a_mine(circuits);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);
         let lap = track.lap_length();
@@ -1625,7 +1626,7 @@ pub mod tests {
     pub fn rock_stands_between_the_roads_where_they_part_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
-        let (track, scenery) = gold_mine(circuits);
+        let (track, scenery) = with_a_mine(circuits);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);
         assert_eq!(cave.branches.len(), 4);
@@ -1648,7 +1649,7 @@ pub mod tests {
     pub fn the_rock_over_the_excavation_carries_the_road_over_the_top_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
-        let (track, scenery) = gold_mine(circuits);
+        let (track, scenery) = with_a_mine(circuits);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);
         // The road over the top of the mountain crosses the excavation.
@@ -1678,7 +1679,7 @@ pub mod tests {
     }
 
     pub fn the_excavation_is_closed_and_lit_on(circuits: &'static crate::circuits::Circuits) {
-        let (track, scenery) = gold_mine(circuits);
+        let (track, scenery) = with_a_mine(circuits);
         let terrain = Terrain::new(&track, scenery);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);

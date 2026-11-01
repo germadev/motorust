@@ -70,6 +70,17 @@ pub fn text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<&'static str, 
     Ok(String::leak(String::deserialize(deserializer)?))
 }
 
+/// A list of texts, leaked as the rest.
+pub fn texts<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<&'static [&'static str], D::Error> {
+    let texts: Vec<&'static str> = Vec::<String>::deserialize(deserializer)?
+        .into_iter()
+        .map(|text| &*String::leak(text))
+        .collect();
+    Ok(Vec::leak(texts))
+}
+
 pub fn optional_text<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<&'static str>, D::Error> {

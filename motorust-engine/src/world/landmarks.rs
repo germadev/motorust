@@ -1,4 +1,4 @@
-//! Loop Island landmarks, where the scenery of a track asks for them
+//! Arcade landmarks, where the scenery of a track asks for them
 //! ([`Scenery`]): giant loops on blocks of checkerboard earth, carved totem
 //! poles, sunflowers turned towards the road, lines of spinning golden rings
 //! floating over it and waterfalls pouring down the rock walls.
@@ -184,8 +184,8 @@ pub fn spawn_ridden_loops(
     if track.loops().is_empty() {
         return Vec::new();
     }
-    // A toy's (indoors): Hot Wheels' orange track, its edges and the ring
-    // under it of orange plastic, on a blue stand (the toy store's theme).
+    // A toy's (indoors): the toy cars' orange track, its edges and the ring
+    // under it of orange plastic, on a blue stand.
     let asphalt = assets.materials.add(StandardMaterial {
         base_color_texture: Some(if toy {
             assets.textures.orange_track.clone()
@@ -416,7 +416,7 @@ fn block_half_size(radius: f32) -> Vec2 {
 /// the grass of the running surface, of its edges and of the top of the
 /// block. The ribbon comes in along +X, goes round anticlockwise seen from
 /// +Z and leaves along +X, shifted sideways (Z) so that it does not run into
-/// itself, as in the loops of Sonic's Green Hill.
+/// itself, as in the loops of the platformers of the 90s.
 fn loop_meshes(radius: f32, depth: f32) -> (Mesh, Mesh) {
     let mut earth = MeshBuilder::default();
     let mut lawn = MeshBuilder::default();

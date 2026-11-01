@@ -1,11 +1,11 @@
-//! Props made elsewhere (with Meshy), in packs (`tools/import_props.py`
-//! prepares them): each pack's meshes by name and one material in the
+//! Props made elsewhere (with Meshy), in packs (a game's importer prepares
+//! them): each pack's meshes by name and one material in the
 //! colours of all of them ([`PropPack`]), loaded as the game starts for the
 //! themes that name them ([`PropPacks`]); and how a prop is placed: where
 //! it stands and which way it faces ([`spot`]), the ground kept clear so
 //! that a landmark is in view from the road ([`in_view`]), and the parts
 //! that turn ([`Turning`]). The engine's: the themes of a game place their
-//! own props with it (feudal Japan's, Middle-earth's, the toy store's).
+//! own props with it.
 
 use std::collections::HashMap;
 
@@ -125,7 +125,7 @@ impl PropPack {
             .map(|(_, piece)| piece)
     }
 
-    /// The pack in `bin` (see `tools/import_props.py`) and its colours in
+    /// The pack in `bin` (as an importer writes it) and its colours in
     /// `color`.
     pub fn load(world: &mut World, bin: &[u8], color: &[u8]) -> Self {
         let pack = read(bin);

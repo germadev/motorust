@@ -17,7 +17,7 @@ use crate::shapes::{Section, section};
 /// Forma de la carrocería de una moto.
 ///
 /// A file (the roster) names a design built in code by its name, `Afilada`,
-/// and a model by its folder in `assets/models/`, `Model("shogun")`.
+/// and a model by its folder in `assets/models/`, `Model("racer")`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
 #[serde(try_from = "DesignFile")]
 pub enum Design {

@@ -65,6 +65,6 @@ Each entry/block recorded must contain:
 
 ## 4. Tools (`tools/`)
 
-- Scripts that are useful beyond the task at hand, above all for working on the circuits (drawing a layout and its height profile, checking it against the limits the tests set), and also importers and packaging helpers, live in `tools/`: not in a scratch directory, and not inside `src/`.
-- Each tool opens with a header saying what it does, how to run it and what it needs. Where it mirrors the game's own code (as `tools/circuit_layout.py` mirrors the centre line and the profile of `motorust-engine/src/track.rs`), keep the two in step.
+- Scripts that are useful beyond the task at hand, above all for working on the circuits (drawing a layout and its height profile, checking it against the limits the tests set), and also importers and packaging helpers, live in `tools/` (the engine's own, as the one drawing a circuit's layout, in `motorust-engine/tools/`): not in a scratch directory, and not inside `src/`.
+- Each tool opens with a header saying what it does, how to run it and what it needs. Where it mirrors the game's own code (as `motorust-engine/tools/circuit_layout.py` mirrors the centre line and the profile of `motorust-engine/src/track.rs`), keep the two in step.
 - List every tool in `docs/architecture.md`. One-off scratch scripts and temporary harnesses (e.g. for capturing screenshots) are not committed.

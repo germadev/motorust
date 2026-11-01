@@ -108,7 +108,7 @@ pub fn structure_pieces(
         if scenery.soil == Soil::Floor {
             continue;
         }
-        // A mine's tunnels are its excavation, and Moria's its halls.
+        // A mine's tunnels are its excavation, and great halls' theirs.
         if let Some(halls) = scenery.excavation() {
             let (cavern, lanterns) =
                 cavern_pieces(track, terrain, *tunnel, halls, scenery.soil, textures);
@@ -155,7 +155,8 @@ pub fn structure_pieces(
                 ..default()
             },
         };
-        // Warm and lit by the lamps, as in Moto Racer; through checkerboard
+        // Warm and lit by the lamps, as in the arcade racers of the 90s;
+        // through checkerboard
         // earth, a cave of it; in a lunar station, pressurized metallic hull
         // panels lit by cool cyan-white strips.
         let lining = match scenery.soil {
@@ -228,7 +229,7 @@ pub fn structure_pieces(
             fog_enabled: false,
             ..default()
         };
-        // Through granite, the frame is cut from it, as a dwarves' gate.
+        // Through granite, the frame is cut from it, as a gate in a mountain.
         let frame = match scenery.soil {
             Soil::Granite => rock.clone(),
             _ => concrete.clone(),
@@ -255,7 +256,7 @@ pub fn structure_pieces(
     }
     for bridge in scenery.bridges.iter().filter(|bridge| wanted(&bridge.span)) {
         // A dam's crest is the dam (see `dam`), and a toy track's deck and
-        // supports are the toy store's theme's (`ToyStore::pieces`).
+        // supports are a theme's (`Theme::pieces`).
         if matches!(
             bridge.style,
             BridgeStyle::Dam
@@ -424,9 +425,9 @@ struct TunnelParts {
     lamps: Vec<Lamp>,
 }
 
-/// Un túnel recto por dentro, con el techo plano, luces cálidas y las
-/// paredes con tablero de ajedrez abajo, como en Moto Racer. Por fuera es un
-/// bloque de roca que se mete en las paredes de roca que lo rodean.
+/// A tunnel, straight inside, with a flat roof, warm lights and its walls
+/// chequered below, as in the arcade racers of the 90s. Outside it is a
+/// block of rock set into the rock walls round it.
 fn tunnel_meshes(track: &Track, terrain: &Terrain, soil: Soil, indices: &[usize]) -> TunnelParts {
     let mut rock = MeshBuilder::default();
     let mut grass = MeshBuilder::default();
@@ -1458,10 +1459,11 @@ pub mod tests {
 
     pub fn a_tunnels_top_is_in_flower_where_the_fields_round_it_are_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
         let circuit = circuits
             .iter()
-            .find(|circuit| circuit.name == "Ghost Island")
+            .find(|circuit| circuit.name == name)
             .unwrap();
         let scenery = &circuit.scenery;
         let track = Track::new(&circuit.layout);
@@ -1563,7 +1565,7 @@ pub mod tests {
             .bridges
             .iter()
             .find(|bridge| bridge.style == BridgeStyle::Wooden)
-            .expect("Loop Island has a wooden bridge");
+            .expect("a circuit has a wooden bridge");
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let indices = indices(&track, bridge.span, track.lap_length());

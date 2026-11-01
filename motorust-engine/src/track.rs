@@ -119,7 +119,7 @@ pub struct VerticalLoop {
     /// way in (m): the running surface drifts sideways as it goes round, so
     /// that it does not run into itself.
     pub shift: f32,
-    /// Whether it has Hot Wheels' boosters, driving the bikes on: one on
+    /// Whether it has the toy cars' boosters, driving the bikes on: one on
     /// its straight lead in, and one on the lap beside it as far along, so
     /// that neither way gains by them (see [`Track::boosters`]).
     #[serde(default)]
@@ -149,7 +149,7 @@ pub struct Fork {
 /// Where its `factor` is nought, the road lies level, and so do the roads
 /// off it beside it, alike.
 /// Where `grip` is more than 1, the road grips the tyres that much harder
-/// across (as Hot Wheels' banked track does, see [`Track::grip_beside`]),
+/// across (as the toy cars' banked track does, see [`Track::grip_beside`]),
 /// and may bank as much more steeply.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -2588,7 +2588,7 @@ pub mod tests {
             .iter()
             .filter(|circuit| !circuit.layout.narrows.is_empty())
             .collect();
-        // Gold Mine's bridge over the lake and Loop Island's over the inlet.
+        // A bridge over a lake and another over an inlet.
         assert!(narrowed.len() >= 2, "{} tracks", narrowed.len());
         for (layout, narrow) in narrowed.iter().flat_map(|circuit| {
             let layout = &circuit.layout;
@@ -2632,9 +2632,9 @@ pub mod tests {
     ) {
         // Ridden at 30 m/s 4 m either side of the middle, how sharply the
         // road rises and falls is never more than 0.6 g from what it is in
-        // the middle (every track well under it, the toy store's 0.3 g):
-        // the bank changes smoothly, coming to its most softly (as it did
-        // not on the toy store's raised bends, 3 g off the middle, felt as
+        // the middle (every track well under it, the steepest banking at
+        // 0.3 g): the bank changes smoothly, coming to its most softly (as
+        // it did not once on raised bends, 3 g off the middle, felt as
         // bumps).
         for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);

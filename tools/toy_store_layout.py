@@ -18,7 +18,8 @@ steepest grade, distant stretches clear of each other unless one passes more
 than 12 m over the other, the crests the bikes take off over at top speed
 (on straights only), and the branches' bends and how far they part from the
 lap. The centre line and the heights are worked out as `motorust-engine/src/track.rs` does,
-through `tools/circuit_layout.py`: keep the two in step. The banking is left
+through the engine's `motorust-engine/tools/circuit_layout.py`: keep the
+two in step. The banking is left
 out, and with it the lift of the bends on the floor and the furniture,
 which bank raised (their middles up to about 1.3 m higher, eased in and out:
 see `Banking::raised`); the game's tests check the grades and crests with
@@ -53,7 +54,12 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "motorust-engine", "tools"
+    ),
+)
 import circuit_layout as cl  # noqa: E402
 
 # How far the walls stand from the centre line (m), as `Layout::wall`.

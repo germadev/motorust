@@ -1,4 +1,4 @@
-//! Hot Wheels' boosters, where a track has them (see
+//! The toy cars' boosters, where a track has them (see
 //! [`crate::track::Track::boosters`]): a narrow pod either side of the road
 //! on its wall's line (a booster and the road beside it are close), red
 //! with a yellow top, a black wheel in each spinning at the road's edge as a

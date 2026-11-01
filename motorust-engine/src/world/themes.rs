@@ -1,6 +1,5 @@
-//! Themes: scenery a game adds of its own to the engine's, as plugins. (Step
-//! 4 of the engine's split, `ROADMAP.md`: the engine knows no theme; the
-//! game registers its own.)
+//! Themes: scenery a game adds of its own to the engine's, as plugins (the
+//! engine knows no theme; the game registers its own).
 //!
 //! A theme is a type with what a circuit's file says of it, registered by a
 //! name ([`register`]); a circuit's file writes its themes in a map by

@@ -29,8 +29,6 @@
 //! - through Bevy's asset server, from the asset source [`SOURCE`]
 //!   (`content://music/bahia.mp3`, see [`path`]), loaded in the background,
 //!   for what can come a little later (the songs, as they start playing).
-//!
-//! Steps 3 and 4d of the engine's split from the game (`ROADMAP.md`).
 
 use std::path::Path;
 use std::sync::RwLock;

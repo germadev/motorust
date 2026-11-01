@@ -1,9 +1,8 @@
 //! Motorust's engine: everything that makes a motorbike racing game in
-//! Bevy, knowing nothing of the content it runs (step 4 of the engine's
-//! split from the game, `ROADMAP.md`). A game builds its app with [`app`],
-//! lays its content pack over the engine's ([`content::register_pack`]),
-//! registers its themes ([`world::themes::register`]) and adds its own
-//! plugins.
+//! Bevy, knowing nothing of the content it runs. A game builds its app with
+//! [`app`], lays its content pack over the engine's
+//! ([`content::register_pack`]), registers its themes
+//! ([`world::themes::register`]) and adds its own plugins.
 
 // The checks of the engine's tests are written to take the content they
 // check (`NAME_on`), for a game's tests to run them on its own (feature

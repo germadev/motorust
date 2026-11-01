@@ -1,7 +1,7 @@
 //! The halo a bike's rear wheel leaves behind it on the road while it
 //! rides a wheelie, on the circuits that have one (see
-//! [`crate::world::scenery::Scenery::wheelie_halo`]), as Sonic spinning on
-//! Loop Island: soft discs of light round the rear wheel's hub, one every
+//! [`crate::world::scenery::Scenery::wheelie_halo`]), as a spin in a
+//! platformer: soft discs of light round the rear wheel's hub, one every
 //! few centimetres travelled, each left where it was, swelling a little and
 //! fading out, so that the wheel draws a glowing trail behind it.
 //!
@@ -218,11 +218,16 @@ fn fade_halos(
 pub mod tests {
     use super::*;
 
-    pub fn only_loop_island_leaves_a_blue_halo_on(circuits: &'static crate::circuits::Circuits) {
+    pub fn only_a_circuit_with_a_halo_leaves_one_on(
+        circuits: &'static crate::circuits::Circuits,
+        name: &str,
+    ) {
         for circuit in circuits.iter() {
             let halo = circuit.scenery.wheelie_halo;
-            if circuit.name == "Loop Island" {
-                let blue = halo.expect("Loop Island has a halo").to_srgba();
+            if circuit.name == name {
+                let blue = halo
+                    .unwrap_or_else(|| panic!("{name} has a halo"))
+                    .to_srgba();
                 assert!(blue.blue > blue.green && blue.green > blue.red, "{blue:?}");
             } else {
                 assert!(halo.is_none(), "{}", circuit.name);
@@ -231,8 +236,8 @@ pub mod tests {
     }
 
     #[test]
-    fn only_loop_island_leaves_a_blue_halo() {
-        only_loop_island_leaves_a_blue_halo_on(&crate::testing::DEMO);
+    fn only_a_circuit_with_a_halo_leaves_one() {
+        only_a_circuit_with_a_halo_leaves_one_on(&crate::testing::DEMO, "");
     }
 
     #[test]

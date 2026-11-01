@@ -4,6 +4,8 @@ version = "0.0.17"
 edition = "2024"
 rust-version = "1.95"
 description = "Motorust's engine: a motorbike racing game in Bevy, knowing nothing of the content it runs"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jgermade/motorust-engine"
 
 [lib]
 name = "motorust_engine"

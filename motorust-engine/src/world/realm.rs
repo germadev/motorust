@@ -1,4 +1,4 @@
-//! A circuit split between the Earth and the Moon (Moon Base): two worlds
+//! A circuit split between the Earth and the Moon: two worlds
 //! laid side by side on one map, joined only by the interdimensional portals
 //! the road runs through. Each realm is drawn on render layers of its own,
 //! and a rider's camera sees the realm it is in, never the other one over
@@ -705,7 +705,7 @@ fn narrow_portal_frusta(
 pub mod tests {
     use super::*;
 
-    pub fn moon_base(
+    pub fn split_circuit(
         circuits: &'static crate::circuits::Circuits,
     ) -> &'static crate::circuits::Circuit {
         circuits
@@ -714,7 +714,9 @@ pub mod tests {
             .expect("a circuit split between the Earth and the Moon")
     }
 
-    pub fn only_moon_base_is_split_on(circuits: &'static crate::circuits::Circuits) {
+    pub fn only_a_lunar_circuit_with_portals_is_split_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         assert_eq!(
             circuits
                 .iter()
@@ -727,7 +729,7 @@ pub mod tests {
     pub fn one_goes_from_one_realm_to_the_other_only_through_a_portal_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
-        let circuit = moon_base(circuits);
+        let circuit = split_circuit(circuits);
         let track = Track::new(&circuit.layout);
         let gates = Gates(gates(&track, &circuit.scenery));
         assert_eq!(gates.0.len(), 2);

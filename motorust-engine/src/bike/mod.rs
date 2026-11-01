@@ -725,7 +725,7 @@ pub fn step(
         } else {
             1.0 + BRAKE_GRIP * state.chassis.front_load()
         }
-        // Banked track that grips harder (Hot Wheels').
+        // Banked track that grips harder (the toy cars').
         * ground.grip;
     let max_yaw_rate = tuning.max_yaw_rate_with_grip(speed, corner_grip);
     // Con una rueda en el aire apenas se puede girar.
@@ -2364,8 +2364,8 @@ pub mod tests {
                 .is_some_and(|e| e.contains("models/nowhere/model.ron")),
             "{error:?}"
         );
-        let path = changed("design: Afilada", "design: Model(\"../shogun\")");
-        assert!(parse(path).err().unwrap().contains("../shogun"));
+        let path = changed("design: Afilada", "design: Model(\"../racer\")");
+        assert!(parse(path).err().unwrap().contains("../racer"));
     }
 
     #[test]
@@ -2996,15 +2996,16 @@ pub mod tests {
         assert!(shown(Smooth, 1.0) > 0.99 && shown(Soft, 1.0) > 0.99);
     }
 
-    pub fn the_toy_store_s_helix_is_taken_flat_out_on(
+    pub fn a_banked_helix_is_taken_flat_out_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
-        // Round every point where Hot Wheels' banked track grips harder, at
+        // Round every point where the toy cars' banked track grips harder, at
         // top speed, the turn its bend needs is within what the bike gives
         // short of where it scrubs speed off (`CORNER_LOSS_FROM`).
         let circuit = circuits
             .iter()
-            .find(|circuit| circuit.name == "Juguetería")
+            .find(|circuit| circuit.name == name)
             .unwrap();
         let track = Track::new(&circuit.layout);
         let tuning = BikeTuning::default();

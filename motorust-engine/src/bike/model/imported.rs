@@ -1,8 +1,8 @@
-//! Modelos 3D importados: las motos y sus pilotos hechos con Meshy, ya
-//! preparados para el juego por `tools/import_models.py`, each in its folder
+//! Imported 3D models: the bikes and their riders made with Meshy, already
+//! prepared for the game by its importer, each in its folder
 //! of `assets/models/` in the content pack, its measures in its
 //! `model.ron`. The roster names one by its folder (`design:
-//! Model("shogun")`, see [`super::Design`]).
+//! Model("racer")`, see [`super::Design`]).
 //!
 //! El script deja cada moto en cuatro piezas (chasis, dirección y ruedas) en
 //! el espacio de la moto, más las bocas de sus escapes, y su piloto con sus
@@ -141,7 +141,7 @@ pub struct Joint {
     pub rotation: Quat,
 }
 
-/// Contenido de un `.bin` de `tools/import_models.py`.
+/// What a model's `.bin`, as the importer writes it, holds.
 pub struct Pack {
     pub meshes: Vec<PackedMesh>,
     pub skeleton: Vec<Joint>,

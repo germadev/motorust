@@ -1,12 +1,11 @@
-// La Bahía: la primera pista, inspirada en Speed Bay a la mediterránea. Una
-// carretera de costa con muros de piedra, farolas, paredes de roca cortada,
-// pinos piñoneros, cipreses, olivos y casas encaladas, con el mar al oeste y
-// al sur y montañas al noreste.
+// The Bay: a Mediterranean coast road with stone walls, street lamps, walls
+// of cut rock, stone pines, cypresses, olive trees and whitewashed houses,
+// the sea to the west and the south and mountains to the north-east.
 //
 // How a circuit's file is written: see src/circuits/data.rs.
 //
-// The engine's demo circuit (the game's own Bahía GP, with no song: the
-// engine runs a circuit without one).
+// The engine's demo circuit (with no song: the engine runs a circuit
+// without one).
 (
     name: "Bahía GP",
     name_en: "Bahía GP",
@@ -95,7 +94,7 @@
         greens: Lawn,
         grass_shade: 1.0,
         massifs: [
-            // A la derecha de la recta de meta: la pared de roca de Speed Bay.
+            // On the right of the start straight: a wall of rock.
             (center: (62.0, -215.0), radius: 52.0, height: 24.0),
             (center: (150.0, -330.0), radius: 40.0, height: 16.0),
             (center: (130.0, -60.0), radius: 55.0, height: 20.0),
@@ -146,7 +145,7 @@
                 // From the fifth letter on in the game's rust orange.
                 accent: Some((4, (0.9, 0.4, 0.12))),
             ),
-            (along: 270.0, side: Right, text: "MOTO RACER", color: (0.08, 0.22, 0.75)),
+            (along: 270.0, side: Right, text: "OPEN ROAD", color: (0.08, 0.22, 0.75)),
             (along: 620.0, side: Left, text: "SUPERBIKE", color: (0.75, 0.1, 0.08)),
             (along: 1140.0, side: Right, text: "GRAND PRIX", color: (0.1, 0.5, 0.2)),
         ],

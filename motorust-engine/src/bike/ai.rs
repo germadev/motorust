@@ -484,7 +484,7 @@ pub fn decide(
     let to_target = target.point(track, line) - state.position;
     let angle = wrap_angle(heading_of(to_target) - state.heading);
     let wanted_curvature = 2.0 * angle.sin() / to_target.length().max(1.0);
-    // Where the road grips harder (Hot Wheels' banked track), the same
+    // Where the road grips harder (the toy cars' banked track), the same
     // steering turns it more, as the physics has it.
     let held = way[0].grip(track);
     let max_curvature = (1.0 / tuning.min_turn_radius)
@@ -1440,8 +1440,8 @@ pub mod tests {
             let dt = 1.0 / 120.0;
             let (mut flights, mut air) = (0, 0usize);
             let name = circuit.name;
-            // Long enough for a jump on two laps of the longest track,
-            // Turbo Bay, whose only jump flat out is on its coast road.
+            // Long enough for a jump on two laps of the longest track, whose
+            // only jump flat out may be on a single stretch.
             for _ in 0..(90.0 / dt) as usize {
                 let input = decide(&rival, rival.lane, f32::INFINITY, &state, &track, &tuning);
                 state = advance(&state, &input, &track, &tuning, dt);
@@ -1472,16 +1472,17 @@ pub mod tests {
         jumps_on_the_track_are_short_on(&crate::testing::DEMO);
     }
 
-    pub fn turbo_bay_s_seafront_runs_into_its_first_bend_with_no_crest_on(
+    pub fn a_seafront_runs_into_its_first_bend_with_no_crest_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
         // Flat out to the end of the seafront and braking for the banked
         // right-hander at the water's edge, the bike stays on the road: no
         // crest throws it off, even at top speed.
         let circuit = circuits
             .iter()
-            .find(|circuit| circuit.name == "Turbo Bay")
-            .expect("Turbo Bay is a circuit");
+            .find(|circuit| circuit.name == name)
+            .unwrap_or_else(|| panic!("{name} is a circuit"));
         let track = Track::new(&circuit.layout);
         let top = BikeTuning::default().max_speed;
         for along in (100..480).step_by(2) {
@@ -1506,10 +1507,9 @@ pub mod tests {
         circuits: &'static crate::circuits::Circuits,
     ) {
         // Flying, a bike neither turns nor leans: a crest in a bend, or one
-        // that lands in a bend, would straighten it up (as Turbo Bay's
-        // mountain road did over its top into the dive at the lighthouse,
-        // its forest road over a hump and its rock pass over a bump, and
-        // Loop Island's start straight where the branch to the loop turns
+        // that lands in a bend, would straighten it up (as a mountain road
+        // once did over its top into a dive, a forest road over a hump, a
+        // rock pass over a bump and a start straight where a branch turns
         // off it).
         for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);

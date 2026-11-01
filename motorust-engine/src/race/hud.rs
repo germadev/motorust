@@ -1019,7 +1019,7 @@ pub mod tests {
     #[test]
     fn a_false_start_notice_goes_up_between_the_lights_and_the_arch() {
         // The top of the start's arch on the grid, down the screen (or the
-        // half): about 29.6 % on Bahía GP's grid and 30.8 % on Gold Mine's.
+        // half): about 29.6 % on Bahía GP's grid, and a little more on others.
         const ARCH_TOP: f32 = 29.6;
         for (size, height) in [(52.0, 100.0), (36.0, 50.0)] {
             // Its letters, down the half (or the screen), in percent.

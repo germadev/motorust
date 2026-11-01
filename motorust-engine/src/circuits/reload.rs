@@ -1,7 +1,7 @@
 //! The circuits read again when their files change on the disk, in a
 //! desktop development build: a circuit saved in an editor is seen in the
-//! game a moment later, with no restart. (Step 3 of the engine's split,
-//! `ROADMAP.md`, for the map editor to come.)
+//! game a moment later, with no restart (and, to come, one saved by a map
+//! editor).
 //!
 //! Twice a second [`watch`] asks the disk when the circuits' list and each
 //! circuit's file were last changed. When one was, it reads them all again

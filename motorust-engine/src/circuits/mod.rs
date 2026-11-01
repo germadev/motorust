@@ -36,6 +36,10 @@ pub struct Circuit {
     /// seconds at a pace this much slower (see
     /// [`crate::race::CheckpointTimes::at`]).
     pub pace: f32,
+    /// The names it had before, if it was renamed: the records saved under
+    /// them are moved to its name as the circuits are read.
+    #[serde(default, deserialize_with = "data::texts")]
+    pub formerly: &'static [&'static str],
     pub layout: Layout,
     pub scenery: Scenery,
 }

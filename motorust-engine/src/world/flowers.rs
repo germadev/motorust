@@ -1,4 +1,4 @@
-//! Fields of flowers (see [`FlowerField`]), as on the hills of Tsushima and
+//! Fields of flowers (see [`FlowerField`]), as on the hills of Japan and
 //! round the lakes at the foot of Mount Fuji: red spider lilies, white
 //! flowers, yellow rape blossom, irises, the silvery gold plumes of susuki
 //! and carpets of moss phlox.
@@ -591,13 +591,14 @@ pub mod tests {
 
     pub fn fields_thin_out_and_mingle_at_their_borders_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
-        // Ghost Island's fields everywhere: in their middles, a few gaps of
+        // The named circuit's fields everywhere: in their middles, a few gaps of
         // grass; near their borders, more, and islands of the next field on
         // this side of the border, so that no border is a line.
         let circuit = circuits
             .iter()
-            .find(|circuit| circuit.name == "Ghost Island")
+            .find(|circuit| circuit.name == name)
             .unwrap();
         let track = Track::new(&circuit.layout);
         let fields = circuit.scenery.flowers;
@@ -662,7 +663,7 @@ pub mod tests {
     pub fn most_of_the_grass_is_in_flower_but_the_shoulders_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
-        // Where the fields reach everywhere, as on Ghost Island.
+        // Where the fields reach everywhere.
         let circuits: Vec<_> = in_flower(circuits)
             .into_iter()
             .filter(|(circuit, ..)| {

@@ -223,18 +223,19 @@ pub mod tests {
 
     pub fn a_look_at_the_start_is_quicker_to_work_out_than_the_whole_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
         let mut world = World::new();
         world.init_resource::<Assets<Image>>();
         let textures = WorldTextures::from_world(&mut world);
-        // Fellowship Road, among the longest to prepare: its grid of heights
+        // The named circuit, among the longest to prepare: its grid of heights
         // under half the whole circuit's (fine round the start, and across
         // the grid in its rows and columns there), its roads only near the
         // start.
         let index = circuits
             .iter()
-            .position(|circuit| circuit.name == "Fellowship Road")
-            .expect("Fellowship Road is a circuit");
+            .position(|circuit| circuit.name == name)
+            .unwrap_or_else(|| panic!("{name} is a circuit"));
         let look = prepare_preview(&circuits[index], index, &textures, Urgency::Now);
         let whole = Terrain::on_threads(
             &Track::new(&circuits[index].layout),

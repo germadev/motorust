@@ -273,6 +273,16 @@ impl Records {
             self.checkpoint(to, laps);
         }
     }
+
+    /// Keeps the records saved under the former names of each of the
+    /// `circuits` (see [`crate::circuits::Circuit::formerly`]) under its own.
+    pub fn take_former(&mut self, circuits: &crate::circuits::Circuits) {
+        for circuit in circuits.iter() {
+            for former in circuit.formerly {
+                self.rename(former, circuit.name);
+            }
+        }
+    }
 }
 
 /// The gates round a lap, as fractions of it: a lap only counts once a bike
@@ -1514,7 +1524,7 @@ pub mod tests {
         circuits: &'static crate::circuits::Circuits,
     ) {
         // Once everybody is in, the camera weighs every bike's spot; one on
-        // a branch (Ghost Island's, say) is weighed on that branch.
+        // a branch is weighed on that branch.
         let mut weighed = 0;
         for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
@@ -1632,6 +1642,33 @@ pub mod tests {
         assert_eq!(records.checkpoint_best("Island"), Some(4));
         assert_eq!(records.best_lap("Bay"), Some(65.0));
         assert_eq!(records.best_laps.len(), 2);
+    }
+
+    #[test]
+    fn a_renamed_circuit_keeps_the_records_of_its_former_names() {
+        // The demo circuit, once called otherwise.
+        let path = "circuits/bahia.ron";
+        let text = crate::testing::demo_file(path);
+        let renamed = &*String::leak(text.replacen(
+            "pace:",
+            "formerly: [\"La Bahía\", \"Bay\"],\n    pace:",
+            1,
+        ));
+        let circuits = crate::circuits::Circuits::parse(&[(path.to_string(), renamed)]).unwrap();
+        let name = circuits[0].name;
+        assert_eq!(circuits[0].formerly, ["La Bahía", "Bay"]);
+        let mut records = Records::default();
+        records.lap("La Bahía", 70.0);
+        records.lap("Bay", 68.0);
+        records.checkpoint("Bay", 3);
+        records.lap("Elsewhere", 90.0);
+        records.take_former(&circuits);
+        assert_eq!(records.best_lap(name), Some(68.0));
+        assert_eq!(records.checkpoint_best(name), Some(3));
+        assert_eq!(records.best_lap("La Bahía"), None);
+        assert_eq!(records.best_lap("Elsewhere"), Some(90.0));
+        // A circuit that was never renamed has no former names.
+        assert!(crate::testing::DEMO[0].formerly.is_empty());
     }
 
     pub fn each_mode_has_its_laps_on(roster: &'static crate::bike::Roster) {

@@ -534,7 +534,7 @@ impl Bench {
         }
     }
 
-    /// The lap under way, as the terminal says it: `[3/10] Loop Island · 1
+    /// The lap under way, as the terminal says it: `[3/10] Bahía GP · 1
     /// player`.
     fn label(&self) -> String {
         let first = &self.tried()[0];

@@ -1,7 +1,7 @@
 //! The game's identity, read from `assets/game.ron` in the content pack:
 //! its title, the folder it keeps its files in, its logo and its icon. The
 //! engine names no game of its own: whatever game it runs says what it is
-//! called. (Step 4 of the engine's split, `ROADMAP.md`.)
+//! called.
 
 use std::sync::OnceLock;
 

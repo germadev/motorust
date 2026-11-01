@@ -105,10 +105,11 @@ mod bike_ai {
     }
 
     #[test]
-    fn turbo_bay_s_seafront_runs_into_its_first_bend_with_no_crest() {
+    fn a_seafront_runs_into_its_first_bend_with_no_crest() {
         crate::game::register();
-        motorust_engine::bike::ai::tests::turbo_bay_s_seafront_runs_into_its_first_bend_with_no_crest_on(
+        motorust_engine::bike::ai::tests::a_seafront_runs_into_its_first_bend_with_no_crest_on(
             &CIRCUITS,
+            "Turbo Bay",
         );
     }
 
@@ -125,9 +126,9 @@ mod world_cavern {
     use super::*;
 
     #[test]
-    fn moria_s_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars() {
+    fn a_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars() {
         crate::game::register();
-        motorust_engine::world::cavern::tests::moria_s_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars_on(&CIRCUITS);
+        motorust_engine::world::cavern::tests::a_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars_on(&CIRCUITS);
     }
 
     #[test]
@@ -191,37 +192,37 @@ mod world_dam {
     use super::*;
 
     #[test]
-    fn turbo_bay_comes_down_onto_its_dam_straight_at_it() {
+    fn the_road_comes_down_onto_a_dam_straight_at_it() {
         crate::game::register();
-        motorust_engine::world::dam::tests::turbo_bay_comes_down_onto_its_dam_straight_at_it_on(
+        motorust_engine::world::dam::tests::the_road_comes_down_onto_a_dam_straight_at_it_on(
             &CIRCUITS,
         );
     }
 
     #[test]
-    fn turbo_bay_s_lake_shows_coming_down_to_the_dam_and_over_its_parapet() {
+    fn a_dam_s_lake_shows_coming_down_to_the_dam_and_over_its_parapet() {
         crate::game::register();
-        motorust_engine::world::dam::tests::turbo_bay_s_lake_shows_coming_down_to_the_dam_and_over_its_parapet_on(&CIRCUITS);
+        motorust_engine::world::dam::tests::a_dam_s_lake_shows_coming_down_to_the_dam_and_over_its_parapet_on(&CIRCUITS);
     }
 
     #[test]
-    fn turbo_bay_s_dam_holds_its_lake_a_few_metres_under_the_crest() {
+    fn a_dam_holds_its_lake_a_few_metres_under_the_crest() {
         crate::game::register();
-        motorust_engine::world::dam::tests::turbo_bay_s_dam_holds_its_lake_a_few_metres_under_the_crest_on(
+        motorust_engine::world::dam::tests::a_dam_holds_its_lake_a_few_metres_under_the_crest_on(
             &CIRCUITS,
         );
     }
 
     #[test]
-    fn turbo_bay_s_river_runs_from_the_foot_of_the_dam_down_the_gorge_to_the_sea() {
+    fn a_dam_s_river_runs_from_its_foot_down_the_gorge_to_the_sea() {
         crate::game::register();
-        motorust_engine::world::dam::tests::turbo_bay_s_river_runs_from_the_foot_of_the_dam_down_the_gorge_to_the_sea_on(&CIRCUITS);
+        motorust_engine::world::dam::tests::a_dam_s_river_runs_from_its_foot_down_the_gorge_to_the_sea_on(&CIRCUITS);
     }
 
     #[test]
-    fn turbo_bay_s_dam_face_drops_to_the_river_in_sight_of_the_road_up_the_gorge() {
+    fn a_dam_s_face_drops_to_the_river_in_sight_of_the_road_up_the_gorge() {
         crate::game::register();
-        motorust_engine::world::dam::tests::turbo_bay_s_dam_face_drops_to_the_river_in_sight_of_the_road_up_the_gorge_on(&CIRCUITS);
+        motorust_engine::world::dam::tests::a_dam_s_face_drops_to_the_river_in_sight_of_the_road_up_the_gorge_on(&CIRCUITS);
     }
 
     #[test]
@@ -245,17 +246,17 @@ mod world_dam {
     }
 
     #[test]
-    fn turbo_bay_s_lake_mirrors_the_hills_round_it_and_the_dam() {
+    fn a_dam_s_lake_mirrors_the_hills_round_it_and_the_dam() {
         crate::game::register();
-        motorust_engine::world::dam::tests::turbo_bay_s_lake_mirrors_the_hills_round_it_and_the_dam_on(
+        motorust_engine::world::dam::tests::a_dam_s_lake_mirrors_the_hills_round_it_and_the_dam_on(
             &CIRCUITS,
         );
     }
 
     #[test]
-    fn the_sun_shines_on_turbo_bay_s_dam_face_all_across_it() {
+    fn the_sun_shines_on_a_dam_s_face_all_across_it() {
         crate::game::register();
-        motorust_engine::world::dam::tests::the_sun_shines_on_turbo_bay_s_dam_face_all_across_it_on(
+        motorust_engine::world::dam::tests::the_sun_shines_on_a_dam_s_face_all_across_it_on(
             &CIRCUITS,
         );
     }
@@ -309,6 +310,7 @@ mod world_flowers {
         crate::game::register();
         motorust_engine::world::flowers::tests::fields_thin_out_and_mingle_at_their_borders_on(
             &CIRCUITS,
+            "Ghost Island",
         );
     }
 }
@@ -512,9 +514,11 @@ mod world_realm {
     }
 
     #[test]
-    fn only_moon_base_is_split() {
+    fn only_a_lunar_circuit_with_portals_is_split() {
         crate::game::register();
-        motorust_engine::world::realm::tests::only_moon_base_is_split_on(&CIRCUITS);
+        motorust_engine::world::realm::tests::only_a_lunar_circuit_with_portals_is_split_on(
+            &CIRCUITS,
+        );
     }
 }
 
@@ -582,9 +586,9 @@ mod bike {
     }
 
     #[test]
-    fn the_toy_store_s_helix_is_taken_flat_out() {
+    fn a_banked_helix_is_taken_flat_out() {
         crate::game::register();
-        motorust_engine::bike::tests::the_toy_store_s_helix_is_taken_flat_out_on(&CIRCUITS);
+        motorust_engine::bike::tests::a_banked_helix_is_taken_flat_out_on(&CIRCUITS, "Juguetería");
     }
 
     #[test]
@@ -600,10 +604,11 @@ mod bike_wheelie_halo {
     use super::*;
 
     #[test]
-    fn only_loop_island_leaves_a_blue_halo() {
+    fn only_a_circuit_with_a_halo_leaves_one() {
         crate::game::register();
-        motorust_engine::bike::wheelie_halo::tests::only_loop_island_leaves_a_blue_halo_on(
+        motorust_engine::bike::wheelie_halo::tests::only_a_circuit_with_a_halo_leaves_one_on(
             &CIRCUITS,
+            "Loop Island",
         );
     }
 }
@@ -948,7 +953,7 @@ mod world {
     fn a_circuit_is_shown_before_its_rest_comes_and_raced_on_whole() {
         crate::game::register();
         motorust_engine::world::tests::a_circuit_is_shown_before_its_rest_comes_and_raced_on_whole_on(
-            &CIRCUITS,
+            &CIRCUITS, "Fellowship Road",
         );
     }
 
@@ -1008,7 +1013,7 @@ mod world_preview {
     fn a_look_at_the_start_is_quicker_to_work_out_than_the_whole() {
         crate::game::register();
         motorust_engine::world::preview::tests::a_look_at_the_start_is_quicker_to_work_out_than_the_whole_on(
-            &CIRCUITS,
+            &CIRCUITS, "Fellowship Road",
         );
     }
 }
@@ -1041,7 +1046,10 @@ mod world_road {
     #[test]
     fn no_railing_stands_across_another_road() {
         crate::game::register();
-        motorust_engine::world::road::tests::no_railing_stands_across_another_road_on(&CIRCUITS);
+        motorust_engine::world::road::tests::no_railing_stands_across_another_road_on(
+            &CIRCUITS,
+            "Ghost Island",
+        );
     }
 
     #[test]
@@ -1060,15 +1068,15 @@ mod world_sea {
     fn the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey() {
         crate::game::register();
         motorust_engine::world::sea::tests::the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey_on(
-            &CIRCUITS,
+            &CIRCUITS, "Fellowship Road",
         );
     }
 
     #[test]
-    fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say() {
+    fn the_sea_mirrors_but_where_it_is_a_cartoon_s_and_as_the_options_say() {
         crate::game::register();
-        motorust_engine::world::sea::tests::the_sea_mirrors_but_on_loop_island_and_as_the_options_say_on(
-            &CIRCUITS,
+        motorust_engine::world::sea::tests::the_sea_mirrors_but_where_it_is_a_cartoon_s_and_as_the_options_say_on(
+            &CIRCUITS, "Loop Island",
         );
     }
 
@@ -1107,17 +1115,20 @@ mod world_shoulders {
     }
 
     #[test]
-    fn the_bay_is_mostly_grass_and_the_gold_mine_has_none() {
+    fn the_bay_is_mostly_grass_and_a_mine_has_none() {
         crate::game::register();
-        motorust_engine::world::shoulders::tests::the_bay_is_mostly_grass_and_the_gold_mine_has_none_on(
+        motorust_engine::world::shoulders::tests::the_bay_is_mostly_grass_and_a_mine_has_none_on(
             &CIRCUITS,
         );
     }
 
     #[test]
-    fn fellowship_road_s_shoulders_are_grass_and_bare_earth_in_patches() {
+    fn shoulders_in_patches_are_grass_and_bare_earth() {
         crate::game::register();
-        motorust_engine::world::shoulders::tests::fellowship_road_s_shoulders_are_grass_and_bare_earth_in_patches_on(&CIRCUITS);
+        motorust_engine::world::shoulders::tests::shoulders_in_patches_are_grass_and_bare_earth_on(
+            &CIRCUITS,
+            "Fellowship Road",
+        );
     }
 }
 
@@ -1127,7 +1138,7 @@ mod world_structures {
     #[test]
     fn a_tunnels_top_is_in_flower_where_the_fields_round_it_are() {
         crate::game::register();
-        motorust_engine::world::structures::tests::a_tunnels_top_is_in_flower_where_the_fields_round_it_are_on(&CIRCUITS);
+        motorust_engine::world::structures::tests::a_tunnels_top_is_in_flower_where_the_fields_round_it_are_on(&CIRCUITS, "Ghost Island");
     }
 
     #[test]
@@ -1167,45 +1178,45 @@ mod world_terrain {
     }
 
     #[test]
-    fn turbo_bay_is_an_island_with_a_river_under_the_bridge() {
+    fn an_island_has_a_river_under_its_bridge() {
         crate::game::register();
-        motorust_engine::world::terrain::tests::turbo_bay_is_an_island_with_a_river_under_the_bridge_on(
+        motorust_engine::world::terrain::tests::an_island_has_a_river_under_its_bridge_on(
             &CIRCUITS,
         );
     }
 
     #[test]
-    fn turbo_bay_dives_to_the_foot_of_its_lighthouse_in_full_view() {
+    fn the_road_dives_to_the_foot_of_a_lighthouse_in_full_view() {
         crate::game::register();
-        motorust_engine::world::terrain::tests::turbo_bay_dives_to_the_foot_of_its_lighthouse_in_full_view_on(
+        motorust_engine::world::terrain::tests::the_road_dives_to_the_foot_of_a_lighthouse_in_full_view_on(
             &CIRCUITS,
         );
     }
 
     #[test]
-    fn turbo_bay_passes_over_its_own_tunnel() {
+    fn a_road_passes_over_its_own_tunnel() {
         crate::game::register();
-        motorust_engine::world::terrain::tests::turbo_bay_passes_over_its_own_tunnel_on(&CIRCUITS);
+        motorust_engine::world::terrain::tests::a_road_passes_over_its_own_tunnel_on(&CIRCUITS);
     }
 
     #[test]
-    fn gold_mine_climbs_its_mountain_and_passes_over_its_galleries() {
+    fn a_road_over_a_mine_climbs_its_mountain_and_passes_over_its_galleries() {
         crate::game::register();
-        motorust_engine::world::terrain::tests::gold_mine_climbs_its_mountain_and_passes_over_its_galleries_on(&CIRCUITS);
+        motorust_engine::world::terrain::tests::a_road_over_a_mine_climbs_its_mountain_and_passes_over_its_galleries_on(&CIRCUITS);
     }
 
     #[test]
-    fn gold_mine_s_great_lake_is_the_bottom_of_an_open_pit() {
+    fn a_mine_s_lake_is_the_bottom_of_an_open_pit() {
         crate::game::register();
-        motorust_engine::world::terrain::tests::gold_mine_s_great_lake_is_the_bottom_of_an_open_pit_on(
+        motorust_engine::world::terrain::tests::a_mine_s_lake_is_the_bottom_of_an_open_pit_on(
             &CIRCUITS,
         );
     }
 
     #[test]
-    fn loop_island_is_an_island_of_checkerboard_cliffs() {
+    fn a_checkered_island_has_checkerboard_cliffs() {
         crate::game::register();
-        motorust_engine::world::terrain::tests::loop_island_is_an_island_of_checkerboard_cliffs_on(
+        motorust_engine::world::terrain::tests::a_checkered_island_has_checkerboard_cliffs_on(
             &CIRCUITS,
         );
     }
@@ -1213,14 +1224,14 @@ mod world_terrain {
     #[test]
     fn snow_lies_on_down_the_gullies_of_the_mountains_and_forest_climbs_them() {
         crate::game::register();
-        motorust_engine::world::terrain::tests::snow_lies_on_down_the_gullies_of_the_mountains_and_forest_climbs_them_on(&CIRCUITS);
+        motorust_engine::world::terrain::tests::snow_lies_on_down_the_gullies_of_the_mountains_and_forest_climbs_them_on(&CIRCUITS, "Ghost Island");
     }
 
     #[test]
     fn the_borders_between_grounds_run_smoothly_not_in_steps() {
         crate::game::register();
         motorust_engine::world::terrain::tests::the_borders_between_grounds_run_smoothly_not_in_steps_on(
-            &CIRCUITS,
+            &CIRCUITS, "Ghost Island",
         );
     }
 }

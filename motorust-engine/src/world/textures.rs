@@ -40,7 +40,7 @@ pub struct WorldTextures {
     pub panels: Handle<Image>,
     /// Gradas de público con ropa de colores vivos como en los arcades de los 90.
     pub crowd: Handle<Image>,
-    /// Two by two squares of brown checkerboard earth, as in Loop Island.
+    /// Two by two squares of brown checkerboard earth, as on an arcade island.
     pub soil: Handle<Image>,
     /// Streaks of falling water, repeating downwards.
     pub falls: Handle<Image>,
@@ -63,7 +63,7 @@ pub struct WorldTextures {
     /// A slot-car track's dark plastic, two lanes of it a repetition (see
     /// [`slot_track`]).
     pub slot_track: Handle<Image>,
-    /// Hot Wheels' orange track, two lanes of it a repetition (see
+    /// The toy cars' orange track, two lanes of it a repetition (see
     /// [`orange_track`]).
     pub orange_track: Handle<Image>,
     /// A slide's glossy yellow plastic (see [`chute`]).
@@ -840,7 +840,7 @@ fn slot_track() -> Image {
     })
 }
 
-/// Hot Wheels' track: bright orange plastic, two lanes a repetition
+/// The toy cars' track: bright orange plastic, two lanes a repetition
 /// across, each with a row of chevrons down its middle pointing the way
 /// the road runs (towards +v) and a low ridge between the lanes; a darker
 /// joint where each piece of track meets the next.
@@ -1354,7 +1354,7 @@ fn tiling_level(width: u32, height: u32, pixel: impl Fn(u32, u32) -> Color) -> I
     image
 }
 
-/// Loop Island earth: two by two squares, chocolate and caramel, each with a
+/// Checkerboard earth: two by two squares, chocolate and caramel, each with a
 /// light bevel on its upper and left edges, a dark one on the others, and
 /// some grain.
 fn soil() -> Image {

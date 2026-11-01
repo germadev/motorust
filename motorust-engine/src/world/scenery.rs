@@ -124,7 +124,7 @@ pub enum Greens {
     /// water, and dark scrub up the slopes before the rock, in patches of
     /// every size with ragged edges.
     Mediterranean,
-    /// A lush green land's, as the Shire's: the countryside's, but deeper
+    /// A lush green land's: the countryside's, but deeper
     /// and greener, not yellowed by the sun, with darker drifts where the
     /// grass grows thick.
     Lush,
@@ -189,7 +189,7 @@ pub enum WallStyle {
     Railing,
     /// Seto sobre un murete.
     Hedge,
-    /// Blocks of brown checkerboard earth, as in Loop Island.
+    /// Blocks of brown checkerboard earth, as on an arcade island.
     Checkered,
     /// A fence of heavy timber planks, as round a mine.
     Timber,
@@ -197,14 +197,14 @@ pub enum WallStyle {
     /// the railing, the ground beyond it shows through.
     ShrineFence,
     /// A low fence of weathered wooden posts and rails, as along the lanes
-    /// of the Shire: the ground beyond it shows through.
+    /// of the countryside: the ground beyond it shows through.
     Fence,
     /// A low concrete parapet, as along a dam's crest on its lake's side:
     /// the water shows over it, a little way down.
     Parapet,
     /// The low border of a slot-car track, in red and white stripes.
     SlotBorder,
-    /// The raised orange edge of Hot Wheels' track, with a little light
+    /// The raised orange edge of the toy cars' track, with a little light
     /// every few metres along its top.
     OrangeEdge,
     /// The tall, rounded side of a slide's chute, of red plastic.
@@ -224,13 +224,13 @@ pub enum WallStyle {
 pub enum Soil {
     /// Natural rock with tilted strata.
     Rock,
-    /// Brown checkerboard earth under a grass top, as in Loop Island.
+    /// Brown checkerboard earth under a grass top, as on an arcade island.
     Checkered,
     /// A desert canyon of red and ochre rock over dry, dusty earth; its
     /// tunnels are mine galleries propped with timber and lit by lanterns.
     Mine,
-    /// Grey granite and schist, bare and hard, as the Argonath are carved
-    /// from: the rock of the high country of *The Lord of the Rings*.
+    /// Grey granite and schist, bare and hard: the rock of high,
+    /// mountainous country.
     Granite,
     /// Grey lunar regolith and basaltic crater rock; its tunnels are
     /// pressurized space-station corridors lit by cool white-cyan strips.
@@ -254,13 +254,12 @@ pub enum SkyStyle {
     GoldenHour,
     Dusk,
     /// A summer sunset in high country, the hills' long shadows over one
-    /// another, graded as a film is: the light of New Zealand, where *The
-    /// Lord of the Rings* was shot.
+    /// another, graded as a film is: the light of New Zealand.
     HighCountry,
     Space,
     /// Indoors, under a ceiling: no sky, no sun and no clouds, but the
     /// light of the lamps from overhead, white and warm, softly filling the
-    /// shade, as in a shop (the toy store's).
+    /// shade, as in a shop.
     Indoor,
 }
 
@@ -322,7 +321,7 @@ pub enum BridgeStyle {
     /// and mossy, its posts leaning a little and its rails sagging.
     OldWooden,
     /// A concrete deck between two steel through trusses, braced across
-    /// overhead, on concrete piers, as in West Way (Moto Racer).
+    /// overhead, on concrete piers.
     Truss,
     /// The crest of a dam: the concrete of the dam itself, down to the
     /// gorge below it, with the lake it holds on the other side (see
@@ -330,9 +329,9 @@ pub enum BridgeStyle {
     Dam,
     /// A slot-car track: its dark plastic with the slots and their rails,
     /// lying on the furniture under it, or carried over the floor on blue
-    /// lattice pillars, between red and white borders (the toy store's).
+    /// lattice pillars, between red and white borders.
     SlotTrack,
-    /// Hot Wheels' orange track, with its chevrons, on blue pillars, between
+    /// The toy cars' orange track, with its chevrons, on blue pillars, between
     /// its raised edges.
     OrangeTrack,
     /// A slide's chute of yellow plastic between tall red sides.
@@ -495,8 +494,7 @@ pub enum HouseStyle {
     /// Plastered walls under a tiled gable roof.
     Cottage,
     /// The same, with a wooden false front standing up over the roof at the
-    /// front and a porch along it, as in the towns of the Old West (and of
-    /// West Way, in Moto Racer).
+    /// front and a porch along it, as in the towns of the Old West.
     FalseFront,
 }
 
@@ -602,8 +600,8 @@ pub struct Scenery {
     pub sky: SkyStyle,
     /// The colour of the sea, the lakes and the rivers.
     pub water: Water,
-    /// Whether the sea is always drawn as in *The Wind Waker*, flat cartoon
-    /// blues with waves rolling in (Loop Island, an arcade island); on the
+    /// Whether the sea is always drawn as a cartoon, flat cartoon
+    /// blues with waves rolling in (an arcade island's); on the
     /// other tracks it mirrors what stands round it unless Options >
     /// Graphics > Water says otherwise (see [`crate::world::sea`]).
     #[serde(default)]
@@ -615,12 +613,12 @@ pub struct Scenery {
     /// (see [`super::realm`] and [`super::portals`]).
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub portals: &'static [Portal],
-    /// The halls of an excavation, a mine's or Moria's: where there are, its
+    /// The halls of an excavation, a mine's or great halls': where there are, its
     /// tunnels are dug through the rock (see [`Scenery::excavation`]).
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub halls: &'static [Hall],
     /// The colour of the halo the rear wheel leaves behind it on the road
-    /// while the bike rides a wheelie, as Sonic's spin (Loop Island's), or
+    /// while the bike rides a wheelie, as a spin in a platformer, or
     /// `None` for none (see `crate::bike::wheelie_halo`).
     #[serde(deserialize_with = "crate::circuits::data::optional_color", default)]
     pub wheelie_halo: Option<Color>,
@@ -644,7 +642,7 @@ pub struct Scenery {
 
 impl Scenery {
     /// The halls of the tunnels where they are excavations, a mine's or
-    /// Moria's (see [`super::cavern`]), rather than tunnels lined with
+    /// great halls' (see [`super::cavern`]), rather than tunnels lined with
     /// concrete panels.
     pub fn excavation(&self) -> Option<&'static [Hall]> {
         (self.soil == Soil::Mine || !self.halls.is_empty()).then_some(self.halls)
@@ -759,8 +757,7 @@ pub enum Plinth {
 /// radians from that about its foot (anticlockwise seen from above: one by
 /// the road turned to face the riders coming along it), and leaning `lean`
 /// radians towards its side that was -X as made (a tree leaning out over
-/// what its crown spreads over). Its model is one of a theme's (feudal
-/// Japan's, Middle-earth's).
+/// what its crown spreads over). Its model is one of a theme's.
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Prop<M> {
@@ -837,7 +834,7 @@ pub struct RockTint {
     pub color: Color,
 }
 
-/// A stretch of an excavation, a mine's or Moria's, in metres along the lap (a branch off
+/// A stretch of an excavation, a mine's or great halls', in metres along the lap (a branch off
 /// the lap counts as the stretch it stands in for): the rock it is cut
 /// through and how high its roof rises above the road in the middle (m).
 /// Where there is none, the excavation is a gallery propped with timber.
@@ -866,7 +863,7 @@ pub enum Stone {
     Slate,
     /// Ochre clay, its walls lined with planks, over beaten earth.
     Clay,
-    /// The dwarves' masonry, as in Moria: walls and vaults of dressed grey
+    /// Masonry, as in great halls dug under a mountain: walls and vaults of dressed grey
     /// blocks over flagstones, great pillars in the widest halls.
     Masonry,
     /// A natural cave in grey granite, over grit.

@@ -98,6 +98,8 @@
     ),
     song: (file: "autumn_gale.mp3", length: 175.8, loudness: -15.9),
     pace: 1.0,
+    // Its name before: the records saved under it are its own.
+    formerly: ["Tsushima Isle"],
     layout: (
         control_points: [
             // 1. The castle street, north (-Z), and the tunnel under the castle hill.

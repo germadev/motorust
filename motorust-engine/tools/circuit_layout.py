@@ -2,12 +2,12 @@
 """Draws a circuit's layout and height profile, and reports where it may
 not ride well, without building the game.
 
-Reads a circuit's source (`motorust-engine/src/circuits/NAME.rs`, or its file in RON,
-`assets/circuits/NAME.ron`, see `motorust-engine/src/circuits/data.rs`, with what of it is
-left in `motorust-engine/src/circuits/NAME.rs`) and works its lap out as
-the game does (`motorust-engine/src/track.rs`): the centre line through `CONTROL_POINTS`
-(closed centripetal Catmull-Rom, resampled every `SAMPLE_SPACING` metres)
-and the heights along it from `ELEVATION` (Hermite with Catmull-Rom
+Reads a circuit's file in RON (`assets/circuits/NAME.ron`, see the engine's
+`src/circuits/data.rs`, with what of it is left in Rust in the engine's
+`src/circuits/NAME.rs`, if anything), or a circuit written in Rust, and
+works its lap out as the engine does (its `src/track.rs`): the centre line
+through `CONTROL_POINTS` (closed centripetal Catmull-Rom, resampled every
+`SAMPLE_SPACING` metres) and the heights along it from `ELEVATION` (Hermite with Catmull-Rom
 tangents, over `BASE_ELEVATION`). Branches, narrows and banking are left
 out: this is the lap's centre line only.
 
@@ -27,9 +27,12 @@ out: this is the lap's centre line only.
   over at top speed.
 
 Usage:
-    python3 tools/circuit_layout.py assets/circuits/turbo_bay.ron \\
+    python3 tools/circuit_layout.py assets/circuits/bahia.ron \\
         [--plan plan.png] [--box -80 0 520 820] [--every 50] \\
         [--profile profile.png] [--along 0 600]
+
+From a game's repository holding the engine in `motorust-engine/`:
+    python3 motorust-engine/tools/circuit_layout.py assets/circuits/NAME.ron
 
 Needs numpy (and matplotlib for the pictures).
 """
@@ -41,13 +44,13 @@ import sys
 
 import numpy as np
 
-# As in motorust-engine/src/track.rs.
+# As in the engine's src/track.rs.
 SAMPLE_SPACING = 2.0
 BASE_ELEVATION = 2.0
 WALL_DISTANCE = 11.5
 MIN_RADIUS = 2.5 * WALL_DISTANCE
 MAX_GRADE = 0.13
-# The bike's top speed (motorust-engine/src/bike/mod.rs, `max_speed`, m/s), and the gravity
+# The bike's top speed (the engine's src/bike/mod.rs, `max_speed`, m/s), and the gravity
 # it takes off against there (`RISE_GRAVITY`, twice the real one, `settle`):
 # on a crest it leaves the road on its way up to the top once the road would
 # have to pull it down harder than that, so over a crest tighter than
@@ -160,7 +163,7 @@ class Lap:
         self.ron = path.endswith(".ron")
         if self.ron:
             # What its file names in Rust (a dam's or a pit's water, say) is
-            # in `motorust-engine/src/circuits/NAME.rs`, if there: read with it.
+            # in the engine's `src/circuits/NAME.rs`, if there: read with it.
             source = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "..",
@@ -279,7 +282,7 @@ def plot_plan(lap, out, box, every):
             continue
         coast = vec2s(block)
         if len(coast) == 0:
-            # Loop Island's coast is (x, z) pairs.
+            # A coast given as (x, z) pairs.
             coast = np.array(pairs(block))
         if len(coast) > 2:
             ring = closed_curve(coast, 4.0)
@@ -399,7 +402,7 @@ def plot_profile(lap, out, along_range):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("circuit", help="a circuit's file, e.g. assets/circuits/turbo_bay.ron")
+    parser.add_argument("circuit", help="a circuit's file, e.g. assets/circuits/bahia.ron")
     parser.add_argument("--plan", help="draw the lap from above to this PNG")
     parser.add_argument("--box", nargs=4, type=float, metavar=("X0", "Z0", "X1", "Z1"))
     parser.add_argument("--every", type=float, default=100.0, help="label every this many metres")

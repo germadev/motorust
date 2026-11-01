@@ -100,9 +100,9 @@ fn terrain_surface(ground: Ground, soil: Soil) -> Surface {
     }
 }
 
-/// The floor beside the roads of a mine's excavation, or Moria's, of each
+/// The floor beside the roads of a mine's excavation, or great halls', of each
 /// stone (see [`super::cavern`]): planks in the galleries, gravel and earth
-/// in the halls, flagstones in the dwarves' and grey grit in natural caves.
+/// in the halls, flagstones in great halls and grey grit in natural caves.
 fn stone_surface(stone: Stone) -> Surface {
     match stone {
         Stone::Timbered => Surface::Paved,
@@ -197,7 +197,7 @@ pub mod tests {
         tunnels_and_bridges_are_paved_beside_the_road_on(&crate::testing::DEMO);
     }
 
-    pub fn the_bay_is_mostly_grass_and_the_gold_mine_has_none_on(
+    pub fn the_bay_is_mostly_grass_and_a_mine_has_none_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
         let (_, _, bay) = shoulders_of(circuits, circuits[0].name);
@@ -208,11 +208,11 @@ pub mod tests {
             .count();
         assert!(grass > bay[0].len(), "{grass} of {}", 2 * bay[0].len());
 
-        let gold_mine = circuits
+        let with_a_mine = circuits
             .iter()
             .find(|circuit| circuit.scenery.soil == Soil::Mine)
             .expect("there is a mine");
-        let (track, scenery, shoulders) = shoulders_of(circuits, gold_mine.name);
+        let (track, scenery, shoulders) = shoulders_of(circuits, with_a_mine.name);
         let all: Vec<Surface> = shoulders.iter().flatten().flatten().copied().collect();
         assert!(!all.contains(&Surface::Grass), "no grass in the desert");
         assert!(all.contains(&Surface::Dirt(Dust::Desert)));
@@ -226,10 +226,11 @@ pub mod tests {
         );
     }
 
-    pub fn fellowship_road_s_shoulders_are_grass_and_bare_earth_in_patches_on(
+    pub fn shoulders_in_patches_are_grass_and_bare_earth_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
-        let (_, _, shoulders) = shoulders_of(circuits, "Fellowship Road");
+        let (_, _, shoulders) = shoulders_of(circuits, name);
         let lap = &shoulders[0];
         let count = |wanted: Surface| lap.iter().flatten().filter(|&&s| s == wanted).count();
         let (grass, earth) = (count(Surface::Grass), count(Surface::Dirt(Dust::Earth)));

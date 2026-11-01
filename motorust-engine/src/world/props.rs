@@ -204,7 +204,8 @@ pub fn row_points(track: &Track, row: &Row) -> Vec<(usize, Vec2)> {
         .collect()
 }
 
-/// Farolas en fila, con el brazo sobre la carretera, como en Speed Bay (Moto Racer).
+/// Street lamps in a row, their arms over the road, as in the arcade
+/// racers of the 90s.
 fn spawn_lamps(
     world: &mut ChildSpawnerCommands,
     track: &Track,

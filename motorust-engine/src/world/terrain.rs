@@ -1,4 +1,4 @@
-//! Terreno alrededor del circuito, inspirado en Speed Bay (Moto Racer): junto a la
+//! Terreno alrededor del circuito: junto a la
 //! carretera sigue su altura y su peralte; más allá hay colinas de hierba,
 //! peñascos que caen a pico sobre los muros, playas y el mar al oeste y al
 //! sur, y montañas tierra adentro, al noreste.
@@ -636,7 +636,7 @@ impl Terrain {
                                         Vec2::new(p.x + warp.x, p.z + warp.y)
                                     }
                                     // Checkerboard earth: straight rows at the same
-                                    // heights on every cliff, as in Loop Island.
+                                    // heights on every cliff, as on an arcade island.
                                     false if self.soil == Soil::Checkered => {
                                         rock_projection(p, face)
                                     }
@@ -1385,7 +1385,7 @@ impl<'a> Shaper<'a> {
             let wild = self.pit(point, wild);
             // Near the bridge, that is: further off, the ground as anywhere
             // else, so that cliffs may rise beside a long bridge over a
-            // river (as the Argonath's, either side of the causeway).
+            // river (as statues either side of a causeway).
             let near = 1.0 - smoothstep(BRIDGE_REACH.0, BRIDGE_REACH.1, distance);
             height = height.lerp(wild.min(road - 2.5), bridge * near);
         }
@@ -1703,7 +1703,7 @@ fn greens_tint(greens: Greens, p: Vec3, normal: Vec3, wild: f32) -> Color {
 /// A lush green land's greens (`Greens::Lush`), as tints over the grass's
 /// texture: the countryside's (see [`grass_tint`]), its forests as they
 /// are, but its grass deep, rich and green, little red and less blue in
-/// it, as the grass of a wet land is in the sun (the Shire's at
+/// it, as the grass of a wet land is in the sun (a green land's at
 /// Matamata: about sRGB 80, 125, 35 in the sun), not yellowed nor
 /// paled by it; and darker where it grows thick, in drifts some tens of
 /// metres across, so that a green hill is not one flat green.
@@ -2241,9 +2241,7 @@ pub mod tests {
         assert!(terrain.height(Vec2::new(1000.0, -1000.0)) > 50.0);
     }
 
-    pub fn turbo_bay_is_an_island_with_a_river_under_the_bridge_on(
-        circuits: &'static crate::circuits::Circuits,
-    ) {
+    pub fn an_island_has_a_river_under_its_bridge_on(circuits: &'static crate::circuits::Circuits) {
         let circuit = &circuits[1];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
@@ -2267,7 +2265,7 @@ pub mod tests {
         );
     }
 
-    pub fn turbo_bay_dives_to_the_foot_of_its_lighthouse_in_full_view_on(
+    pub fn the_road_dives_to_the_foot_of_a_lighthouse_in_full_view_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
         let circuit = &circuits[1];
@@ -2312,7 +2310,7 @@ pub mod tests {
         }
     }
 
-    pub fn turbo_bay_passes_over_its_own_tunnel_on(circuits: &'static crate::circuits::Circuits) {
+    pub fn a_road_passes_over_its_own_tunnel_on(circuits: &'static crate::circuits::Circuits) {
         let circuit = &circuits[1];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
@@ -2348,7 +2346,7 @@ pub mod tests {
         assert!((terrain.height(point) - low).abs() < 0.1);
     }
 
-    pub fn gold_mine_climbs_its_mountain_and_passes_over_its_galleries_on(
+    pub fn a_road_over_a_mine_climbs_its_mountain_and_passes_over_its_galleries_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
         let circuit = &circuits[3];
@@ -2462,12 +2460,12 @@ pub mod tests {
         assert_eq!(pit_ground(&pit, width + 10.0 * pitch, 30.0), 30.0);
     }
 
-    pub fn gold_mine_s_great_lake_is_the_bottom_of_an_open_pit_on(
+    pub fn a_mine_s_lake_is_the_bottom_of_an_open_pit_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
         let circuit = &circuits[3];
         let (Some(pit), Coast::Sea(waters)) = (&circuit.scenery.pit, &circuit.scenery.coast) else {
-            panic!("Gold Mine has an open pit round its lake");
+            panic!("{} has an open pit round its lake", circuit.name);
         };
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
@@ -2516,7 +2514,7 @@ pub mod tests {
         assert!(seen >= 8, "{seen} rays clear of the roads");
     }
 
-    pub fn loop_island_is_an_island_of_checkerboard_cliffs_on(
+    pub fn a_checkered_island_has_checkerboard_cliffs_on(
         circuits: &'static crate::circuits::Circuits,
     ) {
         let circuit = &circuits[2];
@@ -2613,7 +2611,7 @@ pub mod tests {
 
     #[test]
     fn mediterranean_greens_are_many_tones_shading_into_each_other() {
-        // Over Turbo Bay's island, on level ground: dry straw (redder than
+        // Over an island, on level ground: dry straw (redder than
         // the photo's green) in places and dark scrub in others...
         let up = Vec3::Y;
         let tint = |x: f32, z: f32| mediterranean_tint(Vec3::new(x, 15.0, z), up, 0.0).to_linear();
@@ -2747,10 +2745,11 @@ pub mod tests {
 
     pub fn snow_lies_on_down_the_gullies_of_the_mountains_and_forest_climbs_them_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
         let circuit = circuits
             .iter()
-            .find(|circuit| circuit.name == "Ghost Island")
+            .find(|circuit| circuit.name == name)
             .unwrap();
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
@@ -2794,12 +2793,13 @@ pub mod tests {
 
     pub fn the_borders_between_grounds_run_smoothly_not_in_steps_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
-        // Ghost Island: fields of flowers, beaches, and a volcano with a
-        // tree line and snow on its top.
+        // The named circuit: fields of flowers, beaches, and a volcano with
+        // a tree line and snow on its top.
         let circuit = circuits
             .iter()
-            .find(|circuit| circuit.name == "Ghost Island")
+            .find(|circuit| circuit.name == name)
             .unwrap();
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);

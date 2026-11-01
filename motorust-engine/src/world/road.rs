@@ -42,10 +42,10 @@ const RAILING_HEIGHT: f32 = 1.05;
 const RAILING_GREEN: Color = Color::srgb(0.08, 0.42, 0.28);
 /// The lacquered vermilion of a shrine's fence.
 const SHRINE_VERMILION: Color = Color::srgb(0.8, 0.17, 0.07);
-/// The weathered wood of a fence along the Shire's lanes.
+/// The weathered wood of a fence along country lanes.
 const FENCE_WOOD: Color = Color::srgb(0.42, 0.33, 0.24);
 /// Indoors, the borders of the toy tracks: a slot-car track's low red and
-/// white one, Hot Wheels' orange edge and a slide's tall side (m over the
+/// white one, the toy cars' orange edge and a slide's tall side (m over the
 /// road).
 const SLOT_BORDER_HEIGHT: f32 = 0.7;
 const ORANGE_EDGE_HEIGHT: f32 = 1.0;
@@ -53,7 +53,7 @@ const CHUTE_SIDE_HEIGHT: f32 = 2.45;
 const HOT_WHEELS_ORANGE: Color = Color::srgb(1.0, 0.42, 0.04);
 const SLIDE_RED: Color = Color::srgb(0.88, 0.12, 0.08);
 /// The plastic of a toy track between its lanes and its borders: a slot-car
-/// track's charcoal, Hot Wheels' orange and a slide's yellow.
+/// track's charcoal, the toy cars' orange and a slide's yellow.
 const SLOT_MARGIN: Color = Color::srgb(0.1, 0.1, 0.11);
 const SLIDE_YELLOW: Color = Color::srgb(1.0, 0.8, 0.08);
 const WALL_THICKNESS: f32 = 0.6;
@@ -197,7 +197,7 @@ impl<'a> Road<'a> {
     }
 
     /// Indoors, which toy track it is at point `index` of its centre line:
-    /// the roads into and out of a loop are Hot Wheels' orange track, as the
+    /// the roads into and out of a loop are the toy cars' orange track, as the
     /// loop is; the others are as the lap beside them says (see
     /// [`toy_track`]).
     fn toy_track(&self, scenery: &Scenery, index: usize) -> BridgeStyle {
@@ -348,7 +348,7 @@ fn spawn_surface(
 
     // Los muros, cada uno con su aspecto.
     let lap = road.track.lap_length();
-    // Indoors the roads into and out of a loop have Hot Wheels' raised
+    // Indoors the roads into and out of a loop have the toy cars' raised
     // edges, as the loop.
     let orange = indoors && road.leads_to_a_loop();
     let style = |index: usize, side: Side| {
@@ -465,7 +465,7 @@ fn spawn_surface(
     }
 }
 
-/// Which toy track the road is at a point of the lap indoors: Hot Wheels'
+/// Which toy track the road is at a point of the lap indoors: the toy cars'
 /// orange track or a slide where a bridge of theirs says so, and otherwise
 /// a slot-car track, on the floor or on what stands on it.
 pub(super) fn toy_track(scenery: &Scenery, lap: f32, along: f32) -> BridgeStyle {
@@ -771,7 +771,7 @@ fn profile(style: WallStyle) -> Profile {
             1,
             Vec2::splat(4.0),
         ),
-        // Hot Wheels' edge: thin, straight up, its top lip turned out.
+        // The toy cars' edge: thin, straight up, its top lip turned out.
         WallStyle::OrangeEdge => (
             &[
                 (0.0, foot),
@@ -1533,7 +1533,7 @@ pub mod tests {
         ] {
             assert!((a - b).abs() < 1e-4, "{painted:?} is not {hedge:?}");
         }
-        // Ghost Island's grass: darker and less vivid.
+        // A duller grass: darker and less vivid.
         let dull = hedge_color(0.36);
         let (dull_srgb, painted_hsl) = (dull.to_srgba(), Hsla::from(hedge_color(1.0)));
         assert!(dull_srgb.red < painted.red && dull_srgb.green < painted.green);
@@ -1682,13 +1682,16 @@ pub mod tests {
         walls_face_out_and_follow_the_road_on(&crate::testing::DEMO);
     }
 
-    pub fn no_railing_stands_across_another_road_on(circuits: &'static crate::circuits::Circuits) {
-        // Ghost Island, where the lap splits and crosses itself and the
-        // wall opens into the shrine's fence for the props by the road.
+    pub fn no_railing_stands_across_another_road_on(
+        circuits: &'static crate::circuits::Circuits,
+        name: &str,
+    ) {
+        // The named circuit, where the lap splits and crosses itself and
+        // the wall opens into a fence for the props by the road.
         let circuit = circuits
             .iter()
-            .find(|circuit| circuit.name == "Ghost Island")
-            .expect("a circuit of feudal Japan");
+            .find(|circuit| circuit.name == name)
+            .unwrap_or_else(|| panic!("{name} is a circuit"));
         let track = Track::new(&circuit.layout);
         let lap = track.lap_length();
         let road = Road {
@@ -1702,7 +1705,7 @@ pub mod tests {
         let mesh = railing(road, SHRINE_VERMILION, |index, side| {
             style(index, side) == Some(WallStyle::ShrineFence)
         })
-        .expect("the shrine's fence is somewhere");
+        .expect("the fence is somewhere");
         let positions = mesh
             .attribute(Mesh::ATTRIBUTE_POSITION)
             .and_then(|p| p.as_float3())

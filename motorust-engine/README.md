@@ -1,7 +1,6 @@
 # Motorust Engine
 
-The engine of [Motorust](https://github.com/germadev/motorust), an arcade
-motorbike racing game made with [Bevy](https://bevy.org) 0.19: everything
+The engine of Motorust, an arcade motorbike racing game made with [Bevy](https://bevy.org) 0.19: everything
 that makes a motorbike racing game, knowing nothing of the content it runs.
 
 - **The bikes**: arcade physics in a fixed step (120 Hz) with interpolated
@@ -50,3 +49,24 @@ fn main() {
 `cargo test` runs the engine's tests on its own content. Its checks of
 circuits and bikes (each `NAME_on` in a module's tests) are there for a
 game's tests to run on its own content, with the `testing` feature.
+
+## Tools
+
+| Tool | What it does |
+|---|---|
+| `tools/circuit_layout.py` | Works a circuit's lap out from its file (`assets/circuits/NAME.ron`) as `src/track.rs` does (the centre line and the height profile), draws it from above and its profile, and reports its length, its tightest bend, its steepest grade and the crests the bike takes off over, against the limits the tests set. Needs numpy (and matplotlib for the pictures). |
+
+## Licence
+
+The engine's code is dual-licensed under either of
+
+- the Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), or
+- the MIT licence ([LICENSE-MIT](LICENSE-MIT)),
+
+at your option. Its content keeps the licences its makers gave it (see
+[assets/CREDITS.md](assets/CREDITS.md)).
+
+Unless you explicitly state otherwise, any contribution you intentionally
+submit for inclusion in the work, as defined in the Apache-2.0 licence,
+shall be dual-licensed as above, without any additional terms or
+conditions.

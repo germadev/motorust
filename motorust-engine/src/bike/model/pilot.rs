@@ -682,7 +682,7 @@ pub mod tests {
     use super::super::MAX_LOOK;
     use super::*;
 
-    /// The roster's models (the first, the Shogun, the measures' reference).
+    /// The roster's models (the first, the measures' reference).
     pub fn models(roster: &'static crate::bike::Roster) -> Vec<&'static Model> {
         super::super::designs::every(roster)
             .into_iter()

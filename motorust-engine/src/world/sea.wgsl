@@ -1,4 +1,4 @@
-// The sea, drawn like the cartoon sea of Zelda: The Wind Waker: flat,
+// The sea, drawn as a cel-shaded cartoon sea: flat,
 // saturated blues with no lighting, white crests rolling in towards the
 // coast and breaking on it, lighter water by the coast, and white foam
 // hugging the shore (see src/world/sea.rs).

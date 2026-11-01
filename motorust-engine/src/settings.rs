@@ -147,8 +147,8 @@ pub struct Settings {
     pub show_antialiasing: bool,
     pub show_textures: bool,
     pub show_coordinates: bool,
-    /// Whether the sea is drawn as in *The Wind Waker* (flat cartoon blues
-    /// with waves rolling in), as it always is on Loop Island; otherwise it
+    /// Whether the sea is drawn as a cartoon (flat cartoon blues with waves
+    /// rolling in), as it always is on some circuits; otherwise it
     /// is still and dark and mirrors what stands round it, as a dam's lake
     /// (see [`crate::world`]).
     pub cartoon_water: bool,
@@ -1491,8 +1491,6 @@ impl Settings {
         if text.contains("keyboard_curves_on: true") && !text.contains("keyboard_mode") {
             settings.keyboard_mode = crate::bike::curves::KeyboardMode::Bezier;
         }
-        // Ghost Island was Tsushima Isle.
-        settings.records.rename("Tsushima Isle", "Ghost Island");
         settings
     }
 

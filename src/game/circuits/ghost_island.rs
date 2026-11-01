@@ -124,6 +124,16 @@ mod tests {
     }
 
     #[test]
+    fn it_keeps_the_records_it_set_as_tsushima_isle() {
+        crate::game::register();
+        assert_eq!(ghost_island().formerly, ["Tsushima Isle"]);
+        let mut records = motorust_engine::race::Records::default();
+        records.lap("Tsushima Isle", 120.0);
+        records.take_former(&CIRCUITS);
+        assert_eq!(records.best_lap("Ghost Island"), Some(120.0));
+    }
+
+    #[test]
     fn the_lap_goes_through_the_castle_hill_and_then_over_it() {
         crate::game::register();
         let track = Track::new(&ghost_island().layout);

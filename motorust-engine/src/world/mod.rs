@@ -94,6 +94,10 @@ impl Plugin for WorldPlugin {
             .get_resource::<Circuits>()
             .copied()
             .unwrap_or_else(Circuits::load);
+        // The records saved under a circuit's former names, under its own.
+        if let Some(mut settings) = app.world_mut().get_resource_mut::<Settings>() {
+            settings.records.take_former(&circuits);
+        }
         let current = CurrentCircuit::default();
         app.add_plugins((
             lamps::LampsPlugin,
@@ -1480,6 +1484,7 @@ pub mod tests {
 
     pub fn a_circuit_is_shown_before_its_rest_comes_and_raced_on_whole_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
@@ -1496,12 +1501,12 @@ pub mod tests {
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Tracks);
         app.update();
-        // Fellowship Road, chosen at once: shown first, its rest (its
+        // The named circuit, chosen at once: shown first, its rest (its
         // houses, trees, props, grass and flowers) still to come.
         let last = circuits
             .iter()
-            .position(|circuit| circuit.name == "Fellowship Road")
-            .expect("Fellowship Road is a circuit");
+            .position(|circuit| circuit.name == name)
+            .unwrap_or_else(|| panic!("{name} is a circuit"));
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
         app.update();
         let started = std::time::Instant::now();

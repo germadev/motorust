@@ -1,7 +1,7 @@
 //! The sea, drawn one of two ways ([`SeaWater`]): still, dark and
 //! mirroring what stands round it, as a dam's lake (see [`super::mirror`]);
-//! or, as Options > Graphics > Water may choose and as Loop Island always
-//! has it, like the cartoon sea of Zelda: The Wind Waker, by its own shader
+//! or, as Options > Graphics > Water may choose and as a circuit may always
+//! have it, like a cel-shaded cartoon sea, by its own shader
 //! (`sea.wgsl`): flat saturated blues with no lighting, white crests
 //! rolling in towards the coast (few and short out at sea, more, longer and
 //! thicker near it, where they break), lighter water by the coast, and foam
@@ -585,6 +585,7 @@ pub mod tests {
 
     pub fn the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
         let sea = SeaColors::of(Water::Sea);
         let iron = SeaColors::of(Water::Iron);
@@ -600,12 +601,12 @@ pub mod tests {
             assert!((color.y - color.z).abs() < 0.05 && color.y > color.x + 0.1);
             assert!(color.z - color.x < 0.2);
         }
-        // The Gold Mine's lake and river are red, Fellowship Road's rivers
-        // and lakes green-grey, every other track's sea blue.
+        // A mine's lake and river are red, the named circuit's rivers and
+        // lakes green-grey, every other track's sea blue.
         for circuit in circuits.iter() {
             let wanted = if circuit.scenery.soil == crate::world::scenery::Soil::Mine {
                 Water::Iron
-            } else if circuit.name == "Fellowship Road" {
+            } else if circuit.name == name {
                 Water::River
             } else {
                 Water::Sea
@@ -616,19 +617,23 @@ pub mod tests {
 
     #[test]
     fn the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey() {
-        the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey_on(&crate::testing::DEMO);
+        the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey_on(
+            &crate::testing::DEMO,
+            "",
+        );
     }
 
-    pub fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say_on(
+    pub fn the_sea_mirrors_but_where_it_is_a_cartoon_s_and_as_the_options_say_on(
         circuits: &'static crate::circuits::Circuits,
+        name: &str,
     ) {
-        // Loop Island's sea is always the cartoon one; every other's
+        // The named circuit's sea is always the cartoon one; every other's
         // mirrors unless the options ask for the cartoon one, but indoors,
         // where the sea lies under the floor, never seen, and nothing is
         // worked out for it to mirror.
         for circuit in circuits.iter() {
-            let cartoon = circuit.name == "Loop Island"
-                || circuit.scenery.soil == crate::world::scenery::Soil::Floor;
+            let cartoon =
+                circuit.name == name || circuit.scenery.soil == crate::world::scenery::Soil::Floor;
             assert_eq!(circuit.scenery.cartoon_water, cartoon, "{}", circuit.name);
         }
         let mirroring = SeaWater {
@@ -665,8 +670,11 @@ pub mod tests {
     }
 
     #[test]
-    fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say() {
-        the_sea_mirrors_but_on_loop_island_and_as_the_options_say_on(&crate::testing::DEMO);
+    fn the_sea_mirrors_but_where_it_is_a_cartoon_s_and_as_the_options_say() {
+        the_sea_mirrors_but_where_it_is_a_cartoon_s_and_as_the_options_say_on(
+            &crate::testing::DEMO,
+            "",
+        );
     }
 
     pub fn the_mirroring_sea_maps_the_whole_track_and_round_it_on(
