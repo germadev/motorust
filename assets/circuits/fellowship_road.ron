@@ -1240,461 +1240,464 @@
             (area: Road(span: Span(2510.1, 2819.1), reach: 24.0), kind: Gold),
             (area: Road(span: Span(4133.1, 4587.1), reach: 24.0), kind: Gold),
         ],
-        middle_earth: Some((
-            // The props of Middle-earth, made with Meshy, in the order of the lap:
-            // where the road comes at them, and those with a front turned to face the
-            // riders coming, towards the road 60 m before them (by at most 45°), so
-            // that they see it from afar (see `docs/tracks.md`).
-            props: [
-                // The wood the race starts in: Gandalf's cart, loaded with fireworks,
-                // by the road among the trees, and a pile of logs.
-                (model: GandalfCart, spot: Road(along: 32.0, lateral: -14.5), turn: 0.79),
-                (model: LogPile, spot: Road(along: 84.0, lateral: -13.5)),
-                // Hobbiton, down the long sweep to the Water and round the village's
-                // hills: the mill across the water on the left, ahead down the sweep;
-                // ahead on the left, past the bridge, hobbit holes spread low round the
-                // foot of the hill inside the sweep to the left, facing the riders
-                // coming; ahead on the right, across the field over the pool, more
-                // spread over the whole flank of the other hill that faces the road,
-                // from the south to the north, facing the road, a little towards the
-                // riders coming; and on the outside of the last sweep, on the other
-                // side of the road from them, the Green Dragon raised over the road and
-                // its fence, facing the riders coming, its sign by the road, and, up on
-                // its hill, Bag End under its oak, and the party tree in its field past
-                // it, ahead all the way round.
-                (
-                    model: HobbitDoorBlue,
-                    spot: Road(along: 613.9, lateral: 84.7),
-                    scale: 1.4,
-                    facing_riders: true,
-                ),
-                (
-                    model: HobbitDoorRed,
-                    spot: Road(along: 503.9, lateral: 103.5),
-                    scale: 1.4,
-                    facing_riders: true,
-                ),
-                (
-                    model: HobbitDoorYellow,
-                    spot: Road(along: 434.0, lateral: 101.9),
-                    scale: 1.4,
-                    facing_riders: true,
-                ),
-                (
-                    model: HobbitDoorGreen,
-                    spot: Road(along: 398.0, lateral: 128.3),
-                    scale: 1.4,
-                    facing_riders: true,
-                ),
-                (model: Mill, spot: Road(along: 360.0, lateral: 108.0), facing_riders: true),
-                (
-                    model: HobbitDoorGreen,
-                    spot: At(position: (391.1, -482.2), heading: 2.0816),
-                    scale: 1.4,
-                ),
-                (
-                    model: HobbitDoorRed,
-                    spot: At(position: (394.3, -455.2), heading: 2.0208),
-                    scale: 1.4,
-                ),
-                (
-                    model: HobbitDoorYellow,
-                    spot: At(position: (410.3, -422.5), heading: 1.8387),
-                    scale: 1.4,
-                ),
-                (model: GreenDragonSign, spot: Road(along: 668.0, lateral: 13.5), turn: -0.79),
-                (model: GreenDragon, spot: Road(along: 700.0, lateral: 34.0), facing_riders: true),
-                (model: BagEnd, spot: Road(along: 770.0, lateral: 70.0), facing_riders: true),
-                (model: BagEndOak, spot: Road(along: 778.0, lateral: 84.0)),
-                (model: PartyTree, spot: Road(along: 800.0, lateral: 50.0)),
-                // The old tree the hobbits hid under, on the outside of the last of
-                // Hobbiton's sweeps; past the Brandywine, a scarecrow in the Shire's
-                // fields, and a pile of logs by the road.
-                (model: RootTree, spot: Road(along: 845.0, lateral: 22.0)),
-                (model: Scarecrow, spot: Road(along: 975.0, lateral: 14.0), turn: -0.79),
-                (model: LogPile, spot: Road(along: 1020.0, lateral: -13.5)),
-                (model: Ferry, spot: At(position: (562.0, -626.0), heading: -1.5707964)),
-                // Bree: its gate over the road; past it, ahead on the outside of the
-                // first bend, the Prancing Pony, 1.4 times as big, a way of the road
-                // forking off to the left through its archway (its middle on the way,
-                // the inn facing the riders coming down it); and its houses either side
-                // of the street, tall and narrow ones and wide ones.
-                (model: BreeGate, spot: Over(along: 1091.1)),
-                (
-                    model: PrancingPony,
-                    spot: At(position: (846.1, -528.82), heading: 1.2614),
-                    scale: 1.4,
-                ),
-                (model: BreeHouseB, spot: Road(along: 1105.1, lateral: -16.0), turn: 0.79),
-                (model: BreeHouseB, spot: Road(along: 1117.1, lateral: -16.0), turn: 0.79),
-                (model: BreeHouseB, spot: Road(along: 1160.1, lateral: -16.0), turn: 0.79),
-                (model: BreeHouseB, spot: Road(along: 1172.1, lateral: -16.0), turn: 0.79),
-                (model: BreeHouseA, spot: Road(along: 1203.1, lateral: -22.0), turn: 0.79),
-                (model: BreeHouseB, spot: Road(along: 1243.1, lateral: 16.0), turn: -0.79),
-                (model: BreeHouseB, spot: Road(along: 1255.1, lateral: 16.0), turn: -0.79),
-                (model: BreeHouseA, spot: Road(along: 1275.1, lateral: -22.0), turn: 0.79),
-                (model: BreeHouseB, spot: Road(along: 1221.1, lateral: -16.0), turn: 0.79),
-                (model: BreeHouseB, spot: Road(along: 1233.1, lateral: -16.0), turn: 0.79),
-                (model: BreeHouseA, spot: Road(along: 1247.1, lateral: -24.0), turn: 0.79),
-                (model: BreeHouseB, spot: Road(along: 1305.1, lateral: -16.0), turn: 0.79),
-                // Weathertop: the ring of ruins of Amon Sûl up on the summit, over the
-                // bank beside the top straight (on its own level ground, see
-                // the terraces), and broken arches either side of the road.
-                (model: WeathertopRuin, spot: Road(along: 1813.1, lateral: -62.0), turn: 0.79),
-                (model: RuinArch, spot: Road(along: 1765.1, lateral: 16.0), turn: -0.79),
-                (model: RuinArch, spot: Road(along: 1805.1, lateral: -16.0), turn: 0.79),
-                // The Trollshaws: the trolls turned to stone on the outside of the
-                // esses.
-                (model: StoneTrolls, spot: Road(along: 2095.1, lateral: 21.0), turn: -0.79),
-                // Rivendell: lamps along its paths, and at the head of the valley,
-                // ahead down it on the outside of the bend, its halls together one over
-                // another up the rock: the domed pavilion on the left, to one side of
-                // the others as the riders see them, the Last Homely House on a ledge
-                // over the road, and a tower on a crag over it.
-                (model: ElvenLamp, spot: Road(along: 2375.1, lateral: 13.5)),
-                (model: ElvenLamp, spot: Road(along: 2375.1, lateral: -13.5)),
-                (model: ElvenLamp, spot: Road(along: 2795.1, lateral: 13.5)),
-                (model: ElvenLamp, spot: Road(along: 2795.1, lateral: -13.5)),
-                (model: Gazebo, spot: Road(along: 2815.0, lateral: 48.0), facing_riders: true),
-                (
-                    model: LastHomelyHouse,
-                    spot: Road(along: 2857.1, lateral: 58.0),
-                    facing_riders: true,
-                ),
-                (
-                    model: ElvenTower,
-                    spot: Road(along: 2891.7, lateral: 50.3),
-                    scale: 1.25,
-                    facing_riders: true,
-                ),
-                // The Doors of Durin, open, in the sheer Walls of Moria: the road goes
-                // through them into the mountain, ahead of the riders coming round the
-                // last bend before it.
-                (model: DurinDoors, spot: Over(along: 3790.1), turn: 3.1415927),
-                // Lothlórien, out of Moria's east gate: elven lamps and a mallorn with
-                // its flet.
-                (model: ElvenLamp, spot: Road(along: 4150.1, lateral: 13.5)),
-                (model: ElvenLamp, spot: Road(along: 4150.1, lateral: -13.5)),
-                (model: MallornFlet, spot: Road(along: 4157.1, lateral: 40.0)),
-                // The Anduin: Galadriel's swan ship going down the river beside the
-                // causeway, ahead out of the gorge; the two kings of the Argonath in the
-                // river either side of the causeway, facing the riders coming down it,
-                // and past them, in the gorge, the sailing ship of the elves going down
-                // the river beside it.
-                (model: SwanShip, spot: At(position: (515.0, 425.0), heading: 1.5707964)),
-                (model: ArgonathA, spot: At(position: (426.5, 394.4), heading: -1.89)),
-                (model: ArgonathB, spot: At(position: (441.0, 350.7), heading: -1.89)),
-                (model: ElvenShip, spot: Road(along: 5150.1, lateral: 24.0), turn: 3.1415927),
-                // Amon Hen: the elven boats drawn up on the shore of Parth Galen, and
-                // the seat of seeing up the hill on the outside of the last bend, by the
-                // road, its lions looking out over it (its throne along the road, the
-                // way the riders go), a sunbeam on it (see `glows`).
-                (model: ElvenBoat, spot: At(position: (238.0, 393.0), heading: 2.2)),
-                (model: ElvenBoat, spot: At(position: (226.0, 404.0), heading: 2.0)),
-                (
-                    model: AmonHenSeat,
-                    spot: Road(along: 5405.1, lateral: 21.0),
-                    scale: 1.3,
-                    turn: 1.5707964,
-                ),
-            ],
-            paths: [
-                // The footpaths of Hobbiton, of bare earth: from the road past the bridge
-                // up the hill on the left, past the gates of its holes, low and high,
-                // and down to the road again, and from the low one along the water to
-                // the mill; from the road up past the gates of the holes on the right;
-                // and from the party tree past Bag End's gate and down round the Green
-                // Dragon, past its front, to the road by its sign.
-                [
-                    (301.2, -384.0),
-                    (298.9, -387.2),
-                    (296.6, -390.5),
-                    (294.2, -393.8),
-                    (291.9, -397.1),
-                    (289.6, -400.4),
-                    (287.3, -403.6),
-                    (284.9, -406.9),
-                    (282.6, -410.2),
-                    (280.3, -413.5),
-                    (278.0, -416.8),
-                    (275.6, -420.0),
-                    (273.3, -423.3),
-                    (271.0, -426.6),
-                    (268.7, -429.9),
-                    (266.3, -433.1),
-                    (263.9, -435.8),
-                    (261.1, -437.5),
-                    (257.9, -437.7),
-                    (254.4, -436.7),
-                    (250.8, -435.3),
-                    (247.2, -433.8),
-                    (243.6, -432.3),
-                    (240.0, -430.9),
-                    (236.4, -429.4),
-                    (232.7, -427.9),
-                    (229.1, -426.5),
-                    (225.5, -425.0),
-                    (221.8, -423.5),
-                    (218.2, -422.1),
-                    (214.4, -420.8),
-                    (210.6, -419.6),
-                    (206.8, -418.3),
-                    (203.0, -417.1),
-                    (199.2, -415.9),
-                    (195.4, -414.7),
-                    (191.6, -413.4),
-                    (187.8, -412.2),
-                    (184.0, -411.0),
-                    (180.2, -410.1),
-                    (176.5, -409.8),
-                    (172.8, -410.5),
-                    (169.2, -411.8),
-                    (165.6, -413.3),
-                    (162.0, -414.9),
-                    (158.4, -416.5),
-                    (154.8, -418.1),
-                    (151.2, -419.7),
-                    (147.6, -421.3),
-                    (144.0, -422.9),
-                    (140.4, -424.6),
-                    (136.8, -426.2),
+        // Hobbiton's hillsides, whose banks and doorsteps cut into them
+        // stay grass, as the Shire's, but for sheer faces. And Rivendell's
+        // rock, as the film's green crags: at the head of its valley, on
+        // its far side and down its cliffs on the right, grass on its
+        // ledges and gentler slopes, and moss on its faces.
+        turf: [
+            (center: (285.0, -495.0), radius: 250.0, steepest: 0.45),
+            // Weathertop's flanks, risen over the road climbing them:
+            // grass up its slopes, the rock out between.
+            (center: (1225.0, -665.0), radius: 260.0, steepest: 0.6),
+            (center: (1650.0, 180.0), radius: 115.0, steepest: 0.6),
+            (center: (1740.0, -145.0), radius: 130.0, steepest: 0.6),
+            (center: (1555.0, -320.0), radius: 100.0, steepest: 0.6),
+            (center: (1545.0, -170.0), radius: 100.0, steepest: 0.6),
+            (center: (1550.0, -20.0), radius: 100.0, steepest: 0.6),
+        ],
+        // The rock on the right of the road down the Anduin's gorge,
+        // from 4590 to 4882 m: a browner stone.
+        rock_tints: [
+            (center: (867.9, 355.7), radius: 55.0, color: (0.62, 0.53, 0.44)),
+            (center: (800.9, 371.2), radius: 55.0, color: (0.62, 0.53, 0.44)),
+            (center: (759.6, 403.9), radius: 55.0, color: (0.62, 0.53, 0.44)),
+            (center: (741.4, 414.9), radius: 55.0, color: (0.62, 0.53, 0.44)),
+            (center: (727.6, 412.3), radius: 55.0, color: (0.62, 0.53, 0.44)),
+            (center: (694.9, 385.3), radius: 55.0, color: (0.62, 0.53, 0.44)),
+            (center: (635.1, 357.5), radius: 55.0, color: (0.62, 0.53, 0.44)),
+        ],
+        // The game's own themes (see src/world/themes.rs).
+        themes: {
+            "middle_earth": (
+                // The props of Middle-earth, made with Meshy, in the order of the lap:
+                // where the road comes at them, and those with a front turned to face the
+                // riders coming, towards the road 60 m before them (by at most 45°), so
+                // that they see it from afar (see `docs/tracks.md`).
+                props: [
+                    // The wood the race starts in: Gandalf's cart, loaded with fireworks,
+                    // by the road among the trees, and a pile of logs.
+                    (model: GandalfCart, spot: Road(along: 32.0, lateral: -14.5), turn: 0.79),
+                    (model: LogPile, spot: Road(along: 84.0, lateral: -13.5)),
+                    // Hobbiton, down the long sweep to the Water and round the village's
+                    // hills: the mill across the water on the left, ahead down the sweep;
+                    // ahead on the left, past the bridge, hobbit holes spread low round the
+                    // foot of the hill inside the sweep to the left, facing the riders
+                    // coming; ahead on the right, across the field over the pool, more
+                    // spread over the whole flank of the other hill that faces the road,
+                    // from the south to the north, facing the road, a little towards the
+                    // riders coming; and on the outside of the last sweep, on the other
+                    // side of the road from them, the Green Dragon raised over the road and
+                    // its fence, facing the riders coming, its sign by the road, and, up on
+                    // its hill, Bag End under its oak, and the party tree in its field past
+                    // it, ahead all the way round.
+                    (
+                        model: HobbitDoorBlue,
+                        spot: Road(along: 613.9, lateral: 84.7),
+                        scale: 1.4,
+                        facing_riders: true,
+                    ),
+                    (
+                        model: HobbitDoorRed,
+                        spot: Road(along: 503.9, lateral: 103.5),
+                        scale: 1.4,
+                        facing_riders: true,
+                    ),
+                    (
+                        model: HobbitDoorYellow,
+                        spot: Road(along: 434.0, lateral: 101.9),
+                        scale: 1.4,
+                        facing_riders: true,
+                    ),
+                    (
+                        model: HobbitDoorGreen,
+                        spot: Road(along: 398.0, lateral: 128.3),
+                        scale: 1.4,
+                        facing_riders: true,
+                    ),
+                    (model: Mill, spot: Road(along: 360.0, lateral: 108.0), facing_riders: true),
+                    (
+                        model: HobbitDoorGreen,
+                        spot: At(position: (391.1, -482.2), heading: 2.0816),
+                        scale: 1.4,
+                    ),
+                    (
+                        model: HobbitDoorRed,
+                        spot: At(position: (394.3, -455.2), heading: 2.0208),
+                        scale: 1.4,
+                    ),
+                    (
+                        model: HobbitDoorYellow,
+                        spot: At(position: (410.3, -422.5), heading: 1.8387),
+                        scale: 1.4,
+                    ),
+                    (model: GreenDragonSign, spot: Road(along: 668.0, lateral: 13.5), turn: -0.79),
+                    (model: GreenDragon, spot: Road(along: 700.0, lateral: 34.0), facing_riders: true),
+                    (model: BagEnd, spot: Road(along: 770.0, lateral: 70.0), facing_riders: true),
+                    (model: BagEndOak, spot: Road(along: 778.0, lateral: 84.0)),
+                    (model: PartyTree, spot: Road(along: 800.0, lateral: 50.0)),
+                    // The old tree the hobbits hid under, on the outside of the last of
+                    // Hobbiton's sweeps; past the Brandywine, a scarecrow in the Shire's
+                    // fields, and a pile of logs by the road.
+                    (model: RootTree, spot: Road(along: 845.0, lateral: 22.0)),
+                    (model: Scarecrow, spot: Road(along: 975.0, lateral: 14.0), turn: -0.79),
+                    (model: LogPile, spot: Road(along: 1020.0, lateral: -13.5)),
+                    (model: Ferry, spot: At(position: (562.0, -626.0), heading: -1.5707964)),
+                    // Bree: its gate over the road; past it, ahead on the outside of the
+                    // first bend, the Prancing Pony, 1.4 times as big, a way of the road
+                    // forking off to the left through its archway (its middle on the way,
+                    // the inn facing the riders coming down it); and its houses either side
+                    // of the street, tall and narrow ones and wide ones.
+                    (model: BreeGate, spot: Over(along: 1091.1)),
+                    (
+                        model: PrancingPony,
+                        spot: At(position: (846.1, -528.82), heading: 1.2614),
+                        scale: 1.4,
+                    ),
+                    (model: BreeHouseB, spot: Road(along: 1105.1, lateral: -16.0), turn: 0.79),
+                    (model: BreeHouseB, spot: Road(along: 1117.1, lateral: -16.0), turn: 0.79),
+                    (model: BreeHouseB, spot: Road(along: 1160.1, lateral: -16.0), turn: 0.79),
+                    (model: BreeHouseB, spot: Road(along: 1172.1, lateral: -16.0), turn: 0.79),
+                    (model: BreeHouseA, spot: Road(along: 1203.1, lateral: -22.0), turn: 0.79),
+                    (model: BreeHouseB, spot: Road(along: 1243.1, lateral: 16.0), turn: -0.79),
+                    (model: BreeHouseB, spot: Road(along: 1255.1, lateral: 16.0), turn: -0.79),
+                    (model: BreeHouseA, spot: Road(along: 1275.1, lateral: -22.0), turn: 0.79),
+                    (model: BreeHouseB, spot: Road(along: 1221.1, lateral: -16.0), turn: 0.79),
+                    (model: BreeHouseB, spot: Road(along: 1233.1, lateral: -16.0), turn: 0.79),
+                    (model: BreeHouseA, spot: Road(along: 1247.1, lateral: -24.0), turn: 0.79),
+                    (model: BreeHouseB, spot: Road(along: 1305.1, lateral: -16.0), turn: 0.79),
+                    // Weathertop: the ring of ruins of Amon Sûl up on the summit, over the
+                    // bank beside the top straight (on its own level ground, see
+                    // the terraces), and broken arches either side of the road.
+                    (model: WeathertopRuin, spot: Road(along: 1813.1, lateral: -62.0), turn: 0.79),
+                    (model: RuinArch, spot: Road(along: 1765.1, lateral: 16.0), turn: -0.79),
+                    (model: RuinArch, spot: Road(along: 1805.1, lateral: -16.0), turn: 0.79),
+                    // The Trollshaws: the trolls turned to stone on the outside of the
+                    // esses.
+                    (model: StoneTrolls, spot: Road(along: 2095.1, lateral: 21.0), turn: -0.79),
+                    // Rivendell: lamps along its paths, and at the head of the valley,
+                    // ahead down it on the outside of the bend, its halls together one over
+                    // another up the rock: the domed pavilion on the left, to one side of
+                    // the others as the riders see them, the Last Homely House on a ledge
+                    // over the road, and a tower on a crag over it.
+                    (model: ElvenLamp, spot: Road(along: 2375.1, lateral: 13.5)),
+                    (model: ElvenLamp, spot: Road(along: 2375.1, lateral: -13.5)),
+                    (model: ElvenLamp, spot: Road(along: 2795.1, lateral: 13.5)),
+                    (model: ElvenLamp, spot: Road(along: 2795.1, lateral: -13.5)),
+                    (model: Gazebo, spot: Road(along: 2815.0, lateral: 48.0), facing_riders: true),
+                    (
+                        model: LastHomelyHouse,
+                        spot: Road(along: 2857.1, lateral: 58.0),
+                        facing_riders: true,
+                    ),
+                    (
+                        model: ElvenTower,
+                        spot: Road(along: 2891.7, lateral: 50.3),
+                        scale: 1.25,
+                        facing_riders: true,
+                    ),
+                    // The Doors of Durin, open, in the sheer Walls of Moria: the road goes
+                    // through them into the mountain, ahead of the riders coming round the
+                    // last bend before it.
+                    (model: DurinDoors, spot: Over(along: 3790.1), turn: 3.1415927),
+                    // Lothlórien, out of Moria's east gate: elven lamps and a mallorn with
+                    // its flet.
+                    (model: ElvenLamp, spot: Road(along: 4150.1, lateral: 13.5)),
+                    (model: ElvenLamp, spot: Road(along: 4150.1, lateral: -13.5)),
+                    (model: MallornFlet, spot: Road(along: 4157.1, lateral: 40.0)),
+                    // The Anduin: Galadriel's swan ship going down the river beside the
+                    // causeway, ahead out of the gorge; the two kings of the Argonath in the
+                    // river either side of the causeway, facing the riders coming down it,
+                    // and past them, in the gorge, the sailing ship of the elves going down
+                    // the river beside it.
+                    (model: SwanShip, spot: At(position: (515.0, 425.0), heading: 1.5707964)),
+                    (model: ArgonathA, spot: At(position: (426.5, 394.4), heading: -1.89)),
+                    (model: ArgonathB, spot: At(position: (441.0, 350.7), heading: -1.89)),
+                    (model: ElvenShip, spot: Road(along: 5150.1, lateral: 24.0), turn: 3.1415927),
+                    // Amon Hen: the elven boats drawn up on the shore of Parth Galen, and
+                    // the seat of seeing up the hill on the outside of the last bend, by the
+                    // road, its lions looking out over it (its throne along the road, the
+                    // way the riders go), a sunbeam on it (see `glows`).
+                    (model: ElvenBoat, spot: At(position: (238.0, 393.0), heading: 2.2)),
+                    (model: ElvenBoat, spot: At(position: (226.0, 404.0), heading: 2.0)),
+                    (
+                        model: AmonHenSeat,
+                        spot: Road(along: 5405.1, lateral: 21.0),
+                        scale: 1.3,
+                        turn: 1.5707964,
+                    ),
                 ],
-                [
-                    (136.8, -426.2),
-                    (133.8, -423.5),
-                    (130.7, -420.9),
-                    (127.7, -418.2),
-                    (124.7, -415.6),
-                    (121.7, -413.0),
-                    (118.7, -410.3),
-                    (115.7, -407.7),
-                    (112.7, -405.0),
-                    (109.7, -402.4),
-                    (106.7, -399.7),
-                    (103.7, -397.1),
-                    (100.7, -394.5),
+                paths: [
+                    // The footpaths of Hobbiton, of bare earth: from the road past the bridge
+                    // up the hill on the left, past the gates of its holes, low and high,
+                    // and down to the road again, and from the low one along the water to
+                    // the mill; from the road up past the gates of the holes on the right;
+                    // and from the party tree past Bag End's gate and down round the Green
+                    // Dragon, past its front, to the road by its sign.
+                    [
+                        (301.2, -384.0),
+                        (298.9, -387.2),
+                        (296.6, -390.5),
+                        (294.2, -393.8),
+                        (291.9, -397.1),
+                        (289.6, -400.4),
+                        (287.3, -403.6),
+                        (284.9, -406.9),
+                        (282.6, -410.2),
+                        (280.3, -413.5),
+                        (278.0, -416.8),
+                        (275.6, -420.0),
+                        (273.3, -423.3),
+                        (271.0, -426.6),
+                        (268.7, -429.9),
+                        (266.3, -433.1),
+                        (263.9, -435.8),
+                        (261.1, -437.5),
+                        (257.9, -437.7),
+                        (254.4, -436.7),
+                        (250.8, -435.3),
+                        (247.2, -433.8),
+                        (243.6, -432.3),
+                        (240.0, -430.9),
+                        (236.4, -429.4),
+                        (232.7, -427.9),
+                        (229.1, -426.5),
+                        (225.5, -425.0),
+                        (221.8, -423.5),
+                        (218.2, -422.1),
+                        (214.4, -420.8),
+                        (210.6, -419.6),
+                        (206.8, -418.3),
+                        (203.0, -417.1),
+                        (199.2, -415.9),
+                        (195.4, -414.7),
+                        (191.6, -413.4),
+                        (187.8, -412.2),
+                        (184.0, -411.0),
+                        (180.2, -410.1),
+                        (176.5, -409.8),
+                        (172.8, -410.5),
+                        (169.2, -411.8),
+                        (165.6, -413.3),
+                        (162.0, -414.9),
+                        (158.4, -416.5),
+                        (154.8, -418.1),
+                        (151.2, -419.7),
+                        (147.6, -421.3),
+                        (144.0, -422.9),
+                        (140.4, -424.6),
+                        (136.8, -426.2),
+                    ],
+                    [
+                        (136.8, -426.2),
+                        (133.8, -423.5),
+                        (130.7, -420.9),
+                        (127.7, -418.2),
+                        (124.7, -415.6),
+                        (121.7, -413.0),
+                        (118.7, -410.3),
+                        (115.7, -407.7),
+                        (112.7, -405.0),
+                        (109.7, -402.4),
+                        (106.7, -399.7),
+                        (103.7, -397.1),
+                        (100.7, -394.5),
+                    ],
+                    [
+                        (351.2, -399.6),
+                        (354.9, -401.1),
+                        (358.5, -402.6),
+                        (362.2, -404.1),
+                        (365.8, -405.6),
+                        (369.5, -407.0),
+                        (373.1, -408.5),
+                        (376.8, -410.0),
+                        (380.4, -411.5),
+                        (384.1, -412.9),
+                        (387.7, -414.4),
+                        (391.4, -415.9),
+                        (395.0, -417.4),
+                        (398.0, -419.1),
+                        (399.9, -421.3),
+                        (400.1, -424.1),
+                        (399.0, -427.4),
+                        (397.5, -430.9),
+                        (395.9, -434.4),
+                        (394.3, -437.9),
+                        (392.7, -441.4),
+                        (391.1, -445.0),
+                        (389.6, -448.5),
+                        (388.4, -452.1),
+                        (387.5, -455.9),
+                        (387.0, -459.6),
+                        (386.6, -463.5),
+                        (386.1, -467.3),
+                        (385.7, -471.1),
+                        (385.3, -474.9),
+                        (384.9, -478.7),
+                    ],
+                    [
+                        (442.4, -594.3),
+                        (438.5, -595.5),
+                        (434.7, -596.6),
+                        (430.8, -597.8),
+                        (426.9, -598.8),
+                        (423.1, -599.9),
+                        (419.2, -600.7),
+                        (415.4, -601.4),
+                        (411.5, -601.9),
+                        (407.7, -602.1),
+                        (403.9, -602.1),
+                        (400.1, -601.9),
+                        (396.4, -601.4),
+                        (392.8, -600.8),
+                        (389.2, -599.7),
+                        (385.7, -598.0),
+                        (382.3, -595.5),
+                        (379.3, -592.4),
+                        (377.0, -589.0),
+                        (375.1, -585.6),
+                        (373.4, -582.2),
+                        (371.8, -578.7),
+                        (370.3, -575.1),
+                        (368.7, -571.4),
+                        (367.0, -567.7),
+                        (365.4, -564.0),
+                        (363.9, -560.2),
+                        (362.4, -556.4),
+                        (360.8, -552.8),
+                        (358.8, -549.6),
+                        (356.2, -546.9),
+                        (353.1, -544.7),
+                        (349.8, -542.7),
+                        (346.4, -540.7),
+                        (343.1, -538.7),
+                        (339.7, -536.7),
+                        (336.4, -534.7),
+                        (333.0, -532.7),
+                        (329.7, -530.7),
+                        (326.3, -528.7),
+                        (323.0, -526.6),
+                        (320.1, -524.4),
+                        (318.2, -521.8),
+                        (317.5, -518.7),
+                        (318.1, -515.5),
+                        (319.9, -512.7),
+                        (322.7, -510.8),
+                        (326.2, -509.6),
+                        (329.9, -508.9),
+                        (333.4, -508.5),
+                        (336.9, -508.3),
+                        (340.4, -508.0),
+                        (343.6, -507.4),
+                        (345.7, -506.0),
+                        (346.2, -503.4),
+                        (345.5, -500.2),
+                        (344.3, -496.5),
+                        (343.0, -492.9),
+                        (341.7, -489.2),
+                        (340.4, -485.6),
+                        (339.1, -481.9),
+                        (337.8, -478.3),
+                    ],
                 ],
-                [
-                    (351.2, -399.6),
-                    (354.9, -401.1),
-                    (358.5, -402.6),
-                    (362.2, -404.1),
-                    (365.8, -405.6),
-                    (369.5, -407.0),
-                    (373.1, -408.5),
-                    (376.8, -410.0),
-                    (380.4, -411.5),
-                    (384.1, -412.9),
-                    (387.7, -414.4),
-                    (391.4, -415.9),
-                    (395.0, -417.4),
-                    (398.0, -419.1),
-                    (399.9, -421.3),
-                    (400.1, -424.1),
-                    (399.0, -427.4),
-                    (397.5, -430.9),
-                    (395.9, -434.4),
-                    (394.3, -437.9),
-                    (392.7, -441.4),
-                    (391.1, -445.0),
-                    (389.6, -448.5),
-                    (388.4, -452.1),
-                    (387.5, -455.9),
-                    (387.0, -459.6),
-                    (386.6, -463.5),
-                    (386.1, -467.3),
-                    (385.7, -471.1),
-                    (385.3, -474.9),
-                    (384.9, -478.7),
+                // Rivendell's halls and the rock at the head of its valley, which
+                // the low sun in the south-east lights only from behind as the
+                // riders come down the valley at them: a warm light, as of the
+                // evening sky, from behind and over the riders, fills them. And
+                // up the valley, where the rock on its east side shades both its
+                // walls, a light across it onto each wall. And over each of its
+                // halls, the pavilion, the Last Homely House and the tower, a
+                // sunbeam down from the sky through the clouds, leaning towards
+                // the riders, its shaft showing in the air, spreading up into the
+                // sky; diffused ones on the seat of seeing on Amon Hen and on
+                // the ruins of Amon Sûl; and one on the stone trolls.
+                glows: [
+                    (
+                        from: (1549.2, 133.2, -93.5),
+                        to: (1613.0, 36.0, 105.0),
+                        illuminance: 3500.0,
+                        color: (1.0, 0.86, 0.68),
+                        angle: 0.6,
+                    ),
+                    (
+                        from: (1720.0, 100.0, -300.0),
+                        to: (1565.8, 25.0, -221.8),
+                        illuminance: 2500.0,
+                        color: (1.0, 0.86, 0.68),
+                        angle: 0.7,
+                    ),
+                    (
+                        from: (1450.0, 100.0, -300.0),
+                        to: (1634.0, 20.0, -208.0),
+                        illuminance: 2500.0,
+                        color: (1.0, 0.86, 0.68),
+                        angle: 0.7,
+                    ),
+                    (
+                        from: (1604.8, 163.2, -11.3),
+                        to: (1624.5, 27.3, 49.0),
+                        illuminance: 4000.0,
+                        color: (1.0, 0.84, 0.58),
+                        angle: 0.095,
+                        shaft: Some((spread: 3.2, light: 0.027)),
+                    ),
+                    (
+                        from: (1599.4, 175.9, 52.2),
+                        to: (1619.1, 40.0, 112.5),
+                        illuminance: 4000.0,
+                        color: (1.0, 0.84, 0.58),
+                        angle: 0.2,
+                        shaft: Some((spread: 3.2, light: 0.027)),
+                    ),
+                    (
+                        from: (1557.5, 189.1, 91.7),
+                        to: (1577.1, 53.2, 151.9),
+                        illuminance: 4000.0,
+                        color: (1.0, 0.84, 0.58),
+                        angle: 0.095,
+                        shaft: Some((spread: 3.2, light: 0.027)),
+                    ),
+                    // And, wider and far more diffused, one on the seat of seeing
+                    // on Amon Hen, and one on the ruins of Amon Sûl on
+                    // Weathertop.
+                    (
+                        from: (159.8, 152.2, 331.9),
+                        to: (96.8, 16.3, 324.2),
+                        illuminance: 2200.0,
+                        color: (1.0, 0.84, 0.58),
+                        angle: 0.16,
+                        shaft: Some((spread: 6.5, light: 0.02)),
+                    ),
+                    (
+                        from: (1213.3, 218.6, -694.3),
+                        to: (1271.7, 82.6, -669.7),
+                        illuminance: 3100.0,
+                        color: (1.0, 0.84, 0.58),
+                        angle: 0.12,
+                        shaft: Some((spread: 4.5, light: 0.025)),
+                    ),
+                    // And one down through the dark trees of the Trollshaws onto
+                    // the trolls turned to stone, leaning over the road towards
+                    // the riders coming down at them.
+                    (
+                        from: (1494.5, 166.0, -691.1),
+                        to: (1545.3, 30.0, -653.7),
+                        illuminance: 4000.0,
+                        color: (1.0, 0.84, 0.58),
+                        angle: 0.095,
+                        shaft: Some((spread: 3.2, light: 0.027)),
+                    ),
                 ],
-                [
-                    (442.4, -594.3),
-                    (438.5, -595.5),
-                    (434.7, -596.6),
-                    (430.8, -597.8),
-                    (426.9, -598.8),
-                    (423.1, -599.9),
-                    (419.2, -600.7),
-                    (415.4, -601.4),
-                    (411.5, -601.9),
-                    (407.7, -602.1),
-                    (403.9, -602.1),
-                    (400.1, -601.9),
-                    (396.4, -601.4),
-                    (392.8, -600.8),
-                    (389.2, -599.7),
-                    (385.7, -598.0),
-                    (382.3, -595.5),
-                    (379.3, -592.4),
-                    (377.0, -589.0),
-                    (375.1, -585.6),
-                    (373.4, -582.2),
-                    (371.8, -578.7),
-                    (370.3, -575.1),
-                    (368.7, -571.4),
-                    (367.0, -567.7),
-                    (365.4, -564.0),
-                    (363.9, -560.2),
-                    (362.4, -556.4),
-                    (360.8, -552.8),
-                    (358.8, -549.6),
-                    (356.2, -546.9),
-                    (353.1, -544.7),
-                    (349.8, -542.7),
-                    (346.4, -540.7),
-                    (343.1, -538.7),
-                    (339.7, -536.7),
-                    (336.4, -534.7),
-                    (333.0, -532.7),
-                    (329.7, -530.7),
-                    (326.3, -528.7),
-                    (323.0, -526.6),
-                    (320.1, -524.4),
-                    (318.2, -521.8),
-                    (317.5, -518.7),
-                    (318.1, -515.5),
-                    (319.9, -512.7),
-                    (322.7, -510.8),
-                    (326.2, -509.6),
-                    (329.9, -508.9),
-                    (333.4, -508.5),
-                    (336.9, -508.3),
-                    (340.4, -508.0),
-                    (343.6, -507.4),
-                    (345.7, -506.0),
-                    (346.2, -503.4),
-                    (345.5, -500.2),
-                    (344.3, -496.5),
-                    (343.0, -492.9),
-                    (341.7, -489.2),
-                    (340.4, -485.6),
-                    (339.1, -481.9),
-                    (337.8, -478.3),
+                // At the top of the pass, two arches of rock out of the cliff
+                // on the left, where it comes nearest the road (30 m from its
+                // middle; between them, over the mines, it stands back), the
+                // second seen through the first, each a little askew.
+                arches: [
+                    (along: 3163.1, turn: 0.1, width: 29.0, height: 17.0, depth: 10.0),
+                    (along: 3214.1, turn: -0.08, width: 30.0, height: 19.0, depth: 9.0),
                 ],
-            ],
-            // Hobbiton's hillsides, whose banks and doorsteps cut into them
-            // stay grass, as the Shire's, but for sheer faces. And Rivendell's
-            // rock, as the film's green crags: at the head of its valley, on
-            // its far side and down its cliffs on the right, grass on its
-            // ledges and gentler slopes, and moss on its faces.
-            turf: [
-                (center: (285.0, -495.0), radius: 250.0, steepest: 0.45),
-                // Weathertop's flanks, risen over the road climbing them:
-                // grass up its slopes, the rock out between.
-                (center: (1225.0, -665.0), radius: 260.0, steepest: 0.6),
-                (center: (1650.0, 180.0), radius: 115.0, steepest: 0.6),
-                (center: (1740.0, -145.0), radius: 130.0, steepest: 0.6),
-                (center: (1555.0, -320.0), radius: 100.0, steepest: 0.6),
-                (center: (1545.0, -170.0), radius: 100.0, steepest: 0.6),
-                (center: (1550.0, -20.0), radius: 100.0, steepest: 0.6),
-            ],
-            // The rock on the right of the road down the Anduin's gorge,
-            // from 4590 to 4882 m: a browner stone.
-            rock_tints: [
-                (center: (867.9, 355.7), radius: 55.0, color: (0.62, 0.53, 0.44)),
-                (center: (800.9, 371.2), radius: 55.0, color: (0.62, 0.53, 0.44)),
-                (center: (759.6, 403.9), radius: 55.0, color: (0.62, 0.53, 0.44)),
-                (center: (741.4, 414.9), radius: 55.0, color: (0.62, 0.53, 0.44)),
-                (center: (727.6, 412.3), radius: 55.0, color: (0.62, 0.53, 0.44)),
-                (center: (694.9, 385.3), radius: 55.0, color: (0.62, 0.53, 0.44)),
-                (center: (635.1, 357.5), radius: 55.0, color: (0.62, 0.53, 0.44)),
-            ],
-            // Rivendell's halls and the rock at the head of its valley, which
-            // the low sun in the south-east lights only from behind as the
-            // riders come down the valley at them: a warm light, as of the
-            // evening sky, from behind and over the riders, fills them. And
-            // up the valley, where the rock on its east side shades both its
-            // walls, a light across it onto each wall. And over each of its
-            // halls, the pavilion, the Last Homely House and the tower, a
-            // sunbeam down from the sky through the clouds, leaning towards
-            // the riders, its shaft showing in the air, spreading up into the
-            // sky; diffused ones on the seat of seeing on Amon Hen and on
-            // the ruins of Amon Sûl; and one on the stone trolls.
-            glows: [
-                (
-                    from: (1549.2, 133.2, -93.5),
-                    to: (1613.0, 36.0, 105.0),
-                    illuminance: 3500.0,
-                    color: (1.0, 0.86, 0.68),
-                    angle: 0.6,
-                ),
-                (
-                    from: (1720.0, 100.0, -300.0),
-                    to: (1565.8, 25.0, -221.8),
-                    illuminance: 2500.0,
-                    color: (1.0, 0.86, 0.68),
-                    angle: 0.7,
-                ),
-                (
-                    from: (1450.0, 100.0, -300.0),
-                    to: (1634.0, 20.0, -208.0),
-                    illuminance: 2500.0,
-                    color: (1.0, 0.86, 0.68),
-                    angle: 0.7,
-                ),
-                (
-                    from: (1604.8, 163.2, -11.3),
-                    to: (1624.5, 27.3, 49.0),
-                    illuminance: 4000.0,
-                    color: (1.0, 0.84, 0.58),
-                    angle: 0.095,
-                    shaft: Some((spread: 3.2, light: 0.027)),
-                ),
-                (
-                    from: (1599.4, 175.9, 52.2),
-                    to: (1619.1, 40.0, 112.5),
-                    illuminance: 4000.0,
-                    color: (1.0, 0.84, 0.58),
-                    angle: 0.2,
-                    shaft: Some((spread: 3.2, light: 0.027)),
-                ),
-                (
-                    from: (1557.5, 189.1, 91.7),
-                    to: (1577.1, 53.2, 151.9),
-                    illuminance: 4000.0,
-                    color: (1.0, 0.84, 0.58),
-                    angle: 0.095,
-                    shaft: Some((spread: 3.2, light: 0.027)),
-                ),
-                // And, wider and far more diffused, one on the seat of seeing
-                // on Amon Hen, and one on the ruins of Amon Sûl on
-                // Weathertop.
-                (
-                    from: (159.8, 152.2, 331.9),
-                    to: (96.8, 16.3, 324.2),
-                    illuminance: 2200.0,
-                    color: (1.0, 0.84, 0.58),
-                    angle: 0.16,
-                    shaft: Some((spread: 6.5, light: 0.02)),
-                ),
-                (
-                    from: (1213.3, 218.6, -694.3),
-                    to: (1271.7, 82.6, -669.7),
-                    illuminance: 3100.0,
-                    color: (1.0, 0.84, 0.58),
-                    angle: 0.12,
-                    shaft: Some((spread: 4.5, light: 0.025)),
-                ),
-                // And one down through the dark trees of the Trollshaws onto
-                // the trolls turned to stone, leaning over the road towards
-                // the riders coming down at them.
-                (
-                    from: (1494.5, 166.0, -691.1),
-                    to: (1545.3, 30.0, -653.7),
-                    illuminance: 4000.0,
-                    color: (1.0, 0.84, 0.58),
-                    angle: 0.095,
-                    shaft: Some((spread: 3.2, light: 0.027)),
-                ),
-            ],
-            // At the top of the pass, two arches of rock out of the cliff
-            // on the left, where it comes nearest the road (30 m from its
-            // middle; between them, over the mines, it stands back), the
-            // second seen through the first, each a little askew.
-            arches: [
-                (along: 3163.1, turn: 0.1, width: 29.0, height: 17.0, depth: 10.0),
-                (along: 3214.1, turn: -0.08, width: 30.0, height: 19.0, depth: 9.0),
-            ],
-        )),
+            ),
+        },
     ),
 )

@@ -6,6 +6,7 @@
 
 pub mod desert;
 pub mod japan;
+pub mod middle_earth;
 pub mod mine;
 pub mod space;
 
@@ -19,6 +20,7 @@ use crate::world::themes;
 pub fn register_themes() {
     themes::register::<desert::Desert>("desert");
     themes::register::<japan::Japan>("japan");
+    themes::register::<middle_earth::MiddleEarth>("middle_earth");
     themes::register::<mine::Mine>("mine");
     themes::register::<space::Space>("space");
 }

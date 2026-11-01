@@ -16,7 +16,7 @@
 //! of the rock: the top of the mesa it is cut into, and its faces round the
 //! two mouths, framed with timber.
 //!
-//! The halls of Moria are dug alike (see [`super::scenery::MiddleEarth`]),
+//! The halls of Moria are dug alike (see [`super::scenery::Scenery::halls`]),
 //! but some of dwarves' masonry and some natural caves, and wider than the
 //! road: it runs through them between low walls of their stone, under
 //! roofs far above (see [`Hall::width`]), past rows of great pillars.

@@ -630,10 +630,12 @@ pub struct Scenery {
     /// Petals, or leaves, drifting down (see [`crate::world::petals`]).
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub petals: &'static [Petals],
-    /// The scenery of Middle-earth, from models made with Meshy, or `None`:
-    /// see [`MiddleEarth`].
-    #[serde(default)]
-    pub middle_earth: Option<MiddleEarth>,
+    /// Where the ground stays grass however steep it is (see [`Turf`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub turf: &'static [Turf],
+    /// Where the granite is of another colour (see [`RockTint`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub rock_tints: &'static [RockTint],
     /// The inside of a toy store, if the road runs through one: see
     /// [`ToyStore`].
     #[serde(default)]
@@ -650,22 +652,6 @@ impl Scenery {
     /// concrete panels.
     pub fn excavation(&self) -> Option<&'static [Hall]> {
         (self.soil == Soil::Mine || !self.halls.is_empty()).then_some(self.halls)
-    }
-
-    /// Where the ground stays grass however steep it is (see
-    /// [`MiddleEarth::turf`]).
-    pub fn turf(&self) -> &'static [Turf] {
-        self.middle_earth
-            .as_ref()
-            .map_or(&[], |middle_earth| middle_earth.turf)
-    }
-
-    /// Where the granite is of another colour (see
-    /// [`MiddleEarth::rock_tints`]).
-    pub fn rock_tints(&self) -> &'static [RockTint] {
-        self.middle_earth
-            .as_ref()
-            .map_or(&[], |middle_earth| middle_earth.rock_tints)
     }
 }
 
@@ -830,84 +816,8 @@ pub const fn by_road<M: Copy>(model: M, along: f32, lateral: f32) -> Prop<M> {
     }
 }
 
-/// The scenery of Middle-earth, as at Fellowship Road (see
-/// [`crate::world::middle_earth`]): props made with Meshy standing about,
-/// hobbit holes in their grassy banks, fields of flowers and leaves
-/// drifting down.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MiddleEarth {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub props: &'static [Prop<MiddleEarthModel>],
-    /// Footpaths of bare earth, as between the hobbit holes: each a line of
-    /// points (x, z) over the ground.
-    #[serde(deserialize_with = "crate::circuits::data::paths", default)]
-    pub paths: &'static [&'static [Vec2]],
-    /// Where the ground stays grass steeper than elsewhere, as the banks and
-    /// the cut doorsteps of Hobbiton's hillsides are (but sheer), or the
-    /// ledges of Rivendell's rock, its faces mossy.
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub turf: &'static [Turf],
-    /// Where the granite is of another colour, as the browner rock of the
-    /// Anduin's gorge.
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub rock_tints: &'static [RockTint],
-    /// Lights that fill a stretch of land the low sun lights only from
-    /// behind, as Rivendell's halls are, seen by the riders coming at them.
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub glows: &'static [Glow],
-    /// Arches of layered rock over the road, out of the rock beside it, as
-    /// the sea's arches on a beach of cliffs.
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub arches: &'static [RockArch],
-}
-
-/// An arch of rock over the road (see [`MiddleEarth::arches`]): its middle
-/// `along` the lap, turned `turn` radians from square across it, its
-/// opening `width` wide across the road at its foot and `height` high over
-/// its middle, and `depth` thick along the road.
-#[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RockArch {
-    pub along: f32,
-    pub turn: f32,
-    pub width: f32,
-    pub height: f32,
-    pub depth: f32,
-}
-
-/// A light that fills what the low sun lights only from behind (see
-/// [`MiddleEarth::glows`]): shining from `from` at `to`, `illuminance` lux
-/// there, in `color`, in a cone `angle` radians round its axis, casting no
-/// shadow, as the evening sky's light does. With a `shaft`, it comes down
-/// from the sky onto one building, a sunbeam through the clouds, and its
-/// shaft shows in the air.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Glow {
-    pub from: Vec3,
-    pub to: Vec3,
-    pub illuminance: f32,
-    #[serde(deserialize_with = "crate::circuits::data::color")]
-    pub color: Color,
-    pub angle: f32,
-    #[serde(default)]
-    pub shaft: Option<Shaft>,
-}
-
-/// How a sunbeam's shaft shows in the air (see [`Glow::shaft`]): how many
-/// times wider than at its foot it spreads at its top, and how bright it is
-/// down its middle at its foot (linear, added over what is behind it, as
-/// light is); the more it spreads and the fainter, the more diffused.
-#[derive(Clone, Copy, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Shaft {
-    pub spread: f32,
-    pub light: f32,
-}
-
 /// A round stretch of land whose steep slopes are grass, not rock (see
-/// [`MiddleEarth::turf`]): grass up to `steepest`, the upward part of the
+/// [`Scenery::turf`]): grass up to `steepest`, the upward part of the
 /// ground's normal under which it is rock (0.45: all but sheer faces; more,
 /// grass on the ledges and gentler slopes of a rock face, rock between); and
 /// its granite green with moss over much of it.
@@ -920,7 +830,7 @@ pub struct Turf {
 }
 
 /// A round stretch of land whose granite is of another colour (see
-/// [`MiddleEarth::rock_tints`]): `color`, as light as the grey it stands
+/// [`Scenery::rock_tints`]): `color`, as light as the grey it stands
 /// for, fading back into the grey over the outer quarter of `radius`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -929,71 +839,6 @@ pub struct RockTint {
     pub radius: f32,
     #[serde(deserialize_with = "crate::circuits::data::color")]
     pub color: Color,
-}
-
-/// One of the props of Middle-earth, made with Meshy (see
-/// [`crate::world::middle_earth`]), in the order of the film.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum MiddleEarthModel {
-    /// The front of a hobbit hole, with its round door (green, yellow, red
-    /// or blue), set into a grassy bank, a chimney rising out of it.
-    HobbitDoorGreen,
-    HobbitDoorYellow,
-    HobbitDoorRed,
-    HobbitDoorBlue,
-    /// Bag End: the grandest hobbit hole, its picket fence before its
-    /// garden, set into its hill.
-    BagEnd,
-    /// The great pine of the party field.
-    PartyTree,
-    /// The gnarled oak on the hill over Bag End.
-    BagEndOak,
-    /// The mill of Bywater, its wheel turning.
-    Mill,
-    /// The Green Dragon of Bywater: a long, low inn under rounded thatch.
-    GreenDragon,
-    /// Its sign on its post.
-    GreenDragonSign,
-    /// Gandalf's cart, loaded with fireworks.
-    GandalfCart,
-    LogPile,
-    Scarecrow,
-    /// The old tree the hobbits hid under, its roots arched over a hollow.
-    RootTree,
-    /// The ferry raft over the Brandywine.
-    Ferry,
-    /// Bree's gate, over the road.
-    BreeGate,
-    /// The Prancing Pony: three storeys over an archway into its yard.
-    PrancingPony,
-    /// Houses of Bree: a wide one under thatch, a tall, narrow one.
-    BreeHouseA,
-    BreeHouseB,
-    /// The ring of ruins of Amon Sûl on Weathertop, and a broken arch.
-    WeathertopRuin,
-    RuinArch,
-    /// The three trolls turned to stone.
-    StoneTrolls,
-    /// The Last Homely House of Rivendell, an elven tower, the domed
-    /// pavilion and the lamps of its paths.
-    LastHomelyHouse,
-    ElvenTower,
-    Gazebo,
-    ElvenLamp,
-    /// The Doors of Durin, closed, in the Walls of Moria.
-    DurinDoors,
-    /// A mallorn of Lothlórien with its flet and its stair round its trunk.
-    MallornFlet,
-    /// Galadriel's swan ship, the sailing ship of the elves and an elven
-    /// rowing boat.
-    SwanShip,
-    ElvenShip,
-    ElvenBoat,
-    /// The kings of the Argonath: the first crowned, the second helmed.
-    ArgonathA,
-    ArgonathB,
-    /// The seat of seeing on Amon Hen.
-    AmonHenSeat,
 }
 
 /// A stretch of an excavation, a mine's or Moria's, in metres along the lap (a branch off

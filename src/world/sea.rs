@@ -604,7 +604,7 @@ mod tests {
         for circuit in crate::circuits::CIRCUITS.iter() {
             let wanted = if circuit.scenery.soil == crate::world::scenery::Soil::Mine {
                 Water::Iron
-            } else if circuit.scenery.middle_earth.is_some() {
+            } else if circuit.name == "Fellowship Road" {
                 Water::River
             } else {
                 Water::Sea

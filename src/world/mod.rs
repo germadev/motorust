@@ -14,7 +14,6 @@ pub mod landmarks;
 mod lawn;
 pub mod lettering;
 mod lod;
-mod middle_earth;
 pub mod mirror;
 pub mod mountains;
 pub mod petals;
@@ -117,7 +116,6 @@ impl Plugin for WorldPlugin {
             .init_resource::<textures::WorldTextures>()
             .init_resource::<trees::ModelledTrees>()
             .init_resource::<prop_pack::PropPacks>()
-            .init_resource::<middle_earth::FellowshipProps>()
             .init_resource::<toys::ToyModels>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))
@@ -1015,7 +1013,6 @@ struct Builder<'w> {
     circuits: Res<'w, Circuits>,
     textures: Res<'w, textures::WorldTextures>,
     packs: Res<'w, prop_pack::PropPacks>,
-    fellowship: Res<'w, middle_earth::FellowshipProps>,
     toy_models: Res<'w, toys::ToyModels>,
     sea: Res<'w, Sea>,
     sea_materials: ResMut<'w, Assets<sea::SeaMaterial>>,
@@ -1087,7 +1084,6 @@ fn build(
         textures: &builder.textures,
         packs: &builder.packs,
         flowers: None,
-        fellowship: &builder.fellowship,
         toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
@@ -1226,7 +1222,6 @@ fn finish(commands: &mut Commands, shown: Shown, rest: Rest, builder: &mut Build
         textures: &builder.textures,
         packs: &builder.packs,
         flowers: None,
-        fellowship: &builder.fellowship,
         toys: &builder.toy_models,
         meshes: &mut builder.meshes,
         materials: &mut builder.materials,
@@ -1298,7 +1293,6 @@ pub struct Assets3d<'a> {
     /// The packs of props made with Meshy the themes place (see
     /// [`prop_pack`]).
     pub packs: &'a prop_pack::PropPacks,
-    pub fellowship: &'a middle_earth::FellowshipProps,
     /// The toys made with Meshy (see [`toys`]).
     pub toys: &'a toys::ToyModels,
     pub meshes: &'a mut Assets<Mesh>,

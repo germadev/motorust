@@ -246,7 +246,7 @@ impl Terrain {
             .map(|(p, ((&hollow, &mountain), &up))| (p, hollow, mountain, up))
             .collect();
         let soil = scenery.soil;
-        let turf = scenery.turf();
+        let turf = scenery.turf;
         let sites = on_cores(&grid, threads, |part: &[(Vec3, f32, f32, f32)]| {
             part.iter()
                 .map(|&(p, hollow, mountain, up)| {
@@ -262,7 +262,7 @@ impl Terrain {
             soil,
             flowers,
             turf,
-            rock_tints: scenery.rock_tints(),
+            rock_tints: scenery.rock_tints,
             fine,
             mountain,
             hollow,
@@ -1910,7 +1910,7 @@ fn weathered(color: [f32; 4], ground: Ground, p: Vec3, hollow: f32, mountain: f3
 
 /// A tint `shade` times as light (linear RGBA), its green less vivid the
 /// darker it is: a dark grass is a dull one, not a lawn's vivid green.
-pub(super) fn shaded(tint: Color, shade: f32) -> [f32; 4] {
+pub fn shaded(tint: Color, shade: f32) -> [f32; 4] {
     let linear = tint.to_linear();
     let green = shade * (0.45 + 0.55 * shade);
     [

@@ -14,6 +14,11 @@
 //! Every prop's colours are in one texture, so they all share one material,
 //! and every kind of prop is one mesh (but the ithildin on the Doors of
 //! Durin and its glow, each in a material of its own).
+//!
+//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! writes it in its `themes` as `"middle_earth": (...)`. Its props are a
+//! pack of the engine's (`models/fellowship/`); its flowers, petals, turf,
+//! tinted rock and Moria's halls are the scenery's (the engine's).
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -22,16 +27,152 @@ use bevy::{
     render::render_resource::PrimitiveTopology,
 };
 
-use super::Assets3d;
-use super::detail::fading_out;
-use super::flowers::spawn_flowers;
-use super::prop_pack::{PropPack, Turning, in_view, spot};
-use super::props::Footprint;
-use super::quads::MeshBuilder;
-use super::scenery::{Glow, MiddleEarthModel, Prop, RockArch, Scenery, Shaft, Spot};
-use super::terrain::{GRASS_TILE, Ground, SEA_LEVEL, Terrain, ground_look, shaded};
 use crate::geometry::{fbm, random01, smoothstep};
 use crate::track::Track;
+use crate::world::Assets3d;
+use crate::world::detail::fading_out;
+use crate::world::flowers::spawn_flowers;
+use crate::world::prop_pack::{PropPack, Turning, in_view, spot};
+use crate::world::props::Footprint;
+use crate::world::quads::MeshBuilder;
+use crate::world::scenery::{Prop, Scenery, Spot};
+use crate::world::terrain::{GRASS_TILE, Ground, SEA_LEVEL, Terrain, ground_look, shaded};
+use crate::world::themes::Theme;
+
+/// The pack of its props, in `assets/models/`.
+const PACK: &str = "fellowship";
+
+/// The scenery of Middle-earth, as at Fellowship Road (see
+/// [`crate::game::middle_earth`]): props made with Meshy standing about,
+/// hobbit holes in their grassy banks, fields of flowers and leaves
+/// drifting down.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MiddleEarth {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub props: &'static [Prop<MiddleEarthModel>],
+    /// Footpaths of bare earth, as between the hobbit holes: each a line of
+    /// points (x, z) over the ground.
+    #[serde(deserialize_with = "crate::circuits::data::paths", default)]
+    pub paths: &'static [&'static [Vec2]],
+    /// Lights that fill a stretch of land the low sun lights only from
+    /// behind, as Rivendell's halls are, seen by the riders coming at them.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub glows: &'static [Glow],
+    /// Arches of layered rock over the road, out of the rock beside it, as
+    /// the sea's arches on a beach of cliffs.
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub arches: &'static [RockArch],
+}
+
+/// An arch of rock over the road (see [`MiddleEarth::arches`]): its middle
+/// `along` the lap, turned `turn` radians from square across it, its
+/// opening `width` wide across the road at its foot and `height` high over
+/// its middle, and `depth` thick along the road.
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RockArch {
+    pub along: f32,
+    pub turn: f32,
+    pub width: f32,
+    pub height: f32,
+    pub depth: f32,
+}
+
+/// A light that fills what the low sun lights only from behind (see
+/// [`MiddleEarth::glows`]): shining from `from` at `to`, `illuminance` lux
+/// there, in `color`, in a cone `angle` radians round its axis, casting no
+/// shadow, as the evening sky's light does. With a `shaft`, it comes down
+/// from the sky onto one building, a sunbeam through the clouds, and its
+/// shaft shows in the air.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Glow {
+    pub from: Vec3,
+    pub to: Vec3,
+    pub illuminance: f32,
+    #[serde(deserialize_with = "crate::circuits::data::color")]
+    pub color: Color,
+    pub angle: f32,
+    #[serde(default)]
+    pub shaft: Option<Shaft>,
+}
+
+/// How a sunbeam's shaft shows in the air (see [`Glow::shaft`]): how many
+/// times wider than at its foot it spreads at its top, and how bright it is
+/// down its middle at its foot (linear, added over what is behind it, as
+/// light is); the more it spreads and the fainter, the more diffused.
+#[derive(Clone, Copy, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shaft {
+    pub spread: f32,
+    pub light: f32,
+}
+
+/// One of the props of Middle-earth, made with Meshy (see
+/// [`crate::game::middle_earth`]), in the order of the film.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum MiddleEarthModel {
+    /// The front of a hobbit hole, with its round door (green, yellow, red
+    /// or blue), set into a grassy bank, a chimney rising out of it.
+    HobbitDoorGreen,
+    HobbitDoorYellow,
+    HobbitDoorRed,
+    HobbitDoorBlue,
+    /// Bag End: the grandest hobbit hole, its picket fence before its
+    /// garden, set into its hill.
+    BagEnd,
+    /// The great pine of the party field.
+    PartyTree,
+    /// The gnarled oak on the hill over Bag End.
+    BagEndOak,
+    /// The mill of Bywater, its wheel turning.
+    Mill,
+    /// The Green Dragon of Bywater: a long, low inn under rounded thatch.
+    GreenDragon,
+    /// Its sign on its post.
+    GreenDragonSign,
+    /// Gandalf's cart, loaded with fireworks.
+    GandalfCart,
+    LogPile,
+    Scarecrow,
+    /// The old tree the hobbits hid under, its roots arched over a hollow.
+    RootTree,
+    /// The ferry raft over the Brandywine.
+    Ferry,
+    /// Bree's gate, over the road.
+    BreeGate,
+    /// The Prancing Pony: three storeys over an archway into its yard.
+    PrancingPony,
+    /// Houses of Bree: a wide one under thatch, a tall, narrow one.
+    BreeHouseA,
+    BreeHouseB,
+    /// The ring of ruins of Amon Sûl on Weathertop, and a broken arch.
+    WeathertopRuin,
+    RuinArch,
+    /// The three trolls turned to stone.
+    StoneTrolls,
+    /// The Last Homely House of Rivendell, an elven tower, the domed
+    /// pavilion and the lamps of its paths.
+    LastHomelyHouse,
+    ElvenTower,
+    Gazebo,
+    ElvenLamp,
+    /// The Doors of Durin, closed, in the Walls of Moria.
+    DurinDoors,
+    /// A mallorn of Lothlórien with its flet and its stair round its trunk.
+    MallornFlet,
+    /// Galadriel's swan ship, the sailing ship of the elves and an elven
+    /// rowing boat.
+    SwanShip,
+    ElvenShip,
+    ElvenBoat,
+    /// The kings of the Argonath: the first crowned, the second helmed.
+    ArgonathA,
+    ArgonathB,
+    /// The seat of seeing on Amon Hen.
+    AmonHenSeat,
+}
 
 /// The mill's wheel and the chimney over a hobbit hole, by their names in
 /// `props.bin`; the props are by [`name`].
@@ -326,33 +467,34 @@ fn landmark(model: MiddleEarthModel) -> bool {
     )
 }
 
-/// The props of Middle-earth.
-#[derive(Resource)]
-pub struct FellowshipProps(PropPack);
+impl Theme for MiddleEarth {
+    fn spawn(
+        &self,
+        world: &mut ChildSpawnerCommands,
+        track: &Track,
+        terrain: &Terrain,
+        scenery: &Scenery,
+        assets: &mut Assets3d,
+    ) -> Vec<Footprint> {
+        spawn_middle_earth(world, track, terrain, self, scenery, assets)
+    }
 
-impl FromWorld for FellowshipProps {
-    fn from_world(world: &mut World) -> Self {
-        Self(PropPack::load(
-            world,
-            crate::content::file("models/fellowship/props.bin"),
-            crate::content::file("models/fellowship/color.jpg"),
-        ))
+    fn packs() -> &'static [&'static str] {
+        &[PACK]
     }
 }
 
-/// The scenery of Middle-earth of a circuit, if it has one. Returns the
-/// ground the props take.
-pub fn spawn_middle_earth(
+/// The scenery of Middle-earth of a circuit, and the circuit's flowers
+/// among it, clear of its props. Returns the ground the props take.
+fn spawn_middle_earth(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
+    middle_earth: &MiddleEarth,
     scenery: &Scenery,
     assets: &mut Assets3d,
 ) -> Vec<Footprint> {
-    let Some(middle_earth) = &scenery.middle_earth else {
-        return Vec::new();
-    };
-    let props = &assets.fellowship.0;
+    let props = assets.packs.get(PACK);
     // Shining of themselves: the ithildin, and its glow, added over the
     // stone.
     let gate = GateMaterials {
@@ -1356,7 +1498,7 @@ mod tests {
     fn in_middle_earth() -> Vec<(&'static crate::circuits::Circuit, Track, Terrain)> {
         CIRCUITS
             .iter()
-            .filter(|circuit| circuit.scenery.middle_earth.is_some())
+            .filter(|circuit| circuit.scenery.themes.get::<MiddleEarth>().is_some())
             .map(|circuit| {
                 let track = Track::new(&circuit.layout);
                 let terrain = Terrain::new(&track, &circuit.scenery);
@@ -1382,7 +1524,7 @@ mod tests {
             MiddleEarthModel::Gazebo,
         ];
         for (circuit, track, terrain) in &in_middle_earth() {
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             for prop in middle_earth
                 .props
                 .iter()
@@ -1588,7 +1730,7 @@ mod tests {
     #[test]
     fn the_footpaths_lie_on_the_ground_off_the_roads_and_out_of_the_water() {
         for (circuit, track, terrain) in &in_middle_earth() {
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             assert!(!middle_earth.paths.is_empty(), "{}", circuit.name);
             for path in middle_earth.paths {
                 for at in path_samples(path) {
@@ -1624,7 +1766,7 @@ mod tests {
         assert!(!circuits.is_empty());
         let pack = pack();
         for (circuit, track, terrain) in &circuits {
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             for prop in middle_earth.props {
                 let mesh = piece(&pack, name(prop.model));
                 let (low, high) = bounds(mesh);
@@ -1703,7 +1845,7 @@ mod tests {
     fn the_banks_of_the_hobbit_holes_sink_into_the_ground_all_round() {
         for (circuit, track, terrain) in &in_middle_earth() {
             let pack = pack();
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             let mut banks = 0;
             for prop in middle_earth.props {
                 if footing(prop.model) != Footing::Bank {
@@ -1749,7 +1891,7 @@ mod tests {
     #[test]
     fn glows_light_rivendell_s_halls_on_their_fronts_and_sunbeams_fall_on_the_landmarks() {
         for (circuit, track, terrain) in &in_middle_earth() {
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             assert!(!middle_earth.glows.is_empty(), "{}", circuit.name);
             for glow in middle_earth.glows {
                 // As bright on what it lights as it says, and reaching
@@ -1840,7 +1982,7 @@ mod tests {
     #[test]
     fn bushes_line_the_footpaths_beside_them_out_of_the_props_way() {
         for (circuit, _, _) in &in_middle_earth() {
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             let taken = [(middle_earth.paths[0][10], 6.0)];
             let spots = path_bush_spots(middle_earth.paths, &taken);
             let length: f32 = middle_earth
@@ -1927,7 +2069,7 @@ mod tests {
     fn the_arches_of_rock_come_out_of_the_rock_on_the_left_high_over_the_road() {
         let mut arches = 0;
         for (circuit, track, terrain) in &in_middle_earth() {
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             for arch in middle_earth.arches {
                 let mesh = rock_arch(track, arch);
                 let (foot, across, along) = arch_frame(track, arch);
@@ -2002,7 +2144,7 @@ mod tests {
     #[test]
     fn no_tree_stands_in_the_way_of_a_landmark() {
         for (circuit, track, _) in &in_middle_earth() {
-            let middle_earth = circuit.scenery.middle_earth.as_ref().unwrap();
+            let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             for prop in middle_earth.props.iter().filter(|p| landmark(p.model)) {
                 let (position, _) = spot(track, prop);
                 let clear = in_view(track, position);
