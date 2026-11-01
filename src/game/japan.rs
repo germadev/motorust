@@ -9,9 +9,9 @@
 //! and every kind of prop is one mesh: the hundred gates of a corridor draw
 //! together.
 //!
-//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! A theme of the game's (see [`motorust_engine::world::themes`]): a circuit's file
 //! writes it in its `themes` as `"japan": (...)`. Its props are a pack of
-//! the engine's ([`crate::world::prop_pack`], `models/props/`); its fields
+//! the engine's ([`motorust_engine::world::prop_pack`], `models/props/`); its fields
 //! of flowers and its petals are the scenery's (the engine's).
 
 use bevy::prelude::*;
@@ -20,18 +20,18 @@ use std::f32::consts::TAU;
 
 use bevy::light::NotShadowReceiver;
 
-use crate::geometry::{forward, random01};
-use crate::track::{NARROW_EASE, Track, WALL_DISTANCE};
-use crate::world::Assets3d;
-use crate::world::flowers::spawn_flowers;
-use crate::world::mirror::MirrorPoint;
-use crate::world::prop_pack::{PropPack, Turning, facing, in_view, spot};
-use crate::world::props::Footprint;
-use crate::world::quads::MeshBuilder;
-use crate::world::road::WALL_HEIGHT;
-use crate::world::scenery::{Plinth, Prop, Row, Scenery, Side, Span, Spot, by_road};
-use crate::world::terrain::{SEA_LEVEL, Terrain};
-use crate::world::themes::Theme;
+use motorust_engine::geometry::{forward, random01};
+use motorust_engine::track::{NARROW_EASE, Track, WALL_DISTANCE};
+use motorust_engine::world::Assets3d;
+use motorust_engine::world::flowers::spawn_flowers;
+use motorust_engine::world::mirror::MirrorPoint;
+use motorust_engine::world::prop_pack::{PropPack, Turning, facing, in_view, spot};
+use motorust_engine::world::props::Footprint;
+use motorust_engine::world::quads::MeshBuilder;
+use motorust_engine::world::road::WALL_HEIGHT;
+use motorust_engine::world::scenery::{Plinth, Prop, Row, Scenery, Side, Span, Spot, by_road};
+use motorust_engine::world::terrain::{SEA_LEVEL, Terrain};
+use motorust_engine::world::themes::Theme;
 
 /// The pack of its props, in `assets/models/`.
 const PACK: &str = "props";
@@ -42,21 +42,21 @@ const PACK: &str = "props";
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Japan {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub corridors: &'static [ToriiCorridor],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub props: &'static [Prop<PropModel>],
     /// The small ones over and over along the road (see [`PropRow`]).
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub rows: &'static [PropRow],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub maple_grounds: &'static [MapleGround],
 }
 
 /// A clearing carpeted with red maple leaves, ringed with low logs, as
 /// under a great maple by a lake: its middle (x, z) and the radius of its
 /// ring of logs (m). Its leaves spill a little past the ring. Lay it on
-/// level ground (a [`Terrace`](crate::world::scenery::Terrace)).
+/// level ground (a [`Terrace`](motorust_engine::world::scenery::Terrace)).
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapleGround {
@@ -65,7 +65,7 @@ pub struct MapleGround {
 }
 
 /// A corridor of torii over the road, as at Fushimi Inari: where the walls
-/// close in on the road along `span` (see [`crate::track::Narrowing`]), a
+/// close in on the road along `span` (see [`motorust_engine::track::Narrowing`]), a
 /// narrow gate every `every` metres; and over the `approach` metres before
 /// and after it, where the road is as wide as ever, a wide gate every
 /// `approach_every` metres.
@@ -166,7 +166,7 @@ impl PropModel {
 pub struct PropRow {
     /// The kinds it is made of, each in turn: one kind over and over, or
     /// several, so that a stretch is not all of one thing.
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak")]
     pub models: &'static [PropModel],
     pub row: Row,
 }
@@ -784,13 +784,13 @@ fn spawn_prop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bike::model::imported::read;
     use crate::game::CIRCUITS;
-    use crate::world::prop_pack::{RIDERS_BACK, VIEW_CLEAR, bounds};
+    use motorust_engine::bike::model::imported::read;
+    use motorust_engine::world::prop_pack::{RIDERS_BACK, VIEW_CLEAR, bounds};
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
-        read(crate::content::file("models/props/props.bin"))
+        read(motorust_engine::content::file("models/props/props.bin"))
             .meshes
             .into_iter()
             .map(|piece| (piece.name, piece.mesh))
@@ -807,6 +807,7 @@ mod tests {
 
     #[test]
     fn every_prop_is_in_the_pack_on_the_ground_and_light() {
+        crate::game::register();
         let pack = pack();
         let names = MODELS
             .iter()
@@ -843,6 +844,7 @@ mod tests {
 
     #[test]
     fn the_gates_leave_the_road_clear_under_their_beams() {
+        crate::game::register();
         let pack = pack();
         for (name, opening) in [(TORII_WIDE, WIDE_OPENING), (TORII_ROAD, ROAD_OPENING)] {
             let mesh = piece(&pack, name);
@@ -871,6 +873,7 @@ mod tests {
 
     #[test]
     fn the_corridor_of_torii_stands_round_the_road_beside_its_walls() {
+        crate::game::register();
         for circuit in CIRCUITS.iter() {
             let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
@@ -907,6 +910,7 @@ mod tests {
 
     #[test]
     fn a_clearing_of_maple_leaves_faces_the_road_ringed_with_logs() {
+        crate::game::register();
         let mut checked = 0;
         for circuit in CIRCUITS.iter() {
             let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
@@ -960,6 +964,7 @@ mod tests {
 
     #[test]
     fn no_tree_stands_in_the_way_of_a_landmark() {
+        crate::game::register();
         for circuit in CIRCUITS.iter() {
             let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
@@ -986,6 +991,7 @@ mod tests {
 
     #[test]
     fn props_stand_clear_of_the_roads_and_in_the_water_where_they_should() {
+        crate::game::register();
         for circuit in CIRCUITS.iter() {
             let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
@@ -1019,6 +1025,7 @@ mod tests {
 
     #[test]
     fn a_small_prop_by_the_road_stands_on_a_plinth_that_shows_it_over_the_wall() {
+        crate::game::register();
         let pack = pack();
         let mut stood = 0;
         for circuit in CIRCUITS.iter() {
@@ -1062,6 +1069,7 @@ mod tests {
 
     #[test]
     fn a_prop_that_faces_the_riders_looks_down_the_road_they_come_up() {
+        crate::game::register();
         for circuit in CIRCUITS.iter() {
             let Some(japan) = circuit.scenery.themes.get::<Japan>() else {
                 continue;
@@ -1096,6 +1104,7 @@ mod tests {
 
     #[test]
     fn the_rows_fill_the_road_without_crowding_what_stands_already() {
+        crate::game::register();
         let circuit = CIRCUITS
             .iter()
             .find(|circuit| circuit.scenery.themes.get::<Japan>().is_some())

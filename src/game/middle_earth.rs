@@ -15,7 +15,7 @@
 //! and every kind of prop is one mesh (but the ithildin on the Doors of
 //! Durin and its glow, each in a material of its own).
 //!
-//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! A theme of the game's (see [`motorust_engine::world::themes`]): a circuit's file
 //! writes it in its `themes` as `"middle_earth": (...)`. Its props are a
 //! pack of the engine's (`models/fellowship/`); its flowers, petals, turf,
 //! tinted rock and Moria's halls are the scenery's (the engine's).
@@ -27,17 +27,19 @@ use bevy::{
     render::render_resource::PrimitiveTopology,
 };
 
-use crate::geometry::{fbm, random01, smoothstep};
-use crate::track::Track;
-use crate::world::Assets3d;
-use crate::world::detail::fading_out;
-use crate::world::flowers::spawn_flowers;
-use crate::world::prop_pack::{PropPack, Turning, in_view, spot};
-use crate::world::props::Footprint;
-use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{Prop, Scenery, Spot};
-use crate::world::terrain::{GRASS_TILE, Ground, SEA_LEVEL, Terrain, ground_look, shaded};
-use crate::world::themes::Theme;
+use motorust_engine::geometry::{fbm, random01, smoothstep};
+use motorust_engine::track::Track;
+use motorust_engine::world::Assets3d;
+use motorust_engine::world::detail::fading_out;
+use motorust_engine::world::flowers::spawn_flowers;
+use motorust_engine::world::prop_pack::{PropPack, Turning, in_view, spot};
+use motorust_engine::world::props::Footprint;
+use motorust_engine::world::quads::MeshBuilder;
+use motorust_engine::world::scenery::{Prop, Scenery, Spot};
+use motorust_engine::world::terrain::{
+    GRASS_TILE, Ground, SEA_LEVEL, Terrain, ground_look, shaded,
+};
+use motorust_engine::world::themes::Theme;
 
 /// The pack of its props, in `assets/models/`.
 const PACK: &str = "fellowship";
@@ -49,19 +51,19 @@ const PACK: &str = "fellowship";
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MiddleEarth {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub props: &'static [Prop<MiddleEarthModel>],
     /// Footpaths of bare earth, as between the hobbit holes: each a line of
     /// points (x, z) over the ground.
-    #[serde(deserialize_with = "crate::circuits::data::paths", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::paths", default)]
     pub paths: &'static [&'static [Vec2]],
     /// Lights that fill a stretch of land the low sun lights only from
     /// behind, as Rivendell's halls are, seen by the riders coming at them.
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub glows: &'static [Glow],
     /// Arches of layered rock over the road, out of the rock beside it, as
     /// the sea's arches on a beach of cliffs.
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub arches: &'static [RockArch],
 }
 
@@ -91,7 +93,7 @@ pub struct Glow {
     pub from: Vec3,
     pub to: Vec3,
     pub illuminance: f32,
-    #[serde(deserialize_with = "crate::circuits::data::color")]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::color")]
     pub color: Color,
     pub angle: f32,
     #[serde(default)]
@@ -1466,18 +1468,20 @@ impl BankMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bike::model::imported::read;
     use crate::game::CIRCUITS;
-    use crate::track::WALL_DISTANCE;
-    use crate::world::prop_pack::{VIEW_CLEAR, bounds};
+    use motorust_engine::bike::model::imported::read;
+    use motorust_engine::track::WALL_DISTANCE;
+    use motorust_engine::world::prop_pack::{VIEW_CLEAR, bounds};
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
-        read(crate::content::file("models/fellowship/props.bin"))
-            .meshes
-            .into_iter()
-            .map(|piece| (piece.name, piece.mesh))
-            .collect()
+        read(motorust_engine::content::file(
+            "models/fellowship/props.bin",
+        ))
+        .meshes
+        .into_iter()
+        .map(|piece| (piece.name, piece.mesh))
+        .collect()
     }
 
     fn piece<'a>(pack: &'a [(String, Mesh)], name: &str) -> &'a Mesh {
@@ -1495,7 +1499,7 @@ mod tests {
     }
 
     /// The circuits with the scenery of Middle-earth.
-    fn in_middle_earth() -> Vec<(&'static crate::circuits::Circuit, Track, Terrain)> {
+    fn in_middle_earth() -> Vec<(&'static motorust_engine::circuits::Circuit, Track, Terrain)> {
         CIRCUITS
             .iter()
             .filter(|circuit| circuit.scenery.themes.get::<MiddleEarth>().is_some())
@@ -1509,6 +1513,7 @@ mod tests {
 
     #[test]
     fn the_buildings_stand_on_their_ground_not_buried_in_it() {
+        crate::game::register();
         // The ground round a building, as far out as most of its walls,
         // rises over its foot by no more than a fifth of its height: the
         // ruins on Weathertop's summit, not in the bank under it. (The seat
@@ -1553,6 +1558,7 @@ mod tests {
 
     #[test]
     fn every_prop_is_in_the_pack_on_the_ground_and_light() {
+        crate::game::register();
         let pack = pack();
         for name in MODELS
             .iter()
@@ -1591,6 +1597,7 @@ mod tests {
 
     #[test]
     fn the_mill_wheel_turns_about_its_axle_against_the_mill() {
+        crate::game::register();
         let pack = pack();
         let (wheel_low, wheel_high) = bounds(piece(&pack, WHEEL));
         let (mill_low, mill_high) = bounds(piece(&pack, "mill"));
@@ -1624,6 +1631,7 @@ mod tests {
 
     #[test]
     fn bree_gate_leaves_the_road_clear_under_its_beam() {
+        crate::game::register();
         let pack = pack();
         let mesh = piece(&pack, "bree_gate");
         let (_, high) = bounds(mesh);
@@ -1648,6 +1656,7 @@ mod tests {
 
     #[test]
     fn the_doors_of_durin_stand_open_with_their_ithildin_on_them() {
+        crate::game::register();
         let pack = pack();
         let doors = piece(&pack, "durin_doors");
         let (low, high) = bounds(doors);
@@ -1679,6 +1688,7 @@ mod tests {
 
     #[test]
     fn a_hobbit_hole_is_dug_into_a_little_hill() {
+        crate::game::register();
         let bank = Bank {
             half_width: 4.5,
             back: -1.0,
@@ -1729,6 +1739,7 @@ mod tests {
 
     #[test]
     fn the_footpaths_lie_on_the_ground_off_the_roads_and_out_of_the_water() {
+        crate::game::register();
         for (circuit, track, terrain) in &in_middle_earth() {
             let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             assert!(!middle_earth.paths.is_empty(), "{}", circuit.name);
@@ -1762,6 +1773,7 @@ mod tests {
 
     #[test]
     fn props_stand_clear_of_the_roads_on_land_or_on_the_water() {
+        crate::game::register();
         let circuits = in_middle_earth();
         assert!(!circuits.is_empty());
         let pack = pack();
@@ -1843,6 +1855,7 @@ mod tests {
 
     #[test]
     fn the_banks_of_the_hobbit_holes_sink_into_the_ground_all_round() {
+        crate::game::register();
         for (circuit, track, terrain) in &in_middle_earth() {
             let pack = pack();
             let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
@@ -1890,6 +1903,7 @@ mod tests {
 
     #[test]
     fn glows_light_rivendell_s_halls_on_their_fronts_and_sunbeams_fall_on_the_landmarks() {
+        crate::game::register();
         for (circuit, track, terrain) in &in_middle_earth() {
             let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             assert!(!middle_earth.glows.is_empty(), "{}", circuit.name);
@@ -1957,6 +1971,7 @@ mod tests {
 
     #[test]
     fn a_bush_is_low_and_round_on_the_ground() {
+        crate::game::register();
         let foot = Vec3::new(10.0, 3.0, -4.0);
         for seed in 0..40 {
             let width = BUSH_WIDTH.0.lerp(BUSH_WIDTH.1, random01(seed * 7 + 1));
@@ -1981,6 +1996,7 @@ mod tests {
 
     #[test]
     fn bushes_line_the_footpaths_beside_them_out_of_the_props_way() {
+        crate::game::register();
         for (circuit, _, _) in &in_middle_earth() {
             let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             let taken = [(middle_earth.paths[0][10], 6.0)];
@@ -2019,6 +2035,7 @@ mod tests {
 
     #[test]
     fn a_sunbeam_s_shaft_fades_out_to_its_edges_and_up_into_the_sky() {
+        crate::game::register();
         let glow = Glow {
             from: Vec3::new(0.0, 150.0, 0.0),
             to: Vec3::ZERO,
@@ -2067,6 +2084,7 @@ mod tests {
 
     #[test]
     fn the_arches_of_rock_come_out_of_the_rock_on_the_left_high_over_the_road() {
+        crate::game::register();
         let mut arches = 0;
         for (circuit, track, terrain) in &in_middle_earth() {
             let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
@@ -2082,7 +2100,7 @@ mod tests {
                     let point = Vec3::from_array(*p) - foot;
                     let (lateral, up) = (point.dot(across), point.y);
                     // Between the walls, high over the road.
-                    if lateral.abs() < crate::track::WALL_DISTANCE + 0.5 {
+                    if lateral.abs() < motorust_engine::track::WALL_DISTANCE + 0.5 {
                         assert!(up > 7.0, "{}: {up} m up, {lateral} m across", circuit.name);
                     }
                     if lateral.abs() < 2.0 {
@@ -2133,6 +2151,7 @@ mod tests {
 
     #[test]
     fn a_sunbeam_s_shaft_shows_coming_up_to_what_it_lights_not_from_afar() {
+        crate::game::register();
         let range = fading_out(SHAFT_REACH, SHAFT_FADE, true);
         // Its middle, half way up it, from the road 60 m short of what it
         // lights: whole; from 250 m off, gone.
@@ -2143,6 +2162,7 @@ mod tests {
 
     #[test]
     fn no_tree_stands_in_the_way_of_a_landmark() {
+        crate::game::register();
         for (circuit, track, _) in &in_middle_earth() {
             let middle_earth = circuit.scenery.themes.get::<MiddleEarth>().unwrap();
             for prop in middle_earth.props.iter().filter(|p| landmark(p.model)) {

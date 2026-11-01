@@ -18,8 +18,8 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use bevy::prelude::*;
 
 use super::toys::{Entrance, ToyStore, ball_of, y};
-use crate::geometry::random01;
-use crate::world::quads::MeshBuilder;
+use motorust_engine::geometry::random01;
+use motorust_engine::world::quads::MeshBuilder;
 
 /// How high the glass reaches (m over the floor): the opening in the wall,
 /// the frame's head in it.
@@ -1290,11 +1290,13 @@ mod tests {
 
     #[test]
     fn there_is_a_way_into_a_shop() {
+        crate::game::register();
         assert!(!entrances().is_empty());
     }
 
     #[test]
     fn the_doors_and_a_pane_either_side_fit_in_the_glass_under_the_stripes() {
+        crate::game::register();
         // The bar over the doors under the glass's head, and the head under
         // the stripes round the room's top.
         const { assert!(DOOR_HEIGHT + BAR < GLASS_TOP - BAR) };
@@ -1318,6 +1320,7 @@ mod tests {
 
     #[test]
     fn nothing_of_the_outside_comes_into_the_shop() {
+        crate::game::register();
         for (name, store, entrance) in entrances() {
             let (min, max) = store.room;
             let mut outside = MeshBuilder::default();
@@ -1347,6 +1350,7 @@ mod tests {
 
     #[test]
     fn the_sun_outside_lights_what_faces_it_more_than_what_faces_away() {
+        crate::game::register();
         let white = Color::WHITE;
         let lit = sunlit(white, SUN).to_linear();
         let shade = sunlit(white, -SUN).to_linear();

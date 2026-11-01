@@ -3,7 +3,7 @@
 //! pumpjacks nodding on the dunes, concrete highway viaducts across the
 //! road, adobe pueblos, and big diamond warning signs before the bends.
 //!
-//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! A theme of the game's (see [`motorust_engine::world::themes`]): a circuit's file
 //! writes it in its `themes` as `"desert": (...)`.
 //!
 //! Each building is one mesh coloured vertex by vertex, so it costs a
@@ -18,16 +18,16 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::geometry::{forward, random01, smoothstep};
-use crate::track::{Track, WALL_DISTANCE};
-use crate::world::Assets3d;
-use crate::world::lettering::sign_image;
-use crate::world::props::Footprint;
-use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{ChevronDirection, Scenery, Side, Span};
-use crate::world::terrain::{SEA_LEVEL, Terrain};
-use crate::world::textures::generate_mipmaps;
-use crate::world::themes::Theme;
+use motorust_engine::geometry::{forward, random01, smoothstep};
+use motorust_engine::track::{Track, WALL_DISTANCE};
+use motorust_engine::world::Assets3d;
+use motorust_engine::world::lettering::sign_image;
+use motorust_engine::world::props::Footprint;
+use motorust_engine::world::quads::MeshBuilder;
+use motorust_engine::world::scenery::{ChevronDirection, Scenery, Side, Span};
+use motorust_engine::world::terrain::{SEA_LEVEL, Terrain};
+use motorust_engine::world::textures::generate_mipmaps;
+use motorust_engine::world::themes::Theme;
 
 /// How far the deck of a viaduct reaches to either side of the centre line
 /// of the road (m), into the rock walls, how wide it is along the road and
@@ -98,18 +98,18 @@ const STRAW: Color = Color::srgb(0.66, 0.53, 0.33);
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Desert {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub gas_stations: &'static [GasStation],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub pumpjacks: &'static [Pumpjack],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub overpasses: &'static [Overpass],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub pueblos: &'static [Pueblo],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub curve_signs: &'static [CurveSign],
     pub cacti: Cacti,
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub tumbleweeds: &'static [Tumbleweed],
 }
 
@@ -119,7 +119,7 @@ pub struct Desert {
 #[serde(deny_unknown_fields)]
 pub struct Cacti {
     pub count: usize,
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak")]
     pub spans: &'static [Span],
 }
 
@@ -144,7 +144,7 @@ pub struct GasStation {
 }
 
 /// An oil pumpjack at `position` (x, z), its beam nodding towards
-/// `heading` (see [`crate::geometry`]).
+/// `heading` (see [`motorust_engine::geometry`]).
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pumpjack {
@@ -154,7 +154,7 @@ pub struct Pumpjack {
 
 /// A concrete highway viaduct across the road `along` the lap, the bottom
 /// of its deck `height` metres over the road, from one rock wall into the
-/// other on columns beyond the walls (put a [`Cutting`](crate::world::scenery::Cutting) on both sides
+/// other on columns beyond the walls (put a [`Cutting`](motorust_engine::world::scenery::Cutting) on both sides
 /// first).
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1395,6 +1395,7 @@ mod tests {
 
     #[test]
     fn a_pumpjack_s_beam_rises_and_falls_once_a_turn_of_its_crank() {
+        crate::game::register();
         assert_eq!(nod_angle(0.0), 0.0);
         assert!((nod_angle(FRAC_PI_2) - NOD).abs() < 1e-6);
         assert!((nod_angle(3.0 * FRAC_PI_2) + NOD).abs() < 1e-6);
@@ -1403,6 +1404,7 @@ mod tests {
 
     #[test]
     fn diamond_signs_point_the_way_of_the_bend() {
+        crate::game::register();
         // The corners are clear, the middle of the diamond is the sign's
         // colour, and the arrow's head is on the side of the bend.
         assert_eq!(diamond_pixel(0.95, 0.95), Mark::Clear);
@@ -1434,6 +1436,7 @@ mod tests {
 
     #[test]
     fn the_desert_s_works_stand_clear_of_the_roads_on_the_ground() {
+        crate::game::register();
         let (_, desert, track, terrain) = desert_circuit();
         assert!(!desert.gas_stations.is_empty() && !desert.pumpjacks.is_empty());
         assert!(!desert.pueblos.is_empty() && !desert.curve_signs.is_empty());
@@ -1473,6 +1476,7 @@ mod tests {
 
     #[test]
     fn viaducts_run_high_over_the_road_into_rock_on_both_sides() {
+        crate::game::register();
         let (_, desert, track, terrain) = desert_circuit();
         assert!(!desert.overpasses.is_empty());
         for overpass in desert.overpasses {
@@ -1495,6 +1499,7 @@ mod tests {
 
     #[test]
     fn cacti_stand_on_level_dry_ground_clear_of_the_roads() {
+        crate::game::register();
         let (_, desert, track, terrain) = desert_circuit();
         let spots = cactus_spots(&track, &terrain, &desert.cacti, &[]);
         assert!(
@@ -1511,6 +1516,7 @@ mod tests {
 
     #[test]
     fn tumbleweeds_roll_across_the_road_and_hop_over_its_walls() {
+        crate::game::register();
         let (_, desert, track, terrain) = desert_circuit();
         assert!(!desert.tumbleweeds.is_empty());
         for (k, weed) in desert.tumbleweeds.iter().enumerate() {
@@ -1549,6 +1555,7 @@ mod tests {
 
     #[test]
     fn curve_signs_stand_before_bends_their_way() {
+        crate::game::register();
         let (_, desert, track, _) = desert_circuit();
         for sign in desert.curve_signs {
             // Within the next 150 m the road bends the way the arrow says:

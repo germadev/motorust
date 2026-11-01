@@ -12,10 +12,10 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 use bevy::prelude::*;
 
 use super::toys::{BrickKind, Bricks, runs, y};
-use crate::geometry::random01;
-use crate::track::Track;
-use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{Scenery, Side, WallStyle};
+use motorust_engine::geometry::random01;
+use motorust_engine::track::Track;
+use motorust_engine::world::quads::MeshBuilder;
+use motorust_engine::world::scenery::{Scenery, Side, WallStyle};
 
 /// How far apart a brick's studs are (m): as the diorama baseplate's.
 pub const STUD: f32 = 1.2;
@@ -472,7 +472,7 @@ pub fn walls(mesh: &mut MeshBuilder, track: &Track, scenery: &Scenery) {
     for side in [Side::Left, Side::Right] {
         let of_bricks: Vec<usize> = (0..n)
             .filter(|&i| {
-                crate::world::road::wall_style(scenery, lap, i as f32 * step, side)
+                motorust_engine::world::road::wall_style(scenery, lap, i as f32 * step, side)
                     == Some(WallStyle::Bricks)
             })
             .collect();
@@ -545,6 +545,7 @@ mod tests {
 
     #[test]
     fn a_row_of_bricks_leaves_its_holes_and_breaks_its_joints() {
+        crate::game::register();
         // Four studs at most each, from end to end but for the hole.
         let bricks = row(0, 12, &[(5, 7)], 0);
         assert_eq!(bricks, vec![(0, 4), (4, 1), (7, 1), (8, 4)]);
@@ -555,6 +556,7 @@ mod tests {
 
     #[test]
     fn stacked_bricks_have_their_studs_in_those_under_them() {
+        crate::game::register();
         // Its studs on the base's grid, the bricks overlapping.
         let base = Transform::default();
         for (under, size, crossed) in [
@@ -586,9 +588,10 @@ mod tests {
 
     #[test]
     fn a_heap_lies_on_the_ground_within_its_reach() {
+        crate::game::register();
         let mut mesh = MeshBuilder::default();
         heap(&mut mesh, Vec3::ZERO, 0.4, 16, 3);
-        let (low, high) = crate::world::prop_pack::bounds(&mesh.build());
+        let (low, high) = motorust_engine::world::prop_pack::bounds(&mesh.build());
         assert!(low.y.abs() < 0.01, "{low}");
         let reach = heap_reach(16) + 4.0 * STUD;
         assert!(Vec2::new(low.x, low.z).length() < reach * 1.42, "{low}");
@@ -598,6 +601,7 @@ mod tests {
 
     #[test]
     fn the_walls_of_bricks_stand_outside_the_road_s_walls() {
+        crate::game::register();
         // Each of their corners outside the walls, a stud out at most, and
         // none of them by an arch over the road.
         let circuit = crate::game::CIRCUITS
@@ -653,9 +657,10 @@ mod tests {
 
     #[test]
     fn a_house_is_as_big_as_it_says() {
+        crate::game::register();
         let mut mesh = MeshBuilder::default();
         house(&mut mesh, Vec3::ZERO, 0.0, 8, 6, 4, 1);
-        let (low, high) = crate::world::prop_pack::bounds(&mesh.build());
+        let (low, high) = motorust_engine::world::prop_pack::bounds(&mesh.build());
         let (reach, tall) = house_size(8, 6, 4);
         assert!((high.y - tall).abs() < 0.01, "{high} {tall}");
         assert!(low.y.abs() < 0.01);

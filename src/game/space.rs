@@ -8,23 +8,23 @@
 //! Shared mesh handles and materials are reused across all instances (rovers,
 //! dishes, solar wings, arches, boulders) to maximize GPU instancing.
 //!
-//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! A theme of the game's (see [`motorust_engine::world::themes`]): a circuit's file
 //! writes it in its `themes` as `"space": (...)`. The portals between the
-//! realms are the engine's ([`crate::world::portals`]).
+//! realms are the engine's ([`motorust_engine::world::portals`]).
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use bevy::prelude::*;
 
-use crate::geometry::random01;
-use crate::track::{Track, WALL_DISTANCE};
-use crate::world::Assets3d;
-use crate::world::portals;
-use crate::world::props::{Footprint, row_points};
-use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{Portal, Row, Scenery, Side, Span};
-use crate::world::terrain::{SEA_LEVEL, Terrain, is_earth_realm};
-use crate::world::themes::Theme;
+use motorust_engine::geometry::random01;
+use motorust_engine::track::{Track, WALL_DISTANCE};
+use motorust_engine::world::Assets3d;
+use motorust_engine::world::portals;
+use motorust_engine::world::props::{Footprint, row_points};
+use motorust_engine::world::quads::MeshBuilder;
+use motorust_engine::world::scenery::{Portal, Row, Scenery, Side, Span};
+use motorust_engine::world::terrain::{SEA_LEVEL, Terrain, is_earth_realm};
+use motorust_engine::world::themes::Theme;
 
 /// The works of a lunar base and Earth space center (see
 /// [`crate::game::space`]): geodesic biodomes, lunar rovers, solar panel
@@ -35,19 +35,19 @@ use crate::world::themes::Theme;
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Space {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub biodomes: &'static [Biodome],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub rovers: &'static [Rover],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub solar_arrays: &'static [Row],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub dishes: &'static [RadioDish],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub observatories: &'static [Observatory],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub rockets: &'static [Rocket],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub arches: &'static [StationArch],
     pub boulders: LunarBoulders,
 }
@@ -113,7 +113,7 @@ pub struct StationArch {
 #[serde(deny_unknown_fields)]
 pub struct LunarBoulders {
     pub max: usize,
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak")]
     pub spans: &'static [Span],
 }
 
@@ -1630,6 +1630,7 @@ mod tests {
 
     #[test]
     fn biodome_rover_dish_rocket_and_boulder_meshes_have_geometry() {
+        crate::game::register();
         let (dome_hull, dome_glow) = biodome_meshes(16.0);
         assert!(dome_hull.count_vertices() > 40);
         assert!(dome_glow.count_vertices() > 0);

@@ -56,14 +56,15 @@ Each entry/block recorded must contain:
 
 3. **Testing & Code Cleanliness:**
    - All pure logic (physics steps, steering, terrain shaping, audio synthesis, camera math) must have unit tests.
-   - Run and verify `cargo test` before concluding tasks.
-   - Keep code cleanly formatted with `cargo fmt --check`.
-   - Ensure `cargo clippy` passes without warnings.
+   - Run and verify `cargo test --workspace` before concluding tasks (the engine's crate, `motorust-engine/`, and the game's).
+   - Keep code cleanly formatted with `cargo fmt --all --check`.
+   - Ensure `cargo clippy --workspace --all-targets -- -D warnings` passes.
+   - The engine (`motorust-engine/`) knows nothing of the game's content: what is the game's (its circuits, models, music, themes) stays in `src/game/` and `assets/`, and the engine's tests run on its own content (`motorust-engine/assets/`).
 
 ---
 
 ## 4. Tools (`tools/`)
 
 - Scripts that are useful beyond the task at hand, above all for working on the circuits (drawing a layout and its height profile, checking it against the limits the tests set), and also importers and packaging helpers, live in `tools/`: not in a scratch directory, and not inside `src/`.
-- Each tool opens with a header saying what it does, how to run it and what it needs. Where it mirrors the game's own code (as `tools/circuit_layout.py` mirrors the centre line and the profile of `src/track.rs`), keep the two in step.
+- Each tool opens with a header saying what it does, how to run it and what it needs. Where it mirrors the game's own code (as `tools/circuit_layout.py` mirrors the centre line and the profile of `motorust-engine/src/track.rs`), keep the two in step.
 - List every tool in `docs/architecture.md`. One-off scratch scripts and temporary harnesses (e.g. for capturing screenshots) are not committed.

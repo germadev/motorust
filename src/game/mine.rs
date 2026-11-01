@@ -7,42 +7,42 @@
 //! Every rail line, trestle and headframe is one mesh coloured vertex by
 //! vertex, so each costs a single draw; the carts share theirs.
 //!
-//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! A theme of the game's (see [`motorust_engine::world::themes`]): a circuit's file
 //! writes it in its `themes` as `"mine": (...)`. The halls of its
-//! excavation are the engine's ([`crate::world::scenery::Scenery::halls`]).
+//! excavation are the engine's ([`motorust_engine::world::scenery::Scenery::halls`]).
 
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::Arc;
 
 use bevy::prelude::*;
 
-use crate::geometry::{forward, random01};
-use crate::track::{Track, WALL_DISTANCE};
-use crate::world::Assets3d;
-use crate::world::landmarks::Spin;
-use crate::world::props::{Footprint, row_points};
-use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{Row, Scenery, Side, Span};
-use crate::world::terrain::Terrain;
-use crate::world::themes::{Stage, Theme};
+use motorust_engine::geometry::{forward, random01};
+use motorust_engine::track::{Track, WALL_DISTANCE};
+use motorust_engine::world::Assets3d;
+use motorust_engine::world::landmarks::Spin;
+use motorust_engine::world::props::{Footprint, row_points};
+use motorust_engine::world::quads::MeshBuilder;
+use motorust_engine::world::scenery::{Row, Scenery, Side, Span};
+use motorust_engine::world::terrain::Terrain;
+use motorust_engine::world::themes::{Stage, Theme};
 
 /// The works of a mine: rails with ore carts rolling on them, timber
 /// trestles carrying a rail over the road, headframes over the shafts,
 /// lanterns on posts, and piles of crates, barrels and ore. (The halls of
 /// its excavation are the engine's,
-/// [`Scenery::halls`](crate::world::scenery::Scenery::halls).)
+/// [`Scenery::halls`](motorust_engine::world::scenery::Scenery::halls).)
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Mine {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub rails: &'static [Rails],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub trestles: &'static [Trestle],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub headframes: &'static [Headframe],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub lanterns: &'static [Row],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub piles: &'static [Pile],
 }
 
@@ -1008,6 +1008,7 @@ mod tests {
 
     #[test]
     fn trains_go_up_and_down_their_line_gently() {
+        crate::game::register();
         let length = 120.0;
         let mut last = train_distance(length, 0.0);
         let mut fastest = 0.0f32;
@@ -1026,6 +1027,7 @@ mod tests {
 
     #[test]
     fn a_rail_path_is_measured_along_its_points() {
+        crate::game::register();
         let path = RailPath::new(vec![
             Vec3::ZERO,
             Vec3::new(0.0, 0.0, -10.0),
@@ -1041,6 +1043,7 @@ mod tests {
 
     #[test]
     fn mine_rails_run_beside_the_road_on_the_ground() {
+        crate::game::register();
         for circuit in CIRCUITS.iter() {
             let Some(mine) = circuit.scenery.themes.get::<Mine>() else {
                 continue;
@@ -1072,6 +1075,7 @@ mod tests {
 
     #[test]
     fn trestles_run_from_rock_to_rock_high_over_the_road() {
+        crate::game::register();
         for circuit in CIRCUITS.iter() {
             let Some(mine) = circuit.scenery.themes.get::<Mine>() else {
                 continue;

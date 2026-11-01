@@ -32,11 +32,11 @@
 mod tests {
     use bevy::prelude::*;
 
-    use crate::circuits::Circuit;
     use crate::game::CIRCUITS;
-    use crate::track::Track;
-    use crate::world::is_earth_realm;
-    use crate::world::scenery::{Span, span};
+    use motorust_engine::circuits::Circuit;
+    use motorust_engine::track::Track;
+    use motorust_engine::world::is_earth_realm;
+    use motorust_engine::world::scenery::{Span, span};
 
     /// Where things are, as in the circuit's file (m from the finish line).
     const TUNNEL: Span = span(800.0, 1020.0);
@@ -53,6 +53,7 @@ mod tests {
 
     #[test]
     fn the_lap_goes_through_the_space_station_tunnel_and_then_over_it() {
+        crate::game::register();
         let track = Track::new(&moon_base().layout);
         let line = track.centerline();
         let middle = line[track.index_at((TUNNEL.from + TUNNEL.to) / 2.0)];
@@ -81,6 +82,7 @@ mod tests {
 
     #[test]
     fn the_lap_starts_on_earth_with_launchpads_and_observatories_and_crosses_portals_to_the_moon() {
+        crate::game::register();
         let scenery = &moon_base().scenery;
         let space = scenery
             .themes

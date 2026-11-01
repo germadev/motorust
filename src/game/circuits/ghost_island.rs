@@ -34,7 +34,7 @@
 
 use bevy::prelude::*;
 
-use crate::geometry::{fbm, smoothstep};
+use motorust_engine::geometry::{fbm, smoothstep};
 
 /// The volcano across the strait to the north (a `Cone` in the circuit's
 /// file): its middle and its radius (m), for its gullies.
@@ -97,10 +97,10 @@ mod tests {
     fn mountains(point: Vec2) -> f32 {
         ghost_island().scenery.mountains.height(point)
     }
-    use crate::circuits::Circuit;
     use crate::game::CIRCUITS;
-    use crate::track::Track;
-    use crate::world::scenery::{Coast, Span, span};
+    use motorust_engine::circuits::Circuit;
+    use motorust_engine::track::Track;
+    use motorust_engine::world::scenery::{Coast, Span, span};
 
     /// Where things are, as in the circuit's file (m from the finish line).
     const TUNNEL: Span = span(360.0, 620.0);
@@ -125,6 +125,7 @@ mod tests {
 
     #[test]
     fn the_lap_goes_through_the_castle_hill_and_then_over_it() {
+        crate::game::register();
         let track = Track::new(&ghost_island().layout);
         let line = track.centerline();
         // Through it, by its middle.
@@ -154,6 +155,7 @@ mod tests {
 
     #[test]
     fn the_hills_are_steep_and_the_road_climbs_and_drops_a_lot() {
+        crate::game::register();
         let track = Track::new(&ghost_island().layout);
         let step = track.step_length();
         let height = |along: f32| track.elevations()[track.index_at(along)];
@@ -195,6 +197,7 @@ mod tests {
 
     #[test]
     fn the_road_winds_down_the_bamboo_hill_in_tight_esses() {
+        crate::game::register();
         // Four tight bends and more, one after the other, each the other
         // way.
         let track = Track::new(&ghost_island().layout);
@@ -219,6 +222,7 @@ mod tests {
 
     #[test]
     fn the_road_rounds_a_lake_with_an_islet_and_crosses_an_inlet_on_the_boardwalk() {
+        crate::game::register();
         // The island's shore and its lake as the circuit's file has them.
         let Coast::OutlineWithLakes(island, lakes) = ghost_island().scenery.coast else {
             panic!("Ghost Island is an island with a lake");
@@ -251,7 +255,7 @@ mod tests {
         assert!(lakes.distance(ISLET) > 10.0, "an islet");
         // The boardwalk crosses the inlet; the water reaches in under it.
         let middle = track.centerline()[track.index_at((BOARDWALK.from + BOARDWALK.to) / 2.0)];
-        let shore = crate::track::closed_curve(island, 4.0);
+        let shore = motorust_engine::track::closed_curve(island, 4.0);
         let inside = |point: Vec2| {
             let n = shore.len();
             (0..n).fold(false, |inside, i| {
@@ -272,6 +276,7 @@ mod tests {
 
     #[test]
     fn the_volcanos_flanks_are_carved_into_gullies_and_ridges() {
+        crate::game::register();
         // Half way down, round it: ridges and gullies one after another, tens
         // of metres apart in height, not a smooth cone.
         let heights: Vec<f32> = (0..720)
@@ -297,6 +302,7 @@ mod tests {
 
     #[test]
     fn the_volcano_rises_across_the_strait_and_nothing_is_raised_by_the_road() {
+        crate::game::register();
         let track = Track::new(&ghost_island().layout);
         assert!(mountains(VOLCANO) > 0.85 * VOLCANO_HEIGHT);
         assert!(mountains(VOLCANO) < VOLCANO_HEIGHT, "a crater at its top");

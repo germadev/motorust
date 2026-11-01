@@ -4,7 +4,7 @@ Where the bikes, riders, trees, props of feudal Japan and textures come from, ho
 
 ## The race bikes
 
-The race uses eight superbikes made with [Meshy](https://www.meshy.ai) from the author's design sheets, each with its own rider, also made with Meshy and rigged with Meshy's auto-rigging. You pick one and the other seven are your rivals. They are listed in `ROSTER` (`src/bike/mod.rs`) in this order, which is also the order on the selection screen:
+The race uses eight superbikes made with [Meshy](https://www.meshy.ai) from the author's design sheets, each with its own rider, also made with Meshy and rigged with Meshy's auto-rigging. You pick one and the other seven are your rivals. They are listed in `ROSTER` (`motorust-engine/src/bike/mod.rs`) in this order, which is also the order on the selection screen:
 
 | Bike | Colours | Folder | Its `design` in the roster | Notes |
 |---|---|---|---|---|
@@ -17,9 +17,9 @@ The race uses eight superbikes made with [Meshy](https://www.meshy.ai) from the 
 | Cobra XT | Orange and black | `assets/models/cobra` | `Model("cobra")` | The silencer sits under the tail. |
 | Ronin YS | Blue and black | `assets/models/ronin` | `Model("ronin")` | |
 
-The roster, `assets/bikes/roster.ron` (read as the game starts into the `Roster` resource, `src/bike/mod.rs`), lists them in the order of the selection screen, each naming its model by its folder (`design: Model("shogun")`, `Design::Model`). The code names none of them: each folder's `model.ron` holds its measurements (axles, wheel radii, steering head, grips, pegs and seat), whether its steering turns (`steers`) and its slicks (`tyres`: `Soft`, `Medium` or `Hard`), read the first time the roster names it (`imported::model`). Each entry also has a description shown on that screen (in Spanish, for example "Azul y blanca, como la de la portada de Moto Racer") and a colour, used for the bike's name and its dot on the minimap.
+The roster, `assets/bikes/roster.ron` (read as the game starts into the `Roster` resource, `motorust-engine/src/bike/mod.rs`), lists them in the order of the selection screen, each naming its model by its folder (`design: Model("shogun")`, `Design::Model`). The code names none of them: each folder's `model.ron` holds its measurements (axles, wheel radii, steering head, grips, pegs and seat), whether its steering turns (`steers`) and its slicks (`tyres`: `Soft`, `Medium` or `Hard`), read the first time the roster names it (`imported::model`). Each entry also has a description shown on that screen (in Spanish, for example "Azul y blanca, como la de la portada de Moto Racer") and a colour, used for the bike's name and its dot on the minimap.
 
-Each imported bike has colour, metal/roughness and normal textures and is split into chassis, steering and wheels, so the wheels spin, the fork and handlebars turn, and the suspension works. The tyres that come with the Meshy wheels are lumpy, low-poly rings (their outline wanders by a couple of centimetres, and some carry smudges of the bodywork's colours), so the game cuts them off the wheel and fits round ones made in code (`src/bike/model/tyre.rs`): a surface of revolution 96 segments round, as wide as the old one, sitting on the rim, with the round profile of a MotoGP tyre: an ellipse from one shoulder to the other, the tread running nearly round to the rim (the bike leans over 60 degrees on it) and short sidewalls. They are slicks, as MotoGP races on in the dry (Michelin's Power Slicks): no tread pattern, the rubber a little lighter where it is scrubbed in the middle, and the compound marked as in MotoGP by a band round the sidewall: white on the soft (Kraken RS, Stiletto V4, Azura RZ), none on the medium (Shogun TZ, Falcon KRZ, Ronin YS) and yellow on the hard (Legend 88, Cobra XT), as each model's `model.ron` says (`tyres`). The exhausts have open outlets: the lip of the inner pipe and a hole that darkens to black inside. The rider is posed every frame (`src/bike/model/pilot.rs`): hips on the seat, back over the tank on the straights with the helmet behind the screen, hanging off in corners with the inner knee towards the ground, head turned towards where the bike is going and kept more upright than the bike, and sitting up under braking. Arms and legs use two-bone inverse kinematics, so the hands stay on the grips and the feet on the pegs.
+Each imported bike has colour, metal/roughness and normal textures and is split into chassis, steering and wheels, so the wheels spin, the fork and handlebars turn, and the suspension works. The tyres that come with the Meshy wheels are lumpy, low-poly rings (their outline wanders by a couple of centimetres, and some carry smudges of the bodywork's colours), so the game cuts them off the wheel and fits round ones made in code (`motorust-engine/src/bike/model/tyre.rs`): a surface of revolution 96 segments round, as wide as the old one, sitting on the rim, with the round profile of a MotoGP tyre: an ellipse from one shoulder to the other, the tread running nearly round to the rim (the bike leans over 60 degrees on it) and short sidewalls. They are slicks, as MotoGP races on in the dry (Michelin's Power Slicks): no tread pattern, the rubber a little lighter where it is scrubbed in the middle, and the compound marked as in MotoGP by a band round the sidewall: white on the soft (Kraken RS, Stiletto V4, Azura RZ), none on the medium (Shogun TZ, Falcon KRZ, Ronin YS) and yellow on the hard (Legend 88, Cobra XT), as each model's `model.ron` says (`tyres`). The exhausts have open outlets: the lip of the inner pipe and a hole that darkens to black inside. The rider is posed every frame (`motorust-engine/src/bike/model/pilot.rs`): hips on the seat, back over the tank on the straights with the helmet behind the screen, hanging off in corners with the inner knee towards the ground, head turned towards where the bike is going and kept more upright than the bike, and sitting up under braking. Arms and legs use two-bone inverse kinematics, so the hands stay on the grips and the feet on the pegs.
 
 The original GLB files are attached to [the repository's model releases](https://github.com/germadev/motorust/releases). The game does not read them directly: it embeds what `tools/import_models.py` leaves in `assets/models/<folder>/`.
 
@@ -34,9 +34,9 @@ The code also keeps four low-poly bikes built entirely in code, each with its co
 | `Design::Alerones` | Low nose with winglets, blade-like tail, exhaust under the engine and a single-sided swingarm. |
 | `Design::Rombo` | Central diamond-shaped headlight, dark belly pan, mirrors and a large hexagonal exhaust. |
 
-- **Bodywork** (`src/bike/model/designs.rs`): each design is a list of faceted parts with measurements taken from the side view of a low-poly design sheet, scaled to the bike's wheelbase. They carry no logos, only the shape. Vents, grilles and pinstripes are painted onto the fairing as details. Parts shared by all designs (frame, engine, swingarm, pegs) live in `common`; wheels, fork and rider are the same for every code-built bike.
-- **Rider** (`src/bike/model/rider.rs`): a single skinned mesh deformed by a ten-bone skeleton, plus rigid parts attached to the bones (helmet, hump, boots, gloves and knee sliders).
-- **Liveries** (`src/bike/model/livery.rs`): colours, fairing graphics, suit and helmet, described as data and painted into textures at startup, with no image files. The fairing is painted on a side view of the bike and projected sideways onto every body part, as many games of the era did.
+- **Bodywork** (`motorust-engine/src/bike/model/designs.rs`): each design is a list of faceted parts with measurements taken from the side view of a low-poly design sheet, scaled to the bike's wheelbase. They carry no logos, only the shape. Vents, grilles and pinstripes are painted onto the fairing as details. Parts shared by all designs (frame, engine, swingarm, pegs) live in `common`; wheels, fork and rider are the same for every code-built bike.
+- **Rider** (`motorust-engine/src/bike/model/rider.rs`): a single skinned mesh deformed by a ten-bone skeleton, plus rigid parts attached to the bones (helmet, hump, boots, gloves and knee sliders).
+- **Liveries** (`motorust-engine/src/bike/model/livery.rs`): colours, fairing graphics, suit and helmet, described as data and painted into textures at startup, with no image files. The fairing is painted on a side view of the bike and projected sideways onto every body part, as many games of the era did.
 
 | Livery | Look |
 |---|---|
@@ -47,7 +47,7 @@ The code also keeps four low-poly bikes built entirely in code, each with its co
 | `TRICOLOR` | Red with a blue side and white pinstripes. |
 | `ROSSO` | Red with a silver tank top. |
 
-Every entry of the roster names a livery (`cover`, `flecha`, `diagonal`, `verde`, `tricolor`, `rosso`, named in `livery` in `src/bike/mod.rs`), but it is only painted on code-built designs: the imported bikes bring their own textures.
+Every entry of the roster names a livery (`cover`, `flecha`, `diagonal`, `verde`, `tricolor`, `rosso`, named in `livery` in `motorust-engine/src/bike/mod.rs`), but it is only painted on code-built designs: the imported bikes bring their own textures.
 
 ## The importer
 
@@ -105,7 +105,7 @@ Upload the original GLB files to a model release of the repository so they can b
 
 ## Trees
 
-The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond, and Ghost Island's momiji, ginkgo, sakura, Japanese black pine, sugi and bamboo) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`src/world/props.rs`).
+The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond, and Ghost Island's momiji, ginkgo, sakura, Japanese black pine, sugi and bamboo) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`motorust-engine/src/world/props.rs`).
 
 `tools/import_trees.py` turns the GLB files into what the game embeds (`assets/models/trees/`):
 
@@ -123,7 +123,7 @@ With `--keep`, the trees already in the pack stay as they are (their meshes, and
 
 All fifteen take about 1.1 MB. `cargo test` checks that every tree is in the pack, standing on the ground, with a few hundred triangles and its texture coordinates in its own cell.
 
-Far from the cameras the trees are drawn with lighter meshes made from these when the game starts (`src/world/lod.rs`): the same shape with a third of the triangles, and farther still with a tenth, painted in their vertices with the colours of their texture as it is seen from afar, so they need no texture.
+Far from the cameras the trees are drawn with lighter meshes made from these when the game starts (`motorust-engine/src/world/lod.rs`): the same shape with a third of the triangles, and farther still with a tenth, painted in their vertices with the colours of their texture as it is seen from afar, so they need no texture.
 
 ## The props of feudal Japan
 
@@ -141,7 +141,7 @@ python3 tools/import_props.py o_torii=O_TORII.glb castle_keep=KEEP.glb temple_ha
 
 Some came out of Meshy wrong, and are mended as they are read: the great torii stood on a slab of blue water, which is cut away (the game has its own sea); the torii over the road came so stout that one after another they read as a wall, so their pillars are made slimmer and the gates shallower (`SLIM`); the water wheel came in one piece with its post, so it is split into the wheel and its axle, which turns, and the post (`water_wheel_frame`), both with their origin at the middle of the axle; and the great maple's reds came so saturated they glared, so its texture is toned down and a little lightened (`TONED`). All of them take about 3.7 MB. `cargo test` checks that every prop is in the pack, standing on the ground, and not too heavy to draw.
 
-The flowers of Ghost Island are not models: they are cards cut out of an atlas painted at startup (`src/world/foliage.rs`), see [tracks.md](tracks.md#scenery).
+The flowers of Ghost Island are not models: they are cards cut out of an atlas painted at startup (`motorust-engine/src/world/foliage.rs`), see [tracks.md](tracks.md#scenery).
 
 ## Props of Middle-earth
 
@@ -173,7 +173,7 @@ With `--keep`, the toys already in the pack stay as they are (their meshes, and 
 
 ## Textures
 
-The scenery textures are CC0 (public domain) photos from [Poly Haven](https://polyhaven.com), reduced in size and retouched to look closer to 90s games: more saturation, less contrast in the asphalt cracks and the grass recoloured to a brighter green. Mipmaps are computed at startup so distant surfaces do not flicker (`src/world/textures.rs`).
+The scenery textures are CC0 (public domain) photos from [Poly Haven](https://polyhaven.com), reduced in size and retouched to look closer to 90s games: more saturation, less contrast in the asphalt cracks and the grass recoloured to a brighter green. Mipmaps are computed at startup so distant surfaces do not flicker (`motorust-engine/src/world/textures.rs`).
 
 | File | Used for |
 |---|---|
@@ -187,7 +187,7 @@ The scenery textures are CC0 (public domain) photos from [Poly Haven](https://po
 | *(procedural)* `crowd` | Pixelated grandstand spectators with vibrant retro clothing |
 | *(procedural)* `checker` | Start/finish and tunnel checkerboard strip |
 | *(procedural)* `panels` | Concrete tunnel lining panels |
-| *(procedural)* sky | Sky dome: a gradient from deep blue overhead to the fog colour at the horizon, the sun, and cartoon clouds drawn with zeno (`src/world/sky.rs`) |
+| *(procedural)* sky | Sky dome: a gradient from deep blue overhead to the fog colour at the horizon, the sun, and cartoon clouds drawn with zeno (`motorust-engine/src/world/sky.rs`) |
 
 The labels use the [Russo One](https://fonts.google.com/specimen/Russo+One) font by Jovanny Lemonad, under the SIL Open Font License 1.1 (`motorust-engine/assets/fonts/RussoOne-OFL.txt`).
 

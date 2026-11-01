@@ -17,7 +17,7 @@ tests check of the centre line and the profile: the tightest bend, the
 steepest grade, distant stretches clear of each other unless one passes more
 than 12 m over the other, the crests the bikes take off over at top speed
 (on straights only), and the branches' bends and how far they part from the
-lap. The centre line and the heights are worked out as `src/track.rs` does,
+lap. The centre line and the heights are worked out as `motorust-engine/src/track.rs` does,
 through `tools/circuit_layout.py`: keep the two in step. The banking is left
 out, and with it the lift of the bends on the floor and the furniture,
 which bank raised (their middles up to about 1.3 m higher, eased in and out:
@@ -63,7 +63,7 @@ WALL = 7.5
 CHAIR, T0, T1, TOP, T2 = 5.5, 14.0, 14.0, 39.0, 9.0
 # The loop: its radius, how far to the right its way out is from its way in
 # (m), and the straight leads into it and out of it the game lays (m, as
-# `LOOP_LEAD` in `src/track.rs`), two each.
+# `LOOP_LEAD` in `motorust-engine/src/track.rs`), two each.
 LOOP_RADIUS, LOOP_SHIFT, LOOP_LEAD = 14.0, 14.0, 25.0
 # How far along the north wall the way round the loop runs beside the lap
 # (m, from its fork to its join); how far the two run together from the fork
@@ -370,7 +370,7 @@ def resolve(t):
 
 
 # Tunnels closer than this (m) are one: the trackside camera of the menus
-# (`src/welcome.rs`) comes down over 25 m before a tunnel and goes back up
+# (`motorust-engine/src/welcome.rs`) comes down over 25 m before a tunnel and goes back up
 # over 25 m after it, and a test wants it back up 50 m off either end.
 TUNNEL_GAP = 60.0
 
@@ -446,7 +446,7 @@ STRAIGHT_PACE = 71.0
 BEND_PACE = 7.75
 GATHER = 9.0
 BRAKE = 14.0
-# Hard's pace against the clock (`CheckpointTimes`, src/race/mod.rs): m/s,
+# Hard's pace against the clock (`CheckpointTimes`, motorust-engine/src/race/mod.rs): m/s,
 # and the seconds spare at each checkpoint.
 HARD_PACE = 66.0
 HARD_SPARE = 1.5
@@ -483,7 +483,7 @@ def pace(line, step, checkpoints):
 def open_curve(points, before, after, spacing):
     """Points about `spacing` apart along the open curve through `points`,
     `before` and `after` setting which way it leaves the first and reaches
-    the last, as `open_curve` in `src/track.rs`."""
+    the last, as `open_curve` in `motorust-engine/src/track.rs`."""
     every = np.vstack([before, points, after])
     u = np.arange(512) / 512.0
     dense = np.concatenate(

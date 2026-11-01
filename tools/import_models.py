@@ -27,7 +27,7 @@ va con el chasis.
 Uso: python3 tools/import_models.py NOMBRE MOTO.glb PILOTO.glb [CARPETA]
 Necesita numpy y Pillow. Al acabar imprime las medidas de la moto (ejes,
 ruedas, dirección, puños, asiento y estriberas), as it writes them in
-`model.ron`, read by `src/bike/model/imported.rs`.
+`model.ron`, read by `motorust-engine/src/bike/model/imported.rs`.
 
 Formato de los .bin (little endian): b"MRMESH01", u32 número de piezas y, por
 pieza, u32 largo del nombre, nombre, u32 vértices, u32 índices, u32 banderas
@@ -49,7 +49,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "models"
 
-# Medidas del juego (src/bike/model/mod.rs): la moto se escala para que su
+# Medidas del juego (motorust-engine/src/bike/model/mod.rs): la moto se escala para que su
 # batalla sea esta y se coloca con la rueda delantera en este Z.
 WHEELBASE = 1.38
 FRONT_AXLE_Z = -0.70

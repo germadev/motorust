@@ -13,7 +13,7 @@
 //! [`bridge_pieces`]); the room's walls and ceiling cast no shadow, so that
 //! the light from overhead comes in (see [`spawn_room`]).
 //!
-//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! A theme of the game's (see [`motorust_engine::world::themes`]): a circuit's file
 //! writes it in its `themes` as `"toys": (...)`. Meshy's toys are two packs
 //! of the engine's (`models/toys/` and `models/toys2/`). The indoor floor,
 //! the light and the toy tracks' bridges and walls are the engine's
@@ -24,27 +24,27 @@ use std::f32::consts::{PI, TAU};
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
-use crate::geometry::random01;
-use crate::track::{BASE_ELEVATION, LOOP_WALL, Loop, Track, closed_curve};
-use crate::world::Assets3d;
-use crate::world::prop_pack::{Piece, PropPacks};
-use crate::world::props::Footprint;
-use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{BridgeStyle, Scenery, Side, Span, WallStyle};
-use crate::world::structures::indices;
-use crate::world::terrain::Terrain;
-use crate::world::textures::{
+use motorust_engine::geometry::random01;
+use motorust_engine::track::{BASE_ELEVATION, LOOP_WALL, Loop, Track, closed_curve};
+use motorust_engine::world::Assets3d;
+use motorust_engine::world::prop_pack::{Piece, PropPacks};
+use motorust_engine::world::props::Footprint;
+use motorust_engine::world::quads::MeshBuilder;
+use motorust_engine::world::scenery::{BridgeStyle, Scenery, Side, Span, WallStyle};
+use motorust_engine::world::structures::indices;
+use motorust_engine::world::terrain::Terrain;
+use motorust_engine::world::textures::{
     CARTON, DOLL_BOXES, DOTTED_BOX, GAME_BOX, JIGSAW_BOX, SPACE_BOX, TOY_BOXES, WHITE_BOX,
     WorldTextures,
 };
-use crate::world::themes::Theme;
+use motorust_engine::world::themes::Theme;
 
 /// The inside of a toy store (see [`crate::game::toys`]): the room, with
 /// shelves of boxed toys round its walls and lamps in its ceiling; the
 /// furniture the roads run on (tables, chairs and a tall shelving unit), the
 /// tower a slide winds round, electric trains, castles of plastic bricks,
 /// loops of orange track, mats on the floor and toys about. Heights are
-/// the road's, as [`crate::track::Layout::elevation`]'s: the floor is at 0.
+/// the road's, as [`motorust_engine::track::Layout::elevation`]'s: the floor is at 0.
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToyStore {
@@ -52,21 +52,21 @@ pub struct ToyStore {
     pub room: (Vec2, Vec2),
     /// How high its ceiling is over the floor (m).
     pub ceiling: f32,
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub furniture: &'static [Furniture],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub towers: &'static [Tower],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub trains: &'static [Train],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub castles: &'static [Castle],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub loops: &'static [ToyLoop],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub mats: &'static [Mat],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub toys: &'static [Toy],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub bricks: &'static [Bricks],
     /// Its way in, if it is seen: a front of glass in a wall, the car park
     /// outside it.
@@ -97,7 +97,7 @@ pub struct Furniture {
     pub size: Vec2,
     pub heading: f32,
     pub top: f32,
-    #[serde(deserialize_with = "crate::circuits::data::color")]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::color")]
     pub color: Color,
 }
 
@@ -142,7 +142,7 @@ pub enum TowerKind {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Train {
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak")]
     pub track: &'static [Vec2],
     pub height: f32,
     pub wagon: Wagon,
@@ -213,7 +213,7 @@ pub struct Mat {
 #[derive(Clone, Copy, PartialEq, Debug, serde::Deserialize)]
 pub enum MatKind {
     Foam,
-    Rug(#[serde(deserialize_with = "crate::circuits::data::color")] Color),
+    Rug(#[serde(deserialize_with = "motorust_engine::circuits::data::color")] Color),
 }
 
 /// A toy standing about, turned `heading` (its front along +z), `base` over
@@ -471,7 +471,7 @@ fn deck_of(style: BridgeStyle) -> (f32, Color) {
 /// posts in pairs, or, round a tower, brackets off it; each from the deck
 /// down to whatever stands under it (a table, a chair or the floor), but
 /// none where it would stand on a road below. And where a road banks
-/// raised on what it lies on (see [`crate::track::Banking::raised`]), the
+/// raised on what it lies on (see [`motorust_engine::track::Banking::raised`]), the
 /// grey plastic risers under its outside, and off the bridges its deck too.
 pub fn bridge_pieces(
     track: &Track,
@@ -731,7 +731,7 @@ fn riser(mesh: &mut MeshBuilder, road: &Track, store: &ToyStore, index: usize, d
     let start = ((RISER_GAP - low) / (high - low)).clamp(0.0, 1.0);
     let from = inner.lerp(edge, start);
     let (_, heading) = road.pose_at(index);
-    let along = crate::geometry::forward(heading) * RISER_LENGTH / 2.0;
+    let along = motorust_engine::geometry::forward(heading) * RISER_LENGTH / 2.0;
     let along = Vec3::new(along.x, 0.0, along.y);
     let (top_in, top_out) = (under(from), under(edge));
     let foot = |top: Vec3| Vec3::new(top.x, ground, top.z);
@@ -1381,7 +1381,7 @@ impl Run {
             length: from.distance(to),
             depth,
             height,
-            yaw: crate::geometry::heading_of(inward),
+            yaw: motorust_engine::geometry::heading_of(inward),
         }
     }
 
@@ -2430,7 +2430,7 @@ fn gatehouses(
 }
 
 /// The blue stand of a loop the bikes ride (see
-/// [`spawn_ridden_loops`](crate::world::landmarks::spawn_ridden_loops)), as a toy loop's: a post
+/// [`spawn_ridden_loops`](motorust_engine::world::landmarks::spawn_ridden_loops)), as a toy loop's: a post
 /// either side of it, beyond its edges (its running surface drifts from the
 /// way in to the way out), up to its middle, on a foot, and a bar across
 /// between them through its middle.
@@ -2465,7 +2465,7 @@ fn toy_loop(mesh: &mut MeshBuilder, toy_loop: &ToyLoop) {
     const WIDTH: f32 = 4.0;
     const EDGE: f32 = 0.8;
     const STEPS: usize = 48;
-    let ahead = crate::geometry::forward(toy_loop.heading);
+    let ahead = motorust_engine::geometry::forward(toy_loop.heading);
     let ahead = Vec3::new(ahead.x, 0.0, ahead.y);
     let side = ahead.cross(Vec3::Y).normalize();
     let center = Vec3::new(
@@ -2781,7 +2781,8 @@ fn block_walls(mesh: &mut MeshBuilder, track: &Track, scenery: &Scenery) {
             continue;
         }
         for side in [Side::Left, Side::Right] {
-            if crate::world::road::wall_style(scenery, lap, along, side) != Some(WallStyle::Blocks)
+            if motorust_engine::world::road::wall_style(scenery, lap, along, side)
+                != Some(WallStyle::Blocks)
             {
                 continue;
             }
@@ -3008,7 +3009,7 @@ fn car_pose(car: &TrainCar, elapsed: f32) -> Transform {
     let (front, back) = (at(middle + half), at(middle - half));
     let center = (front + back) / 2.0;
     // A heading turns -Z along the way; the cars face +Z.
-    let heading = crate::geometry::heading_of(front - back) + PI;
+    let heading = motorust_engine::geometry::heading_of(front - back) + PI;
     Transform::from_xyz(center.x, y(car.height) + RAIL_TOP, center.y)
         .with_rotation(Quat::from_rotation_y(heading))
 }
@@ -3053,11 +3054,13 @@ mod tests {
 
     #[test]
     fn there_is_a_toy_store() {
+        crate::game::register();
         assert!(!stores().is_empty());
     }
 
     #[test]
     fn the_road_lies_on_the_furniture_or_well_clear_of_it() {
+        crate::game::register();
         // On a piece of furniture the road lies on its top, its inside
         // (where it banks, its lower wall) a little over it, more by no
         // more than it is raised for its banking, on its risers; over it
@@ -3088,6 +3091,7 @@ mod tests {
 
     #[test]
     fn the_way_through_the_castle_is_as_long_and_as_fast_as_the_lap_beside_it() {
+        crate::game::register();
         // The two ways are mirror images: as long, and their tightest bends
         // as wide.
         for (name, _, track) in stores() {
@@ -3121,6 +3125,7 @@ mod tests {
 
     #[test]
     fn the_bends_on_the_furniture_bank_raised_on_their_risers() {
+        crate::game::register();
         // Banked well, their insides on the furniture, their outsides up
         // on risers.
         for (name, store, track) in stores() {
@@ -3145,6 +3150,7 @@ mod tests {
 
     #[test]
     fn no_table_stands_on_a_road() {
+        crate::game::register();
         for (name, store, track) in stores() {
             for furniture in store.furniture.iter().filter(|furniture| {
                 matches!(
@@ -3167,6 +3173,7 @@ mod tests {
 
     #[test]
     fn what_stands_in_the_store_stands_on_something() {
+        crate::game::register();
         // On the floor, or on the furniture under it: none in the air but
         // the toys hanging from the ceiling.
         for (name, store, _) in stores() {
@@ -3236,6 +3243,7 @@ mod tests {
 
     #[test]
     fn nothing_in_the_store_stands_in_the_way_of_the_roads() {
+        crate::game::register();
         for (name, store, track) in stores() {
             // Whether nothing of the road's from `low` to `high` over the
             // floor comes within `reach` of `point` (x, z), its walls'
@@ -3341,6 +3349,7 @@ mod tests {
 
     #[test]
     fn the_shelves_change_department_from_bay_to_bay() {
+        crate::game::register();
         // No two bays side by side alike, and every department somewhere
         // round the walls.
         let mut seen = Vec::new();
@@ -3361,6 +3370,7 @@ mod tests {
 
     #[test]
     fn every_department_s_boards_leave_room_for_toys() {
+        crate::game::register();
         for (_, store, _) in stores() {
             let heights = std::iter::once(WALL_SHELF_HEIGHT).chain(
                 store
@@ -3388,6 +3398,7 @@ mod tests {
 
     #[test]
     fn the_shelves_leave_the_shop_s_glass_clear() {
+        crate::game::register();
         for (name, store, _) in stores() {
             let Some(entrance) = &store.entrance else {
                 continue;
@@ -3408,6 +3419,7 @@ mod tests {
 
     #[test]
     fn a_road_runs_through_the_castle_built_round_it() {
+        crate::game::register();
         let mut castles = 0;
         for (name, store, track) in stores() {
             for castle in store
@@ -3438,14 +3450,14 @@ mod tests {
     fn bricks_bounds(built: &Bricks) -> (Vec3, Vec3) {
         let mut mesh = MeshBuilder::default();
         super::super::bricks::build(&mut mesh, built, 0);
-        crate::world::prop_pack::bounds(&mesh.build())
+        motorust_engine::world::prop_pack::bounds(&mesh.build())
     }
 
     /// The pieces of Meshy's toys in their packs.
-    fn pack() -> Vec<crate::bike::model::imported::PackedMesh> {
-        let read = crate::bike::model::imported::read;
-        let mut pieces = read(crate::content::file("models/toys/props.bin")).meshes;
-        pieces.extend(read(crate::content::file("models/toys2/props.bin")).meshes);
+    fn pack() -> Vec<motorust_engine::bike::model::imported::PackedMesh> {
+        let read = motorust_engine::bike::model::imported::read;
+        let mut pieces = read(motorust_engine::content::file("models/toys/props.bin")).meshes;
+        pieces.extend(read(motorust_engine::content::file("models/toys2/props.bin")).meshes);
         pieces
     }
 
@@ -3456,11 +3468,12 @@ mod tests {
             .iter()
             .find(|piece| piece.name == name)
             .unwrap_or_else(|| panic!("no {name} in the pack"));
-        crate::world::prop_pack::bounds(&piece.mesh)
+        motorust_engine::world::prop_pack::bounds(&piece.mesh)
     }
 
     #[test]
     fn every_toy_meshy_made_is_in_the_pack_on_the_ground_and_light() {
+        crate::game::register();
         let pieces = pack();
         // Every one the stores place.
         for (name, store, _) in stores() {
@@ -3479,7 +3492,7 @@ mod tests {
         }
         for piece in &pieces {
             let name = &piece.name;
-            let (low, high) = crate::world::prop_pack::bounds(&piece.mesh);
+            let (low, high) = motorust_engine::world::prop_pack::bounds(&piece.mesh);
             assert!(low.y.abs() < 1e-3, "{name} stands on the ground");
             assert!((low.x + high.x).abs() < 0.05 * (high.x - low.x), "{name}");
             assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");
@@ -3490,6 +3503,7 @@ mod tests {
 
     #[test]
     fn the_hanging_toys_strings_are_tied_on_to_them() {
+        crate::game::register();
         // Each knot on the toy's top, within its box.
         for kind in [ToyKind::Plane, ToyKind::Helicopter] {
             let model = model_of(kind).unwrap();
@@ -3507,6 +3521,7 @@ mod tests {
 
     #[test]
     fn the_trains_run_clear_of_the_toys_but_through_a_tunnel() {
+        crate::game::register();
         // No point of a train's track within a train's half width of the
         // box round a toy standing on what the train runs on, or round
         // something built of bricks; but through a tunnel mountain, along
@@ -3576,6 +3591,7 @@ mod tests {
 
     #[test]
     fn the_t_rex_s_head_reaches_over_the_road_well_over_the_bikes() {
+        crate::game::register();
         // Every point of it within a metre of a road's walls well over
         // the road there, and some of its head within the walls.
         const OVER_THE_BIKES: f32 = 6.0;
@@ -3615,6 +3631,7 @@ mod tests {
 
     #[test]
     fn the_trains_wheels_run_on_their_rails() {
+        crate::game::register();
         // The wheels of each car (most of its vertices near the ground)
         // either side of its middle, about as far apart as the rails.
         for model in [LOCOMOTIVE, "coach", "freight_wagon"] {
@@ -3642,6 +3659,7 @@ mod tests {
 
     #[test]
     fn a_train_runs_round_and_round_its_track() {
+        crate::game::register();
         let (_, store, _) = &stores()[0];
         let train = &store.trains[0];
         let path = std::sync::Arc::new(closed_curve(train.track, 1.0));

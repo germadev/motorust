@@ -57,7 +57,7 @@ app: ## (macOS) Compila y monta target/release/Motorust.app, para abrirlo desde 
 	@tools/make-app.sh target/release/motorust "dev-$$(git rev-parse --short HEAD)" target/release
 
 test: ## Pasa los tests
-	$(CARGO) test
+	$(CARGO) test --workspace
 
 # On macOS, under caffeinate: with no one touching it, the display would go
 # to sleep partway through, its monitor would be gone and the game with it.

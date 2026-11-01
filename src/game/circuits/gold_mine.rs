@@ -35,10 +35,10 @@
 mod tests {
     use bevy::prelude::*;
 
-    use crate::circuits::Circuit;
     use crate::game::CIRCUITS;
-    use crate::track::Track;
-    use crate::world::scenery::{Coast, Span, span};
+    use motorust_engine::circuits::Circuit;
+    use motorust_engine::track::Track;
+    use motorust_engine::world::scenery::{Coast, Span, span};
 
     /// Where things are, as in the circuit's file (m from the finish line).
     const EXCAVATION: Span = span(1655.0, 2555.0);
@@ -59,6 +59,7 @@ mod tests {
 
     #[test]
     fn the_road_crosses_the_great_lake_on_the_long_bridge() {
+        crate::game::register();
         // The water as the circuit's file has it.
         let Coast::Sea(water) = gold_mine().scenery.coast else {
             panic!("Gold Mine's coast is its water");
@@ -90,6 +91,7 @@ mod tests {
 
     #[test]
     fn the_lap_crosses_the_mountain_through_it_and_then_over_it() {
+        crate::game::register();
         let track = Track::new(&gold_mine().layout);
         let step = track.step_length();
         let lap = track.lap_length();

@@ -48,10 +48,10 @@ mod tests {
     fn mountains(point: Vec2) -> f32 {
         fellowship_road().scenery.mountains.height(point)
     }
-    use crate::circuits::Circuit;
     use crate::game::CIRCUITS;
-    use crate::track::Track;
-    use crate::world::scenery::{Coast, Span, span};
+    use motorust_engine::circuits::Circuit;
+    use motorust_engine::track::Track;
+    use motorust_engine::world::scenery::{Coast, Span, span};
 
     /// Where things are, as in the circuit's file (m from the finish line).
     const TROLLSHAWS: Span = span(1959.1, 2300.1);
@@ -81,6 +81,7 @@ mod tests {
 
     #[test]
     fn the_lap_goes_over_caradhras_and_then_through_moria_beneath() {
+        crate::game::register();
         let track = Track::new(&fellowship_road().layout);
         let line = track.centerline();
         // Through the mines at the end, over the pass first: crossing well
@@ -110,6 +111,7 @@ mod tests {
 
     #[test]
     fn the_hills_are_steep_and_the_road_climbs_and_drops_a_lot() {
+        crate::game::register();
         let track = Track::new(&fellowship_road().layout);
         let step = track.step_length();
         let height = |along: f32| track.elevations()[track.index_at(along)];
@@ -144,6 +146,7 @@ mod tests {
 
     #[test]
     fn the_road_winds_in_esses_through_the_trollshaws_and_the_gorge() {
+        crate::game::register();
         // Bends one after another each the other way, tighter than 70 m.
         let track = Track::new(&fellowship_road().layout);
         for stretch in [TROLLSHAWS, GORGE] {
@@ -170,6 +173,7 @@ mod tests {
 
     #[test]
     fn the_road_runs_down_the_anduin_between_the_kings_and_is_dry_but_on_its_bridges() {
+        crate::game::register();
         // The water as the circuit's file has it.
         let Coast::Inland(water) = fellowship_road().scenery.coast else {
             panic!("Fellowship Road's coast is its water");
@@ -219,6 +223,7 @@ mod tests {
 
     #[test]
     fn the_misty_mountains_rise_under_snow_to_the_east_and_nothing_by_the_road() {
+        crate::game::register();
         let track = Track::new(&fellowship_road().layout);
         for &point in track.centerline() {
             assert!(mountains(point) < 1e-3, "{point}");

@@ -24,7 +24,7 @@
 #[cfg(test)]
 mod tests {
     use crate::game::CIRCUITS;
-    use crate::track::Track;
+    use motorust_engine::track::Track;
 
     /// Where the branch with the loop forks off the lap, and where the
     /// start straight ends (m from the finish line).
@@ -33,11 +33,12 @@ mod tests {
 
     #[test]
     fn the_branch_forks_past_the_jump_over_a_broad_top_and_turns_gently() {
+        crate::game::register();
         let circuit = CIRCUITS.iter().find(|c| c.name == "Loop Island").unwrap();
         let track = Track::new(&circuit.layout);
         let crest = |along: f32| {
             let index = track.index_at(along);
-            track.crest(&crate::track::Nearest {
+            track.crest(&motorust_engine::track::Nearest {
                 point: track.centerline()[index],
                 distance: 0.0,
                 index,
@@ -57,7 +58,7 @@ mod tests {
         // straight, no bike takes off, even at its top speed: one flying
         // there landed in the branch's bend. (Against the real gravity: a
         // bike takes off against twice it, so with room to spare.)
-        let top = crate::bike::BikeTuning::default().max_speed;
+        let top = motorust_engine::bike::BikeTuning::default().max_speed;
         for along in (FORK as usize..START_END as usize).step_by(2) {
             let crest = crest(along as f32);
             assert!(

@@ -200,15 +200,14 @@ jobs:
           fi
       - uses: Swatinem/rust-cache@v2
       - name: Formato
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      # The engine's tests (its crate, motorust-engine/) run on its content
+      # alone, so that nothing of the game's creeps into it; the game's run
+      # the engine's checks on its own.
       - name: Tests
-        run: cargo test
-      # The engine's tests on the engine's content alone (its pack,
-      # motorust-engine/assets/), so that nothing of the game's creeps into it.
-      - name: Tests del motor, solo con su contenido
-        run: "MOTORUST_ENGINE_ONLY=1 cargo test -- --skip game::"
+        run: cargo test --workspace
 
   build:
     name: Build ${{ matrix.name }}
