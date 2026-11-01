@@ -64,11 +64,21 @@ pub fn read_already() -> Option<&'static GameInfo> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
-    fn the_game_says_what_it_is_called() {
+    fn whatever_runs_says_what_it_is_called() {
+        let info = info();
+        assert!(!info.title.is_empty() && !info.folder.is_empty());
+        assert!(!info.logo.text().is_empty());
+        if let Some(icon) = info.icon {
+            assert!(crate::content::try_file(icon).is_ok(), "{icon}");
+        }
+        assert!(read_already().is_some());
+    }
+
+    pub(crate) fn the_game_says_what_it_is_called_on() {
         let info = info();
         assert_eq!(info.title, "Motorust");
         assert_eq!(info.folder, "motorust");

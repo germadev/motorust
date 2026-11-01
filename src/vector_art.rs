@@ -230,9 +230,18 @@ fn svg_attribute<'a>(svg: &'a str, name: &str) -> &'a str {
     &svg[start..end]
 }
 
-/// The helmet, `height` px tall (its view box, with its margin).
+/// The helmet, `height` px tall (its view box, with its margin); nothing
+/// (as wide as tall, clear) where the content has none (it is a game's: the
+/// engine's own content has none).
 pub fn draw_helmet(height: u32) -> Coverage {
-    let view: Vec<f32> = svg_attribute(crate::content::text(HELMET_SVG), "viewBox")
+    let Ok(svg) = crate::content::try_text(HELMET_SVG) else {
+        return Coverage {
+            width: height,
+            height,
+            alpha: vec![0; (height * height) as usize],
+        };
+    };
+    let view: Vec<f32> = svg_attribute(svg, "viewBox")
         .split_whitespace()
         .map(|value| value.parse().expect("the view box is numbers"))
         .collect();
@@ -241,7 +250,7 @@ pub fn draw_helmet(height: u32) -> Coverage {
     };
     let scale = height as f32 / view_height;
     let width = (view_width * scale).round().max(1.0) as u32;
-    let (alpha, _) = Mask::new(svg_attribute(crate::content::text(HELMET_SVG), "d"))
+    let (alpha, _) = Mask::new(svg_attribute(svg, "d"))
         .style(Fill::EvenOdd)
         .transform(Some(
             Transform::translation(-left, -top).then(&Transform::scale(scale, scale)),
@@ -324,7 +333,7 @@ impl VectorArt {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -363,7 +372,16 @@ mod tests {
     }
 
     #[test]
-    fn the_helmet_is_drawn_from_its_svg() {
+    fn with_no_helmet_in_the_content_none_is_drawn() {
+        if crate::content::try_text(HELMET_SVG).is_ok() {
+            return;
+        }
+        let helmet = draw_helmet(200);
+        assert_eq!((helmet.width, helmet.height), (200, 200));
+        assert!(helmet.alpha.iter().all(|&a| a == 0));
+    }
+
+    pub(crate) fn the_helmet_is_drawn_from_its_svg_on() {
         let helmet = draw_helmet(200);
         assert_eq!(helmet.height, 200);
         // As wide as its view box says (261.88 by 269.62).

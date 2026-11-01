@@ -150,6 +150,9 @@ fn init_crash_handler() {
 }
 
 fn main() {
+    // The game's content pack, themes and terrain functions, before any
+    // file is read.
+    game::register();
     init_crash_handler();
     // On macOS, no App Nap, timers on time and no sleep while it runs.
     #[cfg(target_os = "macos")]
@@ -194,8 +197,6 @@ fn main() {
         app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
     }
     let (fixed, game) = simulation_clocks();
-    // The game's themes, before the circuits that name them are read.
-    game::register();
     // The content pack's source, before the asset server is built.
     app.add_plugins(content::ContentPlugin)
         .add_plugins(plugins)

@@ -34,10 +34,28 @@ pub static CIRCUITS: std::sync::LazyLock<crate::circuits::Circuits> =
 pub static ROSTER: std::sync::LazyLock<crate::bike::Roster> =
     std::sync::LazyLock::new(crate::bike::Roster::load);
 
-/// Registers what the game's circuits' files name of its own: its themes
-/// and its terrain's functions. Before the circuits are read (the
-/// `WorldPlugin` reads them as it is added); again does nothing.
+/// The game's content pack (`assets/`), over the engine's (see
+/// [`crate::content`]).
+pub const PACK: crate::content::Pack = crate::content::Pack {
+    folder: concat!(env!("CARGO_MANIFEST_DIR"), "/assets"),
+    built_in: built_in::FILES,
+};
+
+/// The game's pack's files, built in, as `build.rs` lists them from its
+/// `pack.txt`.
+mod built_in {
+    #[cfg(not(all(debug_assertions, not(target_arch = "wasm32"))))]
+    include!(concat!(env!("OUT_DIR"), "/pack.rs"));
+    #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
+    pub const FILES: &[(&str, &[u8])] = &[];
+}
+
+/// Registers what the game has of its own: its content pack, before any
+/// file is read, and what its circuits' files name, its themes and its
+/// terrain's functions, before the circuits are read (the `WorldPlugin`
+/// reads them as it is added). Again does nothing.
 pub fn register() {
+    crate::content::register_pack(PACK);
     crate::circuits::register_terrain_function(
         "ghost_island_volcano_relief",
         circuits::ghost_island::volcano_gullies,

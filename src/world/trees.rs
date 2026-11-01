@@ -207,7 +207,7 @@ impl Dressed {
 pub fn dress_trees(
     settings: Option<Res<Settings>>,
     detail: Option<Res<Detail>>,
-    modelled: Res<ModelledTrees>,
+    modelled: Option<Res<ModelledTrees>>,
     cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     mut trees: Query<(
         &Tree,
@@ -221,9 +221,12 @@ pub fn dress_trees(
 ) {
     // Without settings (in tests of the world alone), the new ones, as by
     // default, and whole.
-    let wanted = settings
-        .as_deref()
-        .is_none_or(|settings| settings.modelled_trees);
+    // The classic ones where the content has no modelled ones (the
+    // engine's own has none: they are a game's).
+    let wanted = modelled.is_some()
+        && settings
+            .as_deref()
+            .is_none_or(|settings| settings.modelled_trees);
     let lighter = settings
         .as_deref()
         .is_some_and(|settings| settings.lighter_far_trees);
@@ -255,25 +258,26 @@ pub fn dress_trees(
                     .fold(f32::MAX, f32::min);
                 lod::level_at(distance, dressed.level, &bounds)
             };
-            let (look, paint, look_bounds) = if wanted {
-                let model = tree.model.index();
-                let paint = if level == 0 {
-                    &modelled.material
+            let (look, paint, look_bounds) =
+                if let Some(modelled) = modelled.as_deref().filter(|_| wanted) {
+                    let model = tree.model.index();
+                    let paint = if level == 0 {
+                        &modelled.material
+                    } else {
+                        &modelled.painted
+                    };
+                    (
+                        &modelled.meshes[model][level],
+                        paint,
+                        modelled.bounds[model],
+                    )
                 } else {
-                    &modelled.painted
+                    (
+                        &tree.classic[level],
+                        &tree.classic_material,
+                        tree.classic_bounds,
+                    )
                 };
-                (
-                    &modelled.meshes[model][level],
-                    paint,
-                    modelled.bounds[model],
-                )
-            } else {
-                (
-                    &tree.classic[level],
-                    &tree.classic_material,
-                    tree.classic_bounds,
-                )
-            };
             if mesh.0 != *look {
                 mesh.0 = look.clone();
             }
@@ -295,11 +299,10 @@ pub fn dress_trees(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    #[test]
-    fn each_modelled_tree_has_lighter_meshes_painted_in_its_colours() {
+    pub(crate) fn each_modelled_tree_has_lighter_meshes_painted_in_its_colours_on() {
         let mut world = World::new();
         world.init_resource::<Assets<Mesh>>();
         world.init_resource::<Assets<Image>>();
@@ -350,8 +353,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_model_is_in_the_pack_standing_on_the_ground() {
+    pub(crate) fn every_model_is_in_the_pack_standing_on_the_ground_on() {
         let pack = read(crate::content::file("models/trees/trees.bin"));
         for model in MODELS {
             let piece = pack

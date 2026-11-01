@@ -1,8 +1,12 @@
-# The content pack: the files of assets/ the game uses, which a release
-# build, and every web build, has built in (see src/content.rs). One path in
-# assets/ a line; a line starting with # is a comment. A desktop development
-# build reads them from the disk instead, but asks for none this list leaves
-# out, so a file missing here fails there too.
+# The game's content pack: the files of assets/ the game uses, which a
+# release build, and every web build, has built in (see src/content.rs). One
+# path in assets/ a line; a line starting with # is a comment. A desktop
+# development build reads them from the disk instead, but reads none this
+# list leaves out, so a file missing here fails there too. It lies over the
+# engine's pack (motorust-engine/assets/pack.txt: the textures, the font, the
+# gamepads' art): a file is read from here if this list has it, from the
+# engine's if not; so a file here of the same path as the engine's (the
+# circuits' list, Bahía GP, the roster, game.ron) takes its place.
 
 # The tracks' songs (each named by its circuit's file).
 music/bahia.mp3
@@ -106,29 +110,9 @@ models/toys/color.jpg
 models/toys2/props.bin
 models/toys2/color.jpg
 
-# The scenery's textures (src/world/textures.rs) and the sky's maps
-# (src/world/sky.rs).
-textures/grass.jpg
-textures/wall.jpg
-textures/rock.jpg
-textures/sand.jpg
-textures/asphalt.jpg
-textures/roof.jpg
-textures/plaster.jpg
-textures/milky_way.jpg
-textures/moon.jpg
-textures/earth.jpg
-textures/earth_clouds.jpg
-
 # The game's identity (src/game_info.rs).
 game.ron
 
-# The UI: its font, the start menu's helmet, the gamepads' art and the
-# window's icon.
-fonts/RussoOne-Regular.ttf
+# The start menu's helmet and the window's icon.
 ui/helmet.svg
-ui/pads/dualsense.svg
-ui/pads/dualshock4.svg
-ui/pads/dualshock3.svg
-ui/pads/xbox.svg
 icon-256.png

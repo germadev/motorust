@@ -238,14 +238,6 @@ pub struct SongSource {
     mp3: Arc<[u8]>,
 }
 
-#[cfg(test)]
-impl SongSource {
-    /// Its MP3.
-    pub fn bytes(&self) -> &[u8] {
-        &self.mp3
-    }
-}
-
 impl Decodable for SongSource {
     type Decoder = rodio::decoder::LoopedDecoder<Cursor<Arc<[u8]>>>;
 
@@ -502,12 +494,11 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn every_song_is_in_the_pack_on(circuits: &'static Circuits) {
-        let pack = content::listed();
         for (tune, song) in every_tune(circuits) {
             let file = song.file;
             assert!(
-                pack.contains(&file),
-                "{tune:?}: {file} not in assets/pack.txt"
+                content::is_listed(file),
+                "{tune:?}: {file} in no content pack"
             );
         }
     }

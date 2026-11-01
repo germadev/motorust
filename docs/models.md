@@ -177,18 +177,18 @@ The scenery textures are CC0 (public domain) photos from [Poly Haven](https://po
 
 | File | Used for |
 |---|---|
-| `assets/textures/asphalt.jpg` | Road |
-| `assets/textures/grass.jpg` | Grassy terrain and hedges |
-| `assets/textures/rock.jpg` | Rocky terrain, crags and rock faces |
-| `assets/textures/sand.jpg` | Beaches |
-| `assets/textures/wall.jpg` | Stone walls |
-| `assets/textures/roof.jpg` | Tiled roofs |
-| `assets/textures/plaster.jpg` | Plastered and concrete surfaces: houses, hotels, walls and structures |
+| `motorust-engine/assets/textures/asphalt.jpg` | Road |
+| `motorust-engine/assets/textures/grass.jpg` | Grassy terrain and hedges |
+| `motorust-engine/assets/textures/rock.jpg` | Rocky terrain, crags and rock faces |
+| `motorust-engine/assets/textures/sand.jpg` | Beaches |
+| `motorust-engine/assets/textures/wall.jpg` | Stone walls |
+| `motorust-engine/assets/textures/roof.jpg` | Tiled roofs |
+| `motorust-engine/assets/textures/plaster.jpg` | Plastered and concrete surfaces: houses, hotels, walls and structures |
 | *(procedural)* `crowd` | Pixelated grandstand spectators with vibrant retro clothing |
 | *(procedural)* `checker` | Start/finish and tunnel checkerboard strip |
 | *(procedural)* `panels` | Concrete tunnel lining panels |
 | *(procedural)* sky | Sky dome: a gradient from deep blue overhead to the fog colour at the horizon, the sun, and cartoon clouds drawn with zeno (`src/world/sky.rs`) |
 
-The labels use the [Russo One](https://fonts.google.com/specimen/Russo+One) font by Jovanny Lemonad, under the SIL Open Font License 1.1 (`assets/fonts/RussoOne-OFL.txt`).
+The labels use the [Russo One](https://fonts.google.com/specimen/Russo+One) font by Jovanny Lemonad, under the SIL Open Font License 1.1 (`motorust-engine/assets/fonts/RussoOne-OFL.txt`).
 
-All of these, like the bike models, are in the content pack (`assets/pack.txt`), built into the release executable, so you do not need to copy the `assets` folder to play. See [`assets/CREDITS.md`](../assets/CREDITS.md) for the original Poly Haven sources and licences.
+The textures and the font are the engine's (its content pack, `motorust-engine/assets/pack.txt`), the bike models the game's (`assets/pack.txt`); both packs are built into the release executable, so you do not need to copy the `assets` folders to play. See [`motorust-engine/assets/CREDITS.md`](../motorust-engine/assets/CREDITS.md) for the original Poly Haven sources and licences, and [`assets/CREDITS.md`](../assets/CREDITS.md) for the game's models.

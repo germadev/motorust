@@ -33,7 +33,7 @@ pub(crate) mod structures;
 pub mod terrain;
 pub mod textures;
 pub mod themes;
-mod trees;
+pub mod trees;
 pub mod tufts;
 pub mod waters;
 
@@ -82,6 +82,11 @@ impl Plugin for WorldPlugin {
             app.init_asset::<sea::SeaMaterial>()
                 .init_asset::<mirror::MirrorMaterial>();
         }
+        // The modelled trees, if the content has them (a game's: the
+        // engine's own has none, and plants the classic ones).
+        if crate::content::try_file("models/trees/trees.bin").is_ok() {
+            app.init_resource::<trees::ModelledTrees>();
+        }
         // The circuits, read from their files once, as the game starts (or
         // those the app was given: a test's).
         let circuits = app
@@ -116,7 +121,6 @@ impl Plugin for WorldPlugin {
             .init_resource::<PreviewRoots>()
             .init_resource::<CircuitLoading>()
             .init_resource::<textures::WorldTextures>()
-            .init_resource::<trees::ModelledTrees>()
             .init_resource::<prop_pack::PropPacks>()
             .init_resource::<Sea>()
             .add_systems(Startup, (build_world, sky::spawn_sky, spawn_sun))

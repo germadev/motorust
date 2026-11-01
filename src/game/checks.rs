@@ -321,6 +321,36 @@ mod sound_music {
     }
 }
 
+mod world_trees {
+
+    #[test]
+    fn each_modelled_tree_has_lighter_meshes_painted_in_its_colours() {
+        crate::world::trees::tests::each_modelled_tree_has_lighter_meshes_painted_in_its_colours_on(
+        );
+    }
+
+    #[test]
+    fn every_model_is_in_the_pack_standing_on_the_ground() {
+        crate::world::trees::tests::every_model_is_in_the_pack_standing_on_the_ground_on();
+    }
+}
+
+mod vector_art {
+
+    #[test]
+    fn the_helmet_is_drawn_from_its_svg() {
+        crate::vector_art::tests::the_helmet_is_drawn_from_its_svg_on();
+    }
+}
+
+mod game_info {
+
+    #[test]
+    fn the_game_says_what_it_is_called() {
+        crate::game_info::tests::the_game_says_what_it_is_called_on();
+    }
+}
+
 mod bike_model {
     use super::*;
 
