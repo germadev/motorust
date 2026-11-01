@@ -317,8 +317,8 @@ impl FromWorld for ModelledProps {
     fn from_world(world: &mut World) -> Self {
         Self(PropPack::load(
             world,
-            include_bytes!("../../assets/models/props/props.bin"),
-            include_bytes!("../../assets/models/props/color.jpg"),
+            crate::content::file("models/props/props.bin"),
+            crate::content::file("models/props/color.jpg"),
         ))
     }
 }
@@ -1095,7 +1095,7 @@ mod tests {
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
-        read(include_bytes!("../../assets/models/props/props.bin"))
+        read(crate::content::file("models/props/props.bin"))
             .meshes
             .into_iter()
             .map(|piece| (piece.name, piece.mesh))
@@ -1148,7 +1148,7 @@ mod tests {
 
     #[test]
     fn every_prop_has_a_surface_for_the_water_to_mirror_in_its_colours() {
-        let atlas = texture(include_bytes!("../../assets/models/props/color.jpg"), true);
+        let atlas = texture(crate::content::file("models/props/color.jpg"), true);
         let mut total = 0;
         for (name, mesh) in pack() {
             let points = surface(&mesh, &atlas);

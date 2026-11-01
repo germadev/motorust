@@ -27,15 +27,43 @@ pub(super) struct Model {
     /// Si la horquilla y el manillar giran con la dirección. En las motos con
     /// la horquilla soldada al carenado no se pueden separar, y no giran.
     pub steers: bool,
-    bike: &'static [u8],
-    base_color: &'static [u8],
-    metallic_roughness: &'static [u8],
-    normal: &'static [u8],
-    pub pilot: &'static [u8],
-    pub pilot_color: &'static [u8],
+    /// Its folder in `assets/models/`, in the content pack.
+    folder: &'static str,
 }
 
-/// Los ficheros de `assets/models/CARPETA/`, incrustados en el ejecutable.
+impl Model {
+    /// A file of its folder, from the content pack.
+    fn file(&self, name: &str) -> &'static [u8] {
+        crate::content::file(&format!("models/{}/{name}", self.folder))
+    }
+
+    fn bike(&self) -> &'static [u8] {
+        self.file("bike.bin")
+    }
+
+    fn base_color(&self) -> &'static [u8] {
+        self.file("base_color.jpg")
+    }
+
+    fn metallic_roughness(&self) -> &'static [u8] {
+        self.file("metallic_roughness.jpg")
+    }
+
+    fn normal(&self) -> &'static [u8] {
+        self.file("normal.jpg")
+    }
+
+    pub fn pilot(&self) -> &'static [u8] {
+        self.file("pilot.bin")
+    }
+
+    pub fn pilot_color(&self) -> &'static [u8] {
+        self.file("pilot_color.jpg")
+    }
+}
+
+/// Un modelo de `assets/models/CARPETA/`, sus ficheros en el paquete de
+/// contenido ([`crate::content`]).
 macro_rules! model {
     ($folder:literal, $geometry:expr) => {
         model!($folder, $geometry, true)
@@ -44,24 +72,7 @@ macro_rules! model {
         Model {
             geometry: $geometry,
             steers: $steers,
-            bike: include_bytes!(concat!("../../../assets/models/", $folder, "/bike.bin")),
-            base_color: include_bytes!(concat!(
-                "../../../assets/models/",
-                $folder,
-                "/base_color.jpg"
-            )),
-            metallic_roughness: include_bytes!(concat!(
-                "../../../assets/models/",
-                $folder,
-                "/metallic_roughness.jpg"
-            )),
-            normal: include_bytes!(concat!("../../../assets/models/", $folder, "/normal.jpg")),
-            pilot: include_bytes!(concat!("../../../assets/models/", $folder, "/pilot.bin")),
-            pilot_color: include_bytes!(concat!(
-                "../../../assets/models/",
-                $folder,
-                "/pilot_color.jpg"
-            )),
+            folder: $folder,
         }
     };
 }
@@ -344,9 +355,9 @@ pub(crate) fn texture(bytes: &[u8], srgb: bool) -> Image {
 /// Material de una moto: color, metal y rugosidad, y relieve.
 pub(super) fn material(model: &Model, images: &mut Assets<Image>) -> StandardMaterial {
     StandardMaterial {
-        base_color_texture: Some(images.add(texture(model.base_color, true))),
-        metallic_roughness_texture: Some(images.add(texture(model.metallic_roughness, false))),
-        normal_map_texture: Some(images.add(texture(model.normal, false))),
+        base_color_texture: Some(images.add(texture(model.base_color(), true))),
+        metallic_roughness_texture: Some(images.add(texture(model.metallic_roughness(), false))),
+        normal_map_texture: Some(images.add(texture(model.normal(), false))),
         metallic: 1.0,
         perceptual_roughness: 1.0,
         ..default()
@@ -422,7 +433,7 @@ pub(super) struct Materials {
 /// wheels lose their Meshy tyres for round ones (see [`tyre`]).
 pub(super) fn build(parts: &mut Parts, model: &Model, materials: &Materials) {
     let geometry = model.geometry;
-    for PackedMesh { name, mesh } in read(model.bike).meshes {
+    for PackedMesh { name, mesh } in read(model.bike()).meshes {
         let mount = match name.as_str() {
             "chassis" | "exhaust" => Mount::Chassis,
             "steering" => Mount::Steering,
@@ -470,7 +481,7 @@ mod tests {
     #[test]
     fn bikes_have_their_parts_and_wheels_on_the_ground() {
         for model in MODELS {
-            let pack = read(model.bike);
+            let pack = read(model.bike());
             let names: Vec<&str> = pack.meshes.iter().map(|m| m.name.as_str()).collect();
             assert_eq!(
                 names,
@@ -511,7 +522,7 @@ mod tests {
     #[test]
     fn exhausts_open_at_the_back_of_the_silencers() {
         for model in MODELS {
-            let pack = read(model.bike);
+            let pack = read(model.bike());
             let exhaust = &pack.meshes[4].mesh;
             let Some(VertexAttributeValues::Float32x3(positions)) =
                 exhaust.attribute(Mesh::ATTRIBUTE_POSITION)
@@ -541,7 +552,7 @@ mod tests {
     #[test]
     fn pilots_have_a_rigged_body() {
         for model in MODELS {
-            let pack = read(model.pilot);
+            let pack = read(model.pilot());
             assert_eq!(pack.meshes.len(), 1);
             assert!(
                 pack.meshes[0]

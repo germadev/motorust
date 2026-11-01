@@ -506,7 +506,7 @@ pub fn spawn_sky(
     // The glow of the Milky Way, added to the sky behind the stars.
     // The Milky Way: its stars, sown as thick as its map is bright, and a
     // faint glow of the map itself behind them.
-    let mut milky_way_map = photograph(include_bytes!("../../assets/textures/milky_way.jpg"));
+    let mut milky_way_map = photograph(crate::content::file("textures/milky_way.jpg"));
     enhance_milky_way(&mut milky_way_map);
     let milky_way_stars = meshes.add(milky_way_stars_mesh(&milky_way_map));
     let milky_way_material = materials.add(StandardMaterial {
@@ -1307,13 +1307,13 @@ fn photograph(bytes: &[u8]) -> Image {
 /// The Moon as NASA's Lunar Reconnaissance Orbiter photographed it (its
 /// colour mosaic, from NASA's CGI Moon Kit).
 fn moon_map() -> Image {
-    photograph(include_bytes!("../../assets/textures/moon.jpg"))
+    photograph(crate::content::file("textures/moon.jpg"))
 }
 
 /// The Earth as NASA's Blue Marble shows it, with its clouds over it.
 fn earth_map() -> Image {
-    let mut earth = photograph(include_bytes!("../../assets/textures/earth.jpg"));
-    let clouds = photograph(include_bytes!("../../assets/textures/earth_clouds.jpg"));
+    let mut earth = photograph(crate::content::file("textures/earth.jpg"));
+    let clouds = photograph(crate::content::file("textures/earth_clouds.jpg"));
     if let (Some(surface), Some(cover)) = (earth.data.as_mut(), clouds.data.as_ref()) {
         let texels = surface.len().min(cover.len()) / 4;
         for k in 0..texels {
@@ -2125,7 +2125,7 @@ mod tests {
 
     #[test]
     fn the_milky_way_is_sown_with_stars_along_its_band() {
-        let map = photograph(include_bytes!("../../assets/textures/milky_way.jpg"));
+        let map = photograph(crate::content::file("textures/milky_way.jpg"));
         let mesh = milky_way_stars_mesh(&map);
         let stars = mesh.count_vertices() / 4;
         assert_eq!(stars, MILKY_WAY_STARS as usize);
@@ -2159,7 +2159,7 @@ mod tests {
         let Ok(out) = std::env::var("MILKY_WAY_PREVIEW") else {
             return;
         };
-        let mut map = photograph(include_bytes!("../../assets/textures/milky_way.jpg"));
+        let mut map = photograph(crate::content::file("textures/milky_way.jpg"));
         enhance_milky_way(&mut map);
         let (width, height) = (map.width(), map.height());
         let data = map.data.unwrap()[..(width * height * 4) as usize].to_vec();

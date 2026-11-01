@@ -87,10 +87,10 @@ impl PadArt {
 
     fn svg(self) -> &'static str {
         match self {
-            PadArt::DualSense => include_str!("../assets/ui/pads/dualsense.svg"),
-            PadArt::DualShock4 => include_str!("../assets/ui/pads/dualshock4.svg"),
-            PadArt::DualShock3 => include_str!("../assets/ui/pads/dualshock3.svg"),
-            PadArt::Xbox => include_str!("../assets/ui/pads/xbox.svg"),
+            PadArt::DualSense => crate::content::text("ui/pads/dualsense.svg"),
+            PadArt::DualShock4 => crate::content::text("ui/pads/dualshock4.svg"),
+            PadArt::DualShock3 => crate::content::text("ui/pads/dualshock3.svg"),
+            PadArt::Xbox => crate::content::text("ui/pads/xbox.svg"),
         }
     }
 }
@@ -263,7 +263,7 @@ fn triggers(document: &roxmltree::Document) -> Vec<(GamepadButton, [f32; 4])> {
 /// How the illustrations are read: their few words in the game's font.
 fn options() -> usvg::Options<'static> {
     let mut fonts = fontdb::Database::new();
-    fonts.load_font_data(crate::vector_art::FONT.to_vec());
+    fonts.load_font_data(crate::content::file(crate::vector_art::FONT_FILE).to_vec());
     let family = fonts
         .faces()
         .next()

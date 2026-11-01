@@ -1,9 +1,8 @@
-# The content pack: the files of assets/ that a release build, and every
-# web build, has built in (see src/content.rs). One path in assets/ a line;
-# a line starting with # is a comment. A desktop development build reads
-# them from the disk instead, so a file the game uses and this list leaves
-# out works there and is missing from a release: the tests check that every
-# file the game names is here.
+# The content pack: the files of assets/ the game uses, which a release
+# build, and every web build, has built in (see src/content.rs). One path in
+# assets/ a line; a line starting with # is a comment. A desktop development
+# build reads them from the disk instead, but asks for none this list leaves
+# out, so a file missing here fails there too.
 
 # The tracks' songs (each named by its circuit's file).
 music/bahia.mp3
@@ -20,3 +19,104 @@ music/chill_velvet_dashboard.mp3
 music/chill_sunlight_on_still_water.mp3
 music/chill_leaves_on_the_still_pond.mp3
 music/menu_asphalt_shift.mp3
+
+# The circuits: their list, in the menu's order, and their files.
+circuits/circuits.ron
+circuits/bahia.ron
+circuits/turbo_bay.ron
+circuits/loop_island.ron
+circuits/gold_mine.ron
+circuits/ghost_island.ron
+circuits/moon_base.ron
+circuits/fellowship_road.ron
+circuits/toy_store.ron
+
+# The bikes' roster.
+bikes/roster.ron
+
+# The bikes and riders modelled with Meshy (src/bike/model/imported.rs).
+models/shogun/bike.bin
+models/shogun/base_color.jpg
+models/shogun/metallic_roughness.jpg
+models/shogun/normal.jpg
+models/shogun/pilot.bin
+models/shogun/pilot_color.jpg
+models/kraken/bike.bin
+models/kraken/base_color.jpg
+models/kraken/metallic_roughness.jpg
+models/kraken/normal.jpg
+models/kraken/pilot.bin
+models/kraken/pilot_color.jpg
+models/falcon/bike.bin
+models/falcon/base_color.jpg
+models/falcon/metallic_roughness.jpg
+models/falcon/normal.jpg
+models/falcon/pilot.bin
+models/falcon/pilot_color.jpg
+models/stiletto/bike.bin
+models/stiletto/base_color.jpg
+models/stiletto/metallic_roughness.jpg
+models/stiletto/normal.jpg
+models/stiletto/pilot.bin
+models/stiletto/pilot_color.jpg
+models/legend/bike.bin
+models/legend/base_color.jpg
+models/legend/metallic_roughness.jpg
+models/legend/normal.jpg
+models/legend/pilot.bin
+models/legend/pilot_color.jpg
+models/cobra/bike.bin
+models/cobra/base_color.jpg
+models/cobra/metallic_roughness.jpg
+models/cobra/normal.jpg
+models/cobra/pilot.bin
+models/cobra/pilot_color.jpg
+models/ronin/bike.bin
+models/ronin/base_color.jpg
+models/ronin/metallic_roughness.jpg
+models/ronin/normal.jpg
+models/ronin/pilot.bin
+models/ronin/pilot_color.jpg
+models/azura/bike.bin
+models/azura/base_color.jpg
+models/azura/metallic_roughness.jpg
+models/azura/normal.jpg
+models/azura/pilot.bin
+models/azura/pilot_color.jpg
+
+# The scenery's models: the trees, the props of feudal Japan and of
+# Middle-earth, and the toys of the toy store.
+models/trees/trees.bin
+models/trees/color.jpg
+models/props/props.bin
+models/props/color.jpg
+models/fellowship/props.bin
+models/fellowship/color.jpg
+models/toys/props.bin
+models/toys/color.jpg
+models/toys2/props.bin
+models/toys2/color.jpg
+
+# The scenery's textures (src/world/textures.rs) and the sky's maps
+# (src/world/sky.rs).
+textures/grass.jpg
+textures/wall.jpg
+textures/rock.jpg
+textures/sand.jpg
+textures/asphalt.jpg
+textures/roof.jpg
+textures/plaster.jpg
+textures/milky_way.jpg
+textures/moon.jpg
+textures/earth.jpg
+textures/earth_clouds.jpg
+
+# The UI: its font, the start menu's helmet, the gamepads' art and the
+# window's icon.
+fonts/RussoOne-Regular.ttf
+ui/helmet.svg
+ui/pads/dualsense.svg
+ui/pads/dualshock4.svg
+ui/pads/dualshock3.svg
+ui/pads/xbox.svg
+icon-256.png

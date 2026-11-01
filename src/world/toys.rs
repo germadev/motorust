@@ -2522,13 +2522,13 @@ impl FromWorld for ToyModels {
         Self([
             PropPack::load(
                 world,
-                include_bytes!("../../assets/models/toys/props.bin"),
-                include_bytes!("../../assets/models/toys/color.jpg"),
+                crate::content::file("models/toys/props.bin"),
+                crate::content::file("models/toys/color.jpg"),
             ),
             PropPack::load(
                 world,
-                include_bytes!("../../assets/models/toys2/props.bin"),
-                include_bytes!("../../assets/models/toys2/color.jpg"),
+                crate::content::file("models/toys2/props.bin"),
+                crate::content::file("models/toys2/color.jpg"),
             ),
         ])
     }
@@ -3109,8 +3109,8 @@ mod tests {
     /// The pieces of Meshy's toys in their packs.
     fn pack() -> Vec<crate::bike::model::imported::PackedMesh> {
         let read = crate::bike::model::imported::read;
-        let mut pieces = read(include_bytes!("../../assets/models/toys/props.bin")).meshes;
-        pieces.extend(read(include_bytes!("../../assets/models/toys2/props.bin")).meshes);
+        let mut pieces = read(crate::content::file("models/toys/props.bin")).meshes;
+        pieces.extend(read(crate::content::file("models/toys2/props.bin")).meshes);
         pieces
     }
 

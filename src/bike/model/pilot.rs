@@ -173,7 +173,7 @@ pub(super) struct PilotBlueprint {
 
 impl PilotBlueprint {
     pub(super) fn new(world: &mut World, model: &Model) -> Self {
-        let mut pack = imported::read(model.pilot);
+        let mut pack = imported::read(model.pilot());
         let skeleton = Skeleton::new(pack.skeleton);
         let mesh = pack
             .meshes
@@ -182,7 +182,7 @@ impl PilotBlueprint {
             .mesh
             .with_generated_skinned_mesh_bounds()
             .expect("la malla del piloto tiene huesos");
-        let texture = imported::texture(model.pilot_color, true);
+        let texture = imported::texture(model.pilot_color(), true);
         let texture = world.resource_mut::<Assets<Image>>().add(texture);
         let material = world
             .resource_mut::<Assets<StandardMaterial>>()
@@ -698,7 +698,7 @@ mod tests {
     }
 
     fn skeleton_of(model: &Model) -> Skeleton {
-        Skeleton::new(imported::read(model.pilot).skeleton)
+        Skeleton::new(imported::read(model.pilot()).skeleton)
     }
 
     fn stance() -> Stance {

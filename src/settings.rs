@@ -1847,7 +1847,7 @@ fn set_window_icon(
     let Some(window) = windows.get_window(entity) else {
         return;
     };
-    if let Ok(image) = image::load_from_memory(include_bytes!("../assets/icon-256.png")) {
+    if let Ok(image) = image::load_from_memory(crate::content::file("icon-256.png")) {
         let rgba = image.into_rgba8();
         let (width, height) = rgba.dimensions();
         if let Ok(icon) = winit::window::Icon::from_rgba(rgba.into_raw(), width, height) {

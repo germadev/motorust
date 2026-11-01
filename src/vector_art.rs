@@ -25,8 +25,9 @@ use swash::zeno::{Angle, Fill, Format, Mask, Transform};
 
 use crate::world::generate_mipmaps;
 
-/// The UI font, the same one as [`crate::hud::UiFont`].
-pub const FONT: &[u8] = include_bytes!("../assets/fonts/RussoOne-Regular.ttf");
+/// The UI font's file in the content pack, the same one as
+/// [`crate::hud::UiFont`].
+pub const FONT_FILE: &str = "fonts/RussoOne-Regular.ttf";
 /// How the letters are drawn: how much they lean forward (degrees), how
 /// much heavier their strokes are and the extra space between them (as
 /// fractions of the font size).
@@ -50,11 +51,12 @@ const PLAIN: Lettering = Lettering {
     tracking: 0.0,
 };
 
-/// The helmet of the menu design (white, facing right).
-const HELMET_SVG: &str = include_str!("../assets/ui/helmet.svg");
+/// The helmet of the menu design (white, facing right), in the content
+/// pack.
+const HELMET_SVG: &str = "ui/helmet.svg";
 
 fn font() -> FontRef<'static> {
-    FontRef::from_index(FONT, 0).expect("the UI font is a valid font")
+    FontRef::from_index(crate::content::file(FONT_FILE), 0).expect("the UI font is a valid font")
 }
 
 /// Glyphs of `text` in the UI font at `size` px, with where each one starts
@@ -230,7 +232,7 @@ fn svg_attribute<'a>(svg: &'a str, name: &str) -> &'a str {
 
 /// The helmet, `height` px tall (its view box, with its margin).
 pub fn draw_helmet(height: u32) -> Coverage {
-    let view: Vec<f32> = svg_attribute(HELMET_SVG, "viewBox")
+    let view: Vec<f32> = svg_attribute(crate::content::text(HELMET_SVG), "viewBox")
         .split_whitespace()
         .map(|value| value.parse().expect("the view box is numbers"))
         .collect();
@@ -239,7 +241,7 @@ pub fn draw_helmet(height: u32) -> Coverage {
     };
     let scale = height as f32 / view_height;
     let width = (view_width * scale).round().max(1.0) as u32;
-    let (alpha, _) = Mask::new(svg_attribute(HELMET_SVG, "d"))
+    let (alpha, _) = Mask::new(svg_attribute(crate::content::text(HELMET_SVG), "d"))
         .style(Fill::EvenOdd)
         .transform(Some(
             Transform::translation(-left, -top).then(&Transform::scale(scale, scale)),

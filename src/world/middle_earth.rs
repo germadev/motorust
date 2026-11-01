@@ -334,8 +334,8 @@ impl FromWorld for FellowshipProps {
     fn from_world(world: &mut World) -> Self {
         Self(PropPack::load(
             world,
-            include_bytes!("../../assets/models/fellowship/props.bin"),
-            include_bytes!("../../assets/models/fellowship/color.jpg"),
+            crate::content::file("models/fellowship/props.bin"),
+            crate::content::file("models/fellowship/color.jpg"),
         ))
     }
 }
@@ -1337,7 +1337,7 @@ mod tests {
 
     /// The props' pack, read as the game reads it.
     fn pack() -> Vec<(String, Mesh)> {
-        read(include_bytes!("../../assets/models/fellowship/props.bin"))
+        read(crate::content::file("models/fellowship/props.bin"))
             .meshes
             .into_iter()
             .map(|piece| (piece.name, piece.mesh))

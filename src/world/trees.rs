@@ -123,8 +123,8 @@ pub struct ModelledTrees {
 
 impl FromWorld for ModelledTrees {
     fn from_world(world: &mut World) -> Self {
-        let mut pack = read(include_bytes!("../../assets/models/trees/trees.bin"));
-        let atlas = texture(include_bytes!("../../assets/models/trees/color.jpg"), true);
+        let mut pack = read(crate::content::file("models/trees/trees.bin"));
+        let atlas = texture(crate::content::file("models/trees/color.jpg"), true);
         let models: Vec<(Mesh, [Mesh; 2])> = MODELS
             .iter()
             .map(|model| {
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn every_model_is_in_the_pack_standing_on_the_ground() {
-        let pack = read(include_bytes!("../../assets/models/trees/trees.bin"));
+        let pack = read(crate::content::file("models/trees/trees.bin"));
         for model in MODELS {
             let piece = pack
                 .meshes

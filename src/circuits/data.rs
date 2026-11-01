@@ -39,26 +39,6 @@ pub fn parse<T: Deserialize<'static>>(name: &str, text: &'static str) -> Result<
     ron::from_str(text).map_err(|error| format!("{name}: {error}"))
 }
 
-/// What a file built into the game from `assets/FOLDER/` says (a circuit,
-/// from `assets/circuits/`, or the bikes' roster, from `assets/bikes/`).
-///
-/// In a desktop development build the file is read from the disk if it is
-/// there, so a circuit can be changed and tried again without compiling,
-/// just restarting the game.
-pub fn load<T: Deserialize<'static>>(folder: &str, name: &str, built_in: &'static str) -> T {
-    #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-    let text = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets")
-            .join(folder)
-            .join(name),
-    )
-    .map_or(built_in, |text| &*String::leak(text));
-    #[cfg(not(all(debug_assertions, not(target_arch = "wasm32"))))]
-    let (text, _) = (built_in, folder);
-    parse(name, text).unwrap_or_else(|error| panic!("{error}"))
-}
-
 /// A colour's sRGB, as Bevy's `Srgba` (the bikes' colours).
 pub fn srgba<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Srgba, D::Error> {
     let (red, green, blue) = Rgb::deserialize(deserializer)?;
@@ -280,15 +260,16 @@ mod tests {
     /// here and not in the game.
     #[test]
     fn every_circuit_file_reads() {
-        for (name, text) in super::super::FILES {
-            parse::<Circuit>(name, text).unwrap_or_else(|error| panic!("{error}"));
+        for (name, text) in super::super::files() {
+            parse::<Circuit>(&name, text).unwrap_or_else(|error| panic!("{error}"));
         }
         assert_eq!(CIRCUITS[0].name, "Bahía GP");
     }
 
     #[test]
     fn mistakes_are_told() {
-        let (name, text) = super::super::FILES[0];
+        let files = super::super::files();
+        let (name, text) = (&*files[0].0, files[0].1);
         let changed = |from, to| &*String::leak(text.replacen(from, to, 1));
         let unknown = changed("pace:", "speed:");
         assert!(
@@ -299,7 +280,7 @@ mod tests {
         );
         // Nor a function the game does not have (Ghost Island's file names
         // its volcano's gullies).
-        let (volcano, text) = super::super::FILES[4];
+        let (volcano, text) = (&*files[4].0, files[4].1);
         let function =
             &*String::leak(text.replacen("\"ghost_island_volcano_relief\"", "\"nowhere\"", 1));
         assert!(

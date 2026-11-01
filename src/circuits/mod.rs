@@ -18,6 +18,7 @@ use std::sync::LazyLock;
 use bevy::prelude::*;
 use serde::Deserialize;
 
+use crate::content;
 use crate::locale::Language;
 use crate::track::Layout;
 use crate::world::scenery::Scenery;
@@ -108,39 +109,24 @@ impl Circuit {
     }
 }
 
-/// The circuits, by the names of their files in `assets/circuits/`, built
-/// into the game, in the order of the track select screen.
-const FILES: [(&str, &str); 8] = [
-    ("bahia.ron", include_str!("../../assets/circuits/bahia.ron")),
-    (
-        "turbo_bay.ron",
-        include_str!("../../assets/circuits/turbo_bay.ron"),
-    ),
-    (
-        "loop_island.ron",
-        include_str!("../../assets/circuits/loop_island.ron"),
-    ),
-    (
-        "gold_mine.ron",
-        include_str!("../../assets/circuits/gold_mine.ron"),
-    ),
-    (
-        "ghost_island.ron",
-        include_str!("../../assets/circuits/ghost_island.ron"),
-    ),
-    (
-        "moon_base.ron",
-        include_str!("../../assets/circuits/moon_base.ron"),
-    ),
-    (
-        "fellowship_road.ron",
-        include_str!("../../assets/circuits/fellowship_road.ron"),
-    ),
-    (
-        "toy_store.ron",
-        include_str!("../../assets/circuits/toy_store.ron"),
-    ),
-];
+/// The list of the circuits, in the content pack: their files in
+/// `assets/circuits/`, in the order of the track select screen.
+const LIST: &str = "circuits/circuits.ron";
+
+/// The circuits' files, each its path in the content pack and its text, in
+/// the order of the track select screen.
+fn files() -> Vec<(String, &'static str)> {
+    let names: Vec<String> =
+        data::parse(LIST, content::text(LIST)).unwrap_or_else(|error| panic!("{error}"));
+    names
+        .into_iter()
+        .map(|name| {
+            let path = format!("circuits/{name}");
+            let text = content::text(&path);
+            (path, text)
+        })
+        .collect()
+}
 
 /// The terrain's functions the circuits' files name (see [`data`]).
 fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
@@ -158,11 +144,12 @@ fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
 pub struct Circuits(&'static [Circuit]);
 
 impl Circuits {
-    /// Every circuit, read from its file (see [`data::load`]).
+    /// Every circuit, read from its file in the content pack (see [`data`]
+    /// and [`crate::content`]).
     pub fn load() -> Self {
-        let circuits: Vec<Circuit> = FILES
+        let circuits: Vec<Circuit> = files()
             .iter()
-            .map(|&(name, text)| data::load("circuits", name, text))
+            .map(|(path, text)| data::parse(path, text).unwrap_or_else(|error| panic!("{error}")))
             .collect();
         Circuits(Vec::leak(circuits))
     }

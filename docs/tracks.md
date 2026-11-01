@@ -200,9 +200,9 @@ Each track is a `Circuit`, written in RON in `assets/circuits/` (`bahia.ron`, `t
 - `layout`: the road itself (a `Layout` from `src/track.rs`).
 - `scenery`: everything around the road (a `Scenery` from `src/world/scenery.rs`).
 
-`FILES` in `src/circuits/mod.rs` lists the tracks in the order the track select screen shows them; the game reads them once, as it starts, into the `Circuits` resource (`Circuits::load`), and the systems take them from it (`Res<Circuits>`, the one chosen `circuits.get(*current)`). The first one is also the default track. To add a track:
+`assets/circuits/circuits.ron` lists the tracks' files in the order the track select screen shows them; the game reads them once, as it starts, into the `Circuits` resource (`Circuits::load`), and the systems take them from it (`Res<Circuits>`, the one chosen `circuits.get(*current)`). The first one is also the default track. To add a track:
 
-1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `FILES` in `src/circuits/mod.rs`, where it goes in the menu, updating the array length.
+1. Write its file in `assets/circuits/`, as `bahia.ron`, and add it to `assets/circuits/circuits.ron`, where it goes in the menu, and to `assets/pack.txt`, so that a release build has it.
 2. List its song in `assets/pack.txt`, so that a release build has it built in (`every_song_is_in_the_pack` checks it). Its water and its mountains are shapes in its file (see `coast` and `mountains` under [Scenery](#scenery)); what it adds of its own to them (a volcano's gullies) is a function in a module next to the others, named in `terrain_function`.
 
 #### Circuits in RON

@@ -1097,6 +1097,9 @@ fn livery<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<&'static 
 /// bikes of the roster.
 pub const RIDERS: usize = GRID.len();
 
+/// The bikes' roster, in the content pack.
+const ROSTER_FILE: &str = "bikes/roster.ron";
+
 /// Las motos de la carrera, read from `assets/bikes/roster.ron` once, when
 /// the game starts ([`Roster::load`]). La que elige el jugador sale desde su
 /// puesto y las demás ocupan, por orden, los de los rivales: one for each
@@ -1105,13 +1108,12 @@ pub const RIDERS: usize = GRID.len();
 pub struct Roster(&'static [Entry]);
 
 impl Roster {
-    /// The bikes, read from their file (see [`crate::circuits::data::load`]).
+    /// The bikes, read from their file in the content pack (see
+    /// [`crate::circuits::data`] and [`crate::content`]).
     pub fn load() -> Self {
-        let entries: Vec<Entry> = crate::circuits::data::load(
-            "bikes",
-            "roster.ron",
-            include_str!("../../assets/bikes/roster.ron"),
-        );
+        let entries: Vec<Entry> =
+            crate::circuits::data::parse(ROSTER_FILE, crate::content::text(ROSTER_FILE))
+                .unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(
             entries.len(),
             RIDERS,
@@ -2338,7 +2340,7 @@ mod tests {
     #[test]
     fn the_roster_reads_a_bike_for_each_place() {
         assert_eq!(ROSTER.len(), RIDERS);
-        let text = include_str!("../../assets/bikes/roster.ron");
+        let text = crate::content::text(ROSTER_FILE);
         let changed = |from, to| &*String::leak(text.replacen(from, to, 1));
         let parse = |text| crate::circuits::data::parse::<Vec<Entry>>("roster.ron", text);
         assert!(parse(text).is_ok());

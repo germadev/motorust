@@ -191,4 +191,4 @@ The scenery textures are CC0 (public domain) photos from [Poly Haven](https://po
 
 The labels use the [Russo One](https://fonts.google.com/specimen/Russo+One) font by Jovanny Lemonad, under the SIL Open Font License 1.1 (`assets/fonts/RussoOne-OFL.txt`).
 
-All of these, like the bike models, are embedded in the executable, so you do not need to copy the `assets` folder to play. See [`assets/CREDITS.md`](../assets/CREDITS.md) for the original Poly Haven sources and licences.
+All of these, like the bike models, are in the content pack (`assets/pack.txt`), built into the release executable, so you do not need to copy the `assets` folder to play. See [`assets/CREDITS.md`](../assets/CREDITS.md) for the original Poly Haven sources and licences.

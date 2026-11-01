@@ -99,7 +99,7 @@ impl FromWorld for WorldTextures {
         let mut images = world.resource_mut::<Assets<Image>>();
         // The grass photo, under a mat of blades painted over it.
         let lawn = super::foliage::lawn(&embedded(
-            include_bytes!("../../assets/textures/grass.jpg"),
+            crate::content::file("textures/grass.jpg"),
             ImageAddressMode::Repeat,
             TextureEnhance::Grass,
         ));
@@ -114,7 +114,7 @@ impl FromWorld for WorldTextures {
         });
         // The stones of the walls, with the photo's grain.
         let wall = images.add(stone_wall(&embedded(
-            include_bytes!("../../assets/textures/wall.jpg"),
+            crate::content::file("textures/wall.jpg"),
             ImageAddressMode::Repeat,
             TextureEnhance::Wall,
         )));
@@ -122,27 +122,27 @@ impl FromWorld for WorldTextures {
             images.add(embedded(bytes, ImageAddressMode::Repeat, enhance))
         };
         let rock = tiled(
-            include_bytes!("../../assets/textures/rock.jpg"),
+            crate::content::file("textures/rock.jpg"),
             TextureEnhance::Rock,
         );
         let granite = tiled(
-            include_bytes!("../../assets/textures/rock.jpg"),
+            crate::content::file("textures/rock.jpg"),
             TextureEnhance::Granite,
         );
         let sand = tiled(
-            include_bytes!("../../assets/textures/sand.jpg"),
+            crate::content::file("textures/sand.jpg"),
             TextureEnhance::Sand,
         );
         let asphalt = tiled(
-            include_bytes!("../../assets/textures/asphalt.jpg"),
+            crate::content::file("textures/asphalt.jpg"),
             TextureEnhance::Asphalt,
         );
         let roof = tiled(
-            include_bytes!("../../assets/textures/roof.jpg"),
+            crate::content::file("textures/roof.jpg"),
             TextureEnhance::None,
         );
         let plaster = tiled(
-            include_bytes!("../../assets/textures/plaster.jpg"),
+            crate::content::file("textures/plaster.jpg"),
             TextureEnhance::None,
         );
         let checker = images.add(checker());
@@ -1689,7 +1689,7 @@ mod tests {
     #[test]
     fn embedded_textures_decode() {
         let image = embedded(
-            include_bytes!("../../assets/textures/asphalt.jpg"),
+            crate::content::file("textures/asphalt.jpg"),
             ImageAddressMode::Repeat,
             TextureEnhance::Asphalt,
         );

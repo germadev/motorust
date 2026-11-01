@@ -50,8 +50,7 @@ pub struct UiFont(pub Handle<Font>);
 
 impl FromWorld for UiFont {
     fn from_world(world: &mut World) -> Self {
-        let font =
-            Font::from_bytes(include_bytes!("../assets/fonts/RussoOne-Regular.ttf").to_vec());
+        let font = Font::from_bytes(crate::content::file(crate::vector_art::FONT_FILE).to_vec());
         Self(world.resource_mut::<Assets<Font>>().add(font))
     }
 }
