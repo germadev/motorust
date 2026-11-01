@@ -24,7 +24,7 @@ use crate::world::Assets3d;
 use crate::world::lettering::sign_image;
 use crate::world::props::Footprint;
 use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{ChevronDirection, Side, Span};
+use crate::world::scenery::{ChevronDirection, Scenery, Side, Span};
 use crate::world::terrain::{SEA_LEVEL, Terrain};
 use crate::world::textures::generate_mipmaps;
 use crate::world::themes::Theme;
@@ -288,6 +288,7 @@ impl Theme for Desert {
         world: &mut ChildSpawnerCommands,
         track: &Track,
         terrain: &Terrain,
+        _scenery: &Scenery,
         assets: &mut Assets3d,
     ) -> Vec<Footprint> {
         spawn_desert(world, track, terrain, self, assets)
@@ -1379,7 +1380,6 @@ fn diamond_pixel(u: f32, v: f32) -> Mark {
 mod tests {
     use super::*;
     use crate::circuits::CIRCUITS;
-    use crate::world::scenery::Scenery;
 
     /// The circuit with a desert, its track and its terrain.
     fn desert_circuit() -> (&'static Scenery, &'static Desert, Track, Terrain) {

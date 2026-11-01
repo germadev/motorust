@@ -80,12 +80,12 @@ mod tests {
 
     #[test]
     fn the_lap_starts_on_earth_with_launchpads_and_observatories_and_crosses_portals_to_the_moon() {
-        let space = moon_base()
-            .scenery
-            .space
-            .as_ref()
+        let scenery = &moon_base().scenery;
+        let space = scenery
+            .themes
+            .get::<crate::game::space::Space>()
             .expect("Moon Base has Space");
-        assert_eq!(space.portals.len(), 2);
+        assert_eq!(scenery.portals.len(), 2);
         assert!(!space.observatories.is_empty());
         assert!(!space.rockets.is_empty());
         assert!(!space.dishes.is_empty());

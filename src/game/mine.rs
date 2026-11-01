@@ -22,7 +22,7 @@ use crate::world::Assets3d;
 use crate::world::landmarks::Spin;
 use crate::world::props::{Footprint, row_points};
 use crate::world::quads::MeshBuilder;
-use crate::world::scenery::{Row, Side, Span};
+use crate::world::scenery::{Row, Scenery, Side, Span};
 use crate::world::terrain::Terrain;
 use crate::world::themes::{Stage, Theme};
 
@@ -229,6 +229,7 @@ impl Theme for Mine {
         world: &mut ChildSpawnerCommands,
         track: &Track,
         terrain: &Terrain,
+        _scenery: &Scenery,
         assets: &mut Assets3d,
     ) -> Vec<Footprint> {
         spawn_mine(world, track, terrain, self, assets)

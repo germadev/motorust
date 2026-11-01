@@ -6,6 +6,7 @@
 
 pub mod desert;
 pub mod mine;
+pub mod space;
 
 use bevy::prelude::*;
 
@@ -17,6 +18,7 @@ use crate::world::themes;
 pub fn register_themes() {
     themes::register::<desert::Desert>("desert");
     themes::register::<mine::Mine>("mine");
+    themes::register::<space::Space>("space");
 }
 
 /// The game's own systems: its themes' (what moves in them).
@@ -25,7 +27,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         register_themes();
-        app.add_plugins((desert::DesertPlugin, mine::MinePlugin));
+        app.add_plugins((desert::DesertPlugin, mine::MinePlugin, space::SpacePlugin));
     }
 }
 
@@ -35,8 +37,13 @@ mod tests {
 
     /// The files outside the game's folder that name it, and why: none but
     /// the game's `main`, and the circuits' tests, which read the game's
-    /// circuits until the engine's tests have content of their own (4c).
-    const ALLOWED: [&str; 2] = ["src/main.rs", "src/circuits/mod.rs"];
+    /// circuits until the engine's tests have content of their own and the
+    /// game's go with it (4c).
+    const ALLOWED: [&str; 3] = [
+        "src/main.rs",
+        "src/circuits/mod.rs",
+        "src/circuits/moon_base.rs",
+    ];
 
     fn sources(folder: &Path, found: &mut Vec<std::path::PathBuf>) {
         for entry in std::fs::read_dir(folder).unwrap() {

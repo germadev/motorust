@@ -111,11 +111,7 @@ impl Realm {
 /// Whether a circuit is split between the Earth and the Moon: the Moon's
 /// soil, with portals to the Earth.
 pub fn splits(scenery: &Scenery) -> bool {
-    scenery.soil == Soil::Lunar
-        && scenery
-            .space
-            .as_ref()
-            .is_some_and(|space| !space.portals.is_empty())
+    scenery.soil == Soil::Lunar && !scenery.portals.is_empty()
 }
 
 /// The triangles of `mesh` (a list of triangles) whose middle lies in
@@ -158,7 +154,7 @@ pub fn part_in(mesh: &Mesh, realm: Realm) -> Option<Mesh> {
 pub struct RealmScenery;
 
 /// An interdimensional portal across the road, its ring in its XY plane
-/// (see `super::space`): its curtain is put on it here.
+/// (see [`super::portals`]): its curtain is put on it here.
 #[derive(Component)]
 pub struct PortalGate;
 
@@ -202,11 +198,8 @@ fn gates(track: &Track, scenery: &Scenery) -> Vec<Gate> {
     if !splits(scenery) {
         return Vec::new();
     }
-    let portals = scenery
-        .space
-        .as_ref()
-        .map_or(&[][..], |space| space.portals);
-    portals
+    scenery
+        .portals
         .iter()
         .map(|portal| {
             let index = track.index_at(portal.along);
@@ -754,7 +747,7 @@ mod tests {
             along += 1.0;
         }
         assert_eq!(changes.len(), 2, "realm changes at {changes:?}");
-        let portals = circuit.scenery.space.as_ref().unwrap().portals;
+        let portals = circuit.scenery.portals;
         for (change, portal) in changes.iter().zip(portals) {
             assert!(
                 (change - portal.along).abs() <= track.step_length() + 1.0,

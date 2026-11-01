@@ -30,6 +30,7 @@ use serde::de::{DeserializeOwned, DeserializeSeed, Deserializer, Error, MapAcces
 
 use super::Assets3d;
 use super::props::Footprint;
+use super::scenery::Scenery;
 use super::terrain::Terrain;
 use crate::track::Track;
 
@@ -53,15 +54,17 @@ pub trait Theme: Any + Send + Sync {
 
     /// Puts it in the circuit's world as it is built, beside the road, and
     /// returns the ground each thing takes, so that nothing else (houses,
-    /// trees) is put there.
+    /// trees) is put there. The circuit's `scenery` is there for what of the
+    /// engine's it goes with (a portal, a hall).
     fn spawn(
         &self,
         world: &mut ChildSpawnerCommands,
         track: &Track,
         terrain: &Terrain,
+        scenery: &Scenery,
         assets: &mut Assets3d,
     ) -> Vec<Footprint> {
-        let _ = (world, track, terrain, assets);
+        let _ = (world, track, terrain, scenery, assets);
         Vec::new()
     }
 }

@@ -62,7 +62,15 @@ pub fn spawn_props(
     for row in scenery.hotels {
         occupied.extend(spawn_hotels(world, track, terrain, row, assets));
     }
-    // What the circuit's themes put by the road (see `super::themes`).
+    // The portals between the realms, then what the circuit's themes put
+    // by the road (see `super::themes`).
+    occupied.extend(super::portals::spawn_portals(
+        world,
+        track,
+        terrain,
+        scenery.portals,
+        assets,
+    ));
     spawn_themes(
         world,
         track,
@@ -78,9 +86,6 @@ pub fn spawn_props(
     } else {
         (FlowerPlan::default(), flowers)
     };
-    occupied.extend(super::space::spawn_space(
-        world, track, terrain, scenery, assets,
-    ));
     if let Some(store) = &scenery.toys {
         super::toys::spawn_trains(world, store, assets);
         super::toys::spawn_models(world, store, assets);
@@ -173,7 +178,7 @@ fn spawn_themes(
 ) {
     for (_, theme) in scenery.themes.iter() {
         if theme.stage() == stage {
-            occupied.extend(theme.spawn(world, track, terrain, assets));
+            occupied.extend(theme.spawn(world, track, terrain, scenery, assets));
         }
     }
 }

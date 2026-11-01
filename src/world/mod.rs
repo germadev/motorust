@@ -18,6 +18,7 @@ mod lod;
 mod middle_earth;
 mod mirror;
 pub mod mountains;
+pub mod portals;
 mod preview;
 pub mod props;
 pub mod quads;
@@ -30,7 +31,6 @@ mod shadow_fade;
 mod shopfront;
 mod shoulders;
 pub mod sky;
-mod space;
 pub(crate) mod structures;
 pub mod terrain;
 pub mod textures;
@@ -129,8 +129,7 @@ impl Plugin for WorldPlugin {
                     landmarks::flow,
                     sky::drift_clouds,
                     sky::light_the_sky,
-                    space::turn_dishes,
-                    space::spin_portals,
+                    portals::spin_portals,
                     toys::run_trains,
                     japan::turn_wheels,
                     japan::drift_petals,

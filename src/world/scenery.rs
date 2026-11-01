@@ -611,6 +611,10 @@ pub struct Scenery {
     /// An open pit round the water, if there is one.
     #[serde(default)]
     pub pit: Option<Pit>,
+    /// The portals between the realms of a split circuit, across the road
+    /// (see [`super::realm`] and [`super::portals`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub portals: &'static [Portal],
     /// The halls of an excavation, a mine's or Moria's: where there are, its
     /// tunnels are dug through the rock (see [`Scenery::excavation`]).
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
@@ -628,10 +632,6 @@ pub struct Scenery {
     /// see [`MiddleEarth`].
     #[serde(default)]
     pub middle_earth: Option<MiddleEarth>,
-    /// The works of a lunar base and orbital space station, if any: see
-    /// [`Space`].
-    #[serde(default)]
-    pub space: Option<Space>,
     /// The inside of a toy store, if the road runs through one: see
     /// [`ToyStore`].
     #[serde(default)]
@@ -1289,43 +1289,6 @@ pub struct BrakeMarker {
     pub distance: u32,
 }
 
-/// The works of a lunar base and Earth space center (see
-/// [`crate::world::space`]): geodesic biodomes, lunar rovers, solar panel
-/// arrays, huge deep-space radio dishes turning slowly, astronomical
-/// observatory domes with telescopes, orbital rockets on their launchpads,
-/// illuminated station ribs over the road, interdimensional stargate portals
-/// connecting Earth and the Moon, and lunar boulders with survey beacons.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Space {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub biodomes: &'static [Biodome],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub rovers: &'static [Rover],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub solar_arrays: &'static [Row],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub dishes: &'static [RadioDish],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub observatories: &'static [Observatory],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub rockets: &'static [Rocket],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub arches: &'static [StationArch],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub portals: &'static [Portal],
-    pub boulders: LunarBoulders,
-}
-
-/// An astronomical telescope observatory dome at `position` (x, z), its open
-/// shutter slit and giant reflector telescope aimed towards `heading`.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Observatory {
-    pub position: Vec2,
-    pub heading: f32,
-}
-
 /// An interdimensional stargate portal spanning over the road at `along`
 /// metres from the finish line, with twin energy pylons, counter-rotating
 /// plasma rings, and a translucent glowing vortex curtain.
@@ -1333,62 +1296,6 @@ pub struct Observatory {
 #[serde(deny_unknown_fields)]
 pub struct Portal {
     pub along: f32,
-}
-
-/// A geodesic habitat dome beside the road, with a metallic ring base,
-/// glass panels and an airlock facing the track.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Biodome {
-    pub along: f32,
-    pub side: Side,
-    pub radius: f32,
-}
-
-/// A six-wheeled lunar rover beside the road, its gold-foil chassis facing
-/// `heading` (relative to the road direction).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Rover {
-    pub along: f32,
-    pub side: Side,
-    pub lateral: f32,
-    pub heading: f32,
-}
-
-/// A parabolic deep-space radio telescope dish at `position` (x, z), its
-/// dish pointed towards `heading` and turning slowly.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RadioDish {
-    pub position: Vec2,
-    pub heading: f32,
-}
-
-/// An orbital rocket standing on its launchpad at `position` (x, z), with an
-/// umbilical launch tower beside it facing `heading`.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Rocket {
-    pub position: Vec2,
-    pub heading: f32,
-}
-
-/// A sleek space-station structural rib/arch spanning over the road at
-/// `along` metres from the finish line, with glowing cyan-white beacon strips.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StationArch {
-    pub along: f32,
-}
-
-/// Lunar boulders scattered along `spans` on both sides of the road.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LunarBoulders {
-    pub max: usize,
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
-    pub spans: &'static [Span],
 }
 
 /// The inside of a toy store (see [`crate::world::toys`]): the room, with
