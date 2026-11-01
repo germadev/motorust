@@ -15,7 +15,7 @@ use crate::bike::Roster;
 use crate::circuits::{Circuit, Circuits};
 
 /// A file of the engine's demo content, by its path in its `assets/`.
-fn demo_file(path: &str) -> &'static str {
+pub fn demo_file(path: &str) -> &'static str {
     let on_disk = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("motorust-engine/assets")
         .join(path);

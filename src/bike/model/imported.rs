@@ -395,34 +395,21 @@ pub(super) fn build(parts: &mut Parts, model: &Model, materials: &Materials) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    #[test]
-    fn a_model_is_read_from_its_folder_once() {
-        let shogun = model("shogun").unwrap();
-        assert!(std::ptr::eq(shogun, model("shogun").unwrap()), "once");
-        assert_eq!(shogun.geometry.rear_axle, Vec3::new(0.0, 0.313, 0.68));
-        assert!(shogun.steers);
-        assert_eq!(shogun.tyres, tyre::Compound::Medium);
-        let legend = model("legend").unwrap();
-        assert!(!legend.steers, "its fork welded to the fairing");
-        assert_eq!(legend.tyres, tyre::Compound::Hard);
-        assert_ne!(shogun, legend);
-        assert!(models().contains(&shogun) && models().contains(&legend));
-    }
-
     /// The roster's models.
-    fn roster_models() -> Vec<&'static Model> {
-        super::super::designs::every()
+    pub(crate) fn roster_models(roster: &'static crate::bike::Roster) -> Vec<&'static Model> {
+        super::super::designs::every(roster)
             .into_iter()
             .filter_map(super::super::Design::model)
             .collect()
     }
 
-    #[test]
-    fn bikes_have_their_parts_and_wheels_on_the_ground() {
-        for model in roster_models() {
+    pub(crate) fn bikes_have_their_parts_and_wheels_on_the_ground_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        for model in roster_models(roster) {
             let pack = read(model.bike());
             let names: Vec<&str> = pack.meshes.iter().map(|m| m.name.as_str()).collect();
             assert_eq!(
@@ -462,8 +449,14 @@ mod tests {
     }
 
     #[test]
-    fn exhausts_open_at_the_back_of_the_silencers() {
-        for model in roster_models() {
+    fn bikes_have_their_parts_and_wheels_on_the_ground() {
+        bikes_have_their_parts_and_wheels_on_the_ground_on(&crate::testing::DEMO_ROSTER);
+    }
+
+    pub(crate) fn exhausts_open_at_the_back_of_the_silencers_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        for model in roster_models(roster) {
             let pack = read(model.bike());
             let exhaust = &pack.meshes[4].mesh;
             let Some(VertexAttributeValues::Float32x3(positions)) =
@@ -484,6 +477,11 @@ mod tests {
     }
 
     #[test]
+    fn exhausts_open_at_the_back_of_the_silencers() {
+        exhausts_open_at_the_back_of_the_silencers_on(&crate::testing::DEMO_ROSTER);
+    }
+
+    #[test]
     fn exhaust_lips_are_metal_and_their_insides_dark() {
         assert!(exhaust_shade(0.0) > 0.5);
         assert!(exhaust_shade(1.0) < 0.05);
@@ -491,9 +489,8 @@ mod tests {
         assert!(shades.windows(2).all(|pair| pair[1] <= pair[0]));
     }
 
-    #[test]
-    fn pilots_have_a_rigged_body() {
-        for model in roster_models() {
+    pub(crate) fn pilots_have_a_rigged_body_on(roster: &'static crate::bike::Roster) {
+        for model in roster_models(roster) {
             let pack = read(model.pilot());
             assert_eq!(pack.meshes.len(), 1);
             assert!(
@@ -510,5 +507,10 @@ mod tests {
                 assert!(parent < index, "los padres van antes que los hijos");
             }
         }
+    }
+
+    #[test]
+    fn pilots_have_a_rigged_body() {
+        pilots_have_a_rigged_body_on(&crate::testing::DEMO_ROSTER);
     }
 }

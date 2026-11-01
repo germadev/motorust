@@ -208,28 +208,26 @@ impl std::ops::Deref for Circuits {
 pub struct CurrentCircuit(pub usize);
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
-    #[test]
-    fn circuits_have_checkpoints() {
-        assert_eq!(CIRCUITS[0].checkpoints(), vec![780.0]);
-        assert_eq!(CIRCUITS[1].checkpoints(), vec![960.0, 1980.0, 2980.0]);
-        assert_eq!(CIRCUITS[2].checkpoints(), vec![700.0, 1560.0]);
+    pub(crate) fn circuits_have_checkpoints_on(circuits: &'static crate::circuits::Circuits) {
+        assert_eq!(circuits[0].checkpoints(), vec![780.0]);
+        assert_eq!(circuits[1].checkpoints(), vec![960.0, 1980.0, 2980.0]);
+        assert_eq!(circuits[2].checkpoints(), vec![700.0, 1560.0]);
         assert_eq!(
-            CIRCUITS[3].checkpoints(),
+            circuits[3].checkpoints(),
             vec![1200.0, 2640.0, 3540.0, 4440.0, 5250.0]
         );
         assert_eq!(
-            CIRCUITS[4].checkpoints(),
+            circuits[4].checkpoints(),
             vec![1000.0, 2200.0, 3150.0, 4230.0, 5100.0]
         );
-        assert_eq!(CIRCUITS[5].checkpoints(), vec![1090.0, 2240.0, 3450.0]);
+        assert_eq!(circuits[5].checkpoints(), vec![1090.0, 2240.0, 3450.0]);
         assert_eq!(
-            CIRCUITS[6].checkpoints(),
+            circuits[6].checkpoints(),
             vec![868.0, 1905.1, 2955.1, 3585.1, 4565.1]
         );
-        assert_eq!(CIRCUITS[7].checkpoints(), vec![635.0, 1381.0, 2303.0]);
+        assert_eq!(circuits[7].checkpoints(), vec![635.0, 1381.0, 2303.0]);
     }
 }

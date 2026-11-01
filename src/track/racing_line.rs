@@ -128,7 +128,7 @@ pub fn speed_plan(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::f32::consts::TAU;
 
@@ -219,9 +219,10 @@ mod tests {
         assert!(bending(&path) < 0.85 * bending(&lap));
     }
 
-    #[test]
-    fn on_every_track_it_stays_on_the_asphalt_and_takes_the_sharpest_bend_inside() {
-        for circuit in crate::game::CIRCUITS.iter() {
+    pub(crate) fn on_every_track_it_stays_on_the_asphalt_and_takes_the_sharpest_bend_inside_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = crate::track::Track::new(&circuit.layout);
             let line = racing_line(track.centerline(), |i| track.half_width_at(i));
             for (index, &left) in line.iter().enumerate() {
@@ -244,6 +245,13 @@ mod tests {
                 line[sharpest]
             );
         }
+    }
+
+    #[test]
+    fn on_every_track_it_stays_on_the_asphalt_and_takes_the_sharpest_bend_inside() {
+        on_every_track_it_stays_on_the_asphalt_and_takes_the_sharpest_bend_inside_on(
+            &crate::testing::DEMO,
+        );
     }
 
     #[test]

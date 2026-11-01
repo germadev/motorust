@@ -1518,7 +1518,7 @@ fn skid_marks(track: &Track) -> Option<Mesh> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::track::WALL_DISTANCE;
 
@@ -1633,9 +1633,10 @@ mod tests {
         assert_eq!(far, WALL_THICKNESS);
     }
 
-    #[test]
-    fn walls_face_out_and_follow_the_road() {
-        let circuit = &crate::game::CIRCUITS[0];
+    pub(crate) fn walls_face_out_and_follow_the_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[0];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let road = Road {
@@ -1679,10 +1680,16 @@ mod tests {
     }
 
     #[test]
-    fn no_railing_stands_across_another_road() {
+    fn walls_face_out_and_follow_the_road() {
+        walls_face_out_and_follow_the_road_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn no_railing_stands_across_another_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Ghost Island, where the lap splits and crosses itself and the
         // wall opens into the shrine's fence for the props by the road.
-        let circuit = crate::game::CIRCUITS
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.name == "Ghost Island")
             .expect("a circuit of feudal Japan");
@@ -1713,9 +1720,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn wooden_bridges_have_their_fence_instead_of_walls() {
-        for circuit in crate::game::CIRCUITS.iter() {
+    pub(crate) fn wooden_bridges_have_their_fence_instead_of_walls_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let scenery = &circuit.scenery;
             let lap = Track::new(&circuit.layout).lap_length();
             for bridge in scenery.bridges {
@@ -1760,5 +1768,10 @@ mod tests {
                 assert!(off.is_some(), "{}", circuit.name);
             }
         }
+    }
+
+    #[test]
+    fn wooden_bridges_have_their_fence_instead_of_walls() {
+        wooden_bridges_have_their_fence_instead_of_walls_on(&crate::testing::DEMO);
     }
 }

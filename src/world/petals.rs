@@ -232,9 +232,8 @@ fn cherry_petal_mesh() -> Mesh {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
     #[test]
     fn a_petal_falls_from_the_top_of_its_column_to_the_ground_swaying() {
@@ -262,10 +261,11 @@ mod tests {
         assert!(after.y > before.y + 11.0, "{before} {after}");
     }
 
-    #[test]
-    fn petals_drift_over_their_areas_red_and_white() {
+    pub(crate) fn petals_drift_over_their_areas_red_and_white_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut kinds = Vec::new();
-        for circuit in CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let petals = circuit.scenery.petals;
             if petals.is_empty() {
                 continue;

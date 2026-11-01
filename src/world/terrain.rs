@@ -2121,20 +2121,21 @@ impl Builder {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
+    /// The engine's demo circuit, the bay.
     fn bay() -> (Track, Terrain) {
-        let circuit = &CIRCUITS[0];
+        let circuit = crate::testing::demo_circuit();
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         (track, terrain)
     }
 
-    #[test]
-    fn terrain_hugs_the_road_and_the_track_stays_dry() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn terrain_hugs_the_road_and_the_track_stays_dry_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let tunnels = Tunnels::new(&track, &circuit.scenery);
@@ -2192,8 +2193,14 @@ mod tests {
     }
 
     #[test]
-    fn the_track_edge_is_where_the_earth_rises_inside_the_walls() {
-        for circuit in CIRCUITS.iter() {
+    fn terrain_hugs_the_road_and_the_track_stays_dry() {
+        terrain_hugs_the_road_and_the_track_stays_dry_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_track_edge_is_where_the_earth_rises_inside_the_walls_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let edges = terrain.track_edges(&track);
@@ -2223,15 +2230,21 @@ mod tests {
     }
 
     #[test]
+    fn the_track_edge_is_where_the_earth_rises_inside_the_walls() {
+        the_track_edge_is_where_the_earth_rises_inside_the_walls_on(&crate::testing::DEMO);
+    }
+
+    #[test]
     fn there_is_sea_to_the_west_and_mountains_to_the_north_east() {
         let (_, terrain) = bay();
         assert!(terrain.height(Vec2::new(-400.0, -200.0)) < SEA_LEVEL);
         assert!(terrain.height(Vec2::new(1000.0, -1000.0)) > 50.0);
     }
 
-    #[test]
-    fn turbo_bay_is_an_island_with_a_river_under_the_bridge() {
-        let circuit = &CIRCUITS[1];
+    pub(crate) fn turbo_bay_is_an_island_with_a_river_under_the_bridge_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[1];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         // Sea beyond the beach of the seafront, and land inside both loops
@@ -2254,9 +2267,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn turbo_bay_dives_to_the_foot_of_its_lighthouse_in_full_view() {
-        let circuit = &CIRCUITS[1];
+    pub(crate) fn turbo_bay_dives_to_the_foot_of_its_lighthouse_in_full_view_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[1];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let lighthouse = &circuit.scenery.lighthouses[0];
@@ -2298,9 +2312,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn turbo_bay_passes_over_its_own_tunnel() {
-        let circuit = &CIRCUITS[1];
+    pub(crate) fn turbo_bay_passes_over_its_own_tunnel_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[1];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let tunnels = Tunnels::new(&track, &circuit.scenery);
@@ -2335,9 +2350,10 @@ mod tests {
         assert!((terrain.height(point) - low).abs() < 0.1);
     }
 
-    #[test]
-    fn gold_mine_climbs_its_mountain_and_passes_over_its_galleries() {
-        let circuit = &CIRCUITS[3];
+    pub(crate) fn gold_mine_climbs_its_mountain_and_passes_over_its_galleries_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[3];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let tunnels = Tunnels::new(&track, &circuit.scenery);
@@ -2448,9 +2464,10 @@ mod tests {
         assert_eq!(pit_ground(&pit, width + 10.0 * pitch, 30.0), 30.0);
     }
 
-    #[test]
-    fn gold_mine_s_great_lake_is_the_bottom_of_an_open_pit() {
-        let circuit = &CIRCUITS[3];
+    pub(crate) fn gold_mine_s_great_lake_is_the_bottom_of_an_open_pit_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[3];
         let (Some(pit), Coast::Sea(waters)) = (&circuit.scenery.pit, &circuit.scenery.coast) else {
             panic!("Gold Mine has an open pit round its lake");
         };
@@ -2501,9 +2518,10 @@ mod tests {
         assert!(seen >= 8, "{seen} rays clear of the roads");
     }
 
-    #[test]
-    fn loop_island_is_an_island_of_checkerboard_cliffs() {
-        let circuit = &CIRCUITS[2];
+    pub(crate) fn loop_island_is_an_island_of_checkerboard_cliffs_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[2];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         assert_eq!(terrain.soil, Soil::Checkered);
@@ -2729,9 +2747,10 @@ mod tests {
         assert!((axis[i + 1] - axis[i] - FINE_SPACING).abs() < 1e-3);
     }
 
-    #[test]
-    fn snow_lies_on_down_the_gullies_of_the_mountains_and_forest_climbs_them() {
-        let circuit = CIRCUITS
+    pub(crate) fn snow_lies_on_down_the_gullies_of_the_mountains_and_forest_climbs_them_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.name == "Ghost Island")
             .unwrap();
@@ -2775,11 +2794,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_borders_between_grounds_run_smoothly_not_in_steps() {
+    pub(crate) fn the_borders_between_grounds_run_smoothly_not_in_steps_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Ghost Island: fields of flowers, beaches, and a volcano with a
         // tree line and snow on its top.
-        let circuit = CIRCUITS
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.name == "Ghost Island")
             .unwrap();

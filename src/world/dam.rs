@@ -625,9 +625,8 @@ fn square_mesh(terrain: &Terrain, at: Vec2) -> Mesh {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
     use crate::track::WALL_DISTANCE;
     use crate::world::mirror::surroundings_map;
     use crate::world::mirror::tests::mapped;
@@ -635,17 +634,20 @@ mod tests {
     use crate::world::scenery::BridgeStyle;
 
     /// Turbo Bay, its track, its terrain and its dam.
-    fn turbo_bay() -> (Track, Terrain, &'static Dam) {
-        let circuit = &CIRCUITS[1];
+    pub(crate) fn turbo_bay(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> (Track, Terrain, &'static Dam) {
+        let circuit = &circuits[1];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         (track, terrain, &circuit.scenery.dams[0])
     }
 
-    #[test]
-    fn every_dam_s_crest_is_a_bridge_of_its_own() {
+    pub(crate) fn every_dam_s_crest_is_a_bridge_of_its_own_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut dams = 0;
-        for circuit in CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let scenery = &circuit.scenery;
             for dam in scenery.dams {
                 assert!(
@@ -671,9 +673,10 @@ mod tests {
         assert!(dams > 0, "some circuit has a dam");
     }
 
-    #[test]
-    fn a_lake_s_water_is_a_fan_that_never_folds_over() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn a_lake_s_water_is_a_fan_that_never_folds_over_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             for dam in circuit.scenery.dams {
                 let shore = closed_curve(dam.lake, SHORE_SPACING);
                 let middle = shore.iter().copied().sum::<Vec2>() / shore.len() as f32;
@@ -691,11 +694,17 @@ mod tests {
     }
 
     #[test]
-    fn a_dam_s_crest_bows_towards_its_lake() {
+    fn a_lake_s_water_is_a_fan_that_never_folds_over() {
+        a_lake_s_water_is_a_fan_that_never_folds_over_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn a_dam_s_crest_bows_towards_its_lake_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // As an arch dam: over the crest the road bends away from the lake,
         // all the way along it, so the arch's middle stands out towards the
         // water it holds.
-        for circuit in CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             for dam in circuit.scenery.dams {
                 let crest = indices(&track, dam.crest, track.lap_length());
@@ -711,11 +720,17 @@ mod tests {
     }
 
     #[test]
-    fn turbo_bay_comes_down_onto_its_dam_straight_at_it() {
+    fn a_dam_s_crest_bows_towards_its_lake() {
+        a_dam_s_crest_bows_towards_its_lake_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn turbo_bay_comes_down_onto_its_dam_straight_at_it_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // The crest is not the top of the climb: the hairpin before it is
         // well away and higher up, and the road comes down the hillside
         // from it straight at the dam.
-        let (track, _, dam) = turbo_bay();
+        let (track, _, dam) = turbo_bay(circuits);
         let height = |along: f32| track.elevations()[track.index_at(along)];
         let crest = height(dam.crest.from);
         let top = (1..=300)
@@ -739,9 +754,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn turbo_bay_s_lake_shows_coming_down_to_the_dam_and_over_its_parapet() {
-        let (track, terrain, dam) = turbo_bay();
+    pub(crate) fn turbo_bay_s_lake_shows_coming_down_to_the_dam_and_over_its_parapet_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, terrain, dam) = turbo_bay(circuits);
         let shore = closed_curve(dam.lake, SHORE_SPACING);
         let crest = indices(&track, dam.crest, track.lap_length());
         let side = dam.lake_side.sign();
@@ -784,11 +800,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn turbo_bay_s_lake_mirrors_the_hills_round_it_and_the_dam() {
-        let (track, terrain, dam) = turbo_bay();
+    pub(crate) fn turbo_bay_s_lake_mirrors_the_hills_round_it_and_the_dam_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, terrain, dam) = turbo_bay(circuits);
         let grass = Color::srgb(0.4, 0.55, 0.2).to_linear();
-        let scenery = &CIRCUITS[1].scenery;
+        let scenery = &circuits[1].scenery;
         let (corner, size, highest, image) = surroundings_map(
             &track,
             &terrain,
@@ -831,9 +848,10 @@ mod tests {
         assert!(highest >= top[3] && highest < 400.0, "{highest}");
     }
 
-    #[test]
-    fn turbo_bay_s_dam_holds_its_lake_a_few_metres_under_the_crest() {
-        let (track, terrain, dam) = turbo_bay();
+    pub(crate) fn turbo_bay_s_dam_holds_its_lake_a_few_metres_under_the_crest_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, terrain, dam) = turbo_bay(circuits);
         let lap = track.lap_length();
         let crest: Vec<usize> = indices(&track, dam.crest, lap);
         for &i in &crest {
@@ -869,10 +887,11 @@ mod tests {
         assert!(held > shore.len() / 2);
     }
 
-    #[test]
-    fn the_sun_shines_on_turbo_bay_s_dam_face_all_across_it() {
-        let (track, _, dam) = turbo_bay();
-        let sun = crate::world::sky::Palette::of(CIRCUITS[1].scenery.sky).sun_direction();
+    pub(crate) fn the_sun_shines_on_turbo_bay_s_dam_face_all_across_it_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, _, dam) = turbo_bay(circuits);
+        let sun = crate::world::sky::Palette::of(circuits[1].scenery.sky).sun_direction();
         let sun = Vec2::new(sun.x, sun.z).normalize();
         let downstream = -dam.lake_side.sign();
         for i in indices(&track, dam.crest, track.lap_length()) {
@@ -883,9 +902,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn turbo_bay_s_river_runs_from_the_foot_of_the_dam_down_the_gorge_to_the_sea() {
-        let (_, terrain, dam) = turbo_bay();
+    pub(crate) fn turbo_bay_s_river_runs_from_the_foot_of_the_dam_down_the_gorge_to_the_sea_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (_, terrain, dam) = turbo_bay(circuits);
         // From under the dam to the mouth, the sea's water.
         for pair in dam.river.windows(2) {
             let ((a, _), (b, _)) = (pair[0], pair[1]);
@@ -907,9 +927,10 @@ mod tests {
         assert!(terrain.height(far) > 0.6 * wall, "{}", terrain.height(far));
     }
 
-    #[test]
-    fn turbo_bay_s_dam_face_drops_to_the_river_in_sight_of_the_road_up_the_gorge() {
-        let (track, terrain, dam) = turbo_bay();
+    pub(crate) fn turbo_bay_s_dam_face_drops_to_the_river_in_sight_of_the_road_up_the_gorge_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, terrain, dam) = turbo_bay(circuits);
         let lap = track.lap_length();
         let crest = indices(&track, dam.crest, lap);
         let middle = crest[crest.len() / 2];

@@ -458,11 +458,11 @@ impl Loop {
     }
 }
 
-/// For the tests: the first circuit's, Bahía's.
+/// For the tests: the engine's demo circuit's, Bahía's.
 #[cfg(test)]
 impl Default for Track {
     fn default() -> Self {
-        Self::new(&crate::game::CIRCUITS[0].layout)
+        Self::new(&crate::testing::demo_circuit().layout)
     }
 }
 
@@ -1944,7 +1944,7 @@ fn resample(points: &[Vec2], spacing: f32) -> Vec<Vec2> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn track() -> Track {
@@ -1952,8 +1952,10 @@ mod tests {
     }
 
     /// Todas las pistas del juego, con su nombre.
-    fn every_track() -> Vec<(&'static str, Track)> {
-        crate::game::CIRCUITS
+    pub(crate) fn every_track(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> Vec<(&'static str, Track)> {
+        circuits
             .iter()
             .map(|circuit| (circuit.name, Track::new(&circuit.layout)))
             .collect()
@@ -1969,9 +1971,10 @@ mod tests {
             && a.lateral.to_bits() == b.lateral.to_bits()
     }
 
-    #[test]
-    fn the_grid_finds_what_going_through_every_segment_finds() {
-        for (name, track) in every_track() {
+    pub(crate) fn the_grid_finds_what_going_through_every_segment_finds_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for (name, track) in every_track(circuits) {
             let mut checked = 0;
             for road in 0..=track.side_roads().len() {
                 let line = track.road(road);
@@ -2021,10 +2024,16 @@ mod tests {
     }
 
     #[test]
-    fn the_grid_finds_the_points_of_segments_corners_as_the_search_did() {
+    fn the_grid_finds_what_going_through_every_segment_finds() {
+        the_grid_finds_what_going_through_every_segment_finds_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_grid_finds_the_points_of_segments_corners_as_the_search_did_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // On a corner's point, two segments are as near: the first counts,
         // in the grid as when every segment was looked at.
-        for (name, track) in every_track() {
+        for (name, track) in every_track(circuits) {
             for index in (0..track.segment_count()).step_by(5) {
                 let point = track.centerline[index];
                 let height = track.elevation[index];
@@ -2040,15 +2049,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_grid_finds_the_points_of_segments_corners_as_the_search_did() {
+        the_grid_finds_the_points_of_segments_corners_as_the_search_did_on(&crate::testing::DEMO);
+    }
+
     /// How long finding a bike on each track takes, with the grid and going
     /// through every segment: `cargo test --release -- --ignored --nocapture
     /// time_to_find`.
-    #[test]
-    #[ignore = "a measurement, not a check"]
-    fn time_to_find_a_bike_on_each_track() {
+    pub(crate) fn time_to_find_a_bike_on_each_track_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         use std::hint::black_box;
         use std::time::Instant;
-        for (name, track) in every_track() {
+        for (name, track) in every_track(circuits) {
             let points: Vec<(Vec2, f32)> = (0..track.segment_count())
                 .step_by(7)
                 .map(|index| (track.offset_point(index, 2.5), track.elevation[index] + 0.5))
@@ -2070,6 +2084,12 @@ mod tests {
                 every / grid
             );
         }
+    }
+
+    #[test]
+    #[ignore = "a measurement, not a check"]
+    fn time_to_find_a_bike_on_each_track() {
+        time_to_find_a_bike_on_each_track_on(&crate::testing::DEMO);
     }
 
     #[test]
@@ -2158,12 +2178,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn curves_are_drivable() {
+    pub(crate) fn curves_are_drivable_on(circuits: &'static crate::circuits::Circuits) {
         // Por debajo de este radio el muro del interior de la curva se doblaría
         // sobre sí mismo, y además no habría quien la tomase: two and a half
         // times as far as the walls stand from the centre line.
-        for (name, track) in every_track() {
+        for (name, track) in every_track(circuits) {
             let min_radius = 2.5 * track.wall();
             for index in 0..track.centerline.len() {
                 let radius = 1.0 / track.curvature(index).abs();
@@ -2176,8 +2195,14 @@ mod tests {
     }
 
     #[test]
-    fn walls_of_distant_stretches_do_not_meet() {
-        for circuit in crate::game::CIRCUITS.iter() {
+    fn curves_are_drivable() {
+        curves_are_drivable_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn walls_of_distant_stretches_do_not_meet_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let (name, track) = (circuit.name, Track::new(&circuit.layout));
             let n = track.centerline.len();
             let lap = track.lap_length();
@@ -2217,8 +2242,14 @@ mod tests {
     }
 
     #[test]
-    fn start_faces_down_the_main_straight() {
-        for (name, track) in every_track() {
+    fn walls_of_distant_stretches_do_not_meet() {
+        walls_of_distant_stretches_do_not_meet_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn start_faces_down_the_main_straight_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for (name, track) in every_track(circuits) {
             let (position, heading) = track.grid_pose(0, 0.0);
             assert!(position.x.abs() < 1.0, "{name}");
             assert!(
@@ -2227,6 +2258,11 @@ mod tests {
             );
             assert!(heading.abs() < 0.05, "la recta va hacia -Z en {name}");
         }
+    }
+
+    #[test]
+    fn start_faces_down_the_main_straight() {
+        start_faces_down_the_main_straight_on(&crate::testing::DEMO);
     }
 
     #[test]
@@ -2266,8 +2302,10 @@ mod tests {
     }
 
     /// The tracks with branches, with their names.
-    fn tracks_with_branches() -> Vec<(&'static str, Track)> {
-        let tracks: Vec<_> = every_track()
+    pub(crate) fn tracks_with_branches(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> Vec<(&'static str, Track)> {
+        let tracks: Vec<_> = every_track(circuits)
             .into_iter()
             .filter(|(_, track)| !track.loops.is_empty())
             .collect();
@@ -2275,9 +2313,10 @@ mod tests {
         tracks
     }
 
-    #[test]
-    fn a_branch_leaves_the_lap_and_joins_it_again_along_it() {
-        for (name, track) in tracks_with_branches() {
+    pub(crate) fn a_branch_leaves_the_lap_and_joins_it_again_along_it_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for (name, track) in tracks_with_branches(circuits) {
             for looped in &track.loops {
                 let (into, out) = (track.road(looped.approach), track.road(looped.exit));
                 // It starts on the lap, going its way, and ends on it too.
@@ -2313,9 +2352,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn branches_are_rideable_and_clear_of_the_lap() {
-        for (name, track) in tracks_with_branches() {
+    pub(crate) fn branches_are_rideable_and_clear_of_the_lap_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for (name, track) in tracks_with_branches(circuits) {
             let (lap_wall, min_radius) = (track.wall(), 2.5 * track.wall());
             for looped in &track.loops {
                 for (leaving_lap, number) in [(true, looped.approach), (false, looped.exit)] {
@@ -2361,10 +2401,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_boosted_loop_has_a_booster_on_its_lead_in_and_one_beside_it_on_the_lap() {
+    pub(crate) fn a_boosted_loop_has_a_booster_on_its_lead_in_and_one_beside_it_on_the_lap_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut boosted = 0;
-        for (name, track) in every_track() {
+        for (name, track) in every_track(circuits) {
             let loops: Vec<&Loop> = track.loops().iter().filter(|l| l.boosters).collect();
             assert_eq!(track.boosters().len(), 2 * loops.len(), "{name}");
             for looped in loops {
@@ -2412,11 +2453,12 @@ mod tests {
         assert!(boosted > 0);
     }
 
-    #[test]
-    fn branches_climb_and_drop_smoothly_on_their_own() {
+    pub(crate) fn branches_climb_and_drop_smoothly_on_their_own_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Where a road off the lap has a surface of its own, it has no ramp
         // or dip sharper than the crests of the lap.
-        for (name, track) in tracks_with_branches() {
+        for (name, track) in tracks_with_branches(circuits) {
             for looped in &track.loops {
                 for number in [looped.approach, looped.exit] {
                     let road = track.road(number);
@@ -2437,9 +2479,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn bikes_on_a_branch_find_its_road() {
-        for (name, track) in tracks_with_branches() {
+    pub(crate) fn bikes_on_a_branch_find_its_road_on(circuits: &'static crate::circuits::Circuits) {
+        for (name, track) in tracks_with_branches(circuits) {
             for looped in &track.loops {
                 let into = track.road(looped.approach);
                 let index = into.sample_count() - 20;
@@ -2462,8 +2503,10 @@ mod tests {
     }
 
     /// The tracks with branches without a loop, with their names.
-    fn tracks_with_forks() -> Vec<(&'static str, Track)> {
-        let tracks: Vec<_> = every_track()
+    pub(crate) fn tracks_with_forks(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> Vec<(&'static str, Track)> {
+        let tracks: Vec<_> = every_track(circuits)
             .into_iter()
             .filter(|(_, track)| !track.forks.is_empty())
             .collect();
@@ -2471,9 +2514,10 @@ mod tests {
         tracks
     }
 
-    #[test]
-    fn a_fork_leaves_the_lap_and_joins_it_again_past_rock() {
-        for (name, track) in tracks_with_forks() {
+    pub(crate) fn a_fork_leaves_the_lap_and_joins_it_again_past_rock_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for (name, track) in tracks_with_forks(circuits) {
             let (lap_wall, min_radius) = (track.wall(), 2.5 * track.wall());
             for fork in &track.forks {
                 let road = track.road(fork.road);
@@ -2545,9 +2589,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn walls_close_in_on_a_narrow_bridge_and_open_out_after_it() {
-        let narrowed: Vec<_> = crate::game::CIRCUITS
+    pub(crate) fn walls_close_in_on_a_narrow_bridge_and_open_out_after_it_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let narrowed: Vec<_> = circuits
             .iter()
             .filter(|circuit| !circuit.layout.narrows.is_empty())
             .collect();
@@ -2590,15 +2635,16 @@ mod tests {
         assert!((0..bay.sample_count()).all(|i| bay.wall_at(i) == WALL_DISTANCE));
     }
 
-    #[test]
-    fn the_banking_puts_no_bumps_off_the_middle_of_the_road() {
+    pub(crate) fn the_banking_puts_no_bumps_off_the_middle_of_the_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Ridden at 30 m/s 4 m either side of the middle, how sharply the
         // road rises and falls is never more than 0.6 g from what it is in
         // the middle (every track well under it, the toy store's 0.3 g):
         // the bank changes smoothly, coming to its most softly (as it did
         // not on the toy store's raised bends, 3 g off the middle, felt as
         // bumps).
-        for circuit in crate::game::CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let (n, step, speed) = (track.sample_count(), track.step_length(), 30.0f32);
             let felt = |i: usize, lateral: f32| {
@@ -2620,8 +2666,14 @@ mod tests {
     }
 
     #[test]
-    fn slopes_and_banking_stay_rideable() {
-        for (name, track) in every_track() {
+    fn the_banking_puts_no_bumps_off_the_middle_of_the_road() {
+        the_banking_puts_no_bumps_off_the_middle_of_the_road_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn slopes_and_banking_stay_rideable_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for (name, track) in every_track(circuits) {
             let (n, step) = (track.sample_count(), track.step_length());
             for i in 0..n {
                 let grade = (track.elevation[(i + 1) % n] - track.elevation[i]) / step;
@@ -2644,11 +2696,17 @@ mod tests {
     }
 
     #[test]
-    fn raised_banking_keeps_the_inside_where_it_would_lie_level() {
+    fn slopes_and_banking_stay_rideable() {
+        slopes_and_banking_stay_rideable_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn raised_banking_keeps_the_inside_where_it_would_lie_level_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Its inside wall no lower than the road would lie level, and its
         // outside well up where it banks well.
         let mut banked = 0;
-        for (name, track) in every_track() {
+        for (name, track) in every_track(circuits) {
             for i in 0..track.sample_count() {
                 if !track.raised.get(i).copied().unwrap_or(false) {
                     continue;
@@ -2669,9 +2727,8 @@ mod tests {
         assert!(banked > 0);
     }
 
-    #[test]
-    fn banked_spans_bank_more() {
-        let layout = &crate::game::CIRCUITS[1].layout;
+    pub(crate) fn banked_spans_bank_more_on(circuits: &'static crate::circuits::Circuits) {
+        let layout = &circuits[1].layout;
         let banked = Track::new(layout);
         let plain = Track::new(&Layout {
             banking: &[],

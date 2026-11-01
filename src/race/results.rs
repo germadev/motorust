@@ -541,10 +541,8 @@ fn checkpoint_lines(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
-    use crate::game::ROSTER;
 
     #[test]
     fn the_results_go_to_the_middle_once_everybody_is_in() {
@@ -576,8 +574,9 @@ mod tests {
         assert!(everyone_in(&outcome));
     }
 
-    #[test]
-    fn a_player_disqualified_says_so_in_the_results() {
+    pub(crate) fn a_player_disqualified_says_so_in_the_results_on(
+        roster: &'static crate::bike::Roster,
+    ) {
         let place = |rider: usize, time: Option<f32>, out: bool| super::super::Place {
             rider,
             time,
@@ -594,55 +593,61 @@ mod tests {
             record: false,
             settled: true,
         };
-        let lines = race_lines(&ROSTER, &outcome, Language::Spanish);
+        let lines = race_lines(roster, &outcome, Language::Spanish);
         assert!(
             lines[1].right.starts_with("descalificado"),
             "{}",
             lines[1].right
         );
         assert!(lines[1].player && !lines[1].pending);
-        let lines = race_lines(&ROSTER, &outcome, Language::English);
+        let lines = race_lines(roster, &outcome, Language::English);
         assert!(lines[1].right.starts_with("disqualified"));
         // In the arcade, with no points.
         outcome.mode = Mode::Arcade;
-        let lines = race_lines(&ROSTER, &outcome, Language::English);
+        let lines = race_lines(roster, &outcome, Language::English);
         assert!(lines[1].right.ends_with("+0"), "{}", lines[1].right);
     }
 
     #[test]
-    fn after_the_results_comes_what_the_mode_says() {
+    fn a_player_disqualified_says_so_in_the_results() {
+        a_player_disqualified_says_so_in_the_results_on(&crate::testing::DEMO_ROSTER);
+    }
+
+    pub(crate) fn after_the_results_comes_what_the_mode_says_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut championship = Championship::default();
         // Out of a championship: the same race again, or back to the
         // tracks.
         assert_eq!(
-            next_after(Mode::Race, false, &championship, CIRCUITS.len()),
+            next_after(Mode::Race, false, &championship, circuits.len()),
             Next::Again
         );
         assert_eq!(
-            next_after(Mode::Checkpoint, false, &championship, CIRCUITS.len()),
+            next_after(Mode::Checkpoint, false, &championship, circuits.len()),
             Next::Again
         );
         assert_eq!(back_from(Mode::Race), GameState::Tracks);
         assert_eq!(back_from(Mode::Arcade), GameState::Modes);
         // A championship: the standings, then its next race...
         assert_eq!(
-            next_after(Mode::Arcade, false, &championship, CIRCUITS.len()),
+            next_after(Mode::Arcade, false, &championship, circuits.len()),
             Next::Standings
         );
         championship.score(&[0, 1, 2, 3, 4, 5, 6, 7]);
         assert_eq!(
-            next_after(Mode::Arcade, true, &championship, CIRCUITS.len()),
+            next_after(Mode::Arcade, true, &championship, circuits.len()),
             Next::Race(1)
         );
         // ...and after the last one, the menu.
-        championship.round = CIRCUITS.len();
+        championship.round = circuits.len();
         assert_eq!(
-            next_after(Mode::Arcade, true, &championship, CIRCUITS.len()),
+            next_after(Mode::Arcade, true, &championship, circuits.len()),
             Next::Menu
         );
         // An elimination is on the track chosen, like a race.
         assert_eq!(
-            next_after(Mode::Elimination, false, &championship, CIRCUITS.len()),
+            next_after(Mode::Elimination, false, &championship, circuits.len()),
             Next::Again
         );
     }
@@ -663,8 +668,8 @@ mod tests {
             .init_resource::<UiIcons>()
             .init_resource::<Championship>()
             .init_resource::<CurrentCircuit>()
-            .insert_resource(*crate::game::CIRCUITS)
-            .insert_resource(*crate::game::ROSTER)
+            .insert_resource(*crate::testing::DEMO)
+            .insert_resource(*crate::testing::DEMO_ROSTER)
             .add_message::<MenuSound>()
             .add_plugins((ResultsPlugin, crate::gamepads::GamepadsPlugin))
             .add_systems(OnExit(GameState::Race), |mut commands: Commands| {
@@ -731,7 +736,9 @@ mod tests {
         // Next race: the results go at once, and do not come back.
         press_enter(&mut app);
         assert_eq!(screens(&mut app), 0);
-        assert_eq!(app.world().resource::<CurrentCircuit>().0, 1);
+        // The next circuit (round the engine's one, back to it).
+        let circuits = app.world().resource::<Circuits>().len();
+        assert_eq!(app.world().resource::<CurrentCircuit>().0, 1 % circuits);
         app.update();
         app.update();
         assert_eq!(screens(&mut app), 0);

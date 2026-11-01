@@ -2282,15 +2282,14 @@ fn parasol_mesh() -> Mesh {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    #[test]
-    fn no_tree_stands_in_a_dam_s_lake() {
+    pub(crate) fn no_tree_stands_in_a_dam_s_lake_on(circuits: &'static crate::circuits::Circuits) {
         use crate::track::closed_curve;
         use crate::world::terrain::signed_distance;
         let mut near = 0;
-        for circuit in CIRCUITS
+        for circuit in circuits
             .iter()
             .filter(|circuit| !circuit.scenery.dams.is_empty())
         {
@@ -2338,7 +2337,6 @@ mod tests {
         // Wider than the tower is tall, so the whole of it is seen.
         assert!(radius > lighthouse.height);
     }
-    use crate::game::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
 
     #[test]
@@ -2454,9 +2452,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_circuit_gets_its_houses() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn every_circuit_gets_its_houses_on(circuits: &'static crate::circuits::Circuits) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let houses = place_houses(&track, &terrain, &circuit.scenery.houses, &[]);
@@ -2467,5 +2464,10 @@ mod tests {
                 houses.len()
             );
         }
+    }
+
+    #[test]
+    fn every_circuit_gets_its_houses() {
+        every_circuit_gets_its_houses_on(&crate::testing::DEMO);
     }
 }

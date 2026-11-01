@@ -180,9 +180,8 @@ fn cut_to(mut mesh: Mesh, (min, max): (Vec2, Vec2)) -> Option<Mesh> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
     use bevy::asset::RenderAssetUsages;
     use bevy::mesh::PrimitiveTopology;
 
@@ -222,8 +221,9 @@ mod tests {
         assert!(cut_to(mesh, (Vec2::splat(100.0), Vec2::splat(110.0))).is_none());
     }
 
-    #[test]
-    fn a_look_at_the_start_is_quicker_to_work_out_than_the_whole() {
+    pub(crate) fn a_look_at_the_start_is_quicker_to_work_out_than_the_whole_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut world = World::new();
         world.init_resource::<Assets<Image>>();
         let textures = WorldTextures::from_world(&mut world);
@@ -231,14 +231,14 @@ mod tests {
         // under half the whole circuit's (fine round the start, and across
         // the grid in its rows and columns there), its roads only near the
         // start.
-        let index = CIRCUITS
+        let index = circuits
             .iter()
             .position(|circuit| circuit.name == "Fellowship Road")
             .expect("Fellowship Road is a circuit");
-        let look = prepare_preview(&CIRCUITS[index], index, &textures, Urgency::Now);
+        let look = prepare_preview(&circuits[index], index, &textures, Urgency::Now);
         let whole = Terrain::on_threads(
-            &Track::new(&CIRCUITS[index].layout),
-            &CIRCUITS[index].scenery,
+            &Track::new(&circuits[index].layout),
+            &circuits[index].scenery,
             Urgency::Now.threads(),
         );
         let points = |terrain: &Terrain| terrain.grid_points();

@@ -321,14 +321,14 @@ pub(super) fn normals_up(mesh: &mut Mesh) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
     use crate::world::shoulders::track_shoulders;
 
-    #[test]
-    fn tufts_grow_on_grass_shoulders_only() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn tufts_grow_on_grass_shoulders_only_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             let shoulders = track_shoulders(&track, &terrain, &circuit.scenery);
@@ -368,8 +368,14 @@ mod tests {
     }
 
     #[test]
-    fn the_grass_edge_lies_along_the_asphalt_on_grass_shoulders() {
-        let circuit = &CIRCUITS[0];
+    fn tufts_grow_on_grass_shoulders_only() {
+        tufts_grow_on_grass_shoulders_only_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_grass_edge_lies_along_the_asphalt_on_grass_shoulders_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[0];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let shoulders = track_shoulders(&track, &terrain, &circuit.scenery);
@@ -395,5 +401,10 @@ mod tests {
                 assert!((y - road - SURFACE_Y).abs() < 0.25, "{y} over {road}");
             }
         }
+    }
+
+    #[test]
+    fn the_grass_edge_lies_along_the_asphalt_on_grass_shoulders() {
+        the_grass_edge_lies_along_the_asphalt_on_grass_shoulders_on(&crate::testing::DEMO);
     }
 }

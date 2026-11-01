@@ -16,12 +16,12 @@
 //! derecha, Y hacia arriba, -Z hacia delante y el origen en el suelo, entre
 //! las dos ruedas.
 
-mod designs;
+pub mod designs;
 pub(crate) mod imported;
 mod livery;
-mod pilot;
+pub mod pilot;
 mod rider;
-mod tyre;
+pub mod tyre;
 
 use std::f32::consts::{FRAC_PI_2, TAU};
 
@@ -1077,12 +1077,13 @@ fn steer_front(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    #[test]
-    fn every_bike_reaches_no_further_than_its_nose_and_tail() {
-        for design in designs::every() {
+    pub(crate) fn every_bike_reaches_no_further_than_its_nose_and_tail_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        for design in designs::every(roster) {
             let geometry = design.model().map_or(STANDARD, |model| model.geometry);
             let front = -geometry.front_axle.z + geometry.front_radius;
             let back = geometry.rear_axle.z + geometry.rear_radius;
@@ -1091,6 +1092,11 @@ mod tests {
             assert!(back <= TAIL + 0.03, "{design:?}: {back} m behind");
         }
         assert!((1.9..2.1).contains(&(NOSE + TAIL)), "a bike's length");
+    }
+
+    #[test]
+    fn every_bike_reaches_no_further_than_its_nose_and_tail() {
+        every_bike_reaches_no_further_than_its_nose_and_tail_on(&crate::testing::DEMO_ROSTER);
     }
 
     #[test]
@@ -1116,12 +1122,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn plates_face_outwards() {
-        for plate in designs::every().into_iter().flat_map(designs::plates) {
+    pub(crate) fn plates_face_outwards_on(roster: &'static crate::bike::Roster) {
+        for plate in designs::every(roster).into_iter().flat_map(designs::plates) {
             let normal = plate.frame.rotation * Vec3::Z;
             let outwards = plate.frame.translation * Vec3::new(1.0, 0.0, 1.0);
             assert!(normal.dot(outwards) > 0.0);
         }
+    }
+
+    #[test]
+    fn plates_face_outwards() {
+        plates_face_outwards_on(&crate::testing::DEMO_ROSTER);
     }
 }

@@ -98,11 +98,17 @@ impl Design {
     }
 }
 
-/// Every design, the roster's models among them, for the tests.
+/// Every design of `roster`'s: those built in code, then its models, for
+/// the tests.
 #[cfg(test)]
-pub fn every() -> Vec<Design> {
-    let _ = &*crate::game::ROSTER;
-    Design::all()
+pub fn every(roster: &crate::bike::Roster) -> Vec<Design> {
+    let mut designs = Design::BUILT_IN_CODE.to_vec();
+    for entry in roster.iter() {
+        if !designs.contains(&entry.design()) {
+            designs.push(entry.design());
+        }
+    }
+    designs
 }
 
 /// Contornos de las piezas facetadas (ver [`crate::shapes::faceted`]): de -1
@@ -967,13 +973,17 @@ fn fender(parts: &mut Parts, paint: Paint) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    pub(crate) fn designs_index_in_order_on(roster: &'static crate::bike::Roster) {
+        for (index, design) in every(roster).into_iter().enumerate() {
+            assert_eq!(design.index(), index);
+        }
+    }
 
     #[test]
     fn designs_index_in_order() {
-        for (index, design) in every().into_iter().enumerate() {
-            assert_eq!(design.index(), index);
-        }
+        designs_index_in_order_on(&crate::testing::DEMO_ROSTER);
     }
 }

@@ -41,7 +41,7 @@ const SURFACE_SPACING: f32 = 1.2;
 /// Points over the faces of `mesh` (in its own frame), at most
 /// [`SURFACE_SPACING`] apart, each with the way its face looks and the
 /// colour of `atlas` there (linear): what the water mirrors of it.
-fn surface(mesh: &Mesh, atlas: &Image) -> Vec<MirrorPoint> {
+pub fn surface(mesh: &Mesh, atlas: &Image) -> Vec<MirrorPoint> {
     let Some(positions) = mesh
         .attribute(Mesh::ATTRIBUTE_POSITION)
         .and_then(|positions| positions.as_float3())
@@ -288,64 +288,4 @@ pub fn spot<M>(track: &Track, prop: &Prop<M>) -> (Vec2, Quat) {
 /// The rotation that turns a prop's front (+Z) towards `direction` (x, z).
 pub fn facing(direction: Vec2) -> Quat {
     Quat::from_rotation_y(direction.x.atan2(direction.y))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A pack of props, read as the game reads it.
-    fn pack() -> Vec<(String, Mesh)> {
-        read(crate::content::file("models/props/props.bin"))
-            .meshes
-            .into_iter()
-            .map(|piece| (piece.name, piece.mesh))
-            .collect()
-    }
-
-    #[test]
-    fn every_prop_has_a_surface_for_the_water_to_mirror_in_its_colours() {
-        let atlas = texture(crate::content::file("models/props/color.jpg"), true);
-        let mut total = 0;
-        for (name, mesh) in pack() {
-            let points = surface(&mesh, &atlas);
-            let (low, high) = bounds(&mesh);
-            assert!(!points.is_empty(), "{name}");
-            // Over its faces, inside its box, a few to each square metre at
-            // most.
-            for point in &points {
-                assert!(
-                    point.at.cmpge(low - 0.01).all() && point.at.cmple(high + 0.01).all(),
-                    "{name}"
-                );
-                assert!(
-                    point.color.iter().all(|c| (0.0..=1.0).contains(c)),
-                    "{name}"
-                );
-            }
-            let size = (high - low).max_element();
-            assert!(points.len() < 60_000, "{name}: {} points", points.len());
-            assert!(
-                points.len() as f32 > size,
-                "{name}: {} points",
-                points.len()
-            );
-            total += points.len();
-        }
-        assert!(total < 400_000, "{total}");
-        // Not all the atlas's colour is grey: a vermilion torii is red.
-        let torii = surface(
-            &pack()
-                .into_iter()
-                .find(|(name, _)| name == "o_torii")
-                .unwrap()
-                .1,
-            &atlas,
-        );
-        let red = torii
-            .iter()
-            .filter(|p| p.color[0] > 2.0 * p.color[1])
-            .count();
-        assert!(red * 3 > torii.len(), "{red} of {}", torii.len());
-    }
 }

@@ -990,9 +990,8 @@ fn notice(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::ROSTER;
 
     /// What a player's texts at the top left say, put together from their
     /// spans.
@@ -1045,8 +1044,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_top_left_clears_once_the_race_is_over_for_the_players() {
+    pub(crate) fn the_top_left_clears_once_the_race_is_over_for_the_players_on(
+        roster: &'static crate::bike::Roster,
+    ) {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1056,7 +1056,7 @@ mod tests {
             .init_resource::<Settings>()
             .init_resource::<UiFont>()
             .init_resource::<GameMode>()
-            .insert_resource(*ROSTER)
+            .insert_resource(*roster)
             .insert_resource(Rules {
                 mode: Mode::Race,
                 laps: 1,
@@ -1117,6 +1117,11 @@ mod tests {
     }
 
     #[test]
+    fn the_top_left_clears_once_the_race_is_over_for_the_players() {
+        the_top_left_clears_once_the_race_is_over_for_the_players_on(&crate::testing::DEMO_ROSTER);
+    }
+
+    #[test]
     fn the_lap_under_way_reads_with_its_time_and_then_the_last_one() {
         assert_eq!(lap_times(31.25, None, Language::Spanish), "0:31.2");
         // Once a lap is done, the last one's instead.
@@ -1160,22 +1165,28 @@ mod tests {
         assert_eq!(clock(600.0), "10:00.0");
     }
 
-    #[test]
-    fn those_in_are_listed_by_when_they_crossed_the_line() {
+    pub(crate) fn those_in_are_listed_by_when_they_crossed_the_line_on(
+        roster: &'static crate::bike::Roster,
+    ) {
         let finished = |rider: usize| match rider {
             3 => Some(83.4),
             1 => Some(81.2),
             _ => None,
         };
-        let lines = arrival_lines(&ROSTER, &[1, 3, 0, 2], finished);
+        let lines = arrival_lines(roster, &[1, 3, 0, 2], finished);
         assert_eq!(
             lines,
             format!(
                 "1º   {}   1:21.2\n2º   {}   1:23.4",
-                ROSTER[1].name, ROSTER[3].name
+                roster[1].name, roster[3].name
             )
         );
-        assert_eq!(arrival_lines(&ROSTER, &[0, 2], finished), "");
+        assert_eq!(arrival_lines(roster, &[0, 2], finished), "");
+    }
+
+    #[test]
+    fn those_in_are_listed_by_when_they_crossed_the_line() {
+        those_in_are_listed_by_when_they_crossed_the_line_on(&crate::testing::DEMO_ROSTER);
     }
 
     #[test]
@@ -1197,8 +1208,9 @@ mod tests {
         assert!(!last_is_record(&Standing::default(), &lap(Some(70.0))));
     }
 
-    #[test]
-    fn a_lap_record_is_told_once_just_after_the_lap_that_beat_it() {
+    pub(crate) fn a_lap_record_is_told_once_just_after_the_lap_that_beat_it_on(
+        roster: &'static crate::bike::Roster,
+    ) {
         let rules = Rules {
             mode: Mode::Race,
             laps: 5,
@@ -1216,7 +1228,7 @@ mod tests {
         let told = |standing: &Standing, progress: &Progress| {
             notice(
                 &rules,
-                &ROSTER,
+                roster,
                 standing,
                 progress,
                 Out::In,
@@ -1244,7 +1256,13 @@ mod tests {
     }
 
     #[test]
-    fn back_on_the_grid_after_a_false_start_it_says_how_many() {
+    fn a_lap_record_is_told_once_just_after_the_lap_that_beat_it() {
+        a_lap_record_is_told_once_just_after_the_lap_that_beat_it_on(&crate::testing::DEMO_ROSTER);
+    }
+
+    pub(crate) fn back_on_the_grid_after_a_false_start_it_says_how_many_on(
+        roster: &'static crate::bike::Roster,
+    ) {
         let rules = Rules {
             mode: Mode::Race,
             laps: 5,
@@ -1254,7 +1272,7 @@ mod tests {
         let said = |out, false_starts| {
             notice(
                 &rules,
-                &ROSTER,
+                roster,
                 &standing,
                 &progress,
                 out,
@@ -1268,6 +1286,11 @@ mod tests {
         assert_eq!(said(Out::In, None), "");
         // Disqualified says so instead.
         assert!(said(Out::Disqualified, Some((2, 2))).contains("DESCALIFICADO"));
+    }
+
+    #[test]
+    fn back_on_the_grid_after_a_false_start_it_says_how_many() {
+        back_on_the_grid_after_a_false_start_it_says_how_many_on(&crate::testing::DEMO_ROSTER);
     }
 
     #[test]

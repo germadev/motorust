@@ -569,15 +569,16 @@ fn add_clump(mesh: &mut MeshBuilder, clump: &Clump, terrain: &Terrain) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::circuits::Circuit;
-    use crate::game::CIRCUITS;
     use crate::world::terrain::{Ground, SEA_LEVEL};
 
     /// The circuits with fields of flowers, with their track and terrain.
-    fn in_flower() -> Vec<(&'static Circuit, Track, Terrain)> {
-        CIRCUITS
+    pub(crate) fn in_flower(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> Vec<(&'static Circuit, Track, Terrain)> {
+        circuits
             .iter()
             .filter(|circuit| !circuit.scenery.flowers.is_empty())
             .map(|circuit| {
@@ -588,12 +589,13 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn fields_thin_out_and_mingle_at_their_borders() {
+    pub(crate) fn fields_thin_out_and_mingle_at_their_borders_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Ghost Island's fields everywhere: in their middles, a few gaps of
         // grass; near their borders, more, and islands of the next field on
         // this side of the border, so that no border is a line.
-        let circuit = CIRCUITS
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.name == "Ghost Island")
             .unwrap();
@@ -657,10 +659,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn most_of_the_grass_is_in_flower_but_the_shoulders() {
+    pub(crate) fn most_of_the_grass_is_in_flower_but_the_shoulders_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Where the fields reach everywhere, as on Ghost Island.
-        let circuits: Vec<_> = in_flower()
+        let circuits: Vec<_> = in_flower(circuits)
             .into_iter()
             .filter(|(circuit, ..)| {
                 circuit
@@ -722,9 +725,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn clumps_stand_near_the_roads_in_their_fields_and_not_too_many() {
-        for (circuit, track, terrain) in &in_flower() {
+    pub(crate) fn clumps_stand_near_the_roads_in_their_fields_and_not_too_many_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for (circuit, track, terrain) in &in_flower(circuits) {
             let clumps = clumps(track, terrain);
             assert!(clumps.len() > 2000, "{}: {}", circuit.name, clumps.len());
             assert!(clumps.len() < 14_000, "{}: {}", circuit.name, clumps.len());
@@ -749,9 +753,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn clumps_keep_clear_of_what_stands_on_the_ground() {
-        let (_, track, terrain) = in_flower().remove(0);
+    pub(crate) fn clumps_keep_clear_of_what_stands_on_the_ground_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (_, track, terrain) = in_flower(circuits).remove(0);
         let all = clumps(&track, &terrain);
         let middle = all[all.len() / 2].root;
         let taken = Vec2::new(middle.x, middle.z);
@@ -764,9 +769,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn each_square_of_clumps_is_one_mesh_of_three_cards_a_clump() {
-        let (_, track, terrain) = in_flower().remove(0);
+    pub(crate) fn each_square_of_clumps_is_one_mesh_of_three_cards_a_clump_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (_, track, terrain) = in_flower(circuits).remove(0);
         let clumps = clumps(&track, &terrain);
         let meshes = clump_meshes(&clumps, &terrain);
         let vertices: usize = meshes.iter().map(|mesh| mesh.count_vertices()).sum();

@@ -511,7 +511,7 @@ pub fn sea_mesh() -> Mesh {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -583,8 +583,9 @@ mod tests {
         assert!(map.distance.iter().all(|&d| d > SHORE_FAR));
     }
 
-    #[test]
-    fn the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey() {
+    pub(crate) fn the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let sea = SeaColors::of(Water::Sea);
         let iron = SeaColors::of(Water::Iron);
         let river = SeaColors::of(Water::River);
@@ -601,7 +602,7 @@ mod tests {
         }
         // The Gold Mine's lake and river are red, Fellowship Road's rivers
         // and lakes green-grey, every other track's sea blue.
-        for circuit in crate::game::CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let wanted = if circuit.scenery.soil == crate::world::scenery::Soil::Mine {
                 Water::Iron
             } else if circuit.name == "Fellowship Road" {
@@ -614,12 +615,18 @@ mod tests {
     }
 
     #[test]
-    fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say() {
+    fn the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey() {
+        the_sea_is_blue_the_water_of_a_mine_red_and_a_river_green_grey_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Loop Island's sea is always the cartoon one; every other's
         // mirrors unless the options ask for the cartoon one, but indoors,
         // where the sea lies under the floor, never seen, and nothing is
         // worked out for it to mirror.
-        for circuit in crate::game::CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let cartoon = circuit.name == "Loop Island"
                 || circuit.scenery.soil == crate::world::scenery::Soil::Floor;
             assert_eq!(circuit.scenery.cartoon_water, cartoon, "{}", circuit.name);
@@ -658,8 +665,14 @@ mod tests {
     }
 
     #[test]
-    fn the_mirroring_sea_maps_the_whole_track_and_round_it() {
-        for circuit in crate::game::CIRCUITS.iter() {
+    fn the_sea_mirrors_but_on_loop_island_and_as_the_options_say() {
+        the_sea_mirrors_but_on_loop_island_and_as_the_options_say_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_mirroring_sea_maps_the_whole_track_and_round_it_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let reach = mirror_reach(&track);
             let (min, max) = track.bounds();
@@ -680,9 +693,15 @@ mod tests {
     }
 
     #[test]
-    fn every_circuit_has_shore_near_its_road() {
+    fn the_mirroring_sea_maps_the_whole_track_and_round_it() {
+        the_mirroring_sea_maps_the_whole_track_and_round_it_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn every_circuit_has_shore_near_its_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Indoors, there is no sea.
-        for circuit in crate::game::CIRCUITS
+        for circuit in circuits
             .iter()
             .filter(|circuit| circuit.scenery.soil != crate::world::scenery::Soil::Floor)
         {
@@ -694,5 +713,10 @@ mod tests {
             assert!(map.distance.iter().any(|&d| d > 5.0));
             assert!(map.distance.iter().any(|&d| d < -5.0));
         }
+    }
+
+    #[test]
+    fn every_circuit_has_shore_near_its_road() {
+        every_circuit_has_shore_near_its_road_on(&crate::testing::DEMO);
     }
 }

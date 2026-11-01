@@ -296,7 +296,7 @@ pub fn material(compound: Compound, images: &mut Assets<Image>) -> StandardMater
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -465,9 +465,8 @@ mod tests {
         assert!((half_width - 0.05 * WIDTH_SCALE).abs() < 1e-5);
     }
 
-    #[test]
-    fn the_imported_bikes_wear_every_compound() {
-        let worn: Vec<Compound> = super::super::designs::every()
+    pub(crate) fn the_imported_bikes_wear_every_compound_on(roster: &'static crate::bike::Roster) {
+        let worn: Vec<Compound> = super::super::designs::every(roster)
             .into_iter()
             .filter(|design| design.model().is_some())
             .map(Compound::of)

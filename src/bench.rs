@@ -1240,14 +1240,14 @@ fn report(bench: &Bench) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
-    #[test]
-    fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time() {
-        let all = scenarios(&tracks(None, CIRCUITS.len()));
-        assert_eq!(all.len(), 22 * CIRCUITS.len());
+    pub(crate) fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let all = scenarios(&tracks(None, circuits.len()));
+        assert_eq!(all.len(), 22 * circuits.len());
         let first = &all[..22];
         assert!(first.iter().all(|scenario| scenario.track == 0));
         // The first the reference; the others one change from it.
@@ -1306,10 +1306,18 @@ mod tests {
     }
 
     #[test]
-    fn the_ground_is_left_out_of_the_shadows_only_in_its_turn() {
+    fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time() {
+        every_track_is_ridden_under_each_setting_with_one_change_at_a_time_on(
+            &crate::testing::DEMO,
+        );
+    }
+
+    pub(crate) fn the_ground_is_left_out_of_the_shadows_only_in_its_turn_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut app = App::new();
         app.insert_resource(Bench::new(
-            *CIRCUITS,
+            *circuits,
             scenarios(&[0]),
             MEASURE,
             String::new(),
@@ -1349,9 +1357,15 @@ mod tests {
     }
 
     #[test]
-    fn two_samples_are_left_out_where_the_gpu_has_not_got_them() {
+    fn the_ground_is_left_out_of_the_shadows_only_in_its_turn() {
+        the_ground_is_left_out_of_the_shadows_only_in_its_turn_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn two_samples_are_left_out_where_the_gpu_has_not_got_them_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut bench = Bench::new(
-            *CIRCUITS,
+            *circuits,
             scenarios(&[0]),
             MEASURE,
             String::new(),
@@ -1374,20 +1388,23 @@ mod tests {
     }
 
     #[test]
-    fn the_tracks_asked_for_or_all() {
+    fn two_samples_are_left_out_where_the_gpu_has_not_got_them() {
+        two_samples_are_left_out_where_the_gpu_has_not_got_them_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_tracks_asked_for_or_all_on(circuits: &'static crate::circuits::Circuits) {
         assert_eq!(
-            tracks(None, CIRCUITS.len()),
-            (0..CIRCUITS.len()).collect::<Vec<_>>()
+            tracks(None, circuits.len()),
+            (0..circuits.len()).collect::<Vec<_>>()
         );
-        assert_eq!(tracks(Some("0, 2"), CIRCUITS.len()), [0, 2]);
+        assert_eq!(tracks(Some("0, 2"), circuits.len()), [0, 2]);
         assert_eq!(
-            tracks(Some("99,x"), CIRCUITS.len()),
-            (0..CIRCUITS.len()).collect::<Vec<_>>()
+            tracks(Some("99,x"), circuits.len()),
+            (0..circuits.len()).collect::<Vec<_>>()
         );
     }
 
-    #[test]
-    fn the_results_read_as_a_table() {
+    pub(crate) fn the_results_read_as_a_table_on(circuits: &'static crate::circuits::Circuits) {
         let scenario = scenarios(&[0])[0].clone();
         let summary = Summary {
             fps: 72.25,
@@ -1397,7 +1414,7 @@ mod tests {
             update: Some(2.5),
         };
         let table = table(
-            &CIRCUITS,
+            circuits,
             &[
                 (scenario.clone(), Some(summary), Some(34.0)),
                 (scenario, None, None),
@@ -1417,6 +1434,11 @@ mod tests {
         assert!(lines[1].trim_end().ends_with("34"), "{table}");
         assert!(lines[2].trim_end().ends_with('-'));
         assert!(said(Some(&summary), Some(34.0)).contains("simulation 2.50 ms · CPU 34 %"));
+    }
+
+    #[test]
+    fn the_results_read_as_a_table() {
+        the_results_read_as_a_table_on(&crate::testing::DEMO);
     }
 
     #[test]
@@ -1521,13 +1543,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_run_takes_about_as_long_as_its_laps() {
+    pub(crate) fn a_run_takes_about_as_long_as_its_laps_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let all = scenarios(&[0]);
         let laps = laps(&all);
-        let minutes = minutes(&CIRCUITS, &all, &laps, MEASURE);
+        let minutes = minutes(circuits, &all, &laps, MEASURE);
         // Bahía's two laps: a couple of minutes, not ten.
         assert!((2..=6).contains(&minutes), "{minutes}");
-        assert!(rough_length(&CIRCUITS[0]) > 1000.0 && rough_length(&CIRCUITS[0]) < 2000.0);
+        assert!(rough_length(&circuits[0]) > 1000.0 && rough_length(&circuits[0]) < 2000.0);
+    }
+
+    #[test]
+    fn a_run_takes_about_as_long_as_its_laps() {
+        a_run_takes_about_as_long_as_its_laps_on(&crate::testing::DEMO);
     }
 }

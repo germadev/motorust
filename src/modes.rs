@@ -496,9 +496,8 @@ fn light_cards(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
     #[test]
     fn the_modes_are_a_little_wider_than_the_start_menu_at_any_resolution() {
@@ -551,14 +550,20 @@ mod tests {
         assert_eq!(menu.chosen(&two), Mode::Free);
     }
 
-    #[test]
-    fn every_mode_has_a_name_and_a_description_in_each_language() {
+    pub(crate) fn every_mode_has_a_name_and_a_description_in_each_language_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         for mode in MODES {
             for lang in [Language::Spanish, Language::English] {
                 assert!(!name(mode, lang).is_empty());
-                assert!(!description(mode, CIRCUITS.len(), lang).is_empty());
+                assert!(!description(mode, circuits.len(), lang).is_empty());
             }
         }
+    }
+
+    #[test]
+    fn every_mode_has_a_name_and_a_description_in_each_language() {
+        every_mode_has_a_name_and_a_description_in_each_language_on(&crate::testing::DEMO);
     }
 
     #[test]

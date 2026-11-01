@@ -718,7 +718,7 @@ fn map_image(
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// What a map holds at `p` (m): its colour and how high it stands over
@@ -750,11 +750,11 @@ pub(super) mod tests {
         }
     }
 
-    #[test]
-    fn a_desert_canyon_mirrors_its_red_earth_not_grass() {
-        use crate::game::CIRCUITS;
+    pub(crate) fn a_desert_canyon_mirrors_its_red_earth_not_grass_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         use crate::world::sea::{MIRROR_INLAND, ShoreMap, mirror_reach};
-        let circuit = CIRCUITS
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.scenery.soil == Soil::Mine)
             .expect("a desert canyon");

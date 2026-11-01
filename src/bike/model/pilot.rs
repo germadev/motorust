@@ -678,28 +678,28 @@ pub(super) fn pose_pilots(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::super::MAX_LOOK;
     use super::*;
 
     /// The roster's models (the first, the Shogun, the measures' reference).
-    fn models() -> Vec<&'static Model> {
-        super::super::designs::every()
+    pub(crate) fn models(roster: &'static crate::bike::Roster) -> Vec<&'static Model> {
+        super::super::designs::every(roster)
             .into_iter()
             .filter_map(Design::model)
             .collect()
     }
 
-    fn skeleton() -> Skeleton {
-        skeleton_of(models()[0])
+    fn skeleton(roster: &'static crate::bike::Roster) -> Skeleton {
+        skeleton_of(models(roster)[0])
     }
 
     fn skeleton_of(model: &Model) -> Skeleton {
         Skeleton::new(imported::read(model.pilot()).skeleton)
     }
 
-    fn stance() -> Stance {
-        stance_on(models()[0])
+    fn stance(roster: &'static crate::bike::Roster) -> Stance {
+        stance_on(models(roster)[0])
     }
 
     fn stance_on(model: &Model) -> Stance {
@@ -721,9 +721,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn hands_reach_the_grips_and_feet_the_pegs_on_every_bike() {
-        for model in models() {
+    pub(crate) fn hands_reach_the_grips_and_feet_the_pegs_on_every_bike_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        for model in models(roster) {
             let skeleton = skeleton_of(model);
             for (hang, look, sit_up, tuck) in [
                 (0.0, 0.0, 0.0, 0.0),
@@ -745,8 +746,14 @@ mod tests {
     }
 
     #[test]
-    fn right_foot_reaches_the_ground_when_stopped() {
-        for model in models() {
+    fn hands_reach_the_grips_and_feet_the_pegs_on_every_bike() {
+        hands_reach_the_grips_and_feet_the_pegs_on_every_bike_on(&crate::testing::DEMO_ROSTER);
+    }
+
+    pub(crate) fn right_foot_reaches_the_ground_when_stopped_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        for model in models(roster) {
             let skeleton = skeleton_of(model);
             let geometry = model.geometry;
             let foot_ground = Vec3::new(0.38, 0.19, geometry.seat.z);
@@ -762,6 +769,11 @@ mod tests {
                 right_foot.distance(foot_ground)
             );
         }
+    }
+
+    #[test]
+    fn right_foot_reaches_the_ground_when_stopped() {
+        right_foot_reaches_the_ground_when_stopped_on(&crate::testing::DEMO_ROSTER);
     }
 
     fn hands_and_feet_reach(skeleton: &Skeleton, stance: &Stance) {
@@ -793,10 +805,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn bones_keep_their_lengths() {
-        let skeleton = skeleton();
-        let mut stance = stance();
+    pub(crate) fn bones_keep_their_lengths_on(roster: &'static crate::bike::Roster) {
+        let skeleton = skeleton(roster);
+        let mut stance = stance(roster);
         stance.hang = 1.0;
         let posed = pose(&skeleton, &stance);
         for (index, joint) in skeleton.joints.iter().enumerate() {
@@ -811,10 +822,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn tucked_pilot_lies_over_the_tank_and_looks_ahead() {
-        let skeleton = skeleton();
-        let posed = pose(&skeleton, &stance());
+    pub(crate) fn tucked_pilot_lies_over_the_tank_and_looks_ahead_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        let skeleton = skeleton(roster);
+        let posed = pose(&skeleton, &stance(roster));
         let bones = &skeleton.bones;
         let (hips, chest) = (
             posed[bones.hips].translation,
@@ -829,9 +841,10 @@ mod tests {
         assert!(face.z < -0.5 && face.y > -0.6, "mira al frente: {face}");
     }
 
-    #[test]
-    fn head_turns_towards_the_corner_without_tilting() {
-        let skeleton = skeleton();
+    pub(crate) fn head_turns_towards_the_corner_without_tilting_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        let skeleton = skeleton(roster);
         let bones = &skeleton.bones;
         let rest = skeleton.joints[bones.head].rotation.inverse();
         // Hacia dónde mira la cara y hacia dónde apunta la coronilla.
@@ -840,7 +853,7 @@ mod tests {
                 look,
                 lean,
                 hang: lean / 0.96,
-                ..stance()
+                ..stance(roster)
             };
             let rotation = pose(&skeleton, &stance)[bones.head].rotation;
             (rotation * (rest * Vec3::NEG_Z), rotation * (rest * Vec3::Y))
@@ -860,11 +873,20 @@ mod tests {
         assert!(tilt < 0.7 * lean, "inclinación de la cabeza: {tilt}");
     }
 
-    #[test]
-    fn on_the_straight_the_pilot_tucks_in_behind_the_screen() {
-        let skeleton = skeleton();
+    pub(crate) fn on_the_straight_the_pilot_tucks_in_behind_the_screen_on(
+        roster: &'static crate::bike::Roster,
+    ) {
+        let skeleton = skeleton(roster);
         let bones = &skeleton.bones;
-        let head = |tuck| pose(&skeleton, &Stance { tuck, ..stance() })[bones.head];
+        let head = |tuck| {
+            pose(
+                &skeleton,
+                &Stance {
+                    tuck,
+                    ..stance(roster)
+                },
+            )[bones.head]
+        };
         let (riding, tucked) = (head(0.0), head(1.0));
         assert!(
             tucked.translation.y < riding.translation.y - 0.04,
@@ -878,10 +900,9 @@ mod tests {
         assert!(face.z < -0.7 && face.y > -0.5, "mira al frente: {face}");
     }
 
-    #[test]
-    fn inner_knee_goes_out_in_a_corner() {
-        let skeleton = skeleton();
-        let mut stance = stance();
+    pub(crate) fn inner_knee_goes_out_in_a_corner_on(roster: &'static crate::bike::Roster) {
+        let skeleton = skeleton(roster);
+        let mut stance = stance(roster);
         let straight = pose(&skeleton, &stance);
         stance.hang = 1.0;
         let leaning = pose(&skeleton, &stance);

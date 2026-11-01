@@ -3,8 +3,8 @@
 //! un cielo de verano. Al cambiar de pista se vuelve a construir.
 
 mod boosters;
-mod cavern;
-mod dam;
+pub mod cavern;
+pub mod dam;
 pub mod detail;
 pub mod flowers;
 mod foliage;
@@ -17,7 +17,7 @@ pub mod mirror;
 pub mod mountains;
 pub mod petals;
 pub mod portals;
-mod preview;
+pub mod preview;
 pub mod prop_pack;
 pub mod props;
 pub mod quads;
@@ -25,16 +25,16 @@ pub mod realm;
 pub mod relief;
 pub(crate) mod road;
 pub mod scenery;
-mod sea;
+pub mod sea;
 mod shadow_fade;
-mod shoulders;
+pub mod shoulders;
 pub mod sky;
 pub(crate) mod structures;
 pub mod terrain;
 pub mod textures;
 pub mod themes;
 mod trees;
-mod tufts;
+pub mod tufts;
 pub mod waters;
 
 use std::collections::{HashMap, HashSet};
@@ -1328,12 +1328,12 @@ fn spawn_sun(mut commands: Commands) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
-    #[test]
-    fn circuits_are_prepared_in_the_menus_and_let_go_for_a_race() {
+    pub(crate) fn circuits_are_prepared_in_the_menus_and_let_go_for_a_race_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1342,6 +1342,7 @@ mod tests {
             .init_asset::<StandardMaterial>()
             .init_asset::<Image>()
             .init_state::<GameState>()
+            .insert_resource(*circuits)
             .add_plugins(WorldPlugin);
 
         app.update();
@@ -1374,7 +1375,7 @@ mod tests {
 
         // ...and arrive, hidden, as they are ready.
         let started = std::time::Instant::now();
-        while roots_query.iter(app.world()).count() < CIRCUITS.len() {
+        while roots_query.iter(app.world()).count() < circuits.len() {
             assert!(
                 started.elapsed().as_secs() < 120,
                 "the circuits never arrive"
@@ -1396,7 +1397,7 @@ mod tests {
         app.update();
 
         let roots: Vec<_> = roots_query.iter(app.world()).collect();
-        assert_eq!(roots.len(), CIRCUITS.len());
+        assert_eq!(roots.len(), circuits.len());
         for (root, vis) in &roots {
             if root.0 == 1 {
                 assert_eq!(*vis, Visibility::Inherited);
@@ -1411,7 +1412,7 @@ mod tests {
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Select);
         app.update();
-        assert_eq!(roots_query.iter(app.world()).count(), CIRCUITS.len());
+        assert_eq!(roots_query.iter(app.world()).count(), circuits.len());
         app.world_mut()
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Race);
@@ -1423,8 +1424,9 @@ mod tests {
         assert_eq!(*roots[0].1, Visibility::Inherited);
     }
 
-    #[test]
-    fn a_circuit_chosen_before_it_is_ready_comes_without_stopping_the_menu() {
+    pub(crate) fn a_circuit_chosen_before_it_is_ready_comes_without_stopping_the_menu_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1433,6 +1435,7 @@ mod tests {
             .init_asset::<StandardMaterial>()
             .init_asset::<Image>()
             .init_state::<GameState>()
+            .insert_resource(*circuits)
             .add_plugins(WorldPlugin);
         app.update();
         app.world_mut()
@@ -1442,7 +1445,7 @@ mod tests {
 
         // Straight to the last circuit, behind all the others in the
         // background: the menu goes on at once, the circuit on its way.
-        let last = CIRCUITS.len() - 1;
+        let last = circuits.len() - 1;
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
         app.update();
         // The menu goes on at once: the circuit is on its way, not waited
@@ -1471,8 +1474,9 @@ mod tests {
         assert!(!app.world().resource::<Preparing>().0.contains_key(&last));
     }
 
-    #[test]
-    fn a_circuit_is_shown_before_its_rest_comes_and_raced_on_whole() {
+    pub(crate) fn a_circuit_is_shown_before_its_rest_comes_and_raced_on_whole_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1481,6 +1485,7 @@ mod tests {
             .init_asset::<StandardMaterial>()
             .init_asset::<Image>()
             .init_state::<GameState>()
+            .insert_resource(*circuits)
             .add_plugins(WorldPlugin);
         app.update();
         app.world_mut()
@@ -1489,7 +1494,7 @@ mod tests {
         app.update();
         // Fellowship Road, chosen at once: shown first, its rest (its
         // houses, trees, props, grass and flowers) still to come.
-        let last = CIRCUITS
+        let last = circuits
             .iter()
             .position(|circuit| circuit.name == "Fellowship Road")
             .expect("Fellowship Road is a circuit");
@@ -1534,8 +1539,8 @@ mod tests {
             .init_asset::<Mesh>()
             .init_asset::<StandardMaterial>()
             .init_asset::<Image>()
-            .init_state::<GameState>()
-            .add_plugins(WorldPlugin);
+            .init_state::<GameState>();
+        crate::testing::demo_content(&mut app).add_plugins(WorldPlugin);
         app.update();
         let mut roots = app.world_mut().query::<(Entity, &WorldRoot)>();
         let built: Vec<(Entity, usize)> = roots
@@ -1545,9 +1550,12 @@ mod tests {
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].1, 0);
 
-        // The first circuit's file edited (its name), and read again.
-        let mut files = crate::circuits::files().unwrap();
-        files[0].1 = String::leak(files[0].1.replacen("Bahía GP", "Bahía GP 2", 1));
+        // The demo circuit's file edited (its name), and read again.
+        let text = crate::testing::demo_file("circuits/bahia.ron");
+        let files = [(
+            "circuits/bahia.ron".to_string(),
+            &*String::leak(text.replacen("name: \"Bahía GP\"", "name: \"Bahía GP 2\"", 1)),
+        )];
         let edited = Circuits::parse(&files).unwrap();
         app.insert_resource(edited)
             .world_mut()
@@ -1572,7 +1580,10 @@ mod tests {
     }
 
     /// A world with the tracks menu seen as `view`.
-    fn menu_app(view: crate::settings::TrackView) -> App {
+    fn menu_app(
+        circuits: &'static crate::circuits::Circuits,
+        view: crate::settings::TrackView,
+    ) -> App {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1585,6 +1596,7 @@ mod tests {
                 track_view: view,
                 ..default()
             })
+            .insert_resource(*circuits)
             .add_plugins(WorldPlugin);
         app.update();
         app.world_mut()
@@ -1594,9 +1606,10 @@ mod tests {
         app
     }
 
-    #[test]
-    fn seen_from_the_road_a_circuit_shows_its_start_first() {
-        let mut app = menu_app(crate::settings::TrackView::Trackside);
+    pub(crate) fn seen_from_the_road_a_circuit_shows_its_start_first_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let mut app = menu_app(circuits, crate::settings::TrackView::Trackside);
         // The first work in the background: a look at the start of the
         // nearest circuit.
         let keys = |app: &App| -> Vec<usize> {
@@ -1611,7 +1624,7 @@ mod tests {
         assert!(app.world().resource::<Preparing>().0.is_empty());
         // The last one chosen at once: its start shown while it is on its
         // way, and then the circuit in its place.
-        let last = CIRCUITS.len() - 1;
+        let last = circuits.len() - 1;
         app.world_mut().resource_mut::<CurrentCircuit>().0 = last;
         app.update();
         let mut looks = app.world_mut().query::<(&PreviewRoot, &Visibility)>();
@@ -1654,7 +1667,11 @@ mod tests {
     /// every circuit but the first (built at start-up) looked at by its
     /// start already, and built too if `built`: stand-ins, empty, so as not
     /// to wait for them all.
-    fn app_with_looks(view: crate::settings::TrackView, built: bool) -> App {
+    pub(crate) fn app_with_looks(
+        circuits: &'static crate::circuits::Circuits,
+        view: crate::settings::TrackView,
+        built: bool,
+    ) -> App {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1667,8 +1684,9 @@ mod tests {
                 track_view: view,
                 ..default()
             })
+            .insert_resource(*circuits)
             .add_plugins(WorldPlugin);
-        for index in 1..CIRCUITS.len() {
+        for index in 1..circuits.len() {
             if built {
                 app.world_mut()
                     .spawn((WorldRoot(index), Visibility::Hidden));
@@ -1698,9 +1716,10 @@ mod tests {
         seen
     }
 
-    #[test]
-    fn the_looks_at_the_starts_stay_through_a_race() {
-        let mut app = app_with_looks(crate::settings::TrackView::Trackside, true);
+    pub(crate) fn the_looks_at_the_starts_stay_through_a_race_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let mut app = app_with_looks(circuits, crate::settings::TrackView::Trackside, true);
         // Every circuit built, and every one looked at but the first: a
         // look at its start comes last, and is kept hidden, as it is
         // there whole.
@@ -1718,7 +1737,7 @@ mod tests {
             app.update();
         }
         app.update();
-        let hidden: Vec<_> = (0..CIRCUITS.len())
+        let hidden: Vec<_> = (0..circuits.len())
             .map(|index| (index, Visibility::Hidden))
             .collect();
         assert_eq!(looks(&mut app), hidden);
@@ -1754,11 +1773,12 @@ mod tests {
         assert_eq!(seen, [2]);
     }
 
-    #[test]
-    fn seen_from_above_the_looks_at_the_starts_go_with_a_race() {
+    pub(crate) fn seen_from_above_the_looks_at_the_starts_go_with_a_race_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Looks from when the menu was seen from the road: none shown, and
         // all gone with a race.
-        let mut app = app_with_looks(crate::settings::TrackView::Aerial, false);
+        let mut app = app_with_looks(circuits, crate::settings::TrackView::Aerial, false);
         app.world_mut()
             .resource_mut::<NextState<GameState>>()
             .set(GameState::Tracks);
@@ -1780,9 +1800,10 @@ mod tests {
         assert_eq!(looks(&mut app), [(2, Visibility::Hidden)]);
     }
 
-    #[test]
-    fn seen_from_above_no_circuit_is_looked_at_by_its_start() {
-        let mut app = menu_app(crate::settings::TrackView::Aerial);
+    pub(crate) fn seen_from_above_no_circuit_is_looked_at_by_its_start_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let mut app = menu_app(circuits, crate::settings::TrackView::Aerial);
         assert!(app.world().resource::<Previewing>().0.is_empty());
         let preparing: Vec<usize> = app
             .world()
@@ -1792,16 +1813,17 @@ mod tests {
             .copied()
             .collect();
         assert_eq!(preparing, [1]);
-        app.world_mut().resource_mut::<CurrentCircuit>().0 = CIRCUITS.len() - 1;
+        app.world_mut().resource_mut::<CurrentCircuit>().0 = circuits.len() - 1;
         app.update();
         assert!(app.world().resource::<Previewing>().0.is_empty());
     }
 
-    #[test]
-    fn the_circuits_nearest_in_the_menu_come_first() {
-        assert_eq!(menu_distance(0, 1, CIRCUITS.len()), 1);
-        assert_eq!(menu_distance(0, CIRCUITS.len() - 1, CIRCUITS.len()), 1);
-        assert_eq!(menu_distance(1, 3, CIRCUITS.len()), 2);
-        assert_eq!(menu_distance(3, 1, CIRCUITS.len()), 2);
+    pub(crate) fn the_circuits_nearest_in_the_menu_come_first_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        assert_eq!(menu_distance(0, 1, circuits.len()), 1);
+        assert_eq!(menu_distance(0, circuits.len() - 1, circuits.len()), 1);
+        assert_eq!(menu_distance(1, 3, circuits.len()), 2);
+        assert_eq!(menu_distance(3, 1, circuits.len()), 2);
     }
 }

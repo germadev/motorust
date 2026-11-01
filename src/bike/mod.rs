@@ -4,15 +4,15 @@
 //! un cuerpo con velocidad y orientación, y la inclinación es solo visual (la
 //! que tendría una moto real tomando esa curva a esa velocidad).
 
-mod ai;
+pub mod ai;
 mod chassis;
-mod crash;
+pub mod crash;
 pub mod curves;
 mod grass_kickup;
 pub mod learning;
 mod loop_ride;
 pub(crate) mod model;
-mod wheelie_halo;
+pub mod wheelie_halo;
 
 #[cfg(test)]
 use crash::{Body, carry, collide};
@@ -2331,12 +2331,10 @@ fn interpolate_bikes(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::f32::consts::FRAC_PI_2;
 
     use bevy::ecs::system::RunSystemOnce;
-
-    use crate::game::ROSTER;
 
     use crate::pause::{ReturnRate, ReverseRate, SteerRate};
     use crate::track::{Dust, WALL_DISTANCE};
@@ -2345,10 +2343,10 @@ mod tests {
 
     /// The roster's file reads, with a bike for each place on the grid;
     /// what it gets wrong is told.
-    #[test]
-    fn the_roster_reads_a_bike_for_each_place() {
-        assert_eq!(ROSTER.len(), RIDERS);
-        let text = crate::content::text(ROSTER_FILE);
+    pub(crate) fn the_roster_reads_a_bike_for_each_place_on(roster: &'static crate::bike::Roster) {
+        assert_eq!(roster.len(), RIDERS);
+        // The engine's demo roster's file.
+        let text = crate::testing::demo_file("bikes/roster.ron");
         let changed = |from, to| &*String::leak(text.replacen(from, to, 1));
         let parse = |text| crate::circuits::data::parse::<Vec<Entry>>("roster.ron", text);
         assert!(parse(text).is_ok());
@@ -2357,7 +2355,7 @@ mod tests {
         let unknown = changed("design:", "model:");
         assert!(parse(unknown).err().unwrap().contains("model"));
         // A model by a folder with none in it, or not a folder.
-        let nowhere = changed("design: Model(\"shogun\")", "design: Model(\"nowhere\")");
+        let nowhere = changed("design: Afilada", "design: Model(\"nowhere\")");
         let error = parse(nowhere).map(|entries| entries.len());
         assert!(
             error
@@ -2366,8 +2364,13 @@ mod tests {
                 .is_some_and(|e| e.contains("models/nowhere/model.ron")),
             "{error:?}"
         );
-        let path = changed("design: Model(\"shogun\")", "design: Model(\"../shogun\")");
+        let path = changed("design: Afilada", "design: Model(\"../shogun\")");
         assert!(parse(path).err().unwrap().contains("../shogun"));
+    }
+
+    #[test]
+    fn the_roster_reads_a_bike_for_each_place() {
+        the_roster_reads_a_bike_for_each_place_on(&crate::testing::DEMO_ROSTER);
     }
 
     const DT: f32 = 1.0 / 120.0;
@@ -2423,11 +2426,12 @@ mod tests {
         assert_eq!(on_concrete.grass, 0.0);
     }
 
-    #[test]
-    fn the_chosen_bike_takes_the_player_slot_and_the_rest_the_rivals() {
+    pub(crate) fn the_chosen_bike_takes_the_player_slot_and_the_rest_the_rivals_on(
+        roster: &'static crate::bike::Roster,
+    ) {
         assert!(GRID[PLAYER_SLOT].is_none(), "el jugador no es un rival");
         assert_eq!(GRID.iter().filter(|rival| rival.is_none()).count(), 1);
-        for choice in 0..ROSTER.len() {
+        for choice in 0..roster.len() {
             let lineup = lineup(choice);
             assert_eq!(lineup[PLAYER_SLOT], choice);
             let mut sorted = lineup;
@@ -2436,6 +2440,13 @@ mod tests {
         }
         // Sin cambiar de moto: las demás, por orden, delante del jugador.
         assert_eq!(lineup(0), [1, 2, 3, 4, 5, 6, 7, 0]);
+    }
+
+    #[test]
+    fn the_chosen_bike_takes_the_player_slot_and_the_rest_the_rivals() {
+        the_chosen_bike_takes_the_player_slot_and_the_rest_the_rivals_on(
+            &crate::testing::DEMO_ROSTER,
+        );
     }
 
     #[test]
@@ -2985,12 +2996,13 @@ mod tests {
         assert!(shown(Smooth, 1.0) > 0.99 && shown(Soft, 1.0) > 0.99);
     }
 
-    #[test]
-    fn the_toy_store_s_helix_is_taken_flat_out() {
+    pub(crate) fn the_toy_store_s_helix_is_taken_flat_out_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Round every point where Hot Wheels' banked track grips harder, at
         // top speed, the turn its bend needs is within what the bike gives
         // short of where it scrubs speed off (`CORNER_LOSS_FROM`).
-        let circuit = crate::game::CIRCUITS
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.name == "Juguetería")
             .unwrap();
@@ -3773,11 +3785,17 @@ mod tests {
         }
     }
 
-    #[test]
-    fn flat_out_steering_only_laps_without_touching_the_walls() {
-        for circuit in crate::game::CIRCUITS.iter() {
+    pub(crate) fn flat_out_steering_only_laps_without_touching_the_walls_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             flat_out_lap(&Track::new(&circuit.layout), circuit.name);
         }
+    }
+
+    #[test]
+    fn flat_out_steering_only_laps_without_touching_the_walls() {
+        flat_out_steering_only_laps_without_touching_the_walls_on(&crate::testing::DEMO);
     }
 
     fn flat_out_lap(track: &Track, name: &str) {

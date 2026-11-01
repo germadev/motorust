@@ -215,13 +215,13 @@ fn fade_halos(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
-    #[test]
-    fn only_loop_island_leaves_a_blue_halo() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn only_loop_island_leaves_a_blue_halo_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let halo = circuit.scenery.wheelie_halo;
             if circuit.name == "Loop Island" {
                 let blue = halo.expect("Loop Island has a halo").to_srgba();
@@ -230,6 +230,11 @@ mod tests {
                 assert!(halo.is_none(), "{}", circuit.name);
             }
         }
+    }
+
+    #[test]
+    fn only_loop_island_leaves_a_blue_halo() {
+        only_loop_island_leaves_a_blue_halo_on(&crate::testing::DEMO);
     }
 
     #[test]

@@ -702,21 +702,21 @@ fn narrow_portal_frusta(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
-    fn moon_base() -> &'static crate::circuits::Circuit {
-        CIRCUITS
+    pub(crate) fn moon_base(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> &'static crate::circuits::Circuit {
+        circuits
             .iter()
             .find(|circuit| splits(&circuit.scenery))
             .expect("a circuit split between the Earth and the Moon")
     }
 
-    #[test]
-    fn only_moon_base_is_split() {
+    pub(crate) fn only_moon_base_is_split_on(circuits: &'static crate::circuits::Circuits) {
         assert_eq!(
-            CIRCUITS
+            circuits
                 .iter()
                 .filter(|circuit| splits(&circuit.scenery))
                 .count(),
@@ -724,9 +724,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn one_goes_from_one_realm_to_the_other_only_through_a_portal() {
-        let circuit = moon_base();
+    pub(crate) fn one_goes_from_one_realm_to_the_other_only_through_a_portal_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = moon_base(circuits);
         let track = Track::new(&circuit.layout);
         let gates = Gates(gates(&track, &circuit.scenery));
         assert_eq!(gates.0.len(), 2);

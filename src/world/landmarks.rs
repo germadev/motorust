@@ -962,9 +962,8 @@ fn falls_foot(track: &Track, terrain: &Terrain, index: usize, side: f32) -> f32 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
 
     fn positions(mesh: &Mesh) -> Vec<Vec3> {
@@ -995,9 +994,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn landmarks_of_every_circuit_stand_clear_of_the_road() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn landmarks_of_every_circuit_stand_clear_of_the_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let scenery = &circuit.scenery;
             let name = circuit.name;
@@ -1034,8 +1034,14 @@ mod tests {
     }
 
     #[test]
-    fn waterfalls_pour_down_a_rock_wall() {
-        for circuit in CIRCUITS.iter() {
+    fn landmarks_of_every_circuit_stand_clear_of_the_road() {
+        landmarks_of_every_circuit_stand_clear_of_the_road_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn waterfalls_pour_down_a_rock_wall_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let terrain = Terrain::new(&track, &circuit.scenery);
             for waterfall in circuit.scenery.waterfalls {
@@ -1065,5 +1071,10 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn waterfalls_pour_down_a_rock_wall() {
+        waterfalls_pour_down_a_rock_wall_on(&crate::testing::DEMO);
     }
 }

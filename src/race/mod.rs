@@ -1217,10 +1217,8 @@ pub fn start_championship(championship: &mut Championship, current: &mut Current
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
-    use crate::game::ROSTER;
 
     const LAP: f32 = 3000.0;
     /// Checkpoint gantries at 1000 and 2000 m, and the line.
@@ -1335,9 +1333,10 @@ mod tests {
         assert_eq!(stretch_after(&[1600.0], 0), 1600.0);
     }
 
-    #[test]
-    fn every_track_has_its_checkpoints_evenly_spread() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn every_track_has_its_checkpoints_evenly_spread_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let lap = Track::new(&circuit.layout).lap_length();
             let points = checkpoints(&circuit.checkpoints(), lap);
             assert!(points.len() >= 2, "{}: {points:?}", circuit.name);
@@ -1369,6 +1368,11 @@ mod tests {
                 assert!(very_hard.starting(&points) < hard.starting(&points));
             }
         }
+    }
+
+    #[test]
+    fn every_track_has_its_checkpoints_evenly_spread() {
+        every_track_has_its_checkpoints_evenly_spread_on(&crate::testing::DEMO);
     }
 
     #[test]
@@ -1453,8 +1457,9 @@ mod tests {
         assert!(places[1].time.is_none() && !places[1].estimated);
     }
 
-    #[test]
-    fn a_championship_adds_up_points_race_after_race() {
+    pub(crate) fn a_championship_adds_up_points_race_after_race_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut championship = Championship::default();
         championship.score(&[3, 1, 0, 2, 4, 5, 6, 7]);
         championship.score(&[1, 3, 0, 2, 4, 5, 6, 7]);
@@ -1462,8 +1467,13 @@ mod tests {
         assert_eq!(championship.points[1], 8 + 10);
         assert_eq!(championship.round, 2);
         assert_eq!(&championship.standings()[..3], &[1, 3, 0]);
-        championship.round = CIRCUITS.len();
-        assert!(championship.is_over(CIRCUITS.len()));
+        championship.round = circuits.len();
+        assert!(championship.is_over(circuits.len()));
+    }
+
+    #[test]
+    fn a_championship_adds_up_points_race_after_race() {
+        a_championship_adds_up_points_race_after_race_on(&crate::testing::DEMO);
     }
 
     #[test]
@@ -1500,12 +1510,13 @@ mod tests {
         assert!(spot_worth(&track, &riding(before_bend, 1.0), 0) < into_bend * 0.5);
     }
 
-    #[test]
-    fn a_bike_on_a_road_off_the_lap_is_worth_watching() {
+    pub(crate) fn a_bike_on_a_road_off_the_lap_is_worth_watching_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         // Once everybody is in, the camera weighs every bike's spot; one on
         // a branch (Ghost Island's, say) is weighed on that branch.
         let mut weighed = 0;
-        for circuit in CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             weighed += track.side_roads().len();
             for road in 1..=track.side_roads().len() {
@@ -1623,21 +1634,25 @@ mod tests {
         assert_eq!(records.best_laps.len(), 2);
     }
 
-    #[test]
-    fn each_mode_has_its_laps() {
+    pub(crate) fn each_mode_has_its_laps_on(roster: &'static crate::bike::Roster) {
         assert_eq!(Mode::Free.laps(3), None);
         assert_eq!(Mode::Checkpoint.laps(3), None);
         assert_eq!(Mode::Race.laps(7), Some(7));
         assert_eq!(Mode::Arcade.laps(7), Some(CHAMPIONSHIP_LAPS));
         // An elimination: one lap for each bike but the winner.
         assert_eq!(Mode::Elimination.laps(2), Some(7));
-        assert_eq!(ELIMINATION_LAPS as usize, ROSTER.len() - 1);
+        assert_eq!(ELIMINATION_LAPS as usize, roster.len() - 1);
         assert_eq!(DEFAULT_LAPS, 5);
         assert!(Mode::Arcade.is_championship());
         assert!(!Mode::Race.is_championship() && !Mode::Elimination.is_championship());
         // The time against the clock grows with the stretch.
         let times = CheckpointTimes::on(Difficulty::Medium);
         assert!(times.bonus(1000.0) > times.bonus(500.0));
+    }
+
+    #[test]
+    fn each_mode_has_its_laps() {
+        each_mode_has_its_laps_on(&crate::testing::DEMO_ROSTER);
     }
 
     /// An elimination with four bikes of the roster (0, 1, 2 and 3), the

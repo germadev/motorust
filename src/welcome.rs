@@ -839,15 +839,15 @@ fn fly_over_track(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
     use crate::world::road::{GANTRY_BEAM, GANTRY_HEIGHT};
     use crate::world::structures::TUNNEL_HEIGHT;
 
-    #[test]
-    fn the_camera_flies_under_the_rock_through_every_tunnel() {
-        for circuit in CIRCUITS.iter() {
+    pub(crate) fn the_camera_flies_under_the_rock_through_every_tunnel_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let lap = track.sample_count() as f32 * track.step_length();
             let height = |at: f32| flyby_height(&circuit.scenery, at, lap);
@@ -902,9 +902,15 @@ mod tests {
     }
 
     #[test]
-    fn the_camera_flies_under_the_beam_of_every_arch_over_the_road() {
+    fn the_camera_flies_under_the_rock_through_every_tunnel() {
+        the_camera_flies_under_the_rock_through_every_tunnel_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_camera_flies_under_the_beam_of_every_arch_over_the_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let beam = GANTRY_HEIGHT - GANTRY_BEAM;
-        for circuit in CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let lap = track.sample_count() as f32 * track.step_length();
             let height = |at: f32| flyby_height(&circuit.scenery, at, lap);
@@ -926,8 +932,14 @@ mod tests {
     }
 
     #[test]
-    fn the_flight_over_a_track_sets_off_just_before_its_line() {
-        for circuit in CIRCUITS.iter() {
+    fn the_camera_flies_under_the_beam_of_every_arch_over_the_road() {
+        the_camera_flies_under_the_beam_of_every_arch_over_the_road_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_flight_over_a_track_sets_off_just_before_its_line_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
             let track = Track::new(&circuit.layout);
             let lap = track.sample_count() as f32 * track.step_length();
             let start = flyby_start(lap);
@@ -941,6 +953,11 @@ mod tests {
             let stretch = crate::world::preview_stretch(lap);
             assert!(stretch.contains(start, lap), "{}", circuit.name);
         }
+    }
+
+    #[test]
+    fn the_flight_over_a_track_sets_off_just_before_its_line() {
+        the_flight_over_a_track_sets_off_just_before_its_line_on(&crate::testing::DEMO);
     }
 
     #[test]

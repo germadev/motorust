@@ -267,24 +267,23 @@ impl From<CoastFile> for Coast {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
     /// Every circuit read from a file reads, so a mistake in one fails
     /// here and not in the game.
-    #[test]
-    fn every_circuit_file_reads() {
+    pub(crate) fn every_circuit_file_reads_on(circuits: &'static crate::circuits::Circuits) {
         for (name, text) in super::super::files().unwrap() {
             parse::<Circuit>(&name, text).unwrap_or_else(|error| panic!("{error}"));
         }
-        assert_eq!(CIRCUITS[0].name, "Bahía GP");
+        assert_eq!(circuits[0].name, "Bahía GP");
     }
 
     #[test]
     fn mistakes_are_told() {
-        let files = super::super::files().unwrap();
-        let (name, text) = (&*files[0].0, files[0].1);
+        // The engine's demo circuit's file.
+        let name = "circuits/bahia.ron";
+        let text = crate::testing::demo_file(name);
         let changed = |from, to| &*String::leak(text.replacen(from, to, 1));
         let unknown = changed("pace:", "speed:");
         assert!(
@@ -293,19 +292,13 @@ mod tests {
                 .unwrap()
                 .contains("speed")
         );
-        // Nor a function the game does not have (Ghost Island's file names
-        // its volcano's gullies).
-        let (volcano, text) = (&*files[4].0, files[4].1);
-        let function =
-            &*String::leak(text.replacen("\"ghost_island_volcano_relief\"", "\"nowhere\"", 1));
-        assert!(
-            parse::<Circuit>(volcano, function)
-                .err()
-                .unwrap()
-                .contains("nowhere")
-        );
+        // Nor a function of the terrain no game registered.
+        assert!(named("nowhere").err().unwrap().contains("nowhere"));
         // Nor a song that is not an MP3 in assets/music/.
-        let song = changed("\"bahia.mp3\"", "\"../bahia.mp3\"");
+        let song = changed(
+            "pace:",
+            "song: (file: \"../bahia.mp3\", length: 1.0, loudness: -16.0),\n    pace:",
+        );
         assert!(
             parse::<Circuit>(name, song)
                 .err()

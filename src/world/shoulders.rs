@@ -115,13 +115,15 @@ fn stone_surface(stone: Stone) -> Surface {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
     /// The shoulders of a circuit, by its name, with its track and scenery.
-    fn shoulders_of(name: &str) -> (Track, &'static Scenery, Vec<Vec<[Surface; 2]>>) {
-        let circuit = CIRCUITS
+    pub(crate) fn shoulders_of(
+        circuits: &'static crate::circuits::Circuits,
+        name: &str,
+    ) -> (Track, &'static Scenery, Vec<Vec<[Surface; 2]>>) {
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.name == name)
             .expect("the circuit exists");
@@ -144,10 +146,11 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn every_road_of_every_circuit_has_its_shoulders() {
-        for circuit in CIRCUITS.iter() {
-            let (track, _, shoulders) = shoulders_of(circuit.name);
+    pub(crate) fn every_road_of_every_circuit_has_its_shoulders_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
+            let (track, _, shoulders) = shoulders_of(circuits, circuit.name);
             assert_eq!(
                 shoulders.len(),
                 1 + track.side_roads().len(),
@@ -161,9 +164,15 @@ mod tests {
     }
 
     #[test]
-    fn tunnels_and_bridges_are_paved_beside_the_road() {
-        for circuit in CIRCUITS.iter() {
-            let (track, scenery, shoulders) = shoulders_of(circuit.name);
+    fn every_road_of_every_circuit_has_its_shoulders() {
+        every_road_of_every_circuit_has_its_shoulders_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn tunnels_and_bridges_are_paved_beside_the_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        for circuit in circuits.iter() {
+            let (track, scenery, shoulders) = shoulders_of(circuits, circuit.name);
             let spans = scenery.bridges.iter().map(|bridge| bridge.span).chain(
                 scenery
                     .tunnels
@@ -184,8 +193,14 @@ mod tests {
     }
 
     #[test]
-    fn the_bay_is_mostly_grass_and_the_gold_mine_has_none() {
-        let (_, _, bay) = shoulders_of(CIRCUITS[0].name);
+    fn tunnels_and_bridges_are_paved_beside_the_road() {
+        tunnels_and_bridges_are_paved_beside_the_road_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn the_bay_is_mostly_grass_and_the_gold_mine_has_none_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (_, _, bay) = shoulders_of(circuits, circuits[0].name);
         let grass = bay[0]
             .iter()
             .flatten()
@@ -193,11 +208,11 @@ mod tests {
             .count();
         assert!(grass > bay[0].len(), "{grass} of {}", 2 * bay[0].len());
 
-        let gold_mine = CIRCUITS
+        let gold_mine = circuits
             .iter()
             .find(|circuit| circuit.scenery.soil == Soil::Mine)
             .expect("there is a mine");
-        let (track, scenery, shoulders) = shoulders_of(gold_mine.name);
+        let (track, scenery, shoulders) = shoulders_of(circuits, gold_mine.name);
         let all: Vec<Surface> = shoulders.iter().flatten().flatten().copied().collect();
         assert!(!all.contains(&Surface::Grass), "no grass in the desert");
         assert!(all.contains(&Surface::Dirt(Dust::Desert)));
@@ -211,9 +226,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn fellowship_road_s_shoulders_are_grass_and_bare_earth_in_patches() {
-        let (_, _, shoulders) = shoulders_of("Fellowship Road");
+    pub(crate) fn fellowship_road_s_shoulders_are_grass_and_bare_earth_in_patches_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (_, _, shoulders) = shoulders_of(circuits, "Fellowship Road");
         let lap = &shoulders[0];
         let count = |wanted: Surface| lap.iter().flatten().filter(|&&s| s == wanted).count();
         let (grass, earth) = (count(Surface::Grass), count(Surface::Dirt(Dust::Earth)));

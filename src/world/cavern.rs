@@ -1481,13 +1481,14 @@ impl Painter<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
 
     /// The excavation of Gold Mine, and its track.
-    fn gold_mine() -> (Track, &'static crate::world::scenery::Scenery) {
-        let circuit = CIRCUITS
+    pub(crate) fn gold_mine(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> (Track, &'static crate::world::scenery::Scenery) {
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.scenery.soil == crate::world::scenery::Soil::Mine)
             .expect("a circuit has a mine");
@@ -1495,8 +1496,10 @@ mod tests {
     }
 
     /// The halls of Moria, through Fellowship Road's mountain, and its track.
-    fn moria() -> (Track, &'static crate::world::scenery::Scenery) {
-        let circuit = CIRCUITS
+    pub(crate) fn moria(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> (Track, &'static crate::world::scenery::Scenery) {
+        let circuit = circuits
             .iter()
             .find(|circuit| {
                 circuit.scenery.soil != crate::world::scenery::Soil::Mine
@@ -1506,9 +1509,10 @@ mod tests {
         (Track::new(&circuit.layout), &circuit.scenery)
     }
 
-    #[test]
-    fn moria_s_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars() {
-        let (track, scenery) = moria();
+    pub(crate) fn moria_s_great_hall_is_far_wider_and_higher_than_the_road_past_its_pillars_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, scenery) = moria(circuits);
         let halls = scenery.excavation().unwrap();
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, halls);
@@ -1551,9 +1555,10 @@ mod tests {
         assert!(!built.rock[Stone::Masonry.index()].is_empty());
     }
 
-    #[test]
-    fn the_halls_are_high_and_the_galleries_lower() {
-        let (track, scenery) = gold_mine();
+    pub(crate) fn the_halls_are_high_and_the_galleries_lower_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, scenery) = gold_mine(circuits);
         let halls = scenery.halls;
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, halls);
@@ -1584,9 +1589,10 @@ mod tests {
         assert!(highest > 30.0);
     }
 
-    #[test]
-    fn the_walls_stand_where_the_bikes_hit_them_with_the_roof_above_a_rider() {
-        let (track, scenery) = gold_mine();
+    pub(crate) fn the_walls_stand_where_the_bikes_hit_them_with_the_roof_above_a_rider_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, scenery) = gold_mine(circuits);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);
         let lap = track.lap_length();
@@ -1616,9 +1622,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn rock_stands_between_the_roads_where_they_part() {
-        let (track, scenery) = gold_mine();
+    pub(crate) fn rock_stands_between_the_roads_where_they_part_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, scenery) = gold_mine(circuits);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);
         assert_eq!(cave.branches.len(), 4);
@@ -1638,9 +1645,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_rock_over_the_excavation_carries_the_road_over_the_top() {
-        let (track, scenery) = gold_mine();
+    pub(crate) fn the_rock_over_the_excavation_carries_the_road_over_the_top_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, scenery) = gold_mine(circuits);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);
         // The road over the top of the mountain crosses the excavation.
@@ -1669,9 +1677,10 @@ mod tests {
         assert!(cave.passing_over(away).is_none());
     }
 
-    #[test]
-    fn the_excavation_is_closed_and_lit() {
-        let (track, scenery) = gold_mine();
+    pub(crate) fn the_excavation_is_closed_and_lit_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, scenery) = gold_mine(circuits);
         let terrain = Terrain::new(&track, scenery);
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, scenery.halls);

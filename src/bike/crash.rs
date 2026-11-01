@@ -1143,7 +1143,7 @@ fn shrink(v: Vec2, amount: f32) -> Vec2 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::geometry::wrap_angle;
     use crate::track::WALL_DISTANCE;
@@ -1289,8 +1289,10 @@ mod tests {
 
     /// The steepest downhill of the laps of all the circuits: the track, the
     /// point of its centre line and how steep it is there.
-    fn steepest_downhill() -> (Track, usize, f32) {
-        crate::game::CIRCUITS
+    pub(crate) fn steepest_downhill(
+        circuits: &'static crate::circuits::Circuits,
+    ) -> (Track, usize, f32) {
+        circuits
             .iter()
             .map(|circuit| {
                 let track = Track::new(&circuit.layout);
@@ -1308,9 +1310,10 @@ mod tests {
             .expect("there are circuits")
     }
 
-    #[test]
-    fn a_bike_that_falls_downhill_does_not_float_off_the_road() {
-        let (track, index, grade) = steepest_downhill();
+    pub(crate) fn a_bike_that_falls_downhill_does_not_float_off_the_road_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, index, grade) = steepest_downhill(circuits);
         assert!(grade < -0.08, "a real downhill: {grade}");
         let (position, heading) = track.pose_at(index);
         let mut state = riding(position, heading, 45.0);
@@ -1349,8 +1352,14 @@ mod tests {
     }
 
     #[test]
-    fn a_fallen_bike_slides_further_down_a_hill_than_up_it() {
-        let (track, index, _) = steepest_downhill();
+    fn a_bike_that_falls_downhill_does_not_float_off_the_road() {
+        a_bike_that_falls_downhill_does_not_float_off_the_road_on(&crate::testing::DEMO);
+    }
+
+    pub(crate) fn a_fallen_bike_slides_further_down_a_hill_than_up_it_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let (track, index, _) = steepest_downhill(circuits);
         let (position, heading) = track.pose_at(index);
         let slide_for = |heading: f32| {
             let mut state = riding(position, heading, 0.0);
@@ -1374,6 +1383,11 @@ mod tests {
         let down = slide_for(heading);
         let up = slide_for(heading + PI);
         assert!(down > up + 0.5, "down {down} m, up {up} m");
+    }
+
+    #[test]
+    fn a_fallen_bike_slides_further_down_a_hill_than_up_it() {
+        a_fallen_bike_slides_further_down_a_hill_than_up_it_on(&crate::testing::DEMO);
     }
 
     #[test]

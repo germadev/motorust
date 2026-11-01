@@ -1007,13 +1007,14 @@ fn show_split_choices(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::circuits::CurrentCircuit;
-    use crate::game::CIRCUITS;
 
-    #[test]
-    fn split_screen_select_initializes_and_updates_without_conflict() {
+    pub(crate) fn split_screen_select_initializes_and_updates_without_conflict_on(
+        circuits: &'static crate::circuits::Circuits,
+        roster: &'static crate::bike::Roster,
+    ) {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(bevy::state::app::StatesPlugin)
@@ -1038,11 +1039,13 @@ mod tests {
             .init_resource::<CurrentCircuit>()
             .init_resource::<CameraGlide>()
             .init_resource::<Rules>()
+            .insert_resource(*circuits)
+            .insert_resource(*roster)
             .add_plugins(crate::camera::ChaseCameraPlugin)
             .add_plugins(crate::bike::BikePlugin)
             .add_plugins(MenuPlugin);
 
-        let track = Track::new(&CIRCUITS[0].layout);
+        let track = Track::new(&circuits[0].layout);
         app.insert_resource(track);
 
         app.world_mut()
@@ -1056,5 +1059,13 @@ mod tests {
         assert_eq!(split_choices.p2, 1);
         assert!(!split_choices.p1_ready);
         assert!(!split_choices.p2_ready);
+    }
+
+    #[test]
+    fn split_screen_select_initializes_and_updates_without_conflict() {
+        split_screen_select_initializes_and_updates_without_conflict_on(
+            &crate::testing::DEMO,
+            &crate::testing::DEMO_ROSTER,
+        );
     }
 }

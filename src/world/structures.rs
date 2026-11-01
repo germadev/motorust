@@ -1422,9 +1422,8 @@ fn spawn_brake_marker(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::game::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
 
     /// The height of the highest upward-facing triangle of `mesh` over
@@ -1457,9 +1456,10 @@ mod tests {
             .reduce(f32::max)
     }
 
-    #[test]
-    fn a_tunnels_top_is_in_flower_where_the_fields_round_it_are() {
-        let circuit = CIRCUITS
+    pub(crate) fn a_tunnels_top_is_in_flower_where_the_fields_round_it_are_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = circuits
             .iter()
             .find(|circuit| circuit.name == "Ghost Island")
             .unwrap();
@@ -1501,10 +1501,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn concrete_bridges_have_a_deck_out_to_the_walls() {
+    pub(crate) fn concrete_bridges_have_a_deck_out_to_the_walls_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
         let mut checked = 0;
-        for circuit in CIRCUITS.iter() {
+        for circuit in circuits.iter() {
             let scenery = &circuit.scenery;
             if !scenery.bridges.iter().any(|bridge| !bridge.style.wooden()) {
                 continue;
@@ -1553,9 +1554,10 @@ mod tests {
         assert!(checked > 0, "some circuit has a concrete bridge");
     }
 
-    #[test]
-    fn a_wooden_bridge_s_boards_show_their_ends_at_each_gap() {
-        let circuit = &CIRCUITS[2];
+    pub(crate) fn a_wooden_bridge_s_boards_show_their_ends_at_each_gap_on(
+        circuits: &'static crate::circuits::Circuits,
+    ) {
+        let circuit = &circuits[2];
         let bridge = circuit
             .scenery
             .bridges
