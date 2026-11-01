@@ -1,5 +1,5 @@
-//! A mine's excavation (see [`super::scenery::Mine`]): galleries and halls
-//! hewn through the rock, with high, rough roofs, pillars of rock left
+//! An excavation, a mine's or Moria's (see [`super::scenery::Hall`]):
+//! galleries and halls hewn through the rock, with high, rough roofs, pillars of rock left
 //! between the roads where a branch takes another way through (see
 //! [`crate::track::Fork`]), and stone of several kinds along it (see
 //! [`Stone`]), lit by lanterns.
@@ -1489,7 +1489,7 @@ mod tests {
     fn gold_mine() -> (Track, &'static crate::world::scenery::Scenery) {
         let circuit = CIRCUITS
             .iter()
-            .find(|circuit| circuit.scenery.mine.is_some())
+            .find(|circuit| circuit.scenery.soil == crate::world::scenery::Soil::Mine)
             .expect("a circuit has a mine");
         (Track::new(&circuit.layout), &circuit.scenery)
     }
@@ -1499,7 +1499,8 @@ mod tests {
         let circuit = CIRCUITS
             .iter()
             .find(|circuit| {
-                circuit.scenery.mine.is_none() && circuit.scenery.excavation().is_some()
+                circuit.scenery.soil != crate::world::scenery::Soil::Mine
+                    && circuit.scenery.excavation().is_some()
             })
             .expect("a circuit has halls dug as a mine's");
         (Track::new(&circuit.layout), &circuit.scenery)
@@ -1553,7 +1554,7 @@ mod tests {
     #[test]
     fn the_halls_are_high_and_the_galleries_lower() {
         let (track, scenery) = gold_mine();
-        let halls = scenery.mine.as_ref().unwrap().halls;
+        let halls = scenery.halls;
         let span = scenery.tunnels[0];
         let cave = Cave::new(&track, span, halls);
         let lap = track.lap_length();
@@ -1587,7 +1588,7 @@ mod tests {
     fn the_walls_stand_where_the_bikes_hit_them_with_the_roof_above_a_rider() {
         let (track, scenery) = gold_mine();
         let span = scenery.tunnels[0];
-        let cave = Cave::new(&track, span, scenery.mine.as_ref().unwrap().halls);
+        let cave = Cave::new(&track, span, scenery.halls);
         let lap = track.lap_length();
         for index in 0..track.sample_count() {
             let along = index as f32 * track.step_length();
@@ -1619,7 +1620,7 @@ mod tests {
     fn rock_stands_between_the_roads_where_they_part() {
         let (track, scenery) = gold_mine();
         let span = scenery.tunnels[0];
-        let cave = Cave::new(&track, span, scenery.mine.as_ref().unwrap().halls);
+        let cave = Cave::new(&track, span, scenery.halls);
         assert_eq!(cave.branches.len(), 4);
         for fork in track.forks() {
             let line = track.road(fork.road);
@@ -1641,7 +1642,7 @@ mod tests {
     fn the_rock_over_the_excavation_carries_the_road_over_the_top() {
         let (track, scenery) = gold_mine();
         let span = scenery.tunnels[0];
-        let cave = Cave::new(&track, span, scenery.mine.as_ref().unwrap().halls);
+        let cave = Cave::new(&track, span, scenery.halls);
         // The road over the top of the mountain crosses the excavation.
         let (gap, over, under) = cave
             .others
@@ -1673,7 +1674,7 @@ mod tests {
         let (track, scenery) = gold_mine();
         let terrain = Terrain::new(&track, scenery);
         let span = scenery.tunnels[0];
-        let cave = Cave::new(&track, span, scenery.mine.as_ref().unwrap().halls);
+        let cave = Cave::new(&track, span, scenery.halls);
         let mut parts = Parts::default();
         let lanterns = cave.timber_and_lanterns(&mut parts);
         assert!(lanterns.len() > 30, "{} lanterns", lanterns.len());
@@ -1685,7 +1686,7 @@ mod tests {
         cave.veins(&mut parts);
         cave.planked_branches(&painter, &mut parts);
         cave.outside(&terrain, &mut parts);
-        let halls = scenery.mine.as_ref().unwrap().halls;
+        let halls = scenery.halls;
         for (stone, rock) in Stone::ALL.iter().zip(&parts.rock) {
             let used = *stone == Stone::Timbered || halls.iter().any(|hall| hall.stone == *stone);
             assert_eq!(rock.is_empty(), !used, "{stone:?}");

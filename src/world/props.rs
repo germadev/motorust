@@ -18,6 +18,7 @@ use super::scenery::{
 };
 use super::terrain::{Ground, SEA_LEVEL, Terrain};
 use super::textures::WorldTextures;
+use super::themes::Stage;
 use super::trees::{LEVELS, Tree, TreeModel, lighter};
 use crate::geometry::{heading_of, random01, smoothstep, value_noise};
 use crate::shapes::{between, tube};
@@ -62,9 +63,15 @@ pub fn spawn_props(
         occupied.extend(spawn_hotels(world, track, terrain, row, assets));
     }
     // What the circuit's themes put by the road (see `super::themes`).
-    for (_, theme) in scenery.themes.iter() {
-        occupied.extend(theme.spawn(world, track, terrain, assets));
-    }
+    spawn_themes(
+        world,
+        track,
+        terrain,
+        scenery,
+        Stage::BeforeHouses,
+        &mut occupied,
+        assets,
+    );
     // The flowers are of feudal Japan or of Middle-earth.
     let (japanese, middle) = if scenery.japan.is_some() {
         (flowers, FlowerPlan::default())
@@ -128,9 +135,15 @@ pub fn spawn_props(
         scenery.sunflowers,
         assets,
     ));
-    occupied.extend(super::mine::spawn_mine(
-        world, track, terrain, scenery, assets,
-    ));
+    spawn_themes(
+        world,
+        track,
+        terrain,
+        scenery,
+        Stage::AfterHouses,
+        &mut occupied,
+        assets,
+    );
     landmarks::spawn_rings(world, track, scenery.rings, assets);
     landmarks::spawn_waterfalls(world, track, terrain, scenery.waterfalls, assets);
     for lighthouse in scenery.lighthouses {
@@ -147,10 +160,28 @@ pub fn spawn_props(
     }
 }
 
+/// Puts in the world what the circuit's themes put at `stage`, and the
+/// ground it takes among what is `occupied`.
+fn spawn_themes(
+    world: &mut ChildSpawnerCommands,
+    track: &Track,
+    terrain: &Terrain,
+    scenery: &Scenery,
+    stage: Stage,
+    occupied: &mut Vec<Footprint>,
+    assets: &mut Assets3d,
+) {
+    for (_, theme) in scenery.themes.iter() {
+        if theme.stage() == stage {
+            occupied.extend(theme.spawn(world, track, terrain, assets));
+        }
+    }
+}
+
 /// Puntos de una fila a lo largo de la carretera: el punto del trazado y la
 /// posición, cada `every` metros desde la mitad del primer hueco. None on a
 /// road off the lap or next to its walls.
-pub(super) fn row_points(track: &Track, row: &Row) -> Vec<(usize, Vec2)> {
+pub fn row_points(track: &Track, row: &Row) -> Vec<(usize, Vec2)> {
     let lap = track.lap_length();
     let length = row.span.length(lap);
     let count = (length / row.every).floor() as usize;

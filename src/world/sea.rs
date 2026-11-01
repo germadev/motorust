@@ -602,7 +602,7 @@ mod tests {
         // The Gold Mine's lake and river are red, Fellowship Road's rivers
         // and lakes green-grey, every other track's sea blue.
         for circuit in crate::circuits::CIRCUITS.iter() {
-            let wanted = if circuit.scenery.mine.is_some() {
+            let wanted = if circuit.scenery.soil == crate::world::scenery::Soil::Mine {
                 Water::Iron
             } else if circuit.scenery.middle_earth.is_some() {
                 Water::River

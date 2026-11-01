@@ -1140,6 +1140,16 @@
         // graded as a film; the rivers and lakes green-grey.
         sky: HighCountry,
         water: River,
+        // The halls of Moria, through the Doors of Durin: the way in, of the
+        // dwarves' masonry, as high as the doors; a natural cave under the pass; the
+        // Dwarrowdelf, a great hall of pillars far wider than the road, its roof
+        // lost high above; and a natural cave out to the east gate.
+        halls: [
+            (span: Span(3770.1, 3835.1), stone: Masonry, crown: 30.0),
+            (span: Span(3835.1, 3900.1), stone: Cave, crown: 22.0, width: 5.0),
+            (span: Span(3900.1, 4055.1), stone: Masonry, crown: 34.0, width: 16.0),
+            (span: Span(4055.1, 4153.1), stone: Cave, crown: 20.0, width: 4.0),
+        ],
         middle_earth: Some((
             // The props of Middle-earth, made with Meshy, in the order of the lap:
             // where the road comes at them, and those with a front turned to face the
@@ -1387,16 +1397,6 @@
                 (area: Road(span: Span(2360.1, 2819.1), reach: 24.0), kind: Maple),
                 (area: Road(span: Span(2510.1, 2819.1), reach: 24.0), kind: Gold),
                 (area: Road(span: Span(4133.1, 4587.1), reach: 24.0), kind: Gold),
-            ],
-            // The halls of Moria, through the Doors of Durin: the way in, of the
-            // dwarves' masonry, as high as the doors; a natural cave under the pass; the
-            // Dwarrowdelf, a great hall of pillars far wider than the road, its roof
-            // lost high above; and a natural cave out to the east gate.
-            halls: [
-                (span: Span(3770.1, 3835.1), stone: Masonry, crown: 30.0),
-                (span: Span(3835.1, 3900.1), stone: Cave, crown: 22.0, width: 5.0),
-                (span: Span(3900.1, 4055.1), stone: Masonry, crown: 34.0, width: 16.0),
-                (span: Span(4055.1, 4153.1), stone: Cave, crown: 20.0, width: 4.0),
             ],
             paths: [
                 // The footpaths of Hobbiton, of bare earth: from the road past the bridge

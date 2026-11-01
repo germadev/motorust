@@ -761,51 +761,51 @@
                     (along: 5860.0, reach: 30.0),
                 ],
             ),
+            "mine": (
+                rails: [
+                    // Through town, on the right of the start straight.
+                    (span: Span(20.0, 270.0), side: Right, lateral: 17.5, carts: 3),
+                    // Out of the west mouth, along the rim of the pit.
+                    (span: Span(2600.0, 2800.0), side: Left, lateral: 17.5, carts: 2),
+                ],
+                // In the canyon, just before the east mouth.
+                trestles: [(along: 1625.0)],
+                headframes: [
+                    // Over a shaft on the top of the mountain.
+                    (along: 4890.0, side: Left, lateral: 48.0),
+                    // By the road along the rim of the pit.
+                    (along: 2770.0, side: Left, lateral: 46.0),
+                ],
+                lanterns: [
+                    (span: Span(5780.0, 300.0), side: Left, lateral: 12.7, every: 28.0),
+                    (span: Span(5780.0, 300.0), side: Right, lateral: 12.7, every: 28.0),
+                    (span: Span(2555.0, 2905.0), side: Left, lateral: 12.7, every: 40.0),
+                    (span: Span(3425.0, 4580.0), side: Left, lateral: 12.7, every: 40.0),
+                    // Over the top, once past the road through the mountain
+                    // beneath.
+                    (span: Span(4830.0, 5000.0), side: Right, lateral: 12.7, every: 40.0),
+                    (span: Span(5000.0, 5780.0), side: Left, lateral: 12.7, every: 40.0),
+                ],
+                piles: [
+                    (along: 160.0, side: Left, lateral: 20.5, kind: Supplies),
+                    (along: 840.0, side: Left, lateral: 21.5, kind: Ore),
+                    (along: 2700.0, side: Left, lateral: 25.5, kind: Ore),
+                    (along: 2900.0, side: Left, lateral: 20.5, kind: Supplies),
+                    (along: 4660.0, side: Right, lateral: 23.5, kind: Ore),
+                    (along: 5620.0, side: Left, lateral: 20.5, kind: Supplies),
+                ],
+            ),
         },
-        mine: Some((
-            rails: [
-                // Through town, on the right of the start straight.
-                (span: Span(20.0, 270.0), side: Right, lateral: 17.5, carts: 3),
-                // Out of the west mouth, along the rim of the pit.
-                (span: Span(2600.0, 2800.0), side: Left, lateral: 17.5, carts: 2),
-            ],
-            // In the canyon, just before the east mouth.
-            trestles: [(along: 1625.0)],
-            headframes: [
-                // Over a shaft on the top of the mountain.
-                (along: 4890.0, side: Left, lateral: 48.0),
-                // By the road along the rim of the pit.
-                (along: 2770.0, side: Left, lateral: 46.0),
-            ],
-            lanterns: [
-                (span: Span(5780.0, 300.0), side: Left, lateral: 12.7, every: 28.0),
-                (span: Span(5780.0, 300.0), side: Right, lateral: 12.7, every: 28.0),
-                (span: Span(2555.0, 2905.0), side: Left, lateral: 12.7, every: 40.0),
-                (span: Span(3425.0, 4580.0), side: Left, lateral: 12.7, every: 40.0),
-                // Over the top, once past the road through the mountain
-                // beneath.
-                (span: Span(4830.0, 5000.0), side: Right, lateral: 12.7, every: 40.0),
-                (span: Span(5000.0, 5780.0), side: Left, lateral: 12.7, every: 40.0),
-            ],
-            // From the timbered mouth into a hall of red sandstone, where the
-            // high and deep roads part, and a higher one of slate veined with
-            // gold; a timbered neck under the road over the top; a hall of
-            // clay lined with planks, where the upper and lower galleries
-            // part, one of sandstone again, and timber to the way out.
-            halls: [
-                (span: Span(1712.0, 1880.0), stone: Sandstone, crown: 28.0),
-                (span: Span(1880.0, 2050.0), stone: Slate, crown: 34.0),
-                (span: Span(2162.0, 2330.0), stone: Clay, crown: 24.0),
-                (span: Span(2330.0, 2500.0), stone: Sandstone, crown: 31.0),
-            ],
-            piles: [
-                (along: 160.0, side: Left, lateral: 20.5, kind: Supplies),
-                (along: 840.0, side: Left, lateral: 21.5, kind: Ore),
-                (along: 2700.0, side: Left, lateral: 25.5, kind: Ore),
-                (along: 2900.0, side: Left, lateral: 20.5, kind: Supplies),
-                (along: 4660.0, side: Right, lateral: 23.5, kind: Ore),
-                (along: 5620.0, side: Left, lateral: 20.5, kind: Supplies),
-            ],
-        )),
+        // From the timbered mouth into a hall of red sandstone, where the
+        // high and deep roads part, and a higher one of slate veined with
+        // gold; a timbered neck under the road over the top; a hall of
+        // clay lined with planks, where the upper and lower galleries
+        // part, one of sandstone again, and timber to the way out.
+        halls: [
+            (span: Span(1712.0, 1880.0), stone: Sandstone, crown: 28.0),
+            (span: Span(1880.0, 2050.0), stone: Slate, crown: 34.0),
+            (span: Span(2162.0, 2330.0), stone: Clay, crown: 24.0),
+            (span: Span(2330.0, 2500.0), stone: Sandstone, crown: 31.0),
+        ],
     ),
 )

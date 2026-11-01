@@ -11,12 +11,11 @@ mod flowers;
 mod foliage;
 mod japan;
 mod lamps;
-mod landmarks;
+pub mod landmarks;
 mod lawn;
 pub mod lettering;
 mod lod;
 mod middle_earth;
-mod mine;
 mod mirror;
 pub mod mountains;
 mod preview;
@@ -130,7 +129,6 @@ impl Plugin for WorldPlugin {
                     landmarks::flow,
                     sky::drift_clouds,
                     sky::light_the_sky,
-                    mine::roll_carts,
                     space::turn_dishes,
                     space::spin_portals,
                     toys::run_trains,

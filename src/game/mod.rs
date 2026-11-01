@@ -5,6 +5,7 @@
 //! `ROADMAP.md`); a test keeps it so.
 
 pub mod desert;
+pub mod mine;
 
 use bevy::prelude::*;
 
@@ -15,6 +16,7 @@ use crate::world::themes;
 /// added); again does nothing.
 pub fn register_themes() {
     themes::register::<desert::Desert>("desert");
+    themes::register::<mine::Mine>("mine");
 }
 
 /// The game's own systems: its themes' (what moves in them).
@@ -23,7 +25,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         register_themes();
-        app.add_plugins(desert::DesertPlugin);
+        app.add_plugins((desert::DesertPlugin, mine::MinePlugin));
     }
 }
 

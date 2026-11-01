@@ -33,9 +33,24 @@ use super::props::Footprint;
 use super::terrain::Terrain;
 use crate::track::Track;
 
+/// When a theme's things are put in the world, among the engine's own.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Stage {
+    /// Before the houses, which keep off what it takes (and the trees).
+    #[default]
+    BeforeHouses,
+    /// After the houses and the landmarks: only the trees keep off it.
+    AfterHouses,
+}
+
 /// Scenery a game adds of its own: what a circuit's file says of it, and
 /// what it puts in the world from that.
 pub trait Theme: Any + Send + Sync {
+    /// When it is put in the world (see [`Stage`]).
+    fn stage(&self) -> Stage {
+        Stage::BeforeHouses
+    }
+
     /// Puts it in the circuit's world as it is built, beside the road, and
     /// returns the ground each thing takes, so that nothing else (houses,
     /// trees) is put there.

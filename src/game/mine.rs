@@ -6,20 +6,93 @@
 //!
 //! Every rail line, trestle and headframe is one mesh coloured vertex by
 //! vertex, so each costs a single draw; the carts share theirs.
+//!
+//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! writes it in its `themes` as `"mine": (...)`. The halls of its
+//! excavation are the engine's ([`crate::world::scenery::Scenery::halls`]).
 
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::Arc;
 
 use bevy::prelude::*;
 
-use super::Assets3d;
-use super::landmarks::Spin;
-use super::props::{Footprint, row_points};
-use super::quads::MeshBuilder;
-use super::scenery::{Headframe, Mine, Pile, PileKind, Rails, Scenery, Trestle};
-use super::terrain::Terrain;
 use crate::geometry::{forward, random01};
 use crate::track::{Track, WALL_DISTANCE};
+use crate::world::Assets3d;
+use crate::world::landmarks::Spin;
+use crate::world::props::{Footprint, row_points};
+use crate::world::quads::MeshBuilder;
+use crate::world::scenery::{Row, Side, Span};
+use crate::world::terrain::Terrain;
+use crate::world::themes::{Stage, Theme};
+
+/// The works of a mine: rails with ore carts rolling on them, timber
+/// trestles carrying a rail over the road, headframes over the shafts,
+/// lanterns on posts, and piles of crates, barrels and ore. (The halls of
+/// its excavation are the engine's,
+/// [`Scenery::halls`](crate::world::scenery::Scenery::halls).)
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Mine {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub rails: &'static [Rails],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub trestles: &'static [Trestle],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub headframes: &'static [Headframe],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub lanterns: &'static [Row],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub piles: &'static [Pile],
+}
+
+/// A rail line beside the road over a span, `lateral` metres from its
+/// centre line, with `carts` ore carts rolling up and down it.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rails {
+    pub span: Span,
+    pub side: Side,
+    pub lateral: f32,
+    pub carts: u32,
+}
+
+/// A timber trestle carrying a rail across the road at `along`, from one
+/// rock wall to the other, with an ore cart going over and back.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Trestle {
+    pub along: f32,
+}
+
+/// A headframe over a mine shaft: a timber tower with the winding wheels
+/// turning on top, beside the road.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Headframe {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// What a pile beside the road is made of.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
+pub enum PileKind {
+    /// Crates, barrels and a box of dynamite.
+    Supplies,
+    /// A heap of ore with gold glinting in it.
+    Ore,
+}
+
+/// A pile of something beside the road.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pile {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+    pub kind: PileKind,
+}
 
 /// Half the gauge of the rails (m), and how far the sleepers reach out and
 /// how far apart they are (m).
@@ -119,6 +192,15 @@ fn train_distance(length: f32, time: f32) -> f32 {
     length * 0.5 * (1.0 - (rate * time).cos())
 }
 
+/// The mine's own systems: the carts rolling along their rails.
+pub struct MinePlugin;
+
+impl Plugin for MinePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, roll_carts);
+    }
+}
+
 /// Rolls the carts along their rails.
 pub fn roll_carts(time: Res<Time>, mut carts: Query<(&Cart, &mut Transform)>) {
     for (cart, mut transform) in &mut carts {
@@ -134,18 +216,33 @@ pub fn roll_carts(time: Res<Time>, mut carts: Query<(&Cart, &mut Transform)>) {
     }
 }
 
-/// Builds the works of the mine of `scenery`, if it has one, and returns the
-/// ground they take.
-pub fn spawn_mine(
+impl Theme for Mine {
+    /// After the houses, so that they do not keep off the mine's works (as
+    /// it always was: the mining town stays as it stands).
+    fn stage(&self) -> Stage {
+        Stage::AfterHouses
+    }
+
+    /// Builds the works of the mine, and returns the ground they take.
+    fn spawn(
+        &self,
+        world: &mut ChildSpawnerCommands,
+        track: &Track,
+        terrain: &Terrain,
+        assets: &mut Assets3d,
+    ) -> Vec<Footprint> {
+        spawn_mine(world, track, terrain, self, assets)
+    }
+}
+
+/// Builds the works of the mine (see [`Theme::spawn`]).
+fn spawn_mine(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
-    scenery: &Scenery,
+    mine: &Mine,
     assets: &mut Assets3d,
 ) -> Vec<Footprint> {
-    let Some(mine) = &scenery.mine else {
-        return Vec::new();
-    };
     let painted = assets.materials.add(StandardMaterial {
         perceptual_roughness: 0.85,
         ..default()
@@ -944,7 +1041,7 @@ mod tests {
     #[test]
     fn mine_rails_run_beside_the_road_on_the_ground() {
         for circuit in CIRCUITS.iter() {
-            let Some(mine) = &circuit.scenery.mine else {
+            let Some(mine) = circuit.scenery.themes.get::<Mine>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);
@@ -975,7 +1072,7 @@ mod tests {
     #[test]
     fn trestles_run_from_rock_to_rock_high_over_the_road() {
         for circuit in CIRCUITS.iter() {
-            let Some(mine) = &circuit.scenery.mine else {
+            let Some(mine) = circuit.scenery.themes.get::<Mine>() else {
                 continue;
             };
             let track = Track::new(&circuit.layout);

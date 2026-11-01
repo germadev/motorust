@@ -611,9 +611,10 @@ pub struct Scenery {
     /// An open pit round the water, if there is one.
     #[serde(default)]
     pub pit: Option<Pit>,
-    /// The works of a mine around the road, if there is one.
-    #[serde(default)]
-    pub mine: Option<Mine>,
+    /// The halls of an excavation, a mine's or Moria's: where there are, its
+    /// tunnels are dug through the rock (see [`Scenery::excavation`]).
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub halls: &'static [Hall],
     /// The colour of the halo the rear wheel leaves behind it on the road
     /// while the bike rides a wheelie, as Sonic's spin (Loop Island's), or
     /// `None` for none (see `crate::bike::wheelie_halo`).
@@ -646,12 +647,7 @@ impl Scenery {
     /// Moria's (see [`super::cavern`]), rather than tunnels lined with
     /// concrete panels.
     pub fn excavation(&self) -> Option<&'static [Hall]> {
-        match (&self.mine, &self.middle_earth) {
-            (Some(mine), _) if self.soil == Soil::Mine => Some(mine.halls),
-            _ if self.soil == Soil::Mine => Some(&[]),
-            (_, Some(middle_earth)) if !middle_earth.halls.is_empty() => Some(middle_earth.halls),
-            _ => None,
-        }
+        (self.soil == Soil::Mine || !self.halls.is_empty()).then_some(self.halls)
     }
 
     /// Where the ground stays grass however steep it is (see
@@ -993,10 +989,6 @@ pub struct MiddleEarth {
     pub flowers: &'static [FlowerField],
     #[serde(deserialize_with = "crate::circuits::data::leak", default)]
     pub petals: &'static [Petals],
-    /// The halls of Moria: where there are, the tunnels are excavations, as
-    /// a mine's, through them (see [`Scenery::excavation`]).
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub halls: &'static [Hall],
     /// Footpaths of bare earth, as between the hobbit holes: each a line of
     /// points (x, z) over the ground.
     #[serde(deserialize_with = "crate::circuits::data::paths", default)]
@@ -1154,28 +1146,7 @@ pub enum MiddleEarthModel {
     AmonHenSeat,
 }
 
-/// The works of a mine: rails with ore carts rolling on them, timber
-/// trestles carrying a rail over the road, headframes over the shafts,
-/// lanterns on posts, piles of crates, barrels and ore, and the halls of
-/// its excavation (its tunnels, see [`Scenery::tunnels`]).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Mine {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub rails: &'static [Rails],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub trestles: &'static [Trestle],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub headframes: &'static [Headframe],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub lanterns: &'static [Row],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub piles: &'static [Pile],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub halls: &'static [Hall],
-}
-
-/// A stretch of a mine's excavation, in metres along the lap (a branch off
+/// A stretch of an excavation, a mine's or Moria's, in metres along the lap (a branch off
 /// the lap counts as the stretch it stands in for): the rock it is cut
 /// through and how high its roof rises above the road in the middle (m).
 /// Where there is none, the excavation is a gallery propped with timber.
@@ -1209,54 +1180,6 @@ pub enum Stone {
     Masonry,
     /// A natural cave in grey granite, over grit.
     Cave,
-}
-
-/// A rail line beside the road over a span, `lateral` metres from its
-/// centre line, with `carts` ore carts rolling up and down it.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Rails {
-    pub span: Span,
-    pub side: Side,
-    pub lateral: f32,
-    pub carts: u32,
-}
-
-/// A timber trestle carrying a rail across the road at `along`, from one
-/// rock wall to the other, with an ore cart going over and back.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Trestle {
-    pub along: f32,
-}
-
-/// A headframe over a mine shaft: a timber tower with the winding wheels
-/// turning on top, beside the road.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Headframe {
-    pub along: f32,
-    pub side: Side,
-    pub lateral: f32,
-}
-
-/// What a pile beside the road is made of.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize)]
-pub enum PileKind {
-    /// Crates, barrels and a box of dynamite.
-    Supplies,
-    /// A heap of ore with gold glinting in it.
-    Ore,
-}
-
-/// A pile of something beside the road.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Pile {
-    pub along: f32,
-    pub side: Side,
-    pub lateral: f32,
-    pub kind: PileKind,
 }
 
 /// A carved totem pole beside the road, facing it.
