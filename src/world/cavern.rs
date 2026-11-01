@@ -1483,7 +1483,7 @@ impl Painter<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     /// The excavation of Gold Mine, and its track.
     fn gold_mine() -> (Track, &'static crate::world::scenery::Scenery) {

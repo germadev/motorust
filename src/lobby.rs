@@ -783,10 +783,10 @@ mod tests {
                 p1: Some(ControllerBinding::Wasd),
                 p2: Some(ControllerBinding::Arrows),
             })
-            .init_resource::<crate::circuits::CurrentCircuit>()
-            .insert_resource(*crate::circuits::CIRCUITS);
+            .init_resource::<crate::circuits::CurrentCircuit>();
+        crate::testing::demo_content(&mut app);
 
-        let track = crate::track::Track::new(&crate::circuits::CIRCUITS[0].layout);
+        let track = crate::track::Track::new(&crate::testing::demo_circuit().layout);
         let image = app
             .world_mut()
             .resource_mut::<Assets<Image>>()

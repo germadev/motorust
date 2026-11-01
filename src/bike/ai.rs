@@ -545,7 +545,7 @@ mod tests {
 
     #[test]
     fn rival_laps_the_track_without_leaving_it() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let tuning = BikeTuning::default();
             let rival = Rival {
@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn against_the_clock_a_good_ride_earns_a_little_time_at_each_checkpoint() {
         use crate::race::{CheckpointTimes, checkpoints, stretch_after};
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let lap = Track::new(&circuit.layout).lap_length();
             let points = checkpoints(&circuit.checkpoints(), lap);
             let times = checkpoint_times(circuit, 0.9, 1);
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn rivals_that_take_the_branches_ride_round_the_loops_and_back() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             if track.loops().is_empty() {
                 continue;
@@ -720,7 +720,7 @@ mod tests {
 
     #[test]
     fn rivals_ride_the_forks_on_their_side_and_back() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let tuning = BikeTuning::default();
             let dt = 1.0 / 120.0;
@@ -776,7 +776,7 @@ mod tests {
         // Where the road splits three ways, a rival on each way (the one to
         // the left, the lap, the one to the right) takes about as long from
         // before the split to after it.
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let forks = track.forks();
             let step = track.step_length();
@@ -838,7 +838,7 @@ mod tests {
         // long from before the fork to after the join: the way round the
         // loop goes straight to it, the lap swings away, and each has a
         // booster, if they have any.
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let Some(&looped) = track.loops().first() else {
                 continue;
@@ -893,7 +893,7 @@ mod tests {
 
     #[test]
     fn out_of_a_loop_the_road_back_keeps_the_wheels_on_the_ground() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let Some(&looped) = track.loops().first() else {
                 continue;
@@ -952,7 +952,7 @@ mod tests {
 
     #[test]
     fn round_a_loop_a_rival_gets_to_its_line_clear_of_the_walls() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let Some(&looped) = track.loops().first() else {
                 continue;
@@ -1205,7 +1205,7 @@ mod tests {
     fn a_pack_of_rivals_races_without_wrecking_each_other() {
         // With the rivals that take the branches going round the loops, and
         // through the forks.
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             pack_race(
                 &Track::new(&circuit.layout),
                 circuit.name,
@@ -1220,7 +1220,7 @@ mod tests {
         // Braking later and riding the corners harder, near enough clean:
         // a touch at most a lap (two down), where a rival riding the lap on
         // the side a branch leaves from is crossed by one taking it.
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             pack_race(
                 &Track::new(&circuit.layout),
                 circuit.name,
@@ -1233,7 +1233,7 @@ mod tests {
     #[test]
     fn on_very_hard_the_rivals_are_quicker_than_on_hard_and_keep_to_the_road() {
         // The quickest rival of the grid, a lap from the grid, each way.
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let times = |difficulty: Difficulty| -> f32 {
                 checkpoint_times(circuit, difficulty.rival_skill(0.95), 1)
                     .iter()
@@ -1305,7 +1305,7 @@ mod tests {
         // its slot too, keeping to its line and not riding into anyone, on
         // every difficulty: nobody so much as touches another bike.
         use crate::settings::DIFFICULTIES;
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             for difficulty in DIFFICULTIES {
                 let mut pack: Vec<Racer> = crate::bike::GRID
@@ -1355,7 +1355,7 @@ mod tests {
 
     #[test]
     fn jumps_on_the_track_are_short() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let tuning = BikeTuning::default();
             let rival = Rival {
@@ -1399,7 +1399,7 @@ mod tests {
         // Flat out to the end of the seafront and braking for the banked
         // right-hander at the water's edge, the bike stays on the road: no
         // crest throws it off, even at top speed.
-        let circuit = crate::circuits::CIRCUITS
+        let circuit = crate::game::CIRCUITS
             .iter()
             .find(|circuit| circuit.name == "Turbo Bay")
             .expect("Turbo Bay is a circuit");
@@ -1431,7 +1431,7 @@ mod tests {
         // its forest road over a hump and its rock pass over a bump, and
         // Loop Island's start straight where the branch to the loop turns
         // off it).
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let tuning = BikeTuning::default();
             for (skill, lane) in [(0.9, 4.0), (0.95, 2.0), (1.0, -3.0)] {

@@ -36,6 +36,8 @@ mod settings;
 mod shapes;
 mod sound;
 mod speedometer;
+#[cfg(test)]
+mod testing;
 mod track;
 mod track_select;
 mod ui;
@@ -193,7 +195,7 @@ fn main() {
     }
     let (fixed, game) = simulation_clocks();
     // The game's themes, before the circuits that name them are read.
-    game::register_themes();
+    game::register();
     // The content pack's source, before the asset server is built.
     app.add_plugins(content::ContentPlugin)
         .add_plugins(plugins)

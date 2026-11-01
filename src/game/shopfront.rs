@@ -1275,7 +1275,7 @@ fn disc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     /// The toy stores with a way in, and theirs.
     fn entrances() -> Vec<(&'static str, &'static ToyStore, &'static Entrance)> {

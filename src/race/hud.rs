@@ -992,7 +992,7 @@ fn notice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bike::ROSTER;
+    use crate::game::ROSTER;
 
     /// What a player's texts at the top left say, put together from their
     /// spans.

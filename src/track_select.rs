@@ -522,7 +522,8 @@ fn aerial_camera(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::{CIRCUITS, CurrentCircuit};
+    use crate::circuits::CurrentCircuit;
+    use crate::game::CIRCUITS;
 
     /// Both views: the camera from above runs for one of them, and for
     /// the other the start menu's flies on (see `crate::welcome`).
@@ -552,7 +553,7 @@ mod tests {
             .init_resource::<Rules>()
             .init_resource::<InputDevice>()
             .init_resource::<CurrentCircuit>()
-            .insert_resource(*crate::circuits::CIRCUITS)
+            .insert_resource(*crate::game::CIRCUITS)
             .init_resource::<CircuitLoading>()
             .init_resource::<CameraGlide>()
             .init_resource::<UiIcons>()

@@ -44,7 +44,7 @@ const VOLCANO_RADIUS: f32 = 1650.0;
 /// The volcano's gullies, ridges, lumps and parasitic cone at `point`,
 /// over or under its smooth cone (see [`volcano_relief`]), as the circuit's
 /// file names them.
-pub(super) fn volcano_gullies(point: Vec2) -> f32 {
+pub fn volcano_gullies(point: Vec2) -> f32 {
     volcano_relief(point, point.distance(VOLCANO) / VOLCANO_RADIUS)
 }
 
@@ -97,7 +97,8 @@ mod tests {
     fn mountains(point: Vec2) -> f32 {
         ghost_island().scenery.mountains.height(point)
     }
-    use crate::circuits::{CIRCUITS, Circuit};
+    use crate::circuits::Circuit;
+    use crate::game::CIRCUITS;
     use crate::track::Track;
     use crate::world::scenery::{Coast, Span, span};
 

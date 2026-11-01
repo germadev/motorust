@@ -1290,7 +1290,7 @@ mod tests {
     /// The steepest downhill of the laps of all the circuits: the track, the
     /// point of its centre line and how steep it is there.
     fn steepest_downhill() -> (Track, usize, f32) {
-        crate::circuits::CIRCUITS
+        crate::game::CIRCUITS
             .iter()
             .map(|circuit| {
                 let track = Track::new(&circuit.layout);

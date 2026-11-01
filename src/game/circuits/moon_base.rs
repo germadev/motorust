@@ -32,7 +32,8 @@
 mod tests {
     use bevy::prelude::*;
 
-    use crate::circuits::{CIRCUITS, Circuit};
+    use crate::circuits::Circuit;
+    use crate::game::CIRCUITS;
     use crate::track::Track;
     use crate::world::is_earth_realm;
     use crate::world::scenery::{Span, span};

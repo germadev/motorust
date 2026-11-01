@@ -752,7 +752,7 @@ pub(super) mod tests {
 
     #[test]
     fn a_desert_canyon_mirrors_its_red_earth_not_grass() {
-        use crate::circuits::CIRCUITS;
+        use crate::game::CIRCUITS;
         use crate::world::sea::{MIRROR_INLAND, ShoreMap, mirror_reach};
         let circuit = CIRCUITS
             .iter()

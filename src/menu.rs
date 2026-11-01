@@ -1009,7 +1009,8 @@ fn show_split_choices(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::{CIRCUITS, CurrentCircuit};
+    use crate::circuits::CurrentCircuit;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn split_screen_select_initializes_and_updates_without_conflict() {

@@ -5,6 +5,7 @@
 //! `ROADMAP.md`); a test keeps it so.
 
 pub mod bricks;
+pub mod circuits;
 pub mod desert;
 pub mod japan;
 pub mod middle_earth;
@@ -17,10 +18,28 @@ use bevy::prelude::*;
 
 use crate::world::themes;
 
-/// Registers the game's themes, so that the circuits' files can name them.
-/// Before the circuits are read (the `WorldPlugin` reads them as it is
-/// added); again does nothing.
-pub fn register_themes() {
+/// The game's circuits, for the tests: read once, as the game reads them,
+/// its themes registered first.
+#[cfg(test)]
+pub static CIRCUITS: std::sync::LazyLock<crate::circuits::Circuits> =
+    std::sync::LazyLock::new(|| {
+        register();
+        crate::circuits::Circuits::load()
+    });
+
+/// The game's bikes, for the tests: read once, as the game reads them.
+#[cfg(test)]
+pub static ROSTER: std::sync::LazyLock<crate::bike::Roster> =
+    std::sync::LazyLock::new(crate::bike::Roster::load);
+
+/// Registers what the game's circuits' files name of its own: its themes
+/// and its terrain's functions. Before the circuits are read (the
+/// `WorldPlugin` reads them as it is added); again does nothing.
+pub fn register() {
+    crate::circuits::register_terrain_function(
+        "ghost_island_volcano_relief",
+        circuits::ghost_island::volcano_gullies,
+    );
     themes::register::<desert::Desert>("desert");
     themes::register::<japan::Japan>("japan");
     themes::register::<middle_earth::MiddleEarth>("middle_earth");
@@ -34,7 +53,7 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        register_themes();
+        register();
         app.add_plugins((
             desert::DesertPlugin,
             mine::MinePlugin,
@@ -49,13 +68,48 @@ mod tests {
     use std::path::Path;
 
     /// The files outside the game's folder that name it, and why: none but
-    /// the game's `main`, and the circuits' tests, which read the game's
-    /// circuits until the engine's tests have content of their own and the
-    /// game's go with it (4c).
-    const ALLOWED: [&str; 3] = [
-        "src/main.rs",
+    /// the game's `main`.
+    const ALLOWED: [&str; 1] = ["src/main.rs"];
+
+    /// The files whose tests still read the game's circuits or bikes
+    /// ([`super::CIRCUITS`], [`super::ROSTER`]) rather than the engine's
+    /// own ([`crate::testing`]): the engine's tests are moved onto its own
+    /// content file by file (step 4c), and this list empties.
+    const PENDING: [&str; 34] = [
+        "src/bench.rs",
+        "src/bike/ai.rs",
+        "src/bike/crash.rs",
+        "src/bike/mod.rs",
+        "src/bike/model/designs.rs",
+        "src/bike/wheelie_halo.rs",
+        "src/circuits/data.rs",
         "src/circuits/mod.rs",
-        "src/circuits/moon_base.rs",
+        "src/menu.rs",
+        "src/modes.rs",
+        "src/race/hud.rs",
+        "src/race/mod.rs",
+        "src/race/results.rs",
+        "src/sound/music.rs",
+        "src/track.rs",
+        "src/track/racing_line.rs",
+        "src/track_select.rs",
+        "src/welcome.rs",
+        "src/world/cavern.rs",
+        "src/world/dam.rs",
+        "src/world/flowers.rs",
+        "src/world/landmarks.rs",
+        "src/world/mirror.rs",
+        "src/world/mod.rs",
+        "src/world/petals.rs",
+        "src/world/preview.rs",
+        "src/world/props.rs",
+        "src/world/realm.rs",
+        "src/world/road.rs",
+        "src/world/sea.rs",
+        "src/world/shoulders.rs",
+        "src/world/structures.rs",
+        "src/world/terrain.rs",
+        "src/world/tufts.rs",
     ];
 
     fn sources(folder: &Path, found: &mut Vec<std::path::PathBuf>) {
@@ -82,8 +136,18 @@ mod tests {
                 text.contains("crate::game::") || text.contains("crate::game;")
             })
             .map(|path| path.strip_prefix(root).unwrap().display().to_string())
-            .filter(|path| !ALLOWED.contains(&path.as_str()))
+            .filter(|path| !ALLOWED.contains(&path.as_str()) && !PENDING.contains(&path.as_str()))
             .collect();
         assert!(naming.is_empty(), "they name the game: {naming:?}");
+        // And no file is left pending that no longer does.
+        let stale: Vec<&str> = PENDING
+            .iter()
+            .copied()
+            .filter(|path| {
+                let text = std::fs::read_to_string(root.join(path)).unwrap_or_default();
+                !(text.contains("crate::game::") || text.contains("crate::game;"))
+            })
+            .collect();
+        assert!(stale.is_empty(), "no longer naming the game: {stale:?}");
     }
 }

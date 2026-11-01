@@ -841,7 +841,7 @@ fn fly_over_track(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use crate::world::road::{GANTRY_BEAM, GANTRY_HEIGHT};
     use crate::world::structures::TUNNEL_HEIGHT;
 

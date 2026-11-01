@@ -23,7 +23,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use crate::track::Track;
 
     /// Where the branch with the loop forks off the lap, and where the

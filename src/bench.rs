@@ -1242,7 +1242,7 @@ fn report(bench: &Bench) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn every_track_is_ridden_under_each_setting_with_one_change_at_a_time() {

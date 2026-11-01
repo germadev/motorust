@@ -600,7 +600,7 @@ mod tests {
     fn the_walls_of_bricks_stand_outside_the_road_s_walls() {
         // Each of their corners outside the walls, a stud out at most, and
         // none of them by an arch over the road.
-        let circuit = crate::circuits::CIRCUITS
+        let circuit = crate::game::CIRCUITS
             .iter()
             .find(|circuit| {
                 circuit

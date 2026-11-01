@@ -2338,7 +2338,7 @@ mod tests {
         // Wider than the tower is tall, so the whole of it is seen.
         assert!(radius > lighthouse.height);
     }
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
 
     #[test]

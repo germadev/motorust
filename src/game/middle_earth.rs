@@ -1467,7 +1467,7 @@ impl BankMesh {
 mod tests {
     use super::*;
     use crate::bike::model::imported::read;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use crate::track::WALL_DISTANCE;
     use crate::world::prop_pack::{VIEW_CLEAR, bounds};
 

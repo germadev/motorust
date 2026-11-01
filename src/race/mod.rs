@@ -1219,8 +1219,8 @@ pub fn start_championship(championship: &mut Championship, current: &mut Current
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bike::ROSTER;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
+    use crate::game::ROSTER;
 
     const LAP: f32 = 3000.0;
     /// Checkpoint gantries at 1000 and 2000 m, and the line.

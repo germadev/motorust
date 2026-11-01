@@ -627,7 +627,7 @@ fn square_mesh(terrain: &Terrain, at: Vec2) -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use crate::track::WALL_DISTANCE;
     use crate::world::mirror::surroundings_map;
     use crate::world::mirror::tests::mapped;

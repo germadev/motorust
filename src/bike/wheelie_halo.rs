@@ -217,7 +217,7 @@ fn fade_halos(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn only_loop_island_leaves_a_blue_halo() {

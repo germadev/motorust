@@ -704,7 +704,7 @@ fn narrow_portal_frusta(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     fn moon_base() -> &'static crate::circuits::Circuit {
         CIRCUITS

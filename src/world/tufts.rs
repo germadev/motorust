@@ -323,7 +323,7 @@ pub(super) fn normals_up(mesh: &mut Mesh) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use crate::world::shoulders::track_shoulders;
 
     #[test]

@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn on_every_track_it_stays_on_the_asphalt_and_takes_the_sharpest_bend_inside() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = crate::track::Track::new(&circuit.layout);
             let line = racing_line(track.centerline(), |i| track.half_width_at(i));
             for (index, &left) in line.iter().enumerate() {

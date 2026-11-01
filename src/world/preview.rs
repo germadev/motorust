@@ -182,7 +182,7 @@ fn cut_to(mut mesh: Mesh, (min, max): (Vec2, Vec2)) -> Option<Mesh> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use bevy::asset::RenderAssetUsages;
     use bevy::mesh::PrimitiveTopology;
 

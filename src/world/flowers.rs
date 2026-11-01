@@ -571,7 +571,8 @@ fn add_clump(mesh: &mut MeshBuilder, clump: &Clump, terrain: &Terrain) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::{CIRCUITS, Circuit};
+    use crate::circuits::Circuit;
+    use crate::game::CIRCUITS;
     use crate::world::terrain::{Ground, SEA_LEVEL};
 
     /// The circuits with fields of flowers, with their track and terrain.

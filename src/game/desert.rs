@@ -1379,7 +1379,7 @@ fn diamond_pixel(u: f32, v: f32) -> Mark {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     /// The circuit with a desert, its track and its terrain.
     fn desert_circuit() -> (&'static Scenery, &'static Desert, Track, Terrain) {

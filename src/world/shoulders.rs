@@ -117,7 +117,7 @@ fn stone_surface(stone: Stone) -> Surface {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     /// The shoulders of a circuit, by its name, with its track and scenery.
     fn shoulders_of(name: &str) -> (Track, &'static Scenery, Vec<Vec<[Surface; 2]>>) {

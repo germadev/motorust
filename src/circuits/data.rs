@@ -16,7 +16,8 @@
 //! - the mountains and the water as shapes with their parameters (see
 //!   [`crate::world::mountains`] and [`crate::world::waters`]);
 //! - what the game adds of its own to them by the name of a function in
-//!   Rust, in [`super::terrain_function`] (a volcano's gullies);
+//!   Rust, registered by the game ([`super::register_terrain_function`]: a
+//!   volcano's gullies);
 //! - a song by the name of its MP3 in `assets/music/` (`song: (file:
 //!   "bahia.mp3", ...)`, none if left out), loaded from the content pack
 //!   (see [`crate::content`]) when it plays.
@@ -268,7 +269,7 @@ impl From<CoastFile> for Coast {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     /// Every circuit read from a file reads, so a mistake in one fails
     /// here and not in the game.

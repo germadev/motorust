@@ -1069,6 +1069,11 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Its design: built in code, or a model.
+    pub fn design(&self) -> model::Design {
+        self.design
+    }
+
     pub fn description(&self, lang: Language) -> &'static str {
         match lang {
             Language::Spanish => self.description,
@@ -1111,16 +1116,21 @@ impl Roster {
     /// The bikes, read from their file in the content pack (see
     /// [`crate::circuits::data`] and [`crate::content`]).
     pub fn load() -> Self {
-        let entries: Vec<Entry> =
-            crate::circuits::data::parse(ROSTER_FILE, crate::content::text(ROSTER_FILE))
-                .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(
-            entries.len(),
-            RIDERS,
-            "roster.ron: {} bikes, not one for each of the {RIDERS} places on the grid",
-            entries.len()
-        );
-        Roster(Vec::leak(entries))
+        Self::parse(ROSTER_FILE, crate::content::text(ROSTER_FILE))
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// The bikes a roster's file, `name` (for the messages), holding `text`
+    /// says, one for each place on the grid; or what is wrong.
+    pub fn parse(name: &str, text: &'static str) -> Result<Self, String> {
+        let entries: Vec<Entry> = crate::circuits::data::parse(name, text)?;
+        if entries.len() != RIDERS {
+            return Err(format!(
+                "{name}: {} bikes, not one for each of the {RIDERS} places on the grid",
+                entries.len()
+            ));
+        }
+        Ok(Roster(Vec::leak(entries)))
     }
 }
 
@@ -1137,10 +1147,6 @@ impl std::ops::Deref for Roster {
         self.0
     }
 }
-
-/// The bikes, for the tests: read once, as the game reads them.
-#[cfg(test)]
-pub static ROSTER: std::sync::LazyLock<Roster> = std::sync::LazyLock::new(Roster::load);
 
 /// Quién sale de cada puesto de la parrilla ([`Track::grid_slot`]), de la
 /// pole hacia atrás: los rivales, del más hábil al menos, y el jugador el
@@ -1253,7 +1259,7 @@ impl BikeAssets<'_> {
             commands,
             bike,
             &self.blueprint,
-            entry.design,
+            entry.design(),
             entry.livery,
             &mut self.meshes,
             &mut self.materials,
@@ -2330,6 +2336,8 @@ mod tests {
 
     use bevy::ecs::system::RunSystemOnce;
 
+    use crate::game::ROSTER;
+
     use crate::pause::{ReturnRate, ReverseRate, SteerRate};
     use crate::track::{Dust, WALL_DISTANCE};
 
@@ -2982,7 +2990,7 @@ mod tests {
         // Round every point where Hot Wheels' banked track grips harder, at
         // top speed, the turn its bend needs is within what the bike gives
         // short of where it scrubs speed off (`CORNER_LOSS_FROM`).
-        let circuit = crate::circuits::CIRCUITS
+        let circuit = crate::game::CIRCUITS
             .iter()
             .find(|circuit| circuit.name == "Juguetería")
             .unwrap();
@@ -3767,7 +3775,7 @@ mod tests {
 
     #[test]
     fn flat_out_steering_only_laps_without_touching_the_walls() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             flat_out_lap(&Track::new(&circuit.layout), circuit.name);
         }
     }

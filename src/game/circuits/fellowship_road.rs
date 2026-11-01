@@ -48,7 +48,8 @@ mod tests {
     fn mountains(point: Vec2) -> f32 {
         fellowship_road().scenery.mountains.height(point)
     }
-    use crate::circuits::{CIRCUITS, Circuit};
+    use crate::circuits::Circuit;
+    use crate::game::CIRCUITS;
     use crate::track::Track;
     use crate::world::scenery::{Coast, Span, span};
 

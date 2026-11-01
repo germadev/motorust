@@ -82,8 +82,13 @@ impl Plugin for WorldPlugin {
             app.init_asset::<sea::SeaMaterial>()
                 .init_asset::<mirror::MirrorMaterial>();
         }
-        // The circuits, read from their files once, as the game starts.
-        let circuits = Circuits::load();
+        // The circuits, read from their files once, as the game starts (or
+        // those the app was given: a test's).
+        let circuits = app
+            .world()
+            .get_resource::<Circuits>()
+            .copied()
+            .unwrap_or_else(Circuits::load);
         let current = CurrentCircuit::default();
         app.add_plugins((
             lamps::LampsPlugin,
@@ -1325,7 +1330,7 @@ fn spawn_sun(mut commands: Commands) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn circuits_are_prepared_in_the_menus_and_let_go_for_a_race() {

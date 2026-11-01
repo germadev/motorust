@@ -1424,7 +1424,7 @@ fn spawn_brake_marker(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
 
     /// The height of the highest upward-facing triangle of `mesh` over

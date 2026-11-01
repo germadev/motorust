@@ -2,19 +2,7 @@
 //! está usando.
 
 pub mod data;
-#[cfg(test)]
-mod fellowship_road;
-mod ghost_island;
-#[cfg(test)]
-mod gold_mine;
-#[cfg(test)]
-mod loop_island;
-#[cfg(test)]
-mod moon_base;
 pub mod reload;
-
-#[cfg(test)]
-use std::sync::LazyLock;
 
 use bevy::prelude::*;
 use serde::Deserialize;
@@ -119,10 +107,6 @@ const LIST: &str = "circuits/circuits.ron";
 /// The circuits' files, each its path in the content pack and its text, in
 /// the order of the track select screen.
 pub(crate) fn files() -> Result<Vec<(String, &'static str)>, String> {
-    // The tests read the game's circuits, which name its themes (until the
-    // engine's tests have content of their own, step 4c).
-    #[cfg(test)]
-    crate::game::register_themes();
     let names: Vec<String> = data::parse(LIST, content::try_text(LIST)?)?;
     if names.is_empty() {
         return Err(format!("{LIST}: no circuits"));
@@ -137,13 +121,34 @@ pub(crate) fn files() -> Result<Vec<(String, &'static str)>, String> {
         .collect()
 }
 
-/// The terrain's functions the circuits' files name (see [`data`]).
-fn terrain_function(name: &str) -> Option<fn(Vec2) -> f32> {
-    Some(match name {
-        "flat" => |_| 0.0,
-        "ghost_island_volcano_relief" => ghost_island::volcano_gullies,
-        _ => return None,
-    })
+/// The terrain's functions a game registered, by their names.
+static TERRAIN_FUNCTIONS: std::sync::RwLock<Vec<(&str, data::TerrainFunction)>> =
+    std::sync::RwLock::new(Vec::new());
+
+/// Registers `function` under `name`, for the circuits' files to name it
+/// (a volcano's gullies: what a game adds of its own to the shapes of the
+/// terrain). Registering it again does nothing.
+pub fn register_terrain_function(name: &'static str, function: data::TerrainFunction) {
+    let mut registered = TERRAIN_FUNCTIONS
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !registered.iter().any(|(taken, _)| *taken == name) {
+        registered.push((name, function));
+    }
+}
+
+/// The terrain's function the circuits' files name `name` (see [`data`]):
+/// `flat`, or one a game registered.
+fn terrain_function(name: &str) -> Option<data::TerrainFunction> {
+    if name == "flat" {
+        return Some(|_| 0.0);
+    }
+    TERRAIN_FUNCTIONS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .find(|(registered, _)| *registered == name)
+        .map(|&(_, function)| function)
 }
 
 /// Las pistas, en el orden de la pantalla de elegir pista: read from their
@@ -197,10 +202,6 @@ impl std::ops::Deref for Circuits {
     }
 }
 
-/// The circuits, for the tests: read once, as the game reads them.
-#[cfg(test)]
-pub static CIRCUITS: LazyLock<Circuits> = LazyLock::new(Circuits::load);
-
 /// La pista elegida: su índice en [`Circuits`]. Al cambiarla, el mundo se
 /// vuelve a construir ([`crate::world`]).
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -209,6 +210,7 @@ pub struct CurrentCircuit(pub usize);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn circuits_have_checkpoints() {

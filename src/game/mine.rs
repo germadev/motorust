@@ -1004,7 +1004,7 @@ fn spawn_pile(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn trains_go_up_and_down_their_line_gently() {

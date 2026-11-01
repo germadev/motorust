@@ -498,7 +498,7 @@ fn light_cards(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn the_modes_are_a_little_wider_than_the_start_menu_at_any_resolution() {

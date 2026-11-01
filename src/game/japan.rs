@@ -785,7 +785,7 @@ fn spawn_prop(
 mod tests {
     use super::*;
     use crate::bike::model::imported::read;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use crate::world::prop_pack::{RIDERS_BACK, VIEW_CLEAR, bounds};
 
     /// The props' pack, read as the game reads it.

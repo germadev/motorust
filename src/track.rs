@@ -462,7 +462,7 @@ impl Loop {
 #[cfg(test)]
 impl Default for Track {
     fn default() -> Self {
-        Self::new(&crate::circuits::CIRCUITS[0].layout)
+        Self::new(&crate::game::CIRCUITS[0].layout)
     }
 }
 
@@ -1953,7 +1953,7 @@ mod tests {
 
     /// Todas las pistas del juego, con su nombre.
     fn every_track() -> Vec<(&'static str, Track)> {
-        crate::circuits::CIRCUITS
+        crate::game::CIRCUITS
             .iter()
             .map(|circuit| (circuit.name, Track::new(&circuit.layout)))
             .collect()
@@ -2177,7 +2177,7 @@ mod tests {
 
     #[test]
     fn walls_of_distant_stretches_do_not_meet() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let (name, track) = (circuit.name, Track::new(&circuit.layout));
             let n = track.centerline.len();
             let lap = track.lap_length();
@@ -2547,7 +2547,7 @@ mod tests {
 
     #[test]
     fn walls_close_in_on_a_narrow_bridge_and_open_out_after_it() {
-        let narrowed: Vec<_> = crate::circuits::CIRCUITS
+        let narrowed: Vec<_> = crate::game::CIRCUITS
             .iter()
             .filter(|circuit| !circuit.layout.narrows.is_empty())
             .collect();
@@ -2598,7 +2598,7 @@ mod tests {
         // the bank changes smoothly, coming to its most softly (as it did
         // not on the toy store's raised bends, 3 g off the middle, felt as
         // bumps).
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let track = Track::new(&circuit.layout);
             let (n, step, speed) = (track.sample_count(), track.step_length(), 30.0f32);
             let felt = |i: usize, lateral: f32| {
@@ -2671,7 +2671,7 @@ mod tests {
 
     #[test]
     fn banked_spans_bank_more() {
-        let layout = &crate::circuits::CIRCUITS[1].layout;
+        let layout = &crate::game::CIRCUITS[1].layout;
         let banked = Track::new(layout);
         let plain = Track::new(&Layout {
             banking: &[],

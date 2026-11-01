@@ -101,7 +101,7 @@ impl Design {
 /// Every design, the roster's models among them, for the tests.
 #[cfg(test)]
 pub fn every() -> Vec<Design> {
-    let _ = &*crate::bike::ROSTER;
+    let _ = &*crate::game::ROSTER;
     Design::all()
 }
 

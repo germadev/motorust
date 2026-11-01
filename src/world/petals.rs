@@ -234,7 +234,7 @@ fn cherry_petal_mesh() -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     #[test]
     fn a_petal_falls_from_the_top_of_its_column_to_the_ground_swaying() {

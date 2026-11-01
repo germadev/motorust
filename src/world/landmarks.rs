@@ -964,7 +964,7 @@ fn falls_foot(track: &Track, terrain: &Terrain, index: usize, side: f32) -> f32 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
     use bevy::mesh::VertexAttributeValues;
 
     fn positions(mesh: &Mesh) -> Vec<Vec3> {

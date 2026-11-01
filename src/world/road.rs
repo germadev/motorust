@@ -1635,7 +1635,7 @@ mod tests {
 
     #[test]
     fn walls_face_out_and_follow_the_road() {
-        let circuit = &crate::circuits::CIRCUITS[0];
+        let circuit = &crate::game::CIRCUITS[0];
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
         let road = Road {
@@ -1682,7 +1682,7 @@ mod tests {
     fn no_railing_stands_across_another_road() {
         // Ghost Island, where the lap splits and crosses itself and the
         // wall opens into the shrine's fence for the props by the road.
-        let circuit = crate::circuits::CIRCUITS
+        let circuit = crate::game::CIRCUITS
             .iter()
             .find(|circuit| circuit.name == "Ghost Island")
             .expect("a circuit of feudal Japan");
@@ -1715,7 +1715,7 @@ mod tests {
 
     #[test]
     fn wooden_bridges_have_their_fence_instead_of_walls() {
-        for circuit in crate::circuits::CIRCUITS.iter() {
+        for circuit in crate::game::CIRCUITS.iter() {
             let scenery = &circuit.scenery;
             let lap = Track::new(&circuit.layout).lap_length();
             for bridge in scenery.bridges {

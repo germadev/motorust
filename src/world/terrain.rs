@@ -2123,7 +2123,7 @@ impl Builder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     fn bay() -> (Track, Terrain) {
         let circuit = &CIRCUITS[0];

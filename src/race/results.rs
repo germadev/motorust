@@ -543,8 +543,8 @@ fn checkpoint_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bike::ROSTER;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
+    use crate::game::ROSTER;
 
     #[test]
     fn the_results_go_to_the_middle_once_everybody_is_in() {
@@ -663,8 +663,8 @@ mod tests {
             .init_resource::<UiIcons>()
             .init_resource::<Championship>()
             .init_resource::<CurrentCircuit>()
-            .insert_resource(*crate::circuits::CIRCUITS)
-            .insert_resource(*crate::bike::ROSTER)
+            .insert_resource(*crate::game::CIRCUITS)
+            .insert_resource(*crate::game::ROSTER)
             .add_message::<MenuSound>()
             .add_plugins((ResultsPlugin, crate::gamepads::GamepadsPlugin))
             .add_systems(OnExit(GameState::Race), |mut commands: Commands| {

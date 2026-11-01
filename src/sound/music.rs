@@ -464,7 +464,7 @@ mod tests {
 
     use super::super::synth::{Controls, Mixer, SAMPLE_RATE, pan};
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     /// Root mean square of the samples, in dB.
     fn rms_db(samples: &[f32]) -> f32 {

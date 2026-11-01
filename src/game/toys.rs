@@ -3016,7 +3016,7 @@ fn car_pose(car: &TrainCar, elapsed: f32) -> Transform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::CIRCUITS;
+    use crate::game::CIRCUITS;
 
     /// The circuits in a toy store: each one's name, its store and its
     /// track.
