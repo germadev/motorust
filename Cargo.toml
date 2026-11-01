@@ -10,6 +10,9 @@ bevy = { version = "0.19", features = ["jpeg", "serialize"] }
 # las mismas versiones que ya usa Bevy.
 ron = "0.12"
 serde = { version = "1", features = ["derive"] }
+# The same version Bevy uses, to read each theme of a circuit's file by
+# the type a game registered under its name (see src/world/themes.rs).
+erased-serde = "0.4"
 # La misma versión que usa Bevy, para leer los mandos a nuestra manera (ver
 # src/gamepads.rs).
 gilrs = "0.11"

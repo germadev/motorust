@@ -119,6 +119,10 @@ const LIST: &str = "circuits/circuits.ron";
 /// The circuits' files, each its path in the content pack and its text, in
 /// the order of the track select screen.
 pub(crate) fn files() -> Result<Vec<(String, &'static str)>, String> {
+    // The tests read the game's circuits, which name its themes (until the
+    // engine's tests have content of their own, step 4c).
+    #[cfg(test)]
+    crate::game::register_themes();
     let names: Vec<String> = data::parse(LIST, content::try_text(LIST)?)?;
     if names.is_empty() {
         return Err(format!("{LIST}: no circuits"));

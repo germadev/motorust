@@ -3,6 +3,9 @@
 //! pumpjacks nodding on the dunes, concrete highway viaducts across the
 //! road, adobe pueblos, and big diamond warning signs before the bends.
 //!
+//! A theme of the game's (see [`crate::world::themes`]): a circuit's file
+//! writes it in its `themes` as `"desert": (...)`.
+//!
 //! Each building is one mesh coloured vertex by vertex, so it costs a
 //! single draw; the pumpjacks share their meshes, and the signs theirs.
 
@@ -15,18 +18,16 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use super::Assets3d;
-use super::lettering::sign_image;
-use super::props::Footprint;
-use super::quads::MeshBuilder;
-use super::scenery::{
-    Cacti, ChevronDirection, CurveSign, Desert, GasStation, Overpass, Pueblo, Scenery, SignColor,
-    Tumbleweed,
-};
-use super::terrain::{SEA_LEVEL, Terrain};
-use super::textures::generate_mipmaps;
 use crate::geometry::{forward, random01, smoothstep};
 use crate::track::{Track, WALL_DISTANCE};
+use crate::world::Assets3d;
+use crate::world::lettering::sign_image;
+use crate::world::props::Footprint;
+use crate::world::quads::MeshBuilder;
+use crate::world::scenery::{ChevronDirection, Side, Span};
+use crate::world::terrain::{SEA_LEVEL, Terrain};
+use crate::world::textures::generate_mipmaps;
+use crate::world::themes::Theme;
 
 /// How far the deck of a viaduct reaches to either side of the centre line
 /// of the road (m), into the rock walls, how wide it is along the road and
@@ -89,6 +90,119 @@ const DRY_WOOD: Color = Color::srgb(0.42, 0.34, 0.27);
 const SAGUARO: Color = Color::srgb(0.3, 0.46, 0.22);
 const SAGUARO_RIB: Color = Color::srgb(0.22, 0.36, 0.17);
 const STRAW: Color = Color::srgb(0.66, 0.53, 0.33);
+
+/// The roadside of a desert of the American West, as in West Way (Moto
+/// Racer): gas stations, oil pumpjacks nodding on the dunes, highway
+/// viaducts across the road, adobe pueblos, diamond warning signs before
+/// the bends, cacti, and tumbleweeds rolling across the road.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Desert {
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub gas_stations: &'static [GasStation],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub pumpjacks: &'static [Pumpjack],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub overpasses: &'static [Overpass],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub pueblos: &'static [Pueblo],
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub curve_signs: &'static [CurveSign],
+    pub cacti: Cacti,
+    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
+    pub tumbleweeds: &'static [Tumbleweed],
+}
+
+/// Saguaro cacti beside the road: about `count` of them, scattered along
+/// `spans` either side, on fairly level ground clear of the roads.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Cacti {
+    pub count: usize,
+    #[serde(deserialize_with = "crate::circuits::data::leak")]
+    pub spans: &'static [Span],
+}
+
+/// A tumbleweed blown across the road `along` the lap, rolling and bouncing
+/// from `reach` metres out on one side to as far on the other, and again.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tumbleweed {
+    pub along: f32,
+    pub reach: f32,
+}
+
+/// A gas station beside the road, `lateral` metres from its centre line on
+/// `side`, facing it: pumps under a canopy, a shop behind them and a tall
+/// sign by the road.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GasStation {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// An oil pumpjack at `position` (x, z), its beam nodding towards
+/// `heading` (see [`crate::geometry`]).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pumpjack {
+    pub position: Vec2,
+    pub heading: f32,
+}
+
+/// A concrete highway viaduct across the road `along` the lap, the bottom
+/// of its deck `height` metres over the road, from one rock wall into the
+/// other on columns beyond the walls (put a [`Cutting`] on both sides
+/// first).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Overpass {
+    pub along: f32,
+    pub height: f32,
+}
+
+/// An adobe pueblo beside the road, `lateral` metres from its centre line on
+/// `side`: flat-roofed houses of earth, some of two floors, with beams
+/// sticking out under their roofs, ladders and a dry tree.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pueblo {
+    pub along: f32,
+    pub side: Side,
+    pub lateral: f32,
+}
+
+/// A diamond warning sign before a bend that way, high on a post on its
+/// outside, `along` the lap.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CurveSign {
+    pub along: f32,
+    pub direction: ChevronDirection,
+    pub color: SignColor,
+}
+
+/// The colour of a diamond warning sign: green with a white arrow for a
+/// bend, yellow with a black one for a sharp one, red with a white one for
+/// a hairpin.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde::Deserialize)]
+pub enum SignColor {
+    Green,
+    Yellow,
+    Red,
+}
+
+/// The desert's own systems: the pumpjacks nodding and the tumbleweeds
+/// rolling.
+pub struct DesertPlugin;
+
+impl Plugin for DesertPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, (pump, tumble));
+    }
+}
 
 /// A pumpjack's walking beam, nodding about its pivot as its crank turns.
 #[derive(Component)]
@@ -166,18 +280,28 @@ pub fn pump(
     }
 }
 
-/// Puts the desert's works by the road, and returns the ground each one
-/// takes, so that nothing else is put there.
-pub fn spawn_desert(
+impl Theme for Desert {
+    /// Puts the desert's works by the road, and returns the ground each one
+    /// takes, so that nothing else is put there.
+    fn spawn(
+        &self,
+        world: &mut ChildSpawnerCommands,
+        track: &Track,
+        terrain: &Terrain,
+        assets: &mut Assets3d,
+    ) -> Vec<Footprint> {
+        spawn_desert(world, track, terrain, self, assets)
+    }
+}
+
+/// Puts the desert's works by the road (see [`Theme::spawn`]).
+fn spawn_desert(
     world: &mut ChildSpawnerCommands,
     track: &Track,
     terrain: &Terrain,
-    scenery: &Scenery,
+    desert: &Desert,
     assets: &mut Assets3d,
 ) -> Vec<Footprint> {
-    let Some(desert) = &scenery.desert else {
-        return Vec::new();
-    };
     let painted = assets.materials.add(StandardMaterial {
         perceptual_roughness: 0.85,
         ..default()
@@ -1255,16 +1379,17 @@ fn diamond_pixel(u: f32, v: f32) -> Mark {
 mod tests {
     use super::*;
     use crate::circuits::CIRCUITS;
+    use crate::world::scenery::Scenery;
 
     /// The circuit with a desert, its track and its terrain.
     fn desert_circuit() -> (&'static Scenery, &'static Desert, Track, Terrain) {
         let circuit = CIRCUITS
             .iter()
-            .find(|circuit| circuit.scenery.desert.is_some())
+            .find(|circuit| circuit.scenery.themes.get::<Desert>().is_some())
             .expect("a circuit runs through a desert");
         let track = Track::new(&circuit.layout);
         let terrain = Terrain::new(&track, &circuit.scenery);
-        let desert = circuit.scenery.desert.as_ref().unwrap();
+        let desert = circuit.scenery.themes.get::<Desert>().unwrap();
         (&circuit.scenery, desert, track, terrain)
     }
 

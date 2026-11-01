@@ -695,70 +695,73 @@
         // water.
         water: Iron,
         pit: Some((benches: 5, step: 3.4, tread: 9.0, spoil: 45.0)),
-        // The roadside of West Way (Moto Racer).
-        desert: Some((
-            // On the right of the blind crest in the dunes.
-            gas_stations: [(along: 600.0, side: Right, lateral: 32.0)],
-            // Oil pumpjacks nodding on the tops of the dunes.
-            pumpjacks: [
-                (position: (-30.0, -560.0), heading: 1.0),
-                (position: (-40.0, -612.0), heading: 1.3),
-                (position: (-45.0, -505.0), heading: 0.8),
-                (position: (215.0, -610.0), heading: -0.6),
-                (position: (195.0, -660.0), heading: -0.3),
-                (position: (30.0, -965.0), heading: 2.0),
-            ],
-            // High over the red canyon, from one wall to the other.
-            overpasses: [(along: 1300.0, height: 14.0)],
-            // On the outside of the bend at the foot of the pueblo's easing.
-            pueblos: [(along: 5450.0, side: Left, lateral: 34.0)],
-            // Diamond warning signs before the bends, on the outside of
-            // each: green for a bend, yellow for a sharp one, red for a
-            // hairpin.
-            curve_signs: [
-                // Round the far end of the dunes.
-                (along: 720.0, direction: Left, color: Red),
-                // The esses of the canyon.
-                (along: 1100.0, direction: Left, color: Green),
-                (along: 1215.0, direction: Right, color: Green),
-                (along: 1495.0, direction: Right, color: Yellow),
-                // Along the rim of the pit, before the bend onto the bridge.
-                (along: 2810.0, direction: Right, color: Green),
-                // The hairpins.
-                (along: 3670.0, direction: Right, color: Red),
-                (along: 3940.0, direction: Left, color: Red),
-                // Down the esses into town.
-                (along: 5065.0, direction: Left, color: Yellow),
-                (along: 5150.0, direction: Right, color: Yellow),
-                (along: 5315.0, direction: Left, color: Green),
-                (along: 5405.0, direction: Right, color: Yellow),
-            ],
-            cacti: (
-                count: 90,
-                // In town, in the dunes, along the cliff, up the climb, over
-                // the summit and down the descent.
-                spans: [
-                    Span(5780.0, 300.0),
-                    Span(300.0, 990.0),
-                    Span(2555.0, 2905.0),
-                    Span(3425.0, 4580.0),
-                    Span(4580.0, 5000.0),
-                    Span(5000.0, 5780.0),
+        // The game's own themes (see src/world/themes.rs).
+        themes: {
+            // The roadside of West Way (Moto Racer).
+            "desert": (
+                // On the right of the blind crest in the dunes.
+                gas_stations: [(along: 600.0, side: Right, lateral: 32.0)],
+                // Oil pumpjacks nodding on the tops of the dunes.
+                pumpjacks: [
+                    (position: (-30.0, -560.0), heading: 1.0),
+                    (position: (-40.0, -612.0), heading: 1.3),
+                    (position: (-45.0, -505.0), heading: 0.8),
+                    (position: (215.0, -610.0), heading: -0.6),
+                    (position: (195.0, -660.0), heading: -0.3),
+                    (position: (30.0, -965.0), heading: 2.0),
+                ],
+                // High over the red canyon, from one wall to the other.
+                overpasses: [(along: 1300.0, height: 14.0)],
+                // On the outside of the bend at the foot of the pueblo's easing.
+                pueblos: [(along: 5450.0, side: Left, lateral: 34.0)],
+                // Diamond warning signs before the bends, on the outside of
+                // each: green for a bend, yellow for a sharp one, red for a
+                // hairpin.
+                curve_signs: [
+                    // Round the far end of the dunes.
+                    (along: 720.0, direction: Left, color: Red),
+                    // The esses of the canyon.
+                    (along: 1100.0, direction: Left, color: Green),
+                    (along: 1215.0, direction: Right, color: Green),
+                    (along: 1495.0, direction: Right, color: Yellow),
+                    // Along the rim of the pit, before the bend onto the bridge.
+                    (along: 2810.0, direction: Right, color: Green),
+                    // The hairpins.
+                    (along: 3670.0, direction: Right, color: Red),
+                    (along: 3940.0, direction: Left, color: Red),
+                    // Down the esses into town.
+                    (along: 5065.0, direction: Left, color: Yellow),
+                    (along: 5150.0, direction: Right, color: Yellow),
+                    (along: 5315.0, direction: Left, color: Green),
+                    (along: 5405.0, direction: Right, color: Yellow),
+                ],
+                cacti: (
+                    count: 90,
+                    // In town, in the dunes, along the cliff, up the climb, over
+                    // the summit and down the descent.
+                    spans: [
+                        Span(5780.0, 300.0),
+                        Span(300.0, 990.0),
+                        Span(2555.0, 2905.0),
+                        Span(3425.0, 4580.0),
+                        Span(4580.0, 5000.0),
+                        Span(5000.0, 5780.0),
+                    ],
+                ),
+                // Blown across the road in town, in the dunes, along the rim of
+                // the pit, over the top and on the way down.
+                tumbleweeds: [
+                    (along: 230.0, reach: 35.0),
+                    (along: 530.0, reach: 40.0),
+                    (along: 930.0, reach: 35.0),
+                    (along: 2700.0, reach: 30.0),
+                    (along: 4930.0, reach: 35.0),
+                    (along: 5250.0, reach: 35.0),
+                    (along: 5620.0, reach: 35.0),
+                    (along: 5860.0, reach: 30.0),
                 ],
             ),
-            // Blown across the road in town, in the dunes, along the rim of
-            // the pit, over the top and on the way down.
-            tumbleweeds: [
-                (along: 230.0, reach: 35.0),
-                (along: 530.0, reach: 40.0),
-                (along: 930.0, reach: 35.0),
-                (along: 2700.0, reach: 30.0),
-                (along: 4930.0, reach: 35.0),
-                (along: 5250.0, reach: 35.0),
-                (along: 5620.0, reach: 35.0),
-                (along: 5860.0, reach: 30.0),
-            ],
-        )),
+        },
         mine: Some((
             rails: [
                 // Through town, on the right of the start straight.

@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 
 pub use super::mountains::Mountains;
+pub use super::themes::Themes;
 pub use super::waters::Waters;
 
 use crate::geometry::smoothstep;
@@ -613,10 +614,6 @@ pub struct Scenery {
     /// The works of a mine around the road, if there is one.
     #[serde(default)]
     pub mine: Option<Mine>,
-    /// The roadside of a desert of the American West, if the road runs
-    /// through one.
-    #[serde(default)]
-    pub desert: Option<Desert>,
     /// The colour of the halo the rear wheel leaves behind it on the road
     /// while the bike rides a wheelie, as Sonic's spin (Loop Island's), or
     /// `None` for none (see `crate::bike::wheelie_halo`).
@@ -638,6 +635,10 @@ pub struct Scenery {
     /// [`ToyStore`].
     #[serde(default)]
     pub toys: Option<ToyStore>,
+    /// The scenery a game adds of its own, by the names its themes were
+    /// registered under (see [`crate::world::themes`]).
+    #[serde(default)]
+    pub themes: Themes,
 }
 
 impl Scenery {
@@ -1151,109 +1152,6 @@ pub enum MiddleEarthModel {
     ArgonathB,
     /// The seat of seeing on Amon Hen.
     AmonHenSeat,
-}
-
-/// The roadside of a desert of the American West, as in West Way (Moto
-/// Racer): gas stations, oil pumpjacks nodding on the dunes, highway
-/// viaducts across the road, adobe pueblos, diamond warning signs before
-/// the bends, cacti, and tumbleweeds rolling across the road.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Desert {
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub gas_stations: &'static [GasStation],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub pumpjacks: &'static [Pumpjack],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub overpasses: &'static [Overpass],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub pueblos: &'static [Pueblo],
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub curve_signs: &'static [CurveSign],
-    pub cacti: Cacti,
-    #[serde(deserialize_with = "crate::circuits::data::leak", default)]
-    pub tumbleweeds: &'static [Tumbleweed],
-}
-
-/// Saguaro cacti beside the road: about `count` of them, scattered along
-/// `spans` either side, on fairly level ground clear of the roads.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Cacti {
-    pub count: usize,
-    #[serde(deserialize_with = "crate::circuits::data::leak")]
-    pub spans: &'static [Span],
-}
-
-/// A tumbleweed blown across the road `along` the lap, rolling and bouncing
-/// from `reach` metres out on one side to as far on the other, and again.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Tumbleweed {
-    pub along: f32,
-    pub reach: f32,
-}
-
-/// A gas station beside the road, `lateral` metres from its centre line on
-/// `side`, facing it: pumps under a canopy, a shop behind them and a tall
-/// sign by the road.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct GasStation {
-    pub along: f32,
-    pub side: Side,
-    pub lateral: f32,
-}
-
-/// An oil pumpjack at `position` (x, z), its beam nodding towards
-/// `heading` (see [`crate::geometry`]).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Pumpjack {
-    pub position: Vec2,
-    pub heading: f32,
-}
-
-/// A concrete highway viaduct across the road `along` the lap, the bottom
-/// of its deck `height` metres over the road, from one rock wall into the
-/// other on columns beyond the walls (put a [`Cutting`] on both sides
-/// first).
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Overpass {
-    pub along: f32,
-    pub height: f32,
-}
-
-/// An adobe pueblo beside the road, `lateral` metres from its centre line on
-/// `side`: flat-roofed houses of earth, some of two floors, with beams
-/// sticking out under their roofs, ladders and a dry tree.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Pueblo {
-    pub along: f32,
-    pub side: Side,
-    pub lateral: f32,
-}
-
-/// A diamond warning sign before a bend that way, high on a post on its
-/// outside, `along` the lap.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CurveSign {
-    pub along: f32,
-    pub direction: ChevronDirection,
-    pub color: SignColor,
-}
-
-/// The colour of a diamond warning sign: green with a white arrow for a
-/// bend, yellow with a black one for a sharp one, red with a white one for
-/// a hairpin.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Deserialize)]
-pub enum SignColor {
-    Green,
-    Yellow,
-    Red,
 }
 
 /// The works of a mine: rails with ore carts rolling on them, timber

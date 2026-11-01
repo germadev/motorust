@@ -6,7 +6,6 @@ mod boosters;
 mod bricks;
 mod cavern;
 mod dam;
-mod desert;
 pub mod detail;
 mod flowers;
 mod foliage;
@@ -14,15 +13,15 @@ mod japan;
 mod lamps;
 mod landmarks;
 mod lawn;
-mod lettering;
+pub mod lettering;
 mod lod;
 mod middle_earth;
 mod mine;
 mod mirror;
 pub mod mountains;
 mod preview;
-mod props;
-mod quads;
+pub mod props;
+pub mod quads;
 pub mod realm;
 pub mod relief;
 pub(crate) mod road;
@@ -34,8 +33,9 @@ mod shoulders;
 pub mod sky;
 mod space;
 pub(crate) mod structures;
-mod terrain;
-mod textures;
+pub mod terrain;
+pub mod textures;
+pub mod themes;
 mod toys;
 mod trees;
 mod tufts;
@@ -131,8 +131,6 @@ impl Plugin for WorldPlugin {
                     sky::drift_clouds,
                     sky::light_the_sky,
                     mine::roll_carts,
-                    desert::pump,
-                    desert::tumble,
                     space::turn_dishes,
                     space::spin_portals,
                     toys::run_trains,

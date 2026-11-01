@@ -12,6 +12,7 @@ mod circuits;
 mod content;
 mod curves_hud;
 mod debug_start;
+mod game;
 mod game_info;
 mod gamepads;
 mod geometry;
@@ -191,6 +192,8 @@ fn main() {
         app.add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin);
     }
     let (fixed, game) = simulation_clocks();
+    // The game's themes, before the circuits that name them are read.
+    game::register_themes();
     // The content pack's source, before the asset server is built.
     app.add_plugins(content::ContentPlugin)
         .add_plugins(plugins)
@@ -221,6 +224,7 @@ fn main() {
             perf_log::PerfLogPlugin,
             render_scale::RenderScalePlugin,
             curves_hud::CurvesHudPlugin,
+            game::GamePlugin,
         ));
     #[cfg(target_arch = "wasm32")]
     app.add_plugins(web::WebPlugin);

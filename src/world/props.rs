@@ -35,7 +35,7 @@ const FLOOR_HEIGHT: f32 = 3.1;
 const FOREST_DEPTH: usize = 4;
 
 /// Un sitio ocupado por un edificio: su centro y su radio.
-pub(super) type Footprint = (Vec2, f32);
+pub type Footprint = (Vec2, f32);
 
 pub fn spawn_props(
     world: &mut ChildSpawnerCommands,
@@ -61,9 +61,10 @@ pub fn spawn_props(
     for row in scenery.hotels {
         occupied.extend(spawn_hotels(world, track, terrain, row, assets));
     }
-    occupied.extend(super::desert::spawn_desert(
-        world, track, terrain, scenery, assets,
-    ));
+    // What the circuit's themes put by the road (see `super::themes`).
+    for (_, theme) in scenery.themes.iter() {
+        occupied.extend(theme.spawn(world, track, terrain, assets));
+    }
     // The flowers are of feudal Japan or of Middle-earth.
     let (japanese, middle) = if scenery.japan.is_some() {
         (flowers, FlowerPlan::default())
