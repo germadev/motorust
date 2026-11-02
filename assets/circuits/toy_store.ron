@@ -32,7 +32,7 @@
 // 8. **Under the first table** (about 2400–2730 m): south under it and in
 //    wide esses down the east side.
 // 9. **The train table** (about 2730–3100 m): up a ramp onto it (9 m) and
-//    round it in one wide bend (80 m round), the shop's glass and its
+//    round it in one wide bend (76 m round), the shop's glass and its
 //    doors ahead all the way round and its electric train on the bend's
 //    outside, between the road and the glass; then along the glass and
 //    straight off the table's edge back down to the floor.
@@ -41,17 +41,17 @@
 // Named in its source, and written out where used here:
 //
 //   Key stretches of the lap, in metres from the finish line.
-// - drag_strip: Span(3160.0, 130.0)
+// - drag_strip: Span(3157.0, 130.0)
 // - tables: Span(222.0, 1047.0)
 // - helix: Span(1047.0, 1514.0)
 // - shelves: Span(1514.0, 1639.0)
 // - slide: Span(1639.0, 2074.0)
-// - train_table: Span(2706.0, 3070.0)
+// - train_table: Span(2706.0, 3067.0)
 //   Along the north wall, past the loop; round the north-east corner, under
 //   the first table and down the east side; and round the last bend.
 // - north_wall: Span(2093.0, 2393.0)
 // - brick_walls: Span(2393.0, 2706.0)
-// - home: Span(3070.0, 3160.0)
+// - home: Span(3067.0, 3157.0)
 //   How far the walls stand from the middle of the road (m): a toy track's,
 //   narrow.
 // - wall: 7.5
@@ -68,7 +68,7 @@
 // - store_blue: (0.12, 0.32, 0.86)
 // - hot_wheels_yellow: (1.0, 0.76, 0.05)
 //   How fast it is ridden against most tracks (see `Circuit::pace`).
-// - pace: 0.85
+// - pace: 0.875
 //   How much more the bends on the floor and on the furniture bank than a
 //   road's would (see `Banking`): most as much as a road may.
 // - raised_banking: 1.5
@@ -103,7 +103,7 @@
     ambience: (sea: 0.0, gulls: 0.0, birds: 0.0, cicadas: 0.0, wind: 0.0),
     song: (file: "plastic_velocity_rush.mp3", length: 176.3, loudness: -14.4),
     // Narrow and twisting, ridden slower than most.
-    pace: 0.85,
+    pace: 0.875,
     layout: (
         // The centre line's points, in race order, as `tools/toy_store_layout.py`
         // walks them.
@@ -477,64 +477,64 @@
             (264.0, -0.23),
             (264.0, 13.77),
             (264.0, 25.77),
-            (263.78, 31.75),
-            (263.11, 37.7),
-            (261.99, 43.57),
-            (260.45, 49.35),
-            (258.47, 55.0),
-            (256.08, 60.48),
-            (253.28, 65.77),
-            (250.1, 70.84),
-            (246.55, 75.65),
-            (242.64, 80.19),
-            (238.41, 84.42),
-            (233.88, 88.32),
-            (229.07, 91.87),
-            (224.0, 95.05),
-            (218.71, 97.85),
-            (213.23, 100.24),
-            (207.58, 102.22),
-            (201.8, 103.77),
-            (195.92, 104.88),
-            (189.98, 105.55),
-            (184.0, 105.77),
-            (170.0, 105.77),
-            (156.0, 105.77),
-            (143.5, 105.77),
-            (131.0, 105.77),
-            (119.57, 105.77),
-            (108.14, 105.77),
-            (96.71, 105.77),
-            (85.29, 105.77),
-            (73.86, 105.77),
-            (62.43, 105.77),
-            (51.0, 105.77),
-            (40.0, 105.77),
-            (33.74, 105.28),
-            (27.64, 103.81),
-            (21.84, 101.41),
-            (16.49, 98.13),
-            (11.72, 94.06),
-            (7.64, 89.28),
-            (4.36, 83.93),
-            (1.96, 78.13),
-            (0.49, 72.03),
-            (0.0, 65.77),
-            (0.0, 52.62),
-            (0.0, 39.46),
-            (0.0, 26.31),
-            (0.0, 13.15),
+            (263.77, 31.74),
+            (263.06, 37.66),
+            (261.9, 43.51),
+            (260.28, 49.26),
+            (258.21, 54.86),
+            (255.72, 60.28),
+            (252.8, 65.48),
+            (249.49, 70.44),
+            (245.79, 75.13),
+            (241.74, 79.51),
+            (237.36, 83.56),
+            (232.67, 87.26),
+            (227.71, 90.57),
+            (222.5, 93.49),
+            (217.08, 95.99),
+            (211.49, 98.05),
+            (205.74, 99.67),
+            (199.89, 100.84),
+            (193.96, 101.54),
+            (188.0, 101.77),
+            (177.33, 101.77),
+            (166.67, 101.77),
+            (156.0, 101.77),
+            (143.5, 101.77),
+            (131.0, 101.77),
+            (119.57, 101.77),
+            (108.14, 101.77),
+            (96.71, 101.77),
+            (85.29, 101.77),
+            (73.86, 101.77),
+            (62.43, 101.77),
+            (51.0, 101.77),
+            (40.0, 101.77),
+            (33.74, 101.28),
+            (27.64, 99.81),
+            (21.84, 97.41),
+            (16.49, 94.13),
+            (11.72, 90.06),
+            (7.64, 85.28),
+            (4.36, 79.93),
+            (1.96, 74.13),
+            (0.49, 68.03),
+            (0.0, 61.77),
+            (0.0, 49.42),
+            (0.0, 37.06),
+            (0.0, 24.71),
+            (0.0, 12.35),
         ],
         // The road's height along the lap
         // (metres from the finish line, height over the floor), as `tools/toy_store_layout.py` works them out.
         elevation: [
             (0.0, 0.0), // start
             (40.0, 0.0),
-            (54.0, 0.05),
-            (74.0, 0.9), // kicker
-            (84.0, 1.2),
-            (98.0, 0.1),
-            (112.0, 0.0),
+            (56.0, 0.05),
+            (76.0, 0.9), // kicker
+            (86.0, 1.2),
+            (100.0, 0.1),
+            (114.0, 0.0),
             (170.0, 0.0), // north
             (228.0, 0.0), // ramp
             (238.0, 0.4),
@@ -547,57 +547,57 @@
             (414.0, 14.0),
             (438.0, 14.0), // T0 esses
             (482.0, 14.0),
-            (506.0, 14.0), // T0 esses end
-            (514.0, 14.0),
-            (608.0, 14.0), // hairpin
-            (648.0, 14.0), // T0 edge
-            (684.0, 14.0), // T1 edge
-            (724.0, 14.0),
-            (816.0, 14.0), // castle
-            (908.0, 14.0), // castle join
-            (928.0, 14.0),
-            (970.0, 14.0),
-            (992.0, 14.0),
-            (1006.0, 14.0),
-            (1046.0, 14.0), // X
-            (1136.0, 18.6),
-            (1228.0, 23.2),
-            (1318.0, 27.8),
-            (1410.0, 32.4),
-            (1502.0, 37.0), // helix top
-            (1546.0, 39.0), // gondola
-            (1592.0, 39.0), // shelves end
-            (1638.0, 37.0), // slide
-            (1720.0, 29.59),
-            (1802.0, 22.17),
-            (1884.0, 14.76),
-            (1964.0, 7.35),
-            (2018.0, 2.5),
-            (2066.0, 0.3), // floor
-            (2102.0, 0.0),
-            (2112.0, 0.0), // loop fork
-            (2148.0, 0.0),
-            (2184.0, 0.0),
-            (2276.0, 0.0),
-            (2312.0, 0.0),
-            (2348.0, 0.0), // loop join
-            (2388.0, 0.0), // north wall end
-            (2440.0, 0.0),
-            (2610.0, 0.0), // under T0
-            (2634.0, 0.0), // east esses
-            (2680.0, 0.0),
-            (2704.0, 0.0), // east esses end
-            (2708.0, 0.3),
-            (2766.0, 7.1), // T2
-            (2780.0, 8.1),
-            (2794.0, 8.6),
-            (2806.0, 8.8), // train table
-            (2932.0, 9.0), // doors
-            (2960.0, 9.0),
-            (2984.0, 9.0), // drop
-            (3064.0, 0.3), // drop end
-            (3076.0, 0.0),
-            (3138.0, 0.0), // home
+            (505.9, 14.0), // T0 esses end
+            (513.9, 14.0),
+            (607.9, 14.0), // hairpin
+            (647.9, 14.0), // T0 edge
+            (683.9, 14.0), // T1 edge
+            (723.9, 14.0),
+            (815.9, 14.0), // castle
+            (907.9, 14.0), // castle join
+            (927.9, 14.0),
+            (969.9, 14.0),
+            (991.9, 14.0),
+            (1005.9, 14.0),
+            (1045.9, 14.0), // X
+            (1135.9, 18.6),
+            (1227.9, 23.2),
+            (1317.9, 27.8),
+            (1409.9, 32.4),
+            (1501.8, 37.0), // helix top
+            (1545.8, 39.0), // gondola
+            (1591.8, 39.0), // shelves end
+            (1637.8, 37.0), // slide
+            (1719.8, 29.59),
+            (1801.8, 22.17),
+            (1883.8, 14.76),
+            (1963.8, 7.35),
+            (2017.8, 2.5),
+            (2065.8, 0.3), // floor
+            (2101.8, 0.0),
+            (2111.8, 0.0), // loop fork
+            (2147.8, 0.0),
+            (2183.8, 0.0),
+            (2277.8, 0.0),
+            (2313.8, 0.0),
+            (2349.8, 0.0), // loop join
+            (2389.8, 0.0), // north wall end
+            (2439.7, 0.0),
+            (2609.7, 0.0), // under T0
+            (2633.7, 0.0), // east esses
+            (2679.7, 0.0),
+            (2703.7, 0.0), // east esses end
+            (2707.7, 0.3),
+            (2765.7, 7.1), // T2
+            (2779.7, 8.1),
+            (2793.7, 8.6),
+            (2805.7, 8.8), // train table
+            (2925.7, 9.0), // doors
+            (2957.7, 9.0),
+            (2981.7, 9.0), // drop
+            (3061.7, 0.3), // drop end
+            (3073.7, 0.0),
+            (3135.7, 0.0), // home
         ],
         // Banked in the bends on the floor and on the furniture as a
         // slot-car track's banked curves are, raised on supports under
@@ -612,9 +612,9 @@
         banking: [
             (from: 0.0, to: 410.0, factor: 1.5, raised: true),
             (from: 410.0, to: 512.0, factor: 0.7),
-            (from: 512.0, to: 724.0, factor: 1.5, raised: true),
-            (from: 724.0, to: 908.0, factor: 0.0),
-            (from: 908.0, to: 995.0, factor: 0.7),
+            (from: 512.0, to: 723.9, factor: 1.5, raised: true),
+            (from: 723.9, to: 907.9, factor: 0.0),
+            (from: 907.9, to: 995.0, factor: 0.7),
             (from: 995.0, to: 1031.0, factor: 1.5, raised: true),
             // Hot Wheels' banked track: steep, and gripping a little harder,
             // enough to climb the helix flat out; eased in and out, so that
@@ -627,17 +627,17 @@
             (from: 1508.0, to: 1514.0, factor: 2.5, grip: 1.08),
             (from: 1514.0, to: 1639.0, factor: 0.0),
             (from: 1639.0, to: 2074.0, factor: 2.0),
-            (from: 2074.0, to: 2102.0, factor: 1.5, raised: true),
-            (from: 2102.0, to: 2348.0, factor: 0.0),
-            (from: 2348.0, to: 2608.0, factor: 1.5, raised: true),
+            (from: 2074.0, to: 2101.8, factor: 1.5, raised: true),
+            (from: 2101.8, to: 2349.8, factor: 0.0),
+            (from: 2349.8, to: 2608.0, factor: 1.5, raised: true),
             (from: 2608.0, to: 2710.0, factor: 0.7),
             (from: 2710.0, to: 3.4028235e38, factor: 1.5, raised: true),
         ],
         branches: [
             // Through the castle on the diorama, as the lap swings round it.
             (
-                from: 724.0,
-                to: 908.0,
+                from: 723.9,
+                to: 907.9,
                 // The way through the castle's control points, as the tool walks them.
                 approach: [
                     (204.66, -142.0),
@@ -675,8 +675,8 @@
             ),
             // Round a loop of orange track beside the north wall.
             (
-                from: 2102.0,
-                to: 2348.0,
+                from: 2101.8,
+                to: 2349.8,
                 // The way round the loop: the control points of the road into it, its
                 // mouth (the bikes go in heading east) and the road out of it.
                 approach: [
@@ -731,8 +731,8 @@
             // table and down the east side, and round the last bend.
             (span: Span(2393.0, 2706.0), side: Left, style: Bricks),
             (span: Span(2393.0, 2706.0), side: Right, style: Bricks),
-            (span: Span(3070.0, 3160.0), side: Left, style: Bricks),
-            (span: Span(3070.0, 3160.0), side: Right, style: Bricks),
+            (span: Span(3067.0, 3157.0), side: Left, style: Bricks),
+            (span: Span(3067.0, 3157.0), side: Right, style: Bricks),
             (span: Lap, side: Left, style: SlotBorder),
             (span: Lap, side: Right, style: SlotBorder),
         ],
@@ -746,19 +746,19 @@
             Span(2536.0, 2672.0),
         ],
         bridges: [
-            (span: Span(3160.0, 130.0), style: OrangeTrack, fence: 1.2),
+            (span: Span(3157.0, 130.0), style: OrangeTrack, fence: 1.2),
             (span: Span(222.0, 1047.0), style: SlotTrack, fence: 1.2),
             (span: Span(1047.0, 1514.0), style: OrangeTrack, fence: 1.2),
             (span: Span(1514.0, 1639.0), style: SlotTrack, fence: 1.2),
             (span: Span(1639.0, 2074.0), style: Slide, fence: 1.2),
-            (span: Span(2706.0, 3070.0), style: SlotTrack, fence: 1.2),
+            (span: Span(2706.0, 3067.0), style: SlotTrack, fence: 1.2),
         ],
         gantries: [
             (along: 0.0, color: (0.12, 0.32, 0.86), text: Some("TOY STORE")),
-            // At the foot of the helix, on top of the shelves and under the
+            // At the foot of the helix, at the end of the shelves and under the
             // first table.
-            (along: 1040.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
-            (along: 1560.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
+            (along: 1045.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
+            (along: 1630.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
             (along: 2560.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
         ],
         houses: (max: 0, paints: [], style: Cottage),

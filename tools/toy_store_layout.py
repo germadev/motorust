@@ -146,7 +146,7 @@ EAST_ESSES = (70.0, esses_angle(70.0, 40.0, 35.0))
 # straight on the table before it, where the ramp's top is, so that the
 # bikes take off over it (if at all) on a straight.
 TRAIN_LEAD = 12.0
-TRAIN_BEND = 92.0 - TRAIN_LEAD
+TRAIN_BEND = 88.0 - TRAIN_LEAD
 # The way through the castle: straight on along the lap at first and last
 # (m), out to the side and back in bends of this radius (m) and angle (°),
 # gently, and straight through the castle (m); as far along the lap as it

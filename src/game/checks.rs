@@ -649,7 +649,7 @@ mod circuits {
             circuits[6].checkpoints(),
             vec![868.0, 1905.1, 2955.1, 3585.1, 4565.1]
         );
-        assert_eq!(circuits[7].checkpoints(), vec![1040.0, 1560.0, 2560.0]);
+        assert_eq!(circuits[7].checkpoints(), vec![1045.0, 1630.0, 2560.0]);
     }
 }
 
