@@ -22,6 +22,7 @@ The engine is a crate of its own, `motorust_engine`, in its public repository, [
   ```
 
   The game then builds with the clone as it is (and `Cargo.lock` names the clone instead of the tag: that change is not committed either); the engine's changes are committed, tested and released in its repository.
+- **Another version of the engine for a while** (a branch, a tag or a commit of its repository, or a clone of it): `ENGINE` with `make up`, `build`, `app`, `test` and `bench`, as `make up ENGINE=my-branch`, `make test ENGINE=v0.0.20` or `make up ENGINE=../motorust-engine`. `tools/with_engine.sh` checks a branch, tag or commit out in `.tmp/engine/<name>` (cloned the first time, fetched again each time, a branch at its latest), runs cargo with a `[patch]` pointing there given with `--config` (nothing written to `.cargo/config.toml`), and puts `Cargo.lock` back as it was afterwards. Nothing to commit.
 - **What else of the engine the game uses**: its credits, which the packages carry as `CREDITS-ENGINE.md`, and its tools (`tools/circuit_layout.py`), found where Cargo has its sources by `tools/engine_dir.sh`.
 
 ## Make targets
@@ -40,7 +41,7 @@ make bench.push  # commits bench-results/ and pushes it to the branch
 |---|---|---|
 | `make` / `make help` | | Lists the targets. |
 | `make install` | Linux packages, then `cargo fetch` | Installs the system dependencies (Linux only) and downloads the crates. Fails early if `cargo` is missing. |
-| `make up` | `cargo run --features dynamic` | Builds and starts the game with the `dev` profile, Bevy linked dynamically (see below). |
+| `make up` | `cargo run --features dynamic` | Builds and starts the game with the `dev` profile, Bevy linked dynamically (see below). With `ENGINE=...`, on another version of the engine (see "The engine"); in this build the tracks menu opens the map editor with E. |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
 | `make app` | `cargo build --release`, then `tools/make-app.sh` | macOS only: `target/release/Motorust.app` around the optimised executable (with the icon and `assets/Info.plist`), to open from Finder or keep in the Dock. Its Info.plist says it is a racing game (`LSApplicationCategoryType` `public.app-category.racing-games`, `LSSupportsGameMode`), so macOS (Sonoma and later) turns its Game Mode on when the game goes fullscreen, which a bare executable run from the terminal never gets. The CI's `.app` is made by the same script. Launched from Finder, the game runs from `/`: the benchmark is for `make bench`. |
 | `make test` | `cargo test` | Runs the tests (see [architecture.md](architecture.md#tests)). |
