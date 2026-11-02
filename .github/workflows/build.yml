@@ -200,11 +200,14 @@ jobs:
           fi
       - uses: Swatinem/rust-cache@v2
       - name: Formato
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      # The engine's tests (its crate, motorust-engine/) run on its content
+      # alone, so that nothing of the game's creeps into it; the game's run
+      # the engine's checks on its own.
       - name: Tests
-        run: cargo test
+        run: cargo test --workspace
 
   build:
     name: Build ${{ matrix.name }}
@@ -264,6 +267,7 @@ jobs:
           name="motorust-$LABEL-$TARGET"
           mkdir -p "dist/$name"
           cp README.md assets/CREDITS.md "dist/$name/"
+          cp motorust-engine/assets/CREDITS.md "dist/$name/CREDITS-ENGINE.md"
           if [[ "$TARGET" == *"windows"* ]]; then
             cp "target/$TARGET/release/motorust.exe" "dist/$name/"
             if command -v 7z >/dev/null 2>&1; then
@@ -282,7 +286,8 @@ jobs:
             mkdir -p "dist/$name-app"
             tools/make-app.sh "target/$TARGET/release/motorust" "$LABEL" "dist/$name-app"
             cp README.md assets/CREDITS.md "dist/$name-app/"
-            (cd "dist/$name-app" && zip -r -y "../$name-app.zip" "Motorust.app" README.md CREDITS.md > /dev/null)
+            cp motorust-engine/assets/CREDITS.md "dist/$name-app/CREDITS-ENGINE.md"
+            (cd "dist/$name-app" && zip -r -y "../$name-app.zip" "Motorust.app" README.md CREDITS.md CREDITS-ENGINE.md > /dev/null)
             rm -r "dist/$name-app"
           else
             cp "target/$TARGET/release/motorust" "dist/$name/"
@@ -338,6 +343,7 @@ jobs:
           name="motorust-$LABEL-$TARGET"
           mkdir -p "dist-pkg/$name"
           cp -r dist/web/* README.md assets/CREDITS.md "dist-pkg/$name/"
+          cp motorust-engine/assets/CREDITS.md "dist-pkg/$name/CREDITS-ENGINE.md"
           (cd dist-pkg && zip -r "$name.zip" "$name" > /dev/null)
           rm -r "dist-pkg/$name"
           ls -l dist-pkg

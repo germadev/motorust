@@ -98,6 +98,8 @@
     ),
     song: (file: "autumn_gale.mp3", length: 175.8, loudness: -15.9),
     pace: 1.0,
+    // Its name before: the records saved under it are its own.
+    formerly: ["Tsushima Isle"],
     layout: (
         control_points: [
             // 1. The castle street, north (-Z), and the tunnel under the castle hill.
@@ -788,168 +790,171 @@
         soil: Rock,
         sky: GoldenHour,
         water: Sea,
-        japan: Some((
-            // Up the red ridge, as at Fushimi Inari: a gate every 6 m where
-            // the walls close in, and wide ones before and after.
-            corridors: [(span: Span(3830.0, 4120.0), every: 6.0, approach: 30.0, approach_every: 15.0)],
-            // The props of feudal Japan, made with Meshy: landmarks out in
-            // the open, and statues, lanterns, shrines and houses by the
-            // road.
-            props: [
-                // The great torii on its islet in the sea off the coast road, facing
-                // it, ahead of the road as it swings along the shore.
-                (model: GreatTorii, spot: At(position: (497.0, -892.0), heading: 3.1415927), scale: 1.6),
-                // The castle keep on the bamboo hill, on the outside of the bend past
-                // the castle, facing the riders coming over the tunnel: ahead of them
-                // all the way along the castle ridge.
-                (model: CastleKeep, spot: At(position: (-162.1, -527.7), heading: -1.76), scale: 1.6),
-                // The temple and its pagoda before the corridor of torii, both facing
-                // the riders coming up the red ridge at them: the hall stands on the
-                // bank to the left, in the open (among the gates it was hidden), and
-                // the pagoda by the road to the right, on a terrace a little over it.
-                (model: TempleHall, spot: Road(along: 3640.0, lateral: 40.0), facing_riders: true),
-                (model: Pagoda, spot: Road(along: 3780.0, lateral: -34.0), facing_riders: true),
-                // The shrine on stilts in the inlet, beside the boardwalk, and another
-                // on land, on a terrace on the outside of a bend in the bamboo, facing
-                // the riders coming down.
-                (model: StiltShrine, spot: At(position: (760.0, -755.0), heading: 0.0)),
-                (model: StiltShrine, spot: At(position: (-98.9, -305.5), heading: 0.39), scale: 1.5),
-                // The great maple on the outside of the bend round the foot of the
-                // lake, straight ahead all the way down to it: at the far side of its
-                // clearing of red leaves, its crown spreading over it towards the road
-                // and the riders coming, leaning out a little over it; and a stone
-                // lantern either side of the clearing. A wayside shrine on the islet.
-                (model: GreatMaple, spot: At(position: (877.4, 491.8), heading: 1.215), lean: 0.12),
-                (model: StoneLantern, spot: At(position: (857.30005, 476.3), heading: -0.5)),
-                (model: StoneLantern, spot: At(position: (893.30005, 475.5), heading: 0.55)),
-                (model: Hokora, spot: At(position: (885.0, 255.0), heading: 2.36)),
-                // A water wheel on the lake's west shore, ahead past the great maple,
-                // facing the riders coming round from it.
-                (model: WaterWheel, spot: At(position: (745.6, 355.6), heading: -2.44), scale: 1.8),
-                // Fishing boats off the coast.
-                (model: FishingBoat, spot: At(position: (250.0, -925.0), heading: 1.2)),
-                (model: FishingBoat, spot: At(position: (560.0, -935.0), heading: -0.4)),
-                (model: FishingBoat, spot: At(position: (700.0, -870.0), heading: 2.0)),
-                // Stone lanterns along the castle street, before the temple, by the
-                // lake, at the top of the red ridge and at the castle.
-                // The small ones stand right by the road, past the walls where the
-                // shrine's fence opens for them (see the walls).
-                (model: StoneLantern, spot: Road(along: 60.0, lateral: 12.8)),
-                (model: StoneLantern, spot: Road(along: 200.0, lateral: -12.8)),
-                (model: StoneLantern, spot: Road(along: 330.0, lateral: 12.8)),
-                (model: StoneLantern, spot: Road(along: 3395.0, lateral: 12.8)),
-                (model: StoneLantern, spot: Road(along: 3395.0, lateral: -12.8)),
-                (model: StoneLantern, spot: Road(along: 3300.0, lateral: -12.8)),
-                (model: StoneLantern, spot: Road(along: 4280.0, lateral: 12.8)),
-                (model: StoneLantern, spot: Road(along: 4740.0, lateral: 12.8)),
-                // The castle town's stores.
-                (model: SupplyPile, spot: Road(along: 130.0, lateral: 13.5)),
-                (model: SupplyPile, spot: Road(along: 320.0, lateral: -13.5)),
-                // The fishing village: thatched farmhouses inland of the coast road,
-                // each on its terrace, facing the riders coming along it.
-                (model: Minka, spot: At(position: (96.6, -760.7), heading: 1.83)),
-                (model: Minka, spot: At(position: (154.0, -774.4), heading: 1.44)),
-                (model: Minka, spot: At(position: (213.2, -764.5), heading: 1.01)),
-                // Bronze lanterns at either end of the boardwalk.
-                (model: BronzeLantern, spot: Road(along: 1395.0, lateral: 12.8)),
-                (model: BronzeLantern, spot: Road(along: 1395.0, lateral: -12.8)),
-                (model: BronzeLantern, spot: Road(along: 1655.0, lateral: 12.8)),
-                (model: BronzeLantern, spot: Road(along: 1655.0, lateral: -12.8)),
-                // A torii of logs on the top of the susuki hills, facing the riders
-                // coming up at it: it stands against the sky all the way up.
-                (model: LogTorii, spot: Road(along: 2350.0, lateral: 30.0), facing_riders: true),
-                // Guardians at the foot of the corridor of torii.
-                (model: Komainu, spot: Road(along: 3800.0, lateral: 12.8)),
-                (model: Komainu, spot: Road(along: 3800.0, lateral: -12.8)),
-                // An ancient maple on its boulders with a wayside shrine beside it, and
-                // a memorial stone, at the top of the red ridge.
-                (model: AncientMaple, spot: Road(along: 4190.0, lateral: -24.0)),
-                (model: Hokora, spot: Road(along: 4205.0, lateral: -13.5)),
-                (model: Stele, spot: Road(along: 4250.0, lateral: -12.8)),
-                // Braziers at the castle.
-                (model: Brazier, spot: Road(along: 4700.0, lateral: 12.8)),
-                (model: Brazier, spot: Road(along: 4700.0, lateral: -12.8)),
-                // Jizō by the road down through the bamboo.
-                (model: Jizo, spot: Road(along: 4960.0, lateral: 12.8)),
-                (model: Jizo, spot: Road(along: 5160.0, lateral: -12.8)),
-                (model: Jizo, spot: Road(along: 5360.0, lateral: 12.8)),
-                (model: Jizo, spot: Road(along: 5520.0, lateral: -12.8)),
-                // And one more by the castle street.
-                (model: Jizo, spot: Road(along: 5881.0, lateral: 12.8)),
-            ],
-            // The small props over and over along the lap: each stands on
-            // its plinth, with the wall opening for it, so that the road is
-            // lined with them. Every row takes its kinds in turn, so that no
-            // stretch is all of one thing, and the two sides of a stretch are
-            // half a step apart, so they do not stand in pairs facing each
-            // other (but for the guardians, which come in twos). Where one of
-            // the props already stands, or another road runs, there is none.
-            rows: [
-                // The castle street, lit on both sides as a town's is, with a brazier
-                // and a jizō among the lanterns.
-                (models: [StoneLantern, Brazier], row: (span: Span(5821.0, 360.0), side: Left, lateral: 12.8, every: 70.0)),
-                (models: [StoneLantern, Jizo], row: (span: Span(5856.0, 360.0), side: Right, lateral: 12.8, every: 70.0)),
-                // The coast road, on its inland side: the sea's is left open.
-                (models: [Jizo, StoneLantern, Stele], row: (span: Span(640.0, 1422.0), side: Right, lateral: 12.8, every: 115.0)),
-                // The lonely road over the susuki hills: wayside statues, a shrine
-                // and a memorial stone.
-                (models: [Jizo, Hokora, Stele], row: (span: Span(1622.0, 2700.0), side: Left, lateral: 12.8, every: 190.0)),
-                // Round the lake, on the water's side, along the shrine's fence.
-                (models: [StoneLantern, BronzeLantern], row: (span: Span(2700.0, 3400.0), side: Right, lateral: 12.8, every: 85.0)),
-                // Up the red ridge: braziers and memorial stones, and guardians in
-                // twos, one either side, as at the foot of the corridor of torii.
-                (models: [Brazier, Stele], row: (span: Span(3764.0, 4322.0), side: Left, lateral: 12.8, every: 110.0)),
-                (models: [Komainu], row: (span: Span(3764.0, 4322.0), side: Left, lateral: 12.8, every: 150.0)),
-                (models: [Komainu], row: (span: Span(3764.0, 4322.0), side: Right, lateral: 12.8, every: 150.0)),
-                // Down the castle ridge, lit for the night.
-                (models: [Brazier, Komainu, Stele], row: (span: Span(4322.0, 4880.0), side: Left, lateral: 12.8, every: 95.0)),
-                (models: [Brazier, Hokora], row: (span: Span(4369.0, 4880.0), side: Right, lateral: 12.8, every: 95.0)),
-                // Down through the bamboo, where the jizō stand: a shrine and a stone
-                // among them, one side half a step after the other.
-                (models: [Jizo, Hokora], row: (span: Span(4880.0, 5675.0), side: Left, lateral: 12.8, every: 140.0)),
-                (models: [Jizo, Stele], row: (span: Span(4950.0, 5675.0), side: Right, lateral: 12.8, every: 140.0)),
-            ],
-            // Under the great maple, beside the road round the foot of the
-            // lake.
-            maple_grounds: [(center: (875.4, 479.9), radius: 14.0)],
-            // Red maple leaves blowing down up the red ridge, through the
-            // corridor of torii, and round the great maple; white cherry
-            // petals down the castle street.
-            petals: [
-                (area: Road(span: Span(3764.0, 4322.0), reach: 24.0), kind: Maple),
-                (area: Round(center: (875.4, 479.9), radius: 36.0), kind: Maple),
-                // Blowing over the whole bend round the foot of the lake,
-                // along the great maple's clearing.
-                (area: Round(center: (956.8, 422.0), radius: 32.0), kind: Maple),
-                (area: Round(center: (874.8, 444.9), radius: 32.0), kind: Maple),
-                (area: Round(center: (790.0, 425.0), radius: 32.0), kind: Maple),
-                (area: Road(span: Span(5821.0, 360.0), reach: 24.0), kind: Cherry),
-            ],
-            // The fields of flowers, as on the hills of Tsushima and round
-            // the lakes at the foot of Mount Fuji, over most of the island;
-            // where they overlap, the first one listed.
-            flowers: [
-                // White round the great maple, for its reds to stand out.
-                (area: Round(center: (875.4, 479.9), inner: 0.0, outer: 60.0), kinds: [White]),
-                // Red spider lilies on the lake's open shore, seen across the
-                // water.
-                (area: Round(center: (836.0, 100.0), inner: 0.0, outer: 60.0), kinds: [SpiderLily]),
-                // All round the lake, from its water up to the road's fence
-                // (from 4 m inside its shore at its most wandering): carpets
-                // of moss phlox in drifts of magenta, pink, lavender and
-                // white.
-                (area: Round(center: (870.0, 270.0), inner: 138.0, outer: 175.0), kinds: [Phlox]),
-                // A meadow of red spider lilies beside the castle street.
-                (area: Round(center: (110.0, -150.0), inner: 0.0, outer: 110.0), kinds: [SpiderLily]),
-                // The susuki hills, golden with susuki either side of the
-                // road, from its walls out.
-                (area: Road(span: Span(1800.0, 2650.0), near: 11.5, far: 150.0), kinds: [Susuki]),
-                // Yellow rape blossom and white flowers up the slopes over
-                // the coast.
-                (area: Road(span: Span(700.0, 1400.0), near: 11.5, far: 120.0), kinds: [Yellow, White]),
-                // And everywhere else, in broad swathes.
-                (area: Everywhere, kinds: [Phlox, SpiderLily, Yellow, White, Iris]),
-            ],
-        )),
+        // The fields of flowers, as on the hills of Tsushima and round
+        // the lakes at the foot of Mount Fuji, over most of the island;
+        // where they overlap, the first one listed.
+        flowers: [
+            // White round the great maple, for its reds to stand out.
+            (area: Round(center: (875.4, 479.9), inner: 0.0, outer: 60.0), kinds: [White]),
+            // Red spider lilies on the lake's open shore, seen across the
+            // water.
+            (area: Round(center: (836.0, 100.0), inner: 0.0, outer: 60.0), kinds: [SpiderLily]),
+            // All round the lake, from its water up to the road's fence
+            // (from 4 m inside its shore at its most wandering): carpets
+            // of moss phlox in drifts of magenta, pink, lavender and
+            // white.
+            (area: Round(center: (870.0, 270.0), inner: 138.0, outer: 175.0), kinds: [Phlox]),
+            // A meadow of red spider lilies beside the castle street.
+            (area: Round(center: (110.0, -150.0), inner: 0.0, outer: 110.0), kinds: [SpiderLily]),
+            // The susuki hills, golden with susuki either side of the
+            // road, from its walls out.
+            (area: Road(span: Span(1800.0, 2650.0), near: 11.5, far: 150.0), kinds: [Susuki]),
+            // Yellow rape blossom and white flowers up the slopes over
+            // the coast.
+            (area: Road(span: Span(700.0, 1400.0), near: 11.5, far: 120.0), kinds: [Yellow, White]),
+            // And everywhere else, in broad swathes.
+            (area: Everywhere, kinds: [Phlox, SpiderLily, Yellow, White, Iris]),
+        ],
+        // Red maple leaves blowing down up the red ridge, through the
+        // corridor of torii, and round the great maple; white cherry
+        // petals down the castle street.
+        petals: [
+            (area: Road(span: Span(3764.0, 4322.0), reach: 24.0), kind: Maple),
+            (area: Round(center: (875.4, 479.9), radius: 36.0), kind: Maple),
+            // Blowing over the whole bend round the foot of the lake,
+            // along the great maple's clearing.
+            (area: Round(center: (956.8, 422.0), radius: 32.0), kind: Maple),
+            (area: Round(center: (874.8, 444.9), radius: 32.0), kind: Maple),
+            (area: Round(center: (790.0, 425.0), radius: 32.0), kind: Maple),
+            (area: Road(span: Span(5821.0, 360.0), reach: 24.0), kind: Cherry),
+        ],
+        // The game's own themes (see src/world/themes.rs).
+        themes: {
+            "japan": (
+                // Up the red ridge, as at Fushimi Inari: a gate every 6 m where
+                // the walls close in, and wide ones before and after.
+                corridors: [(span: Span(3830.0, 4120.0), every: 6.0, approach: 30.0, approach_every: 15.0)],
+                // The props of feudal Japan, made with Meshy: landmarks out in
+                // the open, and statues, lanterns, shrines and houses by the
+                // road.
+                props: [
+                    // The great torii on its islet in the sea off the coast road, facing
+                    // it, ahead of the road as it swings along the shore.
+                    (model: GreatTorii, spot: At(position: (497.0, -892.0), heading: 3.1415927), scale: 1.6),
+                    // The castle keep on the bamboo hill, on the outside of the bend past
+                    // the castle, facing the riders coming over the tunnel: ahead of them
+                    // all the way along the castle ridge.
+                    (model: CastleKeep, spot: At(position: (-162.1, -527.7), heading: -1.76), scale: 1.6),
+                    // The temple and its pagoda before the corridor of torii, both facing
+                    // the riders coming up the red ridge at them: the hall stands on the
+                    // bank to the left, in the open (among the gates it was hidden), and
+                    // the pagoda by the road to the right, on a terrace a little over it.
+                    (model: TempleHall, spot: Road(along: 3640.0, lateral: 40.0), facing_riders: true),
+                    (model: Pagoda, spot: Road(along: 3780.0, lateral: -34.0), facing_riders: true),
+                    // The shrine on stilts in the inlet, beside the boardwalk, and another
+                    // on land, on a terrace on the outside of a bend in the bamboo, facing
+                    // the riders coming down.
+                    (model: StiltShrine, spot: At(position: (760.0, -755.0), heading: 0.0)),
+                    (model: StiltShrine, spot: At(position: (-98.9, -305.5), heading: 0.39), scale: 1.5),
+                    // The great maple on the outside of the bend round the foot of the
+                    // lake, straight ahead all the way down to it: at the far side of its
+                    // clearing of red leaves, its crown spreading over it towards the road
+                    // and the riders coming, leaning out a little over it; and a stone
+                    // lantern either side of the clearing. A wayside shrine on the islet.
+                    (model: GreatMaple, spot: At(position: (877.4, 491.8), heading: 1.215), lean: 0.12),
+                    (model: StoneLantern, spot: At(position: (857.30005, 476.3), heading: -0.5)),
+                    (model: StoneLantern, spot: At(position: (893.30005, 475.5), heading: 0.55)),
+                    (model: Hokora, spot: At(position: (885.0, 255.0), heading: 2.36)),
+                    // A water wheel on the lake's west shore, ahead past the great maple,
+                    // facing the riders coming round from it.
+                    (model: WaterWheel, spot: At(position: (745.6, 355.6), heading: -2.44), scale: 1.8),
+                    // Fishing boats off the coast.
+                    (model: FishingBoat, spot: At(position: (250.0, -925.0), heading: 1.2)),
+                    (model: FishingBoat, spot: At(position: (560.0, -935.0), heading: -0.4)),
+                    (model: FishingBoat, spot: At(position: (700.0, -870.0), heading: 2.0)),
+                    // Stone lanterns along the castle street, before the temple, by the
+                    // lake, at the top of the red ridge and at the castle.
+                    // The small ones stand right by the road, past the walls where the
+                    // shrine's fence opens for them (see the walls).
+                    (model: StoneLantern, spot: Road(along: 60.0, lateral: 12.8)),
+                    (model: StoneLantern, spot: Road(along: 200.0, lateral: -12.8)),
+                    (model: StoneLantern, spot: Road(along: 330.0, lateral: 12.8)),
+                    (model: StoneLantern, spot: Road(along: 3395.0, lateral: 12.8)),
+                    (model: StoneLantern, spot: Road(along: 3395.0, lateral: -12.8)),
+                    (model: StoneLantern, spot: Road(along: 3300.0, lateral: -12.8)),
+                    (model: StoneLantern, spot: Road(along: 4280.0, lateral: 12.8)),
+                    (model: StoneLantern, spot: Road(along: 4740.0, lateral: 12.8)),
+                    // The castle town's stores.
+                    (model: SupplyPile, spot: Road(along: 130.0, lateral: 13.5)),
+                    (model: SupplyPile, spot: Road(along: 320.0, lateral: -13.5)),
+                    // The fishing village: thatched farmhouses inland of the coast road,
+                    // each on its terrace, facing the riders coming along it.
+                    (model: Minka, spot: At(position: (96.6, -760.7), heading: 1.83)),
+                    (model: Minka, spot: At(position: (154.0, -774.4), heading: 1.44)),
+                    (model: Minka, spot: At(position: (213.2, -764.5), heading: 1.01)),
+                    // Bronze lanterns at either end of the boardwalk.
+                    (model: BronzeLantern, spot: Road(along: 1395.0, lateral: 12.8)),
+                    (model: BronzeLantern, spot: Road(along: 1395.0, lateral: -12.8)),
+                    (model: BronzeLantern, spot: Road(along: 1655.0, lateral: 12.8)),
+                    (model: BronzeLantern, spot: Road(along: 1655.0, lateral: -12.8)),
+                    // A torii of logs on the top of the susuki hills, facing the riders
+                    // coming up at it: it stands against the sky all the way up.
+                    (model: LogTorii, spot: Road(along: 2350.0, lateral: 30.0), facing_riders: true),
+                    // Guardians at the foot of the corridor of torii.
+                    (model: Komainu, spot: Road(along: 3800.0, lateral: 12.8)),
+                    (model: Komainu, spot: Road(along: 3800.0, lateral: -12.8)),
+                    // An ancient maple on its boulders with a wayside shrine beside it, and
+                    // a memorial stone, at the top of the red ridge.
+                    (model: AncientMaple, spot: Road(along: 4190.0, lateral: -24.0)),
+                    (model: Hokora, spot: Road(along: 4205.0, lateral: -13.5)),
+                    (model: Stele, spot: Road(along: 4250.0, lateral: -12.8)),
+                    // Braziers at the castle.
+                    (model: Brazier, spot: Road(along: 4700.0, lateral: 12.8)),
+                    (model: Brazier, spot: Road(along: 4700.0, lateral: -12.8)),
+                    // Jizō by the road down through the bamboo.
+                    (model: Jizo, spot: Road(along: 4960.0, lateral: 12.8)),
+                    (model: Jizo, spot: Road(along: 5160.0, lateral: -12.8)),
+                    (model: Jizo, spot: Road(along: 5360.0, lateral: 12.8)),
+                    (model: Jizo, spot: Road(along: 5520.0, lateral: -12.8)),
+                    // And one more by the castle street.
+                    (model: Jizo, spot: Road(along: 5881.0, lateral: 12.8)),
+                ],
+                // The small props over and over along the lap: each stands on
+                // its plinth, with the wall opening for it, so that the road is
+                // lined with them. Every row takes its kinds in turn, so that no
+                // stretch is all of one thing, and the two sides of a stretch are
+                // half a step apart, so they do not stand in pairs facing each
+                // other (but for the guardians, which come in twos). Where one of
+                // the props already stands, or another road runs, there is none.
+                rows: [
+                    // The castle street, lit on both sides as a town's is, with a brazier
+                    // and a jizō among the lanterns.
+                    (models: [StoneLantern, Brazier], row: (span: Span(5821.0, 360.0), side: Left, lateral: 12.8, every: 70.0)),
+                    (models: [StoneLantern, Jizo], row: (span: Span(5856.0, 360.0), side: Right, lateral: 12.8, every: 70.0)),
+                    // The coast road, on its inland side: the sea's is left open.
+                    (models: [Jizo, StoneLantern, Stele], row: (span: Span(640.0, 1422.0), side: Right, lateral: 12.8, every: 115.0)),
+                    // The lonely road over the susuki hills: wayside statues, a shrine
+                    // and a memorial stone.
+                    (models: [Jizo, Hokora, Stele], row: (span: Span(1622.0, 2700.0), side: Left, lateral: 12.8, every: 190.0)),
+                    // Round the lake, on the water's side, along the shrine's fence.
+                    (models: [StoneLantern, BronzeLantern], row: (span: Span(2700.0, 3400.0), side: Right, lateral: 12.8, every: 85.0)),
+                    // Up the red ridge: braziers and memorial stones, and guardians in
+                    // twos, one either side, as at the foot of the corridor of torii.
+                    (models: [Brazier, Stele], row: (span: Span(3764.0, 4322.0), side: Left, lateral: 12.8, every: 110.0)),
+                    (models: [Komainu], row: (span: Span(3764.0, 4322.0), side: Left, lateral: 12.8, every: 150.0)),
+                    (models: [Komainu], row: (span: Span(3764.0, 4322.0), side: Right, lateral: 12.8, every: 150.0)),
+                    // Down the castle ridge, lit for the night.
+                    (models: [Brazier, Komainu, Stele], row: (span: Span(4322.0, 4880.0), side: Left, lateral: 12.8, every: 95.0)),
+                    (models: [Brazier, Hokora], row: (span: Span(4369.0, 4880.0), side: Right, lateral: 12.8, every: 95.0)),
+                    // Down through the bamboo, where the jizō stand: a shrine and a stone
+                    // among them, one side half a step after the other.
+                    (models: [Jizo, Hokora], row: (span: Span(4880.0, 5675.0), side: Left, lateral: 12.8, every: 140.0)),
+                    (models: [Jizo, Stele], row: (span: Span(4950.0, 5675.0), side: Right, lateral: 12.8, every: 140.0)),
+                ],
+                // Under the great maple, beside the road round the foot of the
+                // lake.
+                maple_grounds: [(center: (875.4, 479.9), radius: 14.0)],
+            ),
+        },
     ),
 )

@@ -1,0 +1,20 @@
+// The Legend 88, white and red (its fork welded to the fairing: the bars do not turn).
+// Made with Meshy and prepared by tools/import_models.py, which measured
+// it: where its axles, steering head, grips, pegs and seat are (m, in the
+// bike's space) and how big its wheels are (the Shogun's by hand, the
+// script's reference for the others); whether its fork and bars turn with
+// the steering; and the slicks it wears (Soft, Medium or Hard).
+(
+    geometry: (
+        front_axle: (0.0, 0.2866, -0.7),
+        rear_axle: (0.0, 0.3113, 0.68),
+        front_radius: 0.2866,
+        rear_radius: 0.3083,
+        steering_head: (0.0, 0.8895, -0.4316),
+        grip: (0.2759, 0.8466, -0.4571),
+        peg: (0.16, 0.3689, 0.245),
+        seat: (0.0, 0.9189, 0.175),
+    ),
+    steers: false,
+    tyres: Hard,
+)

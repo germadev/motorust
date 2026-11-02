@@ -3507,6 +3507,17 @@ name = "motorust"
 version = "0.0.17"
 dependencies = [
  "bevy",
+ "motorust-engine",
+ "serde",
+ "winres",
+]
+
+[[package]]
+name = "motorust-engine"
+version = "0.0.17"
+dependencies = [
+ "bevy",
+ "erased-serde",
  "gilrs",
  "image",
  "libc",
@@ -3520,7 +3531,6 @@ dependencies = [
  "sys-locale",
  "web-sys",
  "winit",
- "winres",
 ]
 
 [[package]]

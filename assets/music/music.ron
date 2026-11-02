@@ -1,0 +1,30 @@
+// The music that is not a track's own (each track names its song in its
+// file in assets/circuits/): the menus' song, low in the background, if
+// there is one; and the chill songs free ride can play one after another,
+// a little quieter, if there are any.
+//
+// Each song: its MP3 in this folder, how long it lasts (s, as `ffprobe`
+// gives it) and how loud it is above 500 Hz, as mastered (LUFS: the `I:` of
+// `ffmpeg -t 120 -i song.mp3 -af highpass=f=500,ebur128 -f null -`); the
+// game turns each up or down so they all sound as loud. Each must be in
+// assets/pack.txt too.
+(
+    menu: Some((
+        name: "Asphalt Shift",
+        song: (file: "menu_asphalt_shift.mp3", length: 178.2, loudness: -19.6),
+    )),
+    chill: [
+        (
+            name: "Velvet Dashboard",
+            song: (file: "chill_velvet_dashboard.mp3", length: 176.6, loudness: -19.7),
+        ),
+        (
+            name: "Sunlight on Still Water",
+            song: (file: "chill_sunlight_on_still_water.mp3", length: 176.4, loudness: -18.6),
+        ),
+        (
+            name: "Leaves on the Still Pond",
+            song: (file: "chill_leaves_on_the_still_pond.mp3", length: 176.9, loudness: -17.7),
+        ),
+    ],
+)

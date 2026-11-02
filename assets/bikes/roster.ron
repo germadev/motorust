@@ -4,9 +4,10 @@
 //
 // Each: its name and description (Spanish and English), the colour of its
 // name on the start screen and of its dot on the minimap (sRGB), its design
-// (the models made with Meshy, each with its rider: Shogun, Legend, Azura,
-// Kraken, Falcon, Stiletto, Cobra, Ronin; or those built in code: Afilada,
-// Escudo, Alerones, Rombo) and its livery, by name (only those built in code
+// (a model made with Meshy, with its rider, by its folder in assets/models/,
+// which holds its parts, its textures and its measures, model.ron:
+// Model("shogun"); or one built in code: Afilada, Escudo, Alerones, Rombo)
+// and its livery, by name (only those built in code
 // show it: cover, flecha, diagonal, verde, tricolor, rosso; see
 // src/bike/model/livery.rs).
 [
@@ -15,7 +16,7 @@
         description: "Azul y blanca, como la de la portada de Moto Racer",
         description_en: "Blue and white, like the Moto Racer cover",
         color: (0.35, 0.6, 1.0),
-        design: Shogun,
+        design: Model("shogun"),
         livery: "cover",
     ),
     (
@@ -23,7 +24,7 @@
         description: "Blanca y roja",
         description_en: "White and red",
         color: (1.0, 0.3, 0.35),
-        design: Legend,
+        design: Model("legend"),
         livery: "flecha",
     ),
     (
@@ -31,7 +32,7 @@
         description: "Amarilla, blanca y negra",
         description_en: "Yellow, white and black",
         color: (1.0, 0.85, 0.15),
-        design: Azura,
+        design: Model("azura"),
         livery: "diagonal",
     ),
     (
@@ -39,7 +40,7 @@
         description: "Verde lima y negra",
         description_en: "Lime green and black",
         color: (0.5, 0.95, 0.2),
-        design: Kraken,
+        design: Model("kraken"),
         livery: "verde",
     ),
     (
@@ -47,7 +48,7 @@
         description: "Roja, azul y blanca",
         description_en: "Red, blue and white",
         color: (1.0, 0.25, 0.25),
-        design: Falcon,
+        design: Model("falcon"),
         livery: "tricolor",
     ),
     (
@@ -55,7 +56,7 @@
         description: "Roja",
         description_en: "Red",
         color: (0.95, 0.15, 0.15),
-        design: Stiletto,
+        design: Model("stiletto"),
         livery: "rosso",
     ),
     (
@@ -63,7 +64,7 @@
         description: "Naranja y negra",
         description_en: "Orange and black",
         color: (1.0, 0.5, 0.1),
-        design: Cobra,
+        design: Model("cobra"),
         livery: "rosso",
     ),
     (
@@ -71,7 +72,7 @@
         description: "Azul y negra",
         description_en: "Blue and black",
         color: (0.25, 0.45, 1.0),
-        design: Ronin,
+        design: Model("ronin"),
         livery: "cover",
     ),
 ]

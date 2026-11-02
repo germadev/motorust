@@ -164,7 +164,8 @@ or English: the system's language at first, changed in Options.
 Textures are CC0 from [Poly Haven](https://polyhaven.com). The font is
 [Russo One](https://fonts.google.com/specimen/Russo+One) (SIL OFL 1.1). The
 bikes and riders were made by the author with [Meshy](https://www.meshy.ai).
-See [assets/CREDITS.md](assets/CREDITS.md).
+See [assets/CREDITS.md](assets/CREDITS.md) (the game's) and
+[motorust-engine/assets/CREDITS.md](motorust-engine/assets/CREDITS.md) (the engine's).
 
 Motorust is a fan project. It is not affiliated with the makers of Moto Racer
 or Sonic the Hedgehog, and its bikes are fictional.

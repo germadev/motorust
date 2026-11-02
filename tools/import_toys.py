@@ -3,7 +3,7 @@
 castles of bricks, a pirate ship, trains, plush toys, vehicles...
 
 Reads one GLB per toy (a single textured mesh, normalised to a unit box)
-and writes what the game loads (`src/world/toys.rs`) into the pack the toy
+and writes what the game loads (`src/game/toys.rs`) into the pack the toy
 belongs to: `assets/models/toys/` for those in `FIRST_PACK`, whose atlas is
 full, `assets/models/toys2/` for the rest. In each:
 
