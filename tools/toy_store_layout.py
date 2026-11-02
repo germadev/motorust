@@ -110,8 +110,38 @@ LOOP_MOUTH_AT = (
     - 2 * LOOP_LEAD
 )
 # The radius of the Hot Wheels helix (m): wide enough for a pack to climb it
-# side by side.
-HELIX_RADIUS = 36.0
+# side by side, and to climb it flat out gripping only a little harder than
+# a road (see `hot_wheels_grip` in the circuit's file). The slide's,
+# smaller, as far round its tower as leaves the road off it where it was
+# (its middle as far east of the helix's way out as its radius); and how
+# far the road runs along the top of the shelves from the helix to the
+# slide: far enough for the two to stand clear of each other (more than
+# 25 m between their roads' middles) where they climb and drop past each
+# other at about the same height.
+HELIX_RADIUS = 58.0
+SLIDE_RADIUS = HELIX_RADIUS - 6.0
+SHELVES = HELIX_RADIUS + SLIDE_RADIUS + 27.0
+# The esses: a bend one way, twice as far round the other and back, wide
+# and gentle (their radius, m) so that their banking eases from side to
+# side with no bumps; each as long as it was drawn first, with bends of
+# the first radius and angle (°), so that the lap past it is where it was.
+def esses_angle(radius, first_radius, first_angle):
+    """How far round (°) the first and last bends of esses of `radius` turn
+    to cover as much ground ahead as esses of `first_radius` and
+    `first_angle`."""
+    ahead = 4 * first_radius * math.sin(math.radians(first_angle))
+    return math.degrees(math.asin(ahead / (4 * radius)))
+
+
+TABLE_ESSES = (60.0, esses_angle(60.0, 35.0, 40.0))
+DIORAMA_ESSES = (90.0, esses_angle(90.0, 60.0, 20.0))
+EAST_ESSES = (70.0, esses_angle(70.0, 40.0, 35.0))
+# The bend on the train table, round from the ramp up onto it to along the
+# shop's glass (m): wide, the glass ahead all the way round; and the
+# straight on the table before it, where the ramp's top is, so that the
+# bikes take off over it (if at all) on a straight.
+TRAIN_LEAD = 18.0
+TRAIN_BEND = 92.0 - TRAIN_LEAD
 # The way through the castle: straight on along the lap at first and last
 # (m), out to the side and back in bends of this radius (m) and angle (°),
 # gently, and straight through the castle (m); as far along the lap as it
@@ -200,7 +230,7 @@ def lap():
     t.S(50).at(CHAIR, "chair")
     t.S(20).at(CHAIR, "chair end")
     t.S(8).at(CHAIR + 0.8)
-    # Short of the top before the table, as the lift of the esses on it,
+    # Short of the top before the table, as the lift of the bends on it,
     # eased in up the ramp, steepens it; and over the top gently, no crest
     # to take off over into them.
     t.S(60).at(T0 - 1.5, "T0")
@@ -208,9 +238,10 @@ def lap():
     t.S(12).at(T0 - 0.15)
     t.S(12).at(T0)
     # Esses across it and a hairpin round its far end.
-    t.L(35, 40).at(T0)
-    t.R(35, 80).at(T0)
-    t.L(35, 40).at(T0)
+    radius, angle = TABLE_ESSES
+    t.L(radius, angle).at(T0, "T0 esses")
+    t.R(radius, 2 * angle).at(T0)
+    t.L(radius, angle).at(T0, "T0 esses end")
     t.S(8).at(T0)
     t.R(30, 180).at(T0, "hairpin")
     t.S(40).at(T0, "T0 edge")
@@ -230,23 +261,29 @@ def lap():
     t.S(CASTLE_LEAD).at(T1, "castle join")
     t.keep("castle join")
     # Swinging right and left over the start straight.
-    t.R(60, 20).at(T1)
-    t.L(60, 40).at(T1)
-    t.R(60, 20).at(T1)
+    radius, angle = DIORAMA_ESSES
+    t.R(radius, angle).at(T1)
+    t.L(radius, 2 * angle).at(T1)
+    t.R(radius, angle).at(T1)
     t.S(t.p[0] + 70).at(T1)
     t.S(40).at(T1, "X")
     # The Hot Wheels helix, a turn and a quarter, evenly up.
     for k in range(5):
         t.R(HELIX_RADIUS, 90).at(T1 + (TOP - 2.0 - T1) * (k + 1) / 5, "helix top" if k == 4 else "")
     # Along the top of the shelves.
-    t.S(30).at(TOP, "gondola")
-    t.S(32).at(TOP, "shelves end")
-    # The slide, two turns and a quarter down round its tower.
-    t.S(30).at(TOP - 2.0, "slide")
-    for k in range(9):
-        t.R(30, 90).at(TOP - 2.0 - (TOP - 4.5) * (k + 1) / 9)
+    t.S(SHELVES / 3).at(TOP, "gondola")
+    t.S(SHELVES / 3).at(TOP, "shelves end")
+    # The slide, a turn and a quarter down round its tower.
+    t.S(SHELVES / 3).at(TOP - 2.0, "slide")
+    for k in range(5):
+        t.R(SLIDE_RADIUS, 90).at(TOP - 2.0 - (TOP - 4.5) * (k + 1) / 5)
     t.S(30).at(0.3, "floor")
     t.S(36).at(0)
+    # How much further north the road along the north wall runs than it did
+    # round a smaller helix and slide (at z -300): as much further the road
+    # south from it runs before the east side's esses, which are where they
+    # were.
+    north_of_old = -300.0 - t.p[1]
     # East along the north wall, swinging out toward it while the way to
     # the loop goes straight on into it (see `loop_way`), and back.
     t.keep("loop fork")
@@ -262,21 +299,19 @@ def lap():
     t.R(32, 90).at(0)
     # South under the first table, esses down the east side and up onto the
     # train table.
-    t.S(100).at(0, "under T0")
-    t.L(40, 35).at(0)
-    t.R(40, 70).at(0)
-    t.L(40, 35).at(0)
+    t.S(100 + north_of_old).at(0, "under T0")
+    radius, angle = EAST_ESSES
+    t.L(radius, angle).at(0, "east esses")
+    t.R(radius, 2 * angle).at(0)
+    t.L(radius, angle).at(0, "east esses end")
     t.S(10).at(0.3)
     t.S(76).at(T2 - 0.6, "T2")
-    # On along it straight at the shop's doors, the glass ahead, and round
-    # just short of it.
-    t.S(60).at(T2, "doors")
-    # Round on it beside its train, and straight off its edge.
-    t.R(32, 90).at(T2)
-    t.S(6).at(T2)
-    t.L(35, 30).at(T2)
-    t.R(35, 60).at(T2)
-    t.L(35, 30).at(T2)
+    # Round on it in one wide bend, the shop's glass and its doors ahead
+    # all the way round and the table's train on its outside, between the
+    # road and the glass; and on along the glass, straight off its edge.
+    t.S(TRAIN_LEAD).at(T2 - 0.2, "train table")
+    t.R(TRAIN_BEND, 90).at(T2, "doors")
+    t.S(t.p[0] - 156.0).at(T2)
     t.S(25).at(T2, "drop")
     t.S(80).at(0.3, "drop end")
     t.S(t.p[0] - 40).at(0)
@@ -663,7 +698,8 @@ def write(out):
     text = replace_list(text, branches + approaches[1], out["loop approach"], "loop approach")
     text = replace_list(text, branches + approaches[0], out["castle way"], "castle way")
     text = replace_list(text, text.index("exit: [", branches), out["loop exit"], "loop exit")
-    text, count = re.subn(r"mouth: \([^)]*\)", f"mouth: {out['mouth']}", text, count=1)
+    # (The branch's own, not the `loop_mouth` named in the file's header.)
+    text, count = re.subn(r"(?<!_)mouth: \([^)]*\)", f"mouth: {out['mouth']}", text, count=1)
     if count != 1:
         sys.exit(f"the loop's mouth not found in {CIRCUIT}")
     # The forks and joins: the branches' own, written over wherever they are.

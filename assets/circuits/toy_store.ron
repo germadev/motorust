@@ -10,46 +10,48 @@
 //    diorama table the lap crosses on top later (110–180 m).
 // 2. **The chair and the first table** (about 170–650 m): round to the
 //    right onto a slot-car track, up a ramp onto a chair's seat (5.5 m up,
-//    a jump onto it), on up another onto a table (14 m), esses across it
-//    and a hairpin round its far end.
+//    a jump onto it), on up another onto a table (14 m), wide esses across
+//    it and a hairpin round its far end.
 // 3. **The diorama** (about 650–1050 m): across the gap onto it, as high,
 //    swinging gently out to the right round a castle of plastic bricks
 //    while a way to the left runs through it, in at its gate and out at
-//    the other (about 730–915 m), the two ways mirror images, as long and
-//    as fast; then swinging right and left over the start straight below.
-// 4. **The Hot Wheels helix** (about 1050–1330 m): orange track, banked
-//    steeply and gripping hard, a turn and a quarter round a blue column up
-//    to the top of a tall shelving unit (39 m), near the ceiling's lamps,
-//    climbed flat out.
-// 5. **Along the top of the shelves** (about 1330–1420 m).
-// 6. **The slide** (about 1420–1880 m): a helter-skelter's chute, two turns
-//    and a quarter round its tower, down to the floor.
-// 7. **The north wall** (about 1880–2200 m): east along the floor beside a
+//    the other (about 725–910 m), the two ways mirror images, as long and
+//    as fast; then swinging gently right and left over the start straight
+//    below.
+// 4. **The Hot Wheels helix** (about 1050–1510 m): orange track, banked
+//    steeply and gripping a little harder than the slot-car track, a turn
+//    and a quarter round a blue column (58 m round) up to the top of a tall
+//    shelving unit (39 m), near the ceiling's lamps, climbed flat out.
+// 5. **Along the top of the shelves** (about 1510–1640 m).
+// 6. **The slide** (about 1640–2080 m): a helter-skelter's chute, a turn
+//    and a quarter round its tower (52 m round), down to the floor.
+// 7. **The north wall** (about 2080–2400 m): east along the floor beside a
 //    row of wooden blocks, the lap swinging away toward the wall while a
 //    way to the right goes straight on round a loop of orange track (about
-//    1920–2160 m), a booster on each.
-// 8. **Under the first table** (about 2200–2450 m): south under it and in
-//    esses down the east side.
-// 9. **The train table** (about 2450–2830 m): up a ramp onto it (9 m),
-//    straight on at the shop's glass and its doors, round short of it and
-//    along it past its electric train, right by the road, and straight off
-//    its edge back down to the floor.
-// 10. **Home** (about 2830 m to the finish): round onto the drag strip.
+//    2115–2360 m), a booster on each.
+// 8. **Under the first table** (about 2400–2730 m): south under it and in
+//    wide esses down the east side.
+// 9. **The train table** (about 2730–3100 m): up a ramp onto it (9 m) and
+//    round it in one wide bend (74 m round), the shop's glass and its
+//    doors ahead all the way round and its electric train on the bend's
+//    outside, between the road and the glass; then along the glass and
+//    straight off the table's edge back down to the floor.
+// 10. **Home** (about 3100 m to the finish): round onto the drag strip.
 //
 // Named in its source, and written out where used here:
 //
 //   Key stretches of the lap, in metres from the finish line.
-// - drag_strip: Span(2928.0, 130.0)
-// - tables: Span(222.0, 1053.0)
-// - helix: Span(1053.0, 1348.0)
-// - shelves: Span(1348.0, 1427.0)
-// - slide: Span(1427.0, 1888.0)
-// - train_table: Span(2453.0, 2838.0)
+// - drag_strip: Span(3187.0, 130.0)
+// - tables: Span(222.0, 1047.0)
+// - helix: Span(1047.0, 1514.0)
+// - shelves: Span(1514.0, 1639.0)
+// - slide: Span(1639.0, 2084.0)
+// - train_table: Span(2734.0, 3097.0)
 //   Along the north wall, past the loop; round the north-east corner, under
 //   the first table and down the east side; and round the last bend.
-// - north_wall: Span(1908.0, 2208.0)
-// - brick_walls: Span(2208.0, 2453.0)
-// - home: Span(2838.0, 2928.0)
+// - north_wall: Span(2104.0, 2404.0)
+// - brick_walls: Span(2404.0, 2734.0)
+// - home: Span(3097.0, 3187.0)
 //   How far the walls stand from the middle of the road (m): a toy track's,
 //   narrow.
 // - wall: 7.5
@@ -71,17 +73,21 @@
 //   road's would (see `Banking`): most as much as a road may.
 // - raised_banking: 1.5
 //   How much harder the helix grips, banked as much more steeply (see
-//   `Banking::grip`, about 23°): enough to go up it flat out, no braking
-//   for its tight turns (36 m round). (Not the slide, down its tower: the
-//   bikes come off it as fast as the way round the loop by the north wall
-//   is reckoned for, its booster making up for the loop's length.)
-// - hot_wheels_grip: 2.4
+//   `Banking::grip`, about 11°): just enough to go up it flat out, no
+//   braking for its turns (58 m round), eased in and out over 16 m either
+//   end (1.08, 1.16). No more: gripping much harder (2.4 round a helix 36 m
+//   round, as it was), the bike turned so much tighter for the same lean
+//   that riding onto it it ran into the inside wall. (Not the slide, down
+//   its tower: the bikes come off it as fast as the way round the loop by
+//   the north wall is reckoned for, its booster making up for the loop's
+//   length.)
+// - hot_wheels_grip: 1.25
 //   Where the branches leave the lap and join it again (m from the finish
 //   line), as `tools/toy_store_layout.py` works them out: the way through
 //   the castle, and the way round the loop.
-// - castle: Span(730.1, 914.2)
-// - loop: Span(1918.4, 2164.4)
-// - loop_mouth: (83.3, -297.5)
+// - castle: Span(724.0, 910.0)
+// - loop: Span(2113.9, 2359.9)
+// - loop_mouth: (83.3, -386.5)
 // - loop_heading: -1.5707964
 //
 // Its lap and branches are designed with tools/toy_store_layout.py, which
@@ -142,21 +148,21 @@
             (202.0, -202.0),
             (214.0, -202.0),
             (226.0, -202.0),
-            (232.08, -202.53),
-            (237.97, -204.11),
-            (243.5, -206.69),
-            (248.5, -210.19),
-            (253.5, -213.69),
-            (259.02, -216.27),
-            (264.92, -217.85),
-            (271.0, -218.38),
-            (277.07, -217.85),
-            (282.97, -216.27),
-            (288.5, -213.69),
-            (293.49, -210.19),
-            (298.49, -206.69),
-            (304.02, -204.11),
-            (309.91, -202.53),
+            (231.76, -202.28),
+            (237.46, -203.1),
+            (243.06, -204.48),
+            (248.5, -206.38),
+            (253.94, -208.28),
+            (259.54, -209.65),
+            (265.24, -210.48),
+            (271.0, -210.76),
+            (276.75, -210.48),
+            (282.45, -209.65),
+            (288.05, -208.28),
+            (293.49, -206.38),
+            (298.93, -204.48),
+            (304.53, -203.1),
+            (310.23, -202.28),
             (315.99, -202.0),
             (323.99, -202.0),
             (329.84, -201.42),
@@ -212,219 +218,260 @@
             (42.62, -142.18),
             (36.6, -142.0),
             (26.6, -142.0),
-            (19.63, -142.41),
-            (12.76, -143.62),
-            (6.08, -145.62),
-            (0.36, -147.38),
-            (-5.5, -148.57),
-            (-11.45, -149.16),
-            (-17.43, -149.16),
-            (-23.38, -148.57),
-            (-29.25, -147.38),
-            (-34.96, -145.62),
-            (-41.65, -143.62),
-            (-48.52, -142.41),
+            (19.71, -142.26),
+            (12.85, -143.06),
+            (6.08, -144.37),
+            (0.28, -145.53),
+            (-5.58, -146.3),
+            (-11.49, -146.69),
+            (-17.4, -146.69),
+            (-23.3, -146.3),
+            (-29.16, -145.53),
+            (-34.96, -144.37),
+            (-41.74, -143.06),
+            (-48.59, -142.26),
             (-55.48, -142.0),
             (-70.0, -142.0),
             (-83.33, -142.0),
             (-96.67, -142.0),
             (-110.0, -142.0),
-            (-116.25, -142.55),
-            (-122.31, -144.17),
-            (-128.0, -146.82),
-            (-133.14, -150.42),
-            (-137.58, -154.86),
-            (-141.18, -160.0),
-            (-143.83, -165.69),
-            (-145.45, -171.75),
-            (-146.0, -178.0),
-            (-145.45, -184.25),
-            (-143.83, -190.31),
-            (-141.18, -196.0),
-            (-137.58, -201.14),
-            (-133.14, -205.58),
-            (-128.0, -209.18),
-            (-122.31, -211.83),
-            (-116.25, -213.45),
-            (-110.0, -214.0),
-            (-103.75, -213.45),
-            (-97.69, -211.83),
-            (-92.0, -209.18),
-            (-86.86, -205.58),
-            (-82.42, -201.14),
-            (-78.82, -196.0),
-            (-76.17, -190.31),
-            (-74.55, -184.25),
-            (-74.0, -178.0),
-            (-74.55, -171.75),
-            (-76.17, -165.69),
-            (-78.82, -160.0),
-            (-82.42, -154.86),
-            (-86.86, -150.42),
-            (-92.0, -146.82),
-            (-97.69, -144.17),
-            (-103.75, -142.55),
+            (-116.06, -142.32),
+            (-122.06, -143.27),
+            (-127.92, -144.84),
+            (-133.59, -147.01),
+            (-139.0, -149.77),
+            (-144.09, -153.08),
+            (-148.81, -156.9),
+            (-153.1, -161.19),
+            (-156.92, -165.91),
+            (-160.23, -171.0),
+            (-162.99, -176.41),
+            (-165.16, -182.08),
+            (-166.73, -187.94),
+            (-167.68, -193.94),
+            (-168.0, -200.0),
+            (-167.68, -206.06),
+            (-166.73, -212.06),
+            (-165.16, -217.92),
+            (-162.99, -223.59),
+            (-160.23, -229.0),
+            (-156.92, -234.09),
+            (-153.1, -238.81),
+            (-148.81, -243.1),
+            (-144.09, -246.92),
+            (-139.0, -250.23),
+            (-133.59, -252.99),
+            (-127.92, -255.16),
+            (-122.06, -256.73),
+            (-116.06, -257.68),
+            (-110.0, -258.0),
+            (-103.94, -257.68),
+            (-97.94, -256.73),
+            (-92.08, -255.16),
+            (-86.41, -252.99),
+            (-81.0, -250.23),
+            (-75.91, -246.92),
+            (-71.19, -243.1),
+            (-66.9, -238.81),
+            (-63.08, -234.09),
+            (-59.77, -229.0),
+            (-57.01, -223.59),
+            (-54.84, -217.92),
+            (-53.27, -212.06),
+            (-52.32, -206.06),
+            (-52.0, -200.0),
+            (-52.32, -193.94),
+            (-53.27, -187.94),
+            (-54.84, -182.08),
+            (-57.01, -176.41),
+            (-59.77, -171.0),
+            (-63.08, -165.91),
+            (-66.9, -161.19),
+            (-71.19, -156.9),
+            (-75.91, -153.08),
+            (-81.0, -149.77),
+            (-86.41, -147.01),
+            (-92.08, -144.84),
+            (-97.94, -143.27),
+            (-103.94, -142.32),
             (-110.0, -142.0),
-            (-116.25, -142.55),
-            (-122.31, -144.17),
-            (-128.0, -146.82),
-            (-133.14, -150.42),
-            (-137.58, -154.86),
-            (-141.18, -160.0),
-            (-143.83, -165.69),
-            (-145.45, -171.75),
-            (-146.0, -178.0),
-            (-146.0, -193.0),
-            (-146.0, -208.0),
-            (-146.0, -218.67),
-            (-146.0, -229.33),
-            (-146.0, -240.0),
-            (-146.0, -255.0),
-            (-146.0, -270.0),
-            (-145.42, -275.85),
-            (-143.72, -281.48),
-            (-140.94, -286.67),
-            (-137.21, -291.21),
-            (-132.67, -294.94),
-            (-127.48, -297.72),
-            (-121.85, -299.42),
-            (-116.0, -300.0),
-            (-110.15, -299.42),
-            (-104.52, -297.72),
-            (-99.33, -294.94),
-            (-94.79, -291.21),
-            (-91.06, -286.67),
-            (-88.28, -281.48),
-            (-86.58, -275.85),
-            (-86.0, -270.0),
-            (-86.58, -264.15),
-            (-88.28, -258.52),
-            (-91.06, -253.33),
-            (-94.79, -248.79),
-            (-99.33, -245.06),
-            (-104.52, -242.28),
-            (-110.15, -240.58),
-            (-116.0, -240.0),
-            (-121.85, -240.58),
-            (-127.48, -242.28),
-            (-132.67, -245.06),
-            (-137.21, -248.79),
-            (-140.94, -253.33),
-            (-143.72, -258.52),
-            (-145.42, -264.15),
-            (-146.0, -270.0),
-            (-145.42, -275.85),
-            (-143.72, -281.48),
-            (-140.94, -286.67),
-            (-137.21, -291.21),
-            (-132.67, -294.94),
-            (-127.48, -297.72),
-            (-121.85, -299.42),
-            (-116.0, -300.0),
-            (-110.15, -299.42),
-            (-104.52, -297.72),
-            (-99.33, -294.94),
-            (-94.79, -291.21),
-            (-91.06, -286.67),
-            (-88.28, -281.48),
-            (-86.58, -275.85),
-            (-86.0, -270.0),
-            (-86.58, -264.15),
-            (-88.28, -258.52),
-            (-91.06, -253.33),
-            (-94.79, -248.79),
-            (-99.33, -245.06),
-            (-104.52, -242.28),
-            (-110.15, -240.58),
-            (-116.0, -240.0),
-            (-121.85, -240.58),
-            (-127.48, -242.28),
-            (-132.67, -245.06),
-            (-137.21, -248.79),
-            (-140.94, -253.33),
-            (-143.72, -258.52),
-            (-145.42, -264.15),
-            (-146.0, -270.0),
-            (-145.42, -275.85),
-            (-143.72, -281.48),
-            (-140.94, -286.67),
-            (-137.21, -291.21),
-            (-132.67, -294.94),
-            (-127.48, -297.72),
-            (-121.85, -299.42),
-            (-116.0, -300.0),
-            (-101.0, -300.0),
-            (-86.0, -300.0),
-            (-74.0, -300.0),
-            (-62.0, -300.0),
-            (-50.0, -300.0),
-            (-40.0, -300.0),
-            (-33.99, -300.23),
-            (-28.02, -300.9),
-            (-22.11, -302.03),
-            (-16.31, -303.59),
-            (-10.63, -305.58),
-            (-5.13, -308.0),
-            (0.38, -310.42),
-            (6.05, -312.41),
-            (11.85, -313.97),
-            (17.76, -315.1),
-            (23.73, -315.77),
-            (29.74, -316.0),
-            (41.31, -316.0),
-            (52.87, -316.0),
-            (64.44, -316.0),
-            (76.0, -316.0),
-            (87.56, -316.0),
-            (99.13, -316.0),
-            (110.69, -316.0),
-            (122.26, -316.0),
-            (128.27, -315.77),
-            (134.24, -315.1),
-            (140.15, -313.97),
-            (145.95, -312.41),
-            (151.62, -310.42),
-            (157.13, -308.0),
-            (162.63, -305.58),
-            (168.31, -303.59),
-            (174.11, -302.03),
-            (180.02, -300.9),
-            (185.99, -300.23),
-            (192.0, -300.0),
-            (205.33, -300.0),
-            (218.67, -300.0),
-            (232.0, -300.0),
-            (238.24, -299.39),
-            (244.25, -297.56),
-            (249.78, -294.61),
-            (254.63, -290.63),
-            (258.61, -285.78),
-            (261.56, -280.25),
-            (263.39, -274.24),
-            (264.0, -268.0),
-            (264.0, -255.5),
-            (264.0, -243.0),
-            (264.0, -230.5),
-            (264.0, -218.0),
-            (264.0, -205.5),
-            (264.0, -193.0),
-            (264.0, -180.5),
+            (-116.06, -142.32),
+            (-122.06, -143.27),
+            (-127.92, -144.84),
+            (-133.59, -147.01),
+            (-139.0, -149.77),
+            (-144.09, -153.08),
+            (-148.81, -156.9),
+            (-153.1, -161.19),
+            (-156.92, -165.91),
+            (-160.23, -171.0),
+            (-162.99, -176.41),
+            (-165.16, -182.08),
+            (-166.73, -187.94),
+            (-167.68, -193.94),
+            (-168.0, -200.0),
+            (-168.0, -211.42),
+            (-168.0, -222.83),
+            (-168.0, -234.25),
+            (-168.0, -245.67),
+            (-168.0, -257.08),
+            (-168.0, -268.5),
+            (-168.0, -279.92),
+            (-168.0, -291.33),
+            (-168.0, -302.75),
+            (-168.0, -314.17),
+            (-168.0, -325.58),
+            (-168.0, -337.0),
+            (-167.67, -342.82),
+            (-166.7, -348.57),
+            (-165.08, -354.17),
+            (-162.85, -359.56),
+            (-160.03, -364.67),
+            (-156.66, -369.42),
+            (-152.77, -373.77),
+            (-148.42, -377.66),
+            (-143.67, -381.03),
+            (-138.56, -383.85),
+            (-133.17, -386.08),
+            (-127.57, -387.7),
+            (-121.82, -388.67),
+            (-116.0, -389.0),
+            (-110.18, -388.67),
+            (-104.43, -387.7),
+            (-98.83, -386.08),
+            (-93.44, -383.85),
+            (-88.33, -381.03),
+            (-83.58, -377.66),
+            (-79.23, -373.77),
+            (-75.34, -369.42),
+            (-71.97, -364.67),
+            (-69.15, -359.56),
+            (-66.92, -354.17),
+            (-65.3, -348.57),
+            (-64.33, -342.82),
+            (-64.0, -337.0),
+            (-64.33, -331.18),
+            (-65.3, -325.43),
+            (-66.92, -319.83),
+            (-69.15, -314.44),
+            (-71.97, -309.33),
+            (-75.34, -304.58),
+            (-79.23, -300.23),
+            (-83.58, -296.34),
+            (-88.33, -292.97),
+            (-93.44, -290.15),
+            (-98.83, -287.92),
+            (-104.43, -286.3),
+            (-110.18, -285.33),
+            (-116.0, -285.0),
+            (-121.82, -285.33),
+            (-127.57, -286.3),
+            (-133.17, -287.92),
+            (-138.56, -290.15),
+            (-143.67, -292.97),
+            (-148.42, -296.34),
+            (-152.77, -300.23),
+            (-156.66, -304.58),
+            (-160.03, -309.33),
+            (-162.85, -314.44),
+            (-165.08, -319.83),
+            (-166.7, -325.43),
+            (-167.67, -331.18),
+            (-168.0, -337.0),
+            (-167.67, -342.82),
+            (-166.7, -348.57),
+            (-165.08, -354.17),
+            (-162.85, -359.56),
+            (-160.03, -364.67),
+            (-156.66, -369.42),
+            (-152.77, -373.77),
+            (-148.42, -377.66),
+            (-143.67, -381.03),
+            (-138.56, -383.85),
+            (-133.17, -386.08),
+            (-127.57, -387.7),
+            (-121.82, -388.67),
+            (-116.0, -389.0),
+            (-101.0, -389.0),
+            (-86.0, -389.0),
+            (-74.0, -389.0),
+            (-62.0, -389.0),
+            (-50.0, -389.0),
+            (-40.0, -389.0),
+            (-33.99, -389.23),
+            (-28.02, -389.9),
+            (-22.11, -391.03),
+            (-16.31, -392.59),
+            (-10.63, -394.58),
+            (-5.13, -397.0),
+            (0.38, -399.42),
+            (6.05, -401.41),
+            (11.85, -402.97),
+            (17.76, -404.1),
+            (23.73, -404.77),
+            (29.74, -405.0),
+            (41.31, -405.0),
+            (52.87, -405.0),
+            (64.44, -405.0),
+            (76.0, -405.0),
+            (87.56, -405.0),
+            (99.13, -405.0),
+            (110.69, -405.0),
+            (122.26, -405.0),
+            (128.27, -404.77),
+            (134.24, -404.1),
+            (140.15, -402.97),
+            (145.95, -401.41),
+            (151.62, -399.42),
+            (157.13, -397.0),
+            (162.63, -394.58),
+            (168.31, -392.59),
+            (174.11, -391.03),
+            (180.02, -389.9),
+            (185.99, -389.23),
+            (192.0, -389.0),
+            (205.33, -389.0),
+            (218.67, -389.0),
+            (232.0, -389.0),
+            (238.24, -388.39),
+            (244.25, -386.56),
+            (249.78, -383.61),
+            (254.63, -379.63),
+            (258.61, -374.78),
+            (261.56, -369.25),
+            (263.39, -363.24),
+            (264.0, -357.0),
+            (264.0, -345.19),
+            (264.0, -333.38),
+            (264.0, -321.56),
+            (264.0, -309.75),
+            (264.0, -297.94),
+            (264.0, -286.12),
+            (264.0, -274.31),
+            (264.0, -262.5),
+            (264.0, -250.69),
+            (264.0, -238.88),
+            (264.0, -227.06),
+            (264.0, -215.25),
+            (264.0, -203.44),
+            (264.0, -191.62),
+            (264.0, -179.81),
             (264.0, -168.0),
-            (264.47, -161.92),
-            (265.85, -155.97),
-            (268.13, -150.31),
-            (271.23, -145.06),
-            (274.34, -139.81),
-            (276.62, -134.14),
-            (278.0, -128.2),
-            (278.47, -122.11),
-            (278.0, -116.03),
-            (276.62, -110.09),
-            (274.34, -104.42),
-            (271.23, -99.17),
-            (268.13, -93.92),
-            (265.85, -88.26),
-            (264.47, -82.31),
+            (264.24, -162.16),
+            (264.97, -156.37),
+            (266.18, -150.65),
+            (267.87, -145.06),
+            (269.55, -139.46),
+            (270.76, -133.75),
+            (271.49, -127.95),
+            (271.73, -122.11),
+            (271.49, -116.28),
+            (270.76, -110.48),
+            (269.55, -104.77),
+            (267.87, -99.17),
+            (266.18, -93.58),
+            (264.97, -87.86),
+            (264.24, -82.06),
             (264.0, -76.23),
             (264.0, -66.23),
             (264.0, -53.56),
@@ -433,31 +480,29 @@
             (264.0, -15.56),
             (264.0, -2.89),
             (264.0, 9.77),
-            (264.0, 21.77),
-            (264.0, 33.77),
-            (264.0, 45.77),
-            (264.0, 57.77),
-            (264.0, 69.77),
-            (263.39, 76.02),
-            (261.56, 82.02),
-            (258.61, 87.55),
-            (254.63, 92.4),
-            (249.78, 96.38),
-            (244.25, 99.34),
-            (238.24, 101.16),
-            (232.0, 101.77),
-            (226.0, 101.77),
-            (219.92, 102.3),
-            (214.03, 103.88),
-            (208.5, 106.46),
-            (202.97, 109.04),
-            (197.08, 110.62),
-            (191.0, 111.15),
-            (184.92, 110.62),
-            (179.03, 109.04),
-            (173.5, 106.46),
-            (167.97, 103.88),
-            (162.08, 102.3),
+            (264.0, 18.77),
+            (264.0, 27.77),
+            (263.75, 33.88),
+            (262.99, 39.95),
+            (261.74, 45.94),
+            (259.99, 51.8),
+            (257.77, 57.5),
+            (255.08, 62.99),
+            (251.95, 68.25),
+            (248.4, 73.22),
+            (244.44, 77.89),
+            (240.12, 82.22),
+            (235.45, 86.17),
+            (230.47, 89.72),
+            (225.22, 92.85),
+            (219.73, 95.54),
+            (214.03, 97.76),
+            (208.17, 99.51),
+            (202.18, 100.76),
+            (196.11, 101.52),
+            (190.0, 101.77),
+            (178.67, 101.77),
+            (167.33, 101.77),
             (156.0, 101.77),
             (143.5, 101.77),
             (131.0, 101.77),
@@ -489,109 +534,111 @@
         elevation: [
             (0.0, 0.0), // start
             (40.0, 0.0),
-            (54.0, 0.05),
-            (74.0, 0.9), // kicker
-            (84.0, 1.2),
-            (98.0, 0.1),
-            (112.0, 0.0),
+            (56.0, 0.05),
+            (76.0, 0.9), // kicker
+            (86.0, 1.2),
+            (100.0, 0.1),
+            (114.0, 0.0),
             (170.0, 0.0), // north
             (228.0, 0.0), // ramp
             (238.0, 0.4),
-            (288.1, 5.5), // chair
-            (308.1, 5.5), // chair end
-            (316.1, 6.3),
-            (376.1, 12.5), // T0
-            (390.1, 13.4),
-            (402.1, 13.85),
-            (414.1, 14.0),
-            (438.1, 14.0),
-            (488.1, 14.0),
-            (512.1, 14.0),
-            (520.1, 14.0),
-            (614.1, 14.0), // hairpin
-            (654.1, 14.0), // T0 edge
-            (690.1, 14.0), // T1 edge
-            (730.1, 14.0),
-            (822.2, 14.0), // castle
-            (914.2, 14.0), // castle join
-            (936.2, 14.0),
-            (978.2, 14.0),
-            (998.2, 14.0),
-            (1012.2, 14.0),
-            (1052.2, 14.0), // X
-            (1110.2, 18.6),
-            (1166.2, 23.2),
-            (1222.2, 27.8),
-            (1278.3, 32.4),
-            (1336.3, 37.0), // helix top
-            (1366.3, 39.0), // gondola
-            (1398.3, 39.0), // shelves end
-            (1428.3, 37.0), // slide
-            (1474.3, 33.17),
-            (1522.3, 29.33),
-            (1568.3, 25.5),
-            (1616.3, 21.67),
-            (1662.3, 17.83),
-            (1710.3, 14.0),
-            (1758.4, 10.17),
-            (1804.4, 6.33),
-            (1852.4, 2.5),
-            (1882.4, 0.3), // floor
-            (1918.4, 0.0),
-            (1928.4, 0.0), // loop fork
-            (1964.4, 0.0),
-            (2000.4, 0.0),
-            (2092.4, 0.0),
-            (2128.4, 0.0),
-            (2164.4, 0.0), // loop join
-            (2204.4, 0.0), // north wall end
-            (2254.5, 0.0),
-            (2354.5, 0.0), // under T0
-            (2378.5, 0.0),
-            (2428.5, 0.0),
-            (2452.5, 0.0),
-            (2462.5, 0.3),
-            (2538.5, 8.4), // T2
-            (2598.5, 9.0), // doors
-            (2648.5, 9.0),
-            (2654.5, 9.0),
-            (2672.5, 9.0),
-            (2710.5, 9.0),
-            (2728.5, 9.0),
-            (2752.6, 9.0), // drop
-            (2832.6, 0.3), // drop end
-            (2844.6, 0.0),
-            (2906.6, 0.0), // home
+            (288.0, 5.5), // chair
+            (308.0, 5.5), // chair end
+            (316.0, 6.3),
+            (376.0, 12.5), // T0
+            (390.0, 13.4),
+            (402.0, 13.85),
+            (414.0, 14.0),
+            (438.0, 14.0), // T0 esses
+            (484.0, 14.0),
+            (506.0, 14.0), // T0 esses end
+            (514.0, 14.0),
+            (608.0, 14.0), // hairpin
+            (648.0, 14.0), // T0 edge
+            (684.0, 14.0), // T1 edge
+            (724.0, 14.0),
+            (818.0, 14.0), // castle
+            (910.0, 14.0), // castle join
+            (930.0, 14.0),
+            (971.9, 14.0),
+            (991.9, 14.0),
+            (1005.9, 14.0),
+            (1045.9, 14.0), // X
+            (1137.9, 18.6),
+            (1227.9, 23.2),
+            (1319.9, 27.8),
+            (1411.9, 32.4),
+            (1501.9, 37.0), // helix top
+            (1547.9, 39.0), // gondola
+            (1593.9, 39.0), // shelves end
+            (1639.9, 37.0), // slide
+            (1719.9, 30.1),
+            (1801.9, 23.2),
+            (1883.9, 16.3),
+            (1965.9, 9.4),
+            (2047.9, 2.5),
+            (2077.9, 0.3), // floor
+            (2113.9, 0.0),
+            (2123.9, 0.0), // loop fork
+            (2159.9, 0.0),
+            (2195.9, 0.0),
+            (2287.9, 0.0),
+            (2323.9, 0.0),
+            (2359.9, 0.0), // loop join
+            (2399.9, 0.0), // north wall end
+            (2449.9, 0.0),
+            (2639.9, 0.0), // under T0
+            (2663.9, 0.0), // east esses
+            (2709.9, 0.0),
+            (2733.9, 0.0), // east esses end
+            (2743.9, 0.3),
+            (2819.9, 8.4), // T2
+            (2837.9, 8.8), // train table
+            (2953.8, 9.0), // doors
+            (2987.8, 9.0),
+            (3011.8, 9.0), // drop
+            (3091.8, 0.3), // drop end
+            (3103.8, 0.0),
+            (3165.8, 0.0), // home
         ],
         // Banked in the bends on the floor and on the furniture as a
         // slot-car track's banked curves are, raised on supports under
         // their outsides, but level beside the ways off it, as they are
         // (the way through the castle and the lap beside it mirror images);
-        // banked round the helix and down the slide; level on top of the
-        // shelves.
+        // through the esses (on the first table, over the start straight and
+        // down the east side) banked a little, turning about the middle, not
+        // raised: their outsides would rise and fall from side to side, felt
+        // as bumps; banked round the helix and down the slide; level on top
+        // of the shelves.
         wall: 7.5,
         banking: [
-            (from: 0.0, to: 730.1, factor: 1.5, raised: true),
-            (from: 730.1, to: 914.2, factor: 0.0),
-            (from: 914.2, to: 1053.0, factor: 1.5, raised: true),
-            (
-                from: 1053.0,
-                to: 1348.0,
-                factor: 2.5,
-                // Hot Wheels' banked track: steep, and gripping hard.
-                grip: 2.4,
-            ),
-            (from: 1348.0, to: 1427.0, factor: 0.0),
-            (from: 1427.0, to: 1888.0, factor: 2.5),
-            (from: 1888.0, to: 1918.4, factor: 1.5, raised: true),
-            (from: 1918.4, to: 2164.4, factor: 0.0),
-            (from: 2164.4, to: 3.4028235e38, factor: 1.5, raised: true),
+            (from: 0.0, to: 410.0, factor: 1.5, raised: true),
+            (from: 410.0, to: 512.0, factor: 0.7),
+            (from: 512.0, to: 724.0, factor: 1.5, raised: true),
+            (from: 724.0, to: 910.0, factor: 0.0),
+            (from: 910.0, to: 995.0, factor: 0.7),
+            (from: 995.0, to: 1031.0, factor: 1.5, raised: true),
+            // Hot Wheels' banked track: steep, and gripping a little harder,
+            // enough to climb the helix flat out; eased in and out, so that
+            // the bike does not of a sudden turn tighter as it rides onto it.
+            (from: 1031.0, to: 1041.0, factor: 2.5, grip: 1.08),
+            (from: 1041.0, to: 1047.0, factor: 2.5, grip: 1.16),
+            (from: 1047.0, to: 1502.0, factor: 2.5, grip: 1.25),
+            (from: 1502.0, to: 1508.0, factor: 2.5, grip: 1.16),
+            (from: 1508.0, to: 1514.0, factor: 2.5, grip: 1.08),
+            (from: 1514.0, to: 1639.0, factor: 0.0),
+            (from: 1639.0, to: 2084.0, factor: 2.0),
+            (from: 2084.0, to: 2113.9, factor: 1.5, raised: true),
+            (from: 2113.9, to: 2359.9, factor: 0.0),
+            (from: 2359.9, to: 2636.0, factor: 1.5, raised: true),
+            (from: 2636.0, to: 2738.0, factor: 0.7),
+            (from: 2738.0, to: 3.4028235e38, factor: 1.5, raised: true),
         ],
         branches: [
             // Through the castle on the diorama, as the lap swings round it.
             (
-                from: 730.1,
-                to: 914.2,
+                from: 724.0,
+                to: 910.0,
                 // The way through the castle's control points, as the tool walks them.
                 approach: [
                     (204.66, -142.0),
@@ -629,24 +676,24 @@
             ),
             // Round a loop of orange track beside the north wall.
             (
-                from: 1918.4,
-                to: 2164.4,
+                from: 2113.9,
+                to: 2359.9,
                 // The way round the loop: the control points of the road into it, its
                 // mouth (the bikes go in heading east) and the road out of it.
                 approach: [
-                    (-40.0, -300.0),
-                    (-34.41, -299.92),
-                    (-28.82, -299.69),
-                    (-23.24, -299.3),
-                    (-17.67, -298.75),
-                    (-12.11, -298.2),
-                    (-6.53, -297.81),
-                    (-0.94, -297.58),
-                    (4.65, -297.5),
-                    (19.0, -297.5),
+                    (-40.0, -389.0),
+                    (-34.41, -388.92),
+                    (-28.82, -388.69),
+                    (-23.24, -388.3),
+                    (-17.67, -387.75),
+                    (-12.11, -387.2),
+                    (-6.53, -386.81),
+                    (-0.94, -386.58),
+                    (4.65, -386.5),
+                    (19.0, -386.5),
                 ],
                 vertical_loop: Some((
-                    mouth: (83.3, -297.5),
+                    mouth: (83.3, -386.5),
                     heading: -1.5707964,
                     height: 0.0,
                     radius: 14.0,
@@ -656,14 +703,14 @@
                     boosters: true,
                 )),
                 exit: [
-                    (139.85, -284.03),
-                    (146.19, -285.62),
-                    (152.18, -288.21),
-                    (157.67, -291.75),
-                    (163.16, -295.29),
-                    (169.15, -297.88),
-                    (175.49, -299.47),
-                    (182.0, -300.0),
+                    (139.85, -373.03),
+                    (146.19, -374.62),
+                    (152.18, -377.21),
+                    (157.67, -380.75),
+                    (163.16, -384.29),
+                    (169.15, -386.88),
+                    (175.49, -388.47),
+                    (182.0, -389.0),
                 ],
             ),
         ],
@@ -680,13 +727,13 @@
         // Toy blocks along the north wall, and elsewhere a slot-car track's
         // borders.
         walls: [
-            (span: Span(1908.0, 2208.0), side: Left, style: Blocks),
+            (span: Span(2104.0, 2404.0), side: Left, style: Blocks),
             // Walls of bricks round the north-east corner, under the first
             // table and down the east side, and round the last bend.
-            (span: Span(2208.0, 2453.0), side: Left, style: Bricks),
-            (span: Span(2208.0, 2453.0), side: Right, style: Bricks),
-            (span: Span(2838.0, 2928.0), side: Left, style: Bricks),
-            (span: Span(2838.0, 2928.0), side: Right, style: Bricks),
+            (span: Span(2404.0, 2734.0), side: Left, style: Bricks),
+            (span: Span(2404.0, 2734.0), side: Right, style: Bricks),
+            (span: Span(3097.0, 3187.0), side: Left, style: Bricks),
+            (span: Span(3097.0, 3187.0), side: Right, style: Bricks),
             (span: Lap, side: Left, style: SlotBorder),
             (span: Lap, side: Right, style: SlotBorder),
         ],
@@ -694,26 +741,26 @@
         // diorama table, the helix and the slide each under its own upper
         // turn, and the floor under the first table.
         tunnels: [
-            Span(112.0, 182.0),
-            Span(994.0, 1164.0),
-            Span(1564.0, 1906.0),
-            Span(2270.0, 2418.0),
+            Span(112.0, 180.0),
+            Span(978.0, 1202.0),
+            Span(1904.0, 2114.0),
+            Span(2564.0, 2700.0),
         ],
         bridges: [
-            (span: Span(2928.0, 130.0), style: OrangeTrack, fence: 1.2),
-            (span: Span(222.0, 1053.0), style: SlotTrack, fence: 1.2),
-            (span: Span(1053.0, 1348.0), style: OrangeTrack, fence: 1.2),
-            (span: Span(1348.0, 1427.0), style: SlotTrack, fence: 1.2),
-            (span: Span(1427.0, 1888.0), style: Slide, fence: 1.2),
-            (span: Span(2453.0, 2838.0), style: SlotTrack, fence: 1.2),
+            (span: Span(3187.0, 130.0), style: OrangeTrack, fence: 1.2),
+            (span: Span(222.0, 1047.0), style: SlotTrack, fence: 1.2),
+            (span: Span(1047.0, 1514.0), style: OrangeTrack, fence: 1.2),
+            (span: Span(1514.0, 1639.0), style: SlotTrack, fence: 1.2),
+            (span: Span(1639.0, 2084.0), style: Slide, fence: 1.2),
+            (span: Span(2734.0, 3097.0), style: SlotTrack, fence: 1.2),
         ],
         gantries: [
             (along: 0.0, color: (0.12, 0.32, 0.86), text: Some("TOY STORE")),
             // On the first table, on top of the shelves and under the
             // first table.
-            (along: 635.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
-            (along: 1381.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
-            (along: 2303.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
+            (along: 629.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
+            (along: 1570.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
+            (along: 2588.0, color: (1.0, 0.76, 0.05), text: Some("CHECKPOINT")),
         ],
         houses: (max: 0, paints: [], style: Cottage),
         sky: Indoor,
@@ -723,11 +770,12 @@
         // The game's own themes (see src/world/themes.rs).
         themes: {
             "toys": (
-                room: ((-175.0, -335.0), (380.0, 130.0)),
+                room: ((-197.0, -424.0), (380.0, 130.0)),
                 ceiling: 55.0,
                 // In the south wall, the glass ahead of the bikes coming down the east
-                // side onto the train table, along it to the shop's doors, and along
-                // the left of the road round it, close by.
+                // side onto the train table and all the way round its wide bend, the
+                // shop's doors ahead-left, and along the left of the road past it,
+                // close by.
                 entrance: Some((from: 168.0, to: 344.0, doors: 320.0)),
                 furniture: [
                     // The chair the road climbs onto from the floor, its back to the
@@ -771,18 +819,19 @@
                     // The tall shelving unit the road runs along the top of.
                     (
                         kind: Shelves,
-                        center: (-146.0, -226.0),
+                        center: (-168.0, -270.0),
                         size: (20.0, 24.0),
                         heading: 0.0,
                         top: 38.6,
                         color: (0.94, 0.94, 0.92),
                     ),
-                    // The train table, the road along it at the shop's doors and the
-                    // glass, round beside its train and straight off its edge.
+                    // The train table, the road round it in one wide bend at the
+                    // shop's doors and the glass, its train on the bend's outside,
+                    // and straight off its edge along the glass.
                     (
                         kind: Table,
-                        center: (207.0, 66.0),
-                        size: (146.0, 108.0),
+                        center: (217.0, 66.0),
+                        size: (166.0, 108.0),
                         heading: 0.0,
                         top: 8.2,
                         color: (1.0, 0.8, 0.22),
@@ -799,8 +848,8 @@
                     ),
                 ],
                 towers: [
-                    (kind: Column, center: (-110.0, -178.0), radius: 8.0, height: 41.0),
-                    (kind: HelterSkelter, center: (-116.0, -270.0), radius: 12.0, height: 46.0),
+                    (kind: Column, center: (-110.0, -200.0), radius: 12.0, height: 41.0),
+                    (kind: HelterSkelter, center: (-116.0, -337.0), radius: 20.0, height: 46.0),
                 ],
                 trains: [
                     // On its rug in the middle of the floor, by the road coming down
@@ -826,20 +875,25 @@
                         wagons: 4,
                         speed: 12.0,
                     ),
-                    // On the train table, right beside the road along it: wagons of
-                    // crates, on an oval reaching out towards the road's walls.
+                    // On the train table, on the outside of the road's wide bend round
+                    // it, between the road and the shop's glass, where the bikes
+                    // coming onto the table look: wagons of crates, on an oval.
                     (
                         track: [
-                            (160.0, 60.0),
-                            (190.0, 60.0),
-                            (220.0, 60.0),
-                            (238.0, 60.0),
-                            (249.0, 73.0),
-                            (238.0, 86.0),
-                            (220.0, 86.0),
-                            (190.0, 86.0),
-                            (160.0, 86.0),
-                            (149.0, 73.0),
+                            (278.4, 54.5),
+                            (272.5, 70.8),
+                            (266.6, 87.1),
+                            (260.7, 103.4),
+                            (261.0, 110.2),
+                            (266.0, 114.9),
+                            (272.9, 114.6),
+                            (277.6, 109.5),
+                            (283.5, 93.2),
+                            (289.4, 76.9),
+                            (295.3, 60.6),
+                            (295.0, 53.8),
+                            (290.0, 49.1),
+                            (283.1, 49.4),
                         ],
                         height: 8.2,
                         wagon: Freight,
@@ -905,10 +959,10 @@
                     // the start straight, facing it as if to race; a doll's house
                     // inside the last bend, its front to the home straight; and a
                     // mechanical pegasus on the first table, by its hairpin.
-                    (kind: Giraffe, position: (158.0, -262.0), heading: -2.4, scale: 1.0, base: 0.0),
+                    (kind: Giraffe, position: (158.0, -351.0), heading: -2.4, scale: 1.0, base: 0.0),
                     (
                         kind: FireTruck,
-                        position: (288.0, -260.0),
+                        position: (288.0, -349.0),
                         heading: -1.5707964,
                         scale: 1.0,
                         base: 0.0,
@@ -926,7 +980,7 @@
                     (kind: Teepee, position: (-19.5, 62.0), heading: 1.5707964, scale: 1.0, base: 0.0),
                     (
                         kind: DumpTruck,
-                        position: (205.0, -278.0),
+                        position: (205.0, -367.0),
                         heading: -1.5707964,
                         scale: 1.0,
                         base: 0.0,
@@ -990,10 +1044,10 @@
                     // Two nutcrackers on guard either side of the road where it comes
                     // off the slide; a garage playset by the road down the east side;
                     // a rocking horse by the start straight, side on to it.
-                    (kind: Nutcracker, position: (-65.0, -313.0), heading: 0.0, scale: 1.0, base: 0.0),
+                    (kind: Nutcracker, position: (-65.0, -402.0), heading: 0.0, scale: 1.0, base: 0.0),
                     (
                         kind: Nutcracker,
-                        position: (-65.0, -287.0),
+                        position: (-65.0, -376.0),
                         heading: 3.1415927,
                         scale: 1.0,
                         base: 0.0,
@@ -1032,7 +1086,7 @@
                     (kind: Ball, position: (110.0, -5.0), heading: 1.0, scale: 7.0, base: 0.0),
                     // Tyres round the outside of the floor's corners.
                     (kind: Tyres, position: (-20.0, -215.0), heading: 0.8, scale: 3.0, base: 0.0),
-                    (kind: Tyres, position: (285.0, -315.0), heading: -0.8, scale: 3.0, base: 0.0),
+                    (kind: Tyres, position: (285.0, -404.0), heading: -0.8, scale: 3.0, base: 0.0),
                     (kind: Tyres, position: (358.0, 106.0), heading: 0.4, scale: 3.0, base: 0.0),
                     (kind: Tyres, position: (-20.0, 100.0), heading: 1.57, scale: 3.0, base: 0.0),
                 ],
@@ -1083,7 +1137,7 @@
                     // Heaps of them spilled on the floor by the road: inside the
                     // north-east corner, by the road to the chair, beside the start
                     // straight and by the road down the east side.
-                    (kind: Heap(count: 14), position: (242.0, -272.0), heading: 0.0, base: 0.0),
+                    (kind: Heap(count: 14), position: (242.0, -361.0), heading: 0.0, base: 0.0),
                     (kind: Heap(count: 14), position: (60.0, -180.0), heading: 1.0, base: 0.0),
                     (kind: Heap(count: 14), position: (-26.0, -62.0), heading: 2.0, base: 0.0),
                     (kind: Heap(count: 12), position: (243.0, -10.0), heading: 0.5, base: 0.0),
