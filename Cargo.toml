@@ -13,16 +13,22 @@ rust-version = "1.95"
 [dependencies]
 # Its version is its tag: to take a new one, change it here and in
 # [dev-dependencies] alike.
-motorust-engine = { git = "https://github.com/jgermade/motorust-engine", tag = "v0.0.18" }
+motorust-engine = { git = "https://github.com/jgermade/motorust-engine", tag = "v0.0.19" }
 # The engine's Bevy and serde (the same versions its Cargo.toml asks for):
 # one of each in the lock, so the two never differ.
 bevy = { version = "0.19", features = ["jpeg", "serialize"] }
 serde = { version = "1", features = ["derive"] }
 
+# Development only (`make up`): Bevy linked dynamically, so that after a
+# change only the game is linked again, in seconds rather than with the
+# whole of Bevy. Never in a release build: src/main.rs refuses it there.
+[features]
+dynamic = ["bevy/dynamic_linking"]
+
 # The game's tests run the engine's checks on the game's content (see
 # src/game/checks.rs).
 [dev-dependencies]
-motorust-engine = { git = "https://github.com/jgermade/motorust-engine", tag = "v0.0.18", features = ["testing"] }
+motorust-engine = { git = "https://github.com/jgermade/motorust-engine", tag = "v0.0.19", features = ["testing"] }
 
 # En Windows, incrusta el icono en el ejecutable (.exe).
 [target.'cfg(windows)'.build-dependencies]

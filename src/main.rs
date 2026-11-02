@@ -5,6 +5,11 @@
 // En Windows, la versión optimizada se abre sin ventana de consola.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Bevy linked dynamically is for development (`make up`): an executable
+// built so needs Bevy's library beside it, which no package carries.
+#[cfg(all(feature = "dynamic", not(debug_assertions)))]
+compile_error!("the `dynamic` feature is for development builds only (make up)");
+
 mod game;
 
 /// The game's version and the commit it is built from (see `build.rs`), for

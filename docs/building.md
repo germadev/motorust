@@ -40,7 +40,7 @@ make bench.push  # commits bench-results/ and pushes it to the branch
 |---|---|---|
 | `make` / `make help` | | Lists the targets. |
 | `make install` | Linux packages, then `cargo fetch` | Installs the system dependencies (Linux only) and downloads the crates. Fails early if `cargo` is missing. |
-| `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
+| `make up` | `cargo run --features dynamic` | Builds and starts the game with the `dev` profile, Bevy linked dynamically (see below). |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
 | `make app` | `cargo build --release`, then `tools/make-app.sh` | macOS only: `target/release/Motorust.app` around the optimised executable (with the icon and `assets/Info.plist`), to open from Finder or keep in the Dock. Its Info.plist says it is a racing game (`LSApplicationCategoryType` `public.app-category.racing-games`, `LSSupportsGameMode`), so macOS (Sonoma and later) turns its Game Mode on when the game goes fullscreen, which a bare executable run from the terminal never gets. The CI's `.app` is made by the same script. Launched from Finder, the game runs from `/`: the benchmark is for `make bench`. |
 | `make test` | `cargo test` | Runs the tests (see [architecture.md](architecture.md#tests)). |
@@ -56,11 +56,7 @@ The first build takes several minutes because it compiles all of Bevy; later bui
 | `dev` | `opt-level = 1` for motorust, `opt-level = 3` for every dependency | Our code compiles fast, while Bevy stays fast at runtime (unoptimised Bevy runs at a few FPS). |
 | `release` | `codegen-units = 1`, `lto = "thin"` | Maximum performance in exchange for slower builds. |
 
-To compile even faster while developing, link Bevy dynamically:
-
-```sh
-cargo run --features bevy/dynamic_linking
-```
+`make up` links Bevy dynamically (the game's `dynamic` feature, Bevy's `dynamic_linking`): Bevy is one shared library (`libbevy_dylib`), built once, and after a change to the game only the game is compiled and linked again: about 2 s, where linking the whole of Bevy into it takes 7 to 11 s (measured on Linux). The first `make up` builds Bevy that way (about a quarter of an hour), beside the ordinary build `cargo test` and `make build` use; both are kept in `target/`, so going from one to the other recompiles only the game. It is for development only: the executable needs that library beside it, and a release build with the feature does not compile (`src/main.rs`). The linker is already a fast one where it matters: Rust links with LLD on Linux x86_64 (since 1.90), and macOS's own linker is fast.
 
 ## Starting part way round the lap
 
@@ -141,7 +137,7 @@ There are two workflows in `.github/workflows/`:
 
 | Workflow | Runs on | What it does |
 |---|---|---|
-| [`build.yml`](#buildyml) | Push to `main`, every PR, manually, and called from `release.yml` | Format check, clippy, tests, and builds for four desktop targets and WebAssembly. |
+| [`build.yml`](#buildyml) | Push to `main`, every PR, manually, and called from `release.yml` | Format check, clippy, tests, and builds for four desktop targets and WebAssembly (in a PR, only checked). |
 | [`release.yml`](#releaseyml) | Manually only | Bumps the version, builds everything, deploys the web version to Cloudflare Pages and creates a GitHub release. |
 
 In a PR, a new push cancels the previous run of the same workflow.
@@ -149,7 +145,7 @@ In a PR, a new push cancels the previous run of the same workflow.
 ### `build.yml`
 
 1. **Tests, format and clippy** (Ubuntu): `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` (any warning fails the build) and `cargo test` (the engine's own tests run in its repository).
-2. **Builds**, once the tests pass, with `cargo build --release --target <target>`:
+2. **Builds**, once the tests pass, with `cargo build --release --target <target>`; in a PR, only `cargo check --target <target>` (no code generated, so minutes instead of a release build with LTO), and nothing packaged. Every run also checks that the engine's sources are found where the packages take its credits from (`tools/engine_dir.sh`).
 
    | Build | Runner | Target |
    |---|---|---|
@@ -159,7 +155,7 @@ In a PR, a new push cancels the previous run of the same workflow.
    | macOS Intel | `macos-latest` | `x86_64-apple-darwin` |
    | WebAssembly | `ubuntu-latest` | `wasm32-unknown-unknown` |
 
-3. **Packaging:** each desktop build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`. On macOS, both `motorust-<version>-<target>.tar.gz` (command-line binary) and `motorust-<version>-<target>-app.zip` (containing `Motorust.app` to launch directly from Finder without opening Terminal) are produced. The WebAssembly build becomes `motorust-<version>-wasm32-unknown-unknown.zip` containing the served files (`index.html`, `motorust.js`, `motorust_bg.wasm`), `README.md` and `CREDITS.md`. Each archive is uploaded as a run artifact named `motorust-<target>`, and the web folder is uploaded as `web-dist`. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
+3. **Packaging** (not in a PR): each desktop build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`. On macOS, both `motorust-<version>-<target>.tar.gz` (command-line binary) and `motorust-<version>-<target>-app.zip` (containing `Motorust.app` to launch directly from Finder without opening Terminal) are produced. The WebAssembly build becomes `motorust-<version>-wasm32-unknown-unknown.zip` containing the served files (`index.html`, `motorust.js`, `motorust_bg.wasm`), `README.md` and `CREDITS.md`. Each archive is uploaded as a run artifact named `motorust-<target>`, and the web folder is uploaded as `web-dist`. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
 
 ### `release.yml`
 
