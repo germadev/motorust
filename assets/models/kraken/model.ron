@@ -1,0 +1,20 @@
+// The Kraken RS, green.
+// Made with Meshy and prepared by tools/import_models.py, which measured
+// it: where its axles, steering head, grips, pegs and seat are (m, in the
+// bike's space) and how big its wheels are (the Shogun's by hand, the
+// script's reference for the others); whether its fork and bars turn with
+// the steering; and the slicks it wears (Soft, Medium or Hard).
+(
+    geometry: (
+        front_axle: (0.0, 0.2871, -0.7),
+        rear_axle: (0.0, 0.3129, 0.68),
+        front_radius: 0.2927,
+        rear_radius: 0.3099,
+        steering_head: (0.0, 0.92, -0.4326),
+        grip: (0.2913, 0.8336, -0.3921),
+        peg: (0.16, 0.3798, 0.245),
+        seat: (0.0, 0.9298, 0.175),
+    ),
+    steers: true,
+    tyres: Soft,
+)

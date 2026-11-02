@@ -61,7 +61,7 @@ All bikes handle the same; they differ only in looks. On the minimap, each bike'
 
 ## Handling
 
-The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to place and forgiving. The parameters live in `BikeTuning` in `src/bike/mod.rs` (see [architecture.md](architecture.md)).
+The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to place and forgiving. The parameters live in `BikeTuning` in `motorust-engine/src/bike/mod.rs` (see [architecture.md](architecture.md)).
 
 ### Steering
 
@@ -289,7 +289,7 @@ Gamepads are read with **gilrs** and fed into Bevy's input, like `bevy::gilrs` d
 
 ## Sound
 
-Every sound effect is synthesised in real time, with no recordings. The synthesiser runs on the audio thread (`src/sound/synth.rs`). The game only decides what plays, how loud, and from where (`src/sound/mod.rs`). The only recordings are the music.
+Every sound effect is synthesised in real time, with no recordings. The synthesiser runs on the audio thread (`motorust-engine/src/sound/synth.rs`). The game only decides what plays, how loud, and from where (`motorust-engine/src/sound/mod.rs`). The only recordings are the music.
 
 - **Engines.** Each bike has a 1000 cc Grand Prix V4 that revs to 17,500 rpm. It has a "big bang" firing order: two pairs of explosions close together give it a deep, rough roar.
 - **Gearbox.** A six-speed straight-cut gearbox that whines. You hear:
@@ -303,7 +303,7 @@ Every sound effect is synthesised in real time, with no recordings. The synthesi
 - **The moments of a race.** Short tunes, synthesised too: a bright fanfare up a major chord when a player wins; two notes a fifth apart, held, when a player crosses the line in any other place; a quick sparkle of bells for a lap record (and for the most laps against the clock); a short falling sweep when a rival goes out of an elimination; and three notes falling a semitone each, like a trombone, when a player is eliminated or disqualified, or their time is up. They play at the FX volume.
 - **Two players.** Both players' bikes sound as yours: full volume, no Doppler. Every bike, rivals included, is heard from the nearer of the two cameras, and the wind, tyres and grass follow whichever player makes them louder.
 - **Menus.** Moving through menus clicks. On the bike select screen, the chosen bike idles and revs when you switch to it.
-- **The track's surroundings.** On the bike select screen, instead of music, the sounds of the chosen track's surroundings, as much of each as the track has (`src/sound/ambience.rs`): waves that swell, break and wash back, seagulls calling now and then, small birds chirping, cicadas buzzing and the wind. They fade in and out with the screen, about as loud as the bike idling.
-- **Music.** The menus (the welcome screen, the lobby, the modes and the tracks) have their own song, "Asphalt Shift", low in the background; Y (or the top face button) turns the music on or off there, as the legend says, the same as Options > Sound. Each track has its own song (`assets/music/`), which loops during the race (`src/sound/music.rs`); in free ride Y changes it (see [Game modes](#game-modes)), and the chill songs ("Velvet Dashboard", "Sunlight on Still Water" and "Leaves on the Still Pond") play 4 dB quieter. Every song is brought to the same loudness above 500 Hz, where the engines' drone does not cover it, so they all sound as loud over the bike (one with heavy bass is not drowned out). It still plays well below the bike, its loudest second at least 10 dB under your engine flat out, so the revs, gear changes, tyres and impacts are always heard over it. It fades in when the race starts and out when you leave it.
+- **The track's surroundings.** On the bike select screen, instead of music, the sounds of the chosen track's surroundings, as much of each as the track has (`motorust-engine/src/sound/ambience.rs`): waves that swell, break and wash back, seagulls calling now and then, small birds chirping, cicadas buzzing and the wind. They fade in and out with the screen, about as loud as the bike idling.
+- **Music.** The menus (the welcome screen, the lobby, the modes and the tracks) have their own song, "Asphalt Shift", low in the background; Y (or the top face button) turns the music on or off there, as the legend says, the same as Options > Sound. Each track has its own song (`assets/music/`), which loops during the race (`motorust-engine/src/sound/music.rs`); in free ride Y changes it (see [Game modes](#game-modes)), and the chill songs ("Velvet Dashboard", "Sunlight on Still Water" and "Leaves on the Still Pond") play 4 dB quieter. Every song is brought to the same loudness above 500 Hz, where the engines' drone does not cover it, so they all sound as loud over the bike (one with heavy bass is not drowned out). It still plays well below the bike, its loudest second at least 10 dB under your engine flat out, so the revs, gear changes, tyres and impacts are always heard over it. It fades in when the race starts and out when you leave it.
 
 Pausing muffles the race and turns the music down. **M** mutes and unmutes everything, music included. In the browser, sound starts after the first key press or click, because browsers do not allow audio before that.

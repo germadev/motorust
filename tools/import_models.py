@@ -11,6 +11,12 @@ repositorio) y escribe en `assets/models/NOMBRE/` lo que carga el juego:
 - `pilot.bin`: el piloto con sus pesos y su esqueleto (postura de reposo de
   cada hueso), girado para mirar hacia -Z, y su textura reducida
   (`pilot_color.jpg`).
+- `model.ron`: its measures (axles, wheels, steering head, grips, pegs and
+  seat), whether its fork and bars turn with the steering, and its slicks
+  (`Medium`; change them by hand, and keep the comment at its top, if the
+  file was there: it is written anew). The roster names the bike by its
+  folder, `design: Model("NOMBRE")` (`assets/bikes/roster.ron`); list its
+  files in `assets/pack.txt` too.
 
 El GLB de la moto es una sola malla hecha de entre noventa y doscientas
 piezas sueltas. Se clasifican sin cortar triángulos: los neumáticos y las que
@@ -20,8 +26,8 @@ va con el chasis.
 
 Uso: python3 tools/import_models.py NOMBRE MOTO.glb PILOTO.glb [CARPETA]
 Necesita numpy y Pillow. Al acabar imprime las medidas de la moto (ejes,
-ruedas, dirección, puños, asiento y estriberas) para
-`src/bike/model/imported.rs`.
+ruedas, dirección, puños, asiento y estriberas), as it writes them in
+`model.ron`, read by `motorust-engine/src/bike/model/imported.rs`.
 
 Formato de los .bin (little endian): b"MRMESH01", u32 número de piezas y, por
 pieza, u32 largo del nombre, nombre, u32 vértices, u32 índices, u32 banderas
@@ -43,7 +49,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "models"
 
-# Medidas del juego (src/bike/model/mod.rs): la moto se escala para que su
+# Medidas del juego (motorust-engine/src/bike/model/mod.rs): la moto se escala para que su
 # batalla sea esta y se coloca con la rueda delantera en este Z.
 WHEELBASE = 1.38
 FRONT_AXLE_Z = -0.70
@@ -644,12 +650,29 @@ if __name__ == "__main__":
     import_pilot(sys.argv[3], out)
 
     def vector(v):
-        return "Vec3::new({:.4}, {:.4}, {:.4})".format(*(0.0 if abs(x) < 5e-5 else x for x in v))
+        return "({:.4}, {:.4}, {:.4})".format(*(0.0 if abs(x) < 5e-5 else x for x in v))
 
-    print("\nMedidas para src/bike/model/imported.rs:\n")
-    print("Geometry {")
+    # What it wore before, if it was imported already.
+    previous = out / "model.ron"
+    tyres = "Medium"
+    if previous.exists():
+        for line in previous.read_text().splitlines():
+            if line.strip().startswith("tyres:"):
+                tyres = line.split(":")[1].strip().rstrip(",")
+    lines = [
+        f"// The {sys.argv[1]}, made with Meshy and prepared by tools/import_models.py.",
+        "(",
+        "    geometry: (",
+    ]
     for name, value in measures.items():
         if name != "steers":
-            print(f"    {name}: " + (vector(value) if np.ndim(value) else f"{value:.4f}") + ",")
-    print("}")
-    print(f"steers: {str(measures['steers']).lower()},")
+            lines.append(f"        {name}: " + (vector(value) if np.ndim(value) else f"{value:.4f}") + ",")
+    lines += [
+        "    ),",
+        f"    steers: {str(measures['steers']).lower()},",
+        f"    tyres: {tyres},",
+        ")",
+    ]
+    previous.write_text("\n".join(lines) + "\n")
+    print(f"\nMedidas, en {previous}:\n")
+    print("\n".join(lines))

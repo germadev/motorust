@@ -150,7 +150,9 @@ or English: the system's language at first, changed in Options.
 - [Tracks](docs/tracks.md): the eight tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
-- [Architecture](docs/architecture.md): code map and design decisions.
+- [Architecture](docs/architecture.md): code map and design decisions. The
+  engine is a crate of its own, open source:
+  [jgermade/motorust-engine](https://github.com/jgermade/motorust-engine).
 - [Bikes, riders, trees, props and textures](docs/models.md): the 3D models
   and the import pipelines.
 - [Development record](RECORD/): what was asked and what was done, request by
@@ -164,7 +166,8 @@ or English: the system's language at first, changed in Options.
 Textures are CC0 from [Poly Haven](https://polyhaven.com). The font is
 [Russo One](https://fonts.google.com/specimen/Russo+One) (SIL OFL 1.1). The
 bikes and riders were made by the author with [Meshy](https://www.meshy.ai).
-See [assets/CREDITS.md](assets/CREDITS.md).
+See [assets/CREDITS.md](assets/CREDITS.md) (the game's) and
+[the engine's](https://github.com/jgermade/motorust-engine/blob/main/assets/CREDITS.md) (jgermade/motorust-engine).
 
 Motorust is a fan project. It is not affiliated with the makers of Moto Racer
 or Sonic the Hedgehog, and its bikes are fictional.

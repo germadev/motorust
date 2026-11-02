@@ -1,0 +1,13 @@
+// The circuits, by the names of their files in this folder, in the order of
+// the track select screen (the first is the default one). Each must be in
+// assets/pack.txt too, so that a release build has it.
+[
+    "bahia.ron",
+    "turbo_bay.ron",
+    "loop_island.ron",
+    "gold_mine.ron",
+    "ghost_island.ron",
+    "moon_base.ron",
+    "fellowship_road.ron",
+    "toy_store.ron",
+]

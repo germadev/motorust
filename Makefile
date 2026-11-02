@@ -26,8 +26,8 @@ install: ## Instala las dependencias del sistema (en Linux) y descarga las crate
 	@if [ "$$(uname -s)" = Linux ]; then $(MAKE) --no-print-directory linux-deps; fi
 	$(CARGO) fetch
 
-up: ## Arranca el juego en modo desarrollo (compila rápido)
-	$(CARGO) run
+up: ## Arranca el juego en modo desarrollo (compila rápido: Bevy enlazado dinámicamente)
+	$(CARGO) run --features dynamic
 
 preview: ## Lanza la última build generada (sin recompilar)
 	@latest=""; \

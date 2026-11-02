@@ -3,7 +3,7 @@
 
 Reads one GLB per tree (a single textured mesh, about four hundred
 triangles, normalised to a unit box) and writes to `assets/models/trees/`
-what the game loads (`src/world/trees.rs`):
+what the game loads (`motorust-engine/src/world/trees.rs`):
 
 - `trees.bin`: every tree as a piece named after it, standing with the foot
   of its trunk at the origin, up along +Y, as tall in metres as the game's

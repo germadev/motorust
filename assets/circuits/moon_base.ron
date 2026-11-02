@@ -455,99 +455,103 @@
         ],
         sky: Space,
         water: Sea,
-        space: Some((
-            // Pressurized geodesic space-station biodomes & command towers
-            // right beside the road (11.5 m + their radius + 2.5 m).
-            biodomes: [
-                (along: 485.0, side: Left, radius: 17.0),
-                (along: 1185.0, side: Right, radius: 17.0),
-                (along: 1315.0, side: Left, radius: 18.0),
-                (along: 1430.0, side: Right, radius: 16.0),
-                (along: 1650.0, side: Right, radius: 18.0),
-                (along: 1795.0, side: Left, radius: 17.0),
-                (along: 1935.0, side: Left, radius: 18.0),
-                (along: 2120.0, side: Left, radius: 17.0),
-                (along: 2265.0, side: Right, radius: 16.0),
-                (along: 2765.0, side: Right, radius: 18.0),
-            ],
-            // Six-wheeled lunar rovers on the Moon (1120..2895 m).
-            rovers: [
-                (along: 1180.0, side: Left, lateral: 20.0, heading: 0.4),
-                (along: 1410.0, side: Right, lateral: 20.0, heading: -0.8),
-                (along: 1760.0, side: Left, lateral: 20.5, heading: 1.5),
-                (along: 1990.0, side: Right, lateral: 20.5, heading: 2.1),
-                (along: 2280.0, side: Left, lateral: 20.0, heading: -1.7),
-                (along: 2790.0, side: Left, lateral: 20.0, heading: -0.4),
-            ],
-            // Giant 27 m deep-space radio antennas right beside the Earth
-            // road (26..30 m from the centerline, oriented toward oncoming
-            // riders).
-            dishes: [
-                (position: (26.0, -95.0), heading: 0.0),
-                (position: (-26.0, -255.0), heading: 0.0),
-                (position: (145.0, -368.0), heading: 0.0),
-                (position: (285.0, -414.0), heading: 0.0),
-                (position: (255.0, -582.0), heading: 0.0),
-                (position: (40.0, -568.0), heading: 0.0),
-                (position: (-192.0, -70.0), heading: 0.0),
-                (position: (-112.0, 145.0), heading: 0.0),
-            ],
-            // Giant astronomical telescope observatory domes (cúpulas con
-            // telescopio) placed right beside the Earth road (28..32 m from
-            // the centerline) and dead ahead on the outside of bends, with
-            // their open shutter slits and 21.5 m telescope tubes aimed toward
-            // oncoming riders.
-            observatories: [
-                (position: (-29.5, -140.0), heading: -2.74),
-                (position: (6.0, -372.0), heading: -2.95),
-                (position: (225.0, -350.0), heading: 1.25),
-                (position: (365.0, -458.0), heading: 2.15),
-                (position: (480.0, -536.0), heading: -1.1),
-                (position: (-195.0, -185.0), heading: -0.45),
-            ],
-            // Space launchpads (lanzaderas espaciales) with 57 m Saturn-V
-            // rockets and red umbilical gantry towers right beside the Earth
-            // road.
-            rockets: [
-                // Facing π.
-                (position: (28.0, -215.0), heading: 3.14159274),
-                // Facing π/2.
-                (position: (320.0, -368.0), heading: 1.57079637),
-                (position: (-135.0, -295.0), heading: 0.0),
-            ],
-            // Overhead Orbital Space-Station Habitat Modules spanning right
-            // across the road on both the Space Center and Lunar Colony
-            // stretches.
-            arches: [
-                (along: 85.0),
-                (along: 195.0),
-                (along: 305.0),
-                (along: 540.0),
-                (along: 1210.0),
-                (along: 1350.0),
-                (along: 1620.0),
-                (along: 1740.0),
-                (along: 1860.0),
-                (along: 2080.0),
-                (along: 2315.0),
-                (along: 2720.0),
-                (along: 3056.0),
-                (along: 4050.0),
-                (along: 4510.0),
-            ],
-            portals: [
-                // First portal: leaves the Earth Space Center onto the Moon.
-                (along: 1120.0),
-                // Second portal: leaves the Moon back to Earth's high summit.
-                (along: 2895.0),
-            ],
-            // Solar panel arrays on the Moon (1120..2895 m).
-            solar_arrays: [
-                (span: Span(1160.0, 1440.0), side: Right, lateral: 19.0, every: 22.0),
-                (span: Span(1620.0, 1900.0), side: Right, lateral: 19.0, every: 22.0),
-                (span: Span(2320.0, 2840.0), side: Right, lateral: 19.0, every: 24.0),
-            ],
-            boulders: (max: 75, spans: [Span(1150.0, 2865.0)]),
-        )),
+        // The portals between the Earth and the Moon (see src/world/portals.rs).
+        portals: [
+            // First portal: leaves the Earth Space Center onto the Moon.
+            (along: 1120.0),
+            // Second portal: leaves the Moon back to Earth's high summit.
+            (along: 2895.0),
+        ],
+        // The game's own themes (see src/world/themes.rs).
+        themes: {
+            "space": (
+                // Pressurized geodesic space-station biodomes & command towers
+                // right beside the road (11.5 m + their radius + 2.5 m).
+                biodomes: [
+                    (along: 485.0, side: Left, radius: 17.0),
+                    (along: 1185.0, side: Right, radius: 17.0),
+                    (along: 1315.0, side: Left, radius: 18.0),
+                    (along: 1430.0, side: Right, radius: 16.0),
+                    (along: 1650.0, side: Right, radius: 18.0),
+                    (along: 1795.0, side: Left, radius: 17.0),
+                    (along: 1935.0, side: Left, radius: 18.0),
+                    (along: 2120.0, side: Left, radius: 17.0),
+                    (along: 2265.0, side: Right, radius: 16.0),
+                    (along: 2765.0, side: Right, radius: 18.0),
+                ],
+                // Six-wheeled lunar rovers on the Moon (1120..2895 m).
+                rovers: [
+                    (along: 1180.0, side: Left, lateral: 20.0, heading: 0.4),
+                    (along: 1410.0, side: Right, lateral: 20.0, heading: -0.8),
+                    (along: 1760.0, side: Left, lateral: 20.5, heading: 1.5),
+                    (along: 1990.0, side: Right, lateral: 20.5, heading: 2.1),
+                    (along: 2280.0, side: Left, lateral: 20.0, heading: -1.7),
+                    (along: 2790.0, side: Left, lateral: 20.0, heading: -0.4),
+                ],
+                // Giant 27 m deep-space radio antennas right beside the Earth
+                // road (26..30 m from the centerline, oriented toward oncoming
+                // riders).
+                dishes: [
+                    (position: (26.0, -95.0), heading: 0.0),
+                    (position: (-26.0, -255.0), heading: 0.0),
+                    (position: (145.0, -368.0), heading: 0.0),
+                    (position: (285.0, -414.0), heading: 0.0),
+                    (position: (255.0, -582.0), heading: 0.0),
+                    (position: (40.0, -568.0), heading: 0.0),
+                    (position: (-192.0, -70.0), heading: 0.0),
+                    (position: (-112.0, 145.0), heading: 0.0),
+                ],
+                // Giant astronomical telescope observatory domes (cúpulas con
+                // telescopio) placed right beside the Earth road (28..32 m from
+                // the centerline) and dead ahead on the outside of bends, with
+                // their open shutter slits and 21.5 m telescope tubes aimed toward
+                // oncoming riders.
+                observatories: [
+                    (position: (-29.5, -140.0), heading: -2.74),
+                    (position: (6.0, -372.0), heading: -2.95),
+                    (position: (225.0, -350.0), heading: 1.25),
+                    (position: (365.0, -458.0), heading: 2.15),
+                    (position: (480.0, -536.0), heading: -1.1),
+                    (position: (-195.0, -185.0), heading: -0.45),
+                ],
+                // Space launchpads (lanzaderas espaciales) with 57 m Saturn-V
+                // rockets and red umbilical gantry towers right beside the Earth
+                // road.
+                rockets: [
+                    // Facing π.
+                    (position: (28.0, -215.0), heading: 3.14159274),
+                    // Facing π/2.
+                    (position: (320.0, -368.0), heading: 1.57079637),
+                    (position: (-135.0, -295.0), heading: 0.0),
+                ],
+                // Overhead Orbital Space-Station Habitat Modules spanning right
+                // across the road on both the Space Center and Lunar Colony
+                // stretches.
+                arches: [
+                    (along: 85.0),
+                    (along: 195.0),
+                    (along: 305.0),
+                    (along: 540.0),
+                    (along: 1210.0),
+                    (along: 1350.0),
+                    (along: 1620.0),
+                    (along: 1740.0),
+                    (along: 1860.0),
+                    (along: 2080.0),
+                    (along: 2315.0),
+                    (along: 2720.0),
+                    (along: 3056.0),
+                    (along: 4050.0),
+                    (along: 4510.0),
+                ],
+                // Solar panel arrays on the Moon (1120..2895 m).
+                solar_arrays: [
+                    (span: Span(1160.0, 1440.0), side: Right, lateral: 19.0, every: 22.0),
+                    (span: Span(1620.0, 1900.0), side: Right, lateral: 19.0, every: 22.0),
+                    (span: Span(2320.0, 2840.0), side: Right, lateral: 19.0, every: 24.0),
+                ],
+                boulders: (max: 75, spans: [Span(1150.0, 2865.0)]),
+            ),
+        },
     ),
 )

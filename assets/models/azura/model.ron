@@ -1,0 +1,20 @@
+// The Azura RZ, yellow.
+// Made with Meshy and prepared by tools/import_models.py, which measured
+// it: where its axles, steering head, grips, pegs and seat are (m, in the
+// bike's space) and how big its wheels are (the Shogun's by hand, the
+// script's reference for the others); whether its fork and bars turn with
+// the steering; and the slicks it wears (Soft, Medium or Hard).
+(
+    geometry: (
+        front_axle: (0.0, 0.2966, -0.7),
+        rear_axle: (0.0, 0.3082, 0.68),
+        front_radius: 0.2936,
+        rear_radius: 0.3082,
+        steering_head: (0.0, 0.9079, -0.41),
+        grip: (0.29, 0.8285, -0.3881),
+        peg: (0.16, 0.3682, 0.22),
+        seat: (0.0, 0.9182, 0.15),
+    ),
+    steers: true,
+    tyres: Soft,
+)

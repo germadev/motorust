@@ -6,6 +6,11 @@
 #
 # Corre en cada push a main y en cada PR, a mano desde la pestaña Actions y
 # llamado desde release.yml, que le pasa la versión con la que se compila.
+#
+# En una PR, tras los tests, cada sistema solo se comprueba (`cargo check`,
+# sin generar código: minutos en vez de una build release con LTO) y no se
+# empaqueta nada; las builds completas, con sus artefactos, son las de main,
+# las lanzadas a mano y las de la release.
 name: Build
 
 on:
@@ -200,9 +205,12 @@ jobs:
           fi
       - uses: Swatinem/rust-cache@v2
       - name: Formato
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      # The game's tests, and the engine's checks run on the game's content
+      # (its `testing` feature); the engine's own tests run in its
+      # repository (jgermade/motorust-engine).
       - name: Tests
         run: cargo test
 
@@ -249,7 +257,20 @@ jobs:
       - name: Instalar cargo-xwin
         if: runner.os == 'Linux' && contains(matrix.target, 'windows')
         uses: taiki-e/install-action@cargo-xwin
+      # The engine's sources, where the packages take its credits from (see
+      # tools/engine_dir.sh), found on every system, a PR's too.
+      - name: Créditos del motor
+        run: test -f "$(tools/engine_dir.sh)/assets/CREDITS.md"
+      - name: Comprobar (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ] && [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            cargo xwin check --target ${{ matrix.target }}
+          else
+            cargo check --target ${{ matrix.target }}
+          fi
       - name: Compilar
+        if: github.event_name != 'pull_request'
         run: |
           if [ "$RUNNER_OS" = "Linux" ] && [[ "${{ matrix.target }}" == *"windows"* ]]; then
             cargo xwin build --release --target ${{ matrix.target }}
@@ -257,6 +278,7 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
       - name: Empaquetar
+        if: github.event_name != 'pull_request'
         env:
           TARGET: ${{ matrix.target }}
           LABEL: ${{ steps.version.outputs.label }}
@@ -264,6 +286,9 @@ jobs:
           name="motorust-$LABEL-$TARGET"
           mkdir -p "dist/$name"
           cp README.md assets/CREDITS.md "dist/$name/"
+          # The engine's credits, from its sources as Cargo fetched them.
+          engine=$(tools/engine_dir.sh)
+          cp "$engine/assets/CREDITS.md" "dist/$name/CREDITS-ENGINE.md"
           if [[ "$TARGET" == *"windows"* ]]; then
             cp "target/$TARGET/release/motorust.exe" "dist/$name/"
             if command -v 7z >/dev/null 2>&1; then
@@ -282,7 +307,8 @@ jobs:
             mkdir -p "dist/$name-app"
             tools/make-app.sh "target/$TARGET/release/motorust" "$LABEL" "dist/$name-app"
             cp README.md assets/CREDITS.md "dist/$name-app/"
-            (cd "dist/$name-app" && zip -r -y "../$name-app.zip" "Motorust.app" README.md CREDITS.md > /dev/null)
+            cp "$engine/assets/CREDITS.md" "dist/$name-app/CREDITS-ENGINE.md"
+            (cd "dist/$name-app" && zip -r -y "../$name-app.zip" "Motorust.app" README.md CREDITS.md CREDITS-ENGINE.md > /dev/null)
             rm -r "dist/$name-app"
           else
             cp "target/$TARGET/release/motorust" "dist/$name/"
@@ -291,6 +317,7 @@ jobs:
           fi
           ls -l dist
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: motorust-${{ matrix.target }}
           path: dist/*
@@ -309,6 +336,7 @@ jobs:
         with:
           key: wasm32
       - name: wasm-bindgen
+        if: github.event_name != 'pull_request'
         run: |
           # La misma versión que la librería en Cargo.lock, o no se entienden.
           version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
@@ -328,9 +356,14 @@ jobs:
           else
             echo "label=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
+      - name: Comprobar (PR)
+        if: github.event_name == 'pull_request'
+        run: cargo check --target wasm32-unknown-unknown
       - name: Compilar
+        if: github.event_name != 'pull_request'
         run: web/build.sh dist/web
       - name: Empaquetar
+        if: github.event_name != 'pull_request'
         env:
           TARGET: wasm32-unknown-unknown
           LABEL: ${{ steps.version.outputs.label }}
@@ -338,15 +371,18 @@ jobs:
           name="motorust-$LABEL-$TARGET"
           mkdir -p "dist-pkg/$name"
           cp -r dist/web/* README.md assets/CREDITS.md "dist-pkg/$name/"
+          cp "$(tools/engine_dir.sh)/assets/CREDITS.md" "dist-pkg/$name/CREDITS-ENGINE.md"
           (cd dist-pkg && zip -r "$name.zip" "$name" > /dev/null)
           rm -r "dist-pkg/$name"
           ls -l dist-pkg
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: motorust-wasm32-unknown-unknown
           path: dist-pkg/*
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: web-dist
           path: dist/web

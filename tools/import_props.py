@@ -4,7 +4,7 @@ landmarks, statues, lanterns and gates.
 
 Reads one GLB per prop (a single textured mesh, normalised to a unit box)
 and writes to `assets/models/props/` what the game loads
-(`src/world/japan.rs`):
+(`src/game/japan.rs`):
 
 - `props.bin`: every prop as a piece named after it, centred on the origin
   with its lowest point on the ground, up along +Y, at the game's size

@@ -9,6 +9,21 @@ How to build and run motorust on the desktop and in the browser, and how the Git
 - **Linux only:** the system libraries Bevy needs (a C++ compiler, `pkg-config`, ALSA, udev, X11 and Wayland). `make install` installs them with `apt`, `dnf` or `pacman`, using `sudo` unless you are root. On other distributions, install the packages listed in [Bevy's Linux dependencies](https://github.com/bevyengine/bevy/blob/main/docs/linux_dependencies.md).
 - **macOS:** nothing else; `make install` only downloads the crates.
 
+## The engine
+
+The engine is a crate of its own, `motorust_engine`, in its public repository, [jgermade/motorust-engine](https://github.com/jgermade/motorust-engine). The game depends on it by that repository and a tag (`Cargo.toml`, in `[dependencies]` and `[dev-dependencies]`, the latter with its `testing` feature): Cargo fetches its sources at that tag and builds them with the game. Its releases' builds (its demo, the engine on its own content) are not used here.
+
+- **A new version of the engine**: released in its repository (its `release.yml`, which tags it `vX.Y.Z`), then the tag changed in both places in `Cargo.toml`, and `cargo update -p motorust-engine`.
+- **Working on both at once**: the engine's clone beside this one (`../motorust-engine`), and a `[patch]` pointing at it, in `.cargo/config.toml` (ignored by git, never committed):
+
+  ```toml
+  [patch."https://github.com/jgermade/motorust-engine"]
+  motorust-engine = { path = "../motorust-engine" }
+  ```
+
+  The game then builds with the clone as it is (and `Cargo.lock` names the clone instead of the tag: that change is not committed either); the engine's changes are committed, tested and released in its repository.
+- **What else of the engine the game uses**: its credits, which the packages carry as `CREDITS-ENGINE.md`, and its tools (`tools/circuit_layout.py`), found where Cargo has its sources by `tools/engine_dir.sh`.
+
 ## Make targets
 
 ```sh
@@ -25,7 +40,7 @@ make bench.push  # commits bench-results/ and pushes it to the branch
 |---|---|---|
 | `make` / `make help` | | Lists the targets. |
 | `make install` | Linux packages, then `cargo fetch` | Installs the system dependencies (Linux only) and downloads the crates. Fails early if `cargo` is missing. |
-| `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
+| `make up` | `cargo run --features dynamic` | Builds and starts the game with the `dev` profile, Bevy linked dynamically (see below). |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
 | `make app` | `cargo build --release`, then `tools/make-app.sh` | macOS only: `target/release/Motorust.app` around the optimised executable (with the icon and `assets/Info.plist`), to open from Finder or keep in the Dock. Its Info.plist says it is a racing game (`LSApplicationCategoryType` `public.app-category.racing-games`, `LSSupportsGameMode`), so macOS (Sonoma and later) turns its Game Mode on when the game goes fullscreen, which a bare executable run from the terminal never gets. The CI's `.app` is made by the same script. Launched from Finder, the game runs from `/`: the benchmark is for `make bench`. |
 | `make test` | `cargo test` | Runs the tests (see [architecture.md](architecture.md#tests)). |
@@ -41,11 +56,7 @@ The first build takes several minutes because it compiles all of Bevy; later bui
 | `dev` | `opt-level = 1` for motorust, `opt-level = 3` for every dependency | Our code compiles fast, while Bevy stays fast at runtime (unoptimised Bevy runs at a few FPS). |
 | `release` | `codegen-units = 1`, `lto = "thin"` | Maximum performance in exchange for slower builds. |
 
-To compile even faster while developing, link Bevy dynamically:
-
-```sh
-cargo run --features bevy/dynamic_linking
-```
+`make up` links Bevy dynamically (the game's `dynamic` feature, Bevy's `dynamic_linking`): Bevy is one shared library (`libbevy_dylib`), built once, and after a change to the game only the game is compiled and linked again: about 2 s, where linking the whole of Bevy into it takes 7 to 11 s (measured on Linux). The first `make up` builds Bevy that way (about a quarter of an hour), beside the ordinary build `cargo test` and `make build` use; both are kept in `target/`, so going from one to the other recompiles only the game. It is for development only: the executable needs that library beside it, and a release build with the feature does not compile (`src/main.rs`). The linker is already a fast one where it matters: Rust links with LLD on Linux x86_64 (since 1.90), and macOS's own linker is fast.
 
 ## Starting part way round the lap
 
@@ -60,9 +71,9 @@ The whole grid stands there instead of behind the finish line, in whatever
 track and mode are chosen (the distance wraps round, so 3700 on a 1.6 km
 track is 500 m). It is for development only: the lap and the times are
 counted from the finish line as ever, so the first lap is short and its
-time means nothing. See `src/debug_start.rs`.
+time means nothing. See `motorust-engine/src/debug_start.rs`.
 
-The executable is self-contained: the 3D models, textures and font are embedded with `include_bytes!`, so you do not need to copy the `assets/` folder to play (see [models.md](models.md)). On Windows the release build opens without a console window (`windows_subsystem = "windows"` in `src/main.rs`); debug builds keep it so log output stays visible.
+The release executable is self-contained: every file the game uses (the circuits, the bikes, the 3D models, the textures, the font, the art and the music), in the content packs (the engine's, `motorust-engine/assets/pack.txt`, and the game's over it, `assets/pack.txt`; see `motorust-engine/src/content.rs`), is built in by `build.rs`, so you do not need to copy the `assets/` folders to play (see [models.md](models.md)). A desktop development build (`cargo run`) reads the packs from the disk instead, and builds none of them in. The engine's tests (`cargo test -p motorust-engine`, its own crate) run on the engine's pack alone, so that nothing of the game's creeps into it. On Windows the release build opens without a console window (`windows_subsystem = "windows"` in `src/main.rs`); debug builds keep it so log output stays visible.
 
 ## Web version
 
@@ -94,7 +105,7 @@ The result is three files for the game (`index.html`, `motorust.js` and `motorus
 
 ### The page
 
-`web/index.html` gives the game the whole window and shows a screen on top of it with the title, a "Jugar online" (*Play online*) button and the desktop downloads. Nothing of the game is downloaded when the page opens: the button says how much it will download (or that it is already kept, see below), and only once it is pressed (or Enter or Space) does the page fetch the `.wasm` and the JavaScript glue (`motorust.js`, imported then). It shows download progress ("Descargando el juego…", *Downloading the game…*), then "Preparando la pista…" (*Preparing the track…*) while the first frame builds the world. When the game is visible, `src/web.rs` sets `data-motorust="ready"` on the page and the loading screen fades out. If the browser has no WebGL2, or the game fails before it is shown, the page displays the error instead.
+`web/index.html` gives the game the whole window and shows a screen on top of it with the title, a "Jugar online" (*Play online*) button and the desktop downloads. Nothing of the game is downloaded when the page opens: the button says how much it will download (or that it is already kept, see below), and only once it is pressed (or Enter or Space) does the page fetch the `.wasm` and the JavaScript glue (`motorust.js`, imported then). It shows download progress ("Descargando el juego…", *Downloading the game…*), then "Preparando la pista…" (*Preparing the track…*) while the first frame builds the world. When the game is visible, `motorust-engine/src/web.rs` sets `data-motorust="ready"` on the page and the loading screen fades out. If the browser has no WebGL2, or the game fails before it is shown, the page displays the error instead.
 
 ### Caching the game
 
@@ -114,7 +125,7 @@ This is not WasmFS: WasmFS is Emscripten's file system for programs built with E
 - Gamepads show up only after you press a button with the page open, for the same reason.
 - Settings are saved in the browser's `localStorage` (key `motorust.ajustes`) instead of `ajustes.ron`.
 - The terrain is computed on a single thread (there are no threads on the web), so preparing a track takes a bit longer than on the desktop.
-- The grass, flowers and petals end at once where they stop being drawn instead of fading out (`fading_out` in `src/world/detail.rs`). On WebGL2, Bevy 0.19 binds the table of distances its fading reads (a uniform buffer of 64 entries, 1024 bytes) with a minimum size of one entry (16 bytes); wgpu then refuses the pipeline of every mesh that fades (`pbr_opaque_mesh_pipeline`, group 0, binding 14) and the game quits before it shows.
+- The grass, flowers and petals end at once where they stop being drawn instead of fading out (`fading_out` in `motorust-engine/src/world/detail.rs`). On WebGL2, Bevy 0.19 binds the table of distances its fading reads (a uniform buffer of 64 entries, 1024 bytes) with a minimum size of one entry (16 bytes); wgpu then refuses the pipeline of every mesh that fades (`pbr_opaque_mesh_pipeline`, group 0, binding 14) and the game quits before it shows.
 
 ### Size
 
@@ -126,15 +137,15 @@ There are two workflows in `.github/workflows/`:
 
 | Workflow | Runs on | What it does |
 |---|---|---|
-| [`build.yml`](#buildyml) | Push to `main`, every PR, manually, and called from `release.yml` | Format check, clippy, tests, and builds for four desktop targets and WebAssembly. |
+| [`build.yml`](#buildyml) | Push to `main`, every PR, manually, and called from `release.yml` | Format check, clippy, tests, and builds for four desktop targets and WebAssembly (in a PR, only checked). |
 | [`release.yml`](#releaseyml) | Manually only | Bumps the version, builds everything, deploys the web version to Cloudflare Pages and creates a GitHub release. |
 
 In a PR, a new push cancels the previous run of the same workflow.
 
 ### `build.yml`
 
-1. **Tests, format and clippy** (Ubuntu): `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (any warning fails the build) and `cargo test`.
-2. **Builds**, once the tests pass, with `cargo build --release --target <target>`:
+1. **Tests, format and clippy** (Ubuntu): `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` (any warning fails the build) and `cargo test` (the engine's own tests run in its repository).
+2. **Builds**, once the tests pass, with `cargo build --release --target <target>`; in a PR, only `cargo check --target <target>` (no code generated, so minutes instead of a release build with LTO), and nothing packaged. Every run also checks that the engine's sources are found where the packages take its credits from (`tools/engine_dir.sh`).
 
    | Build | Runner | Target |
    |---|---|---|
@@ -144,7 +155,7 @@ In a PR, a new push cancels the previous run of the same workflow.
    | macOS Intel | `macos-latest` | `x86_64-apple-darwin` |
    | WebAssembly | `ubuntu-latest` | `wasm32-unknown-unknown` |
 
-3. **Packaging:** each desktop build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`. On macOS, both `motorust-<version>-<target>.tar.gz` (command-line binary) and `motorust-<version>-<target>-app.zip` (containing `Motorust.app` to launch directly from Finder without opening Terminal) are produced. The WebAssembly build becomes `motorust-<version>-wasm32-unknown-unknown.zip` containing the served files (`index.html`, `motorust.js`, `motorust_bg.wasm`), `README.md` and `CREDITS.md`. Each archive is uploaded as a run artifact named `motorust-<target>`, and the web folder is uploaded as `web-dist`. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
+3. **Packaging** (not in a PR): each desktop build becomes `motorust-<version>-<target>.tar.gz` (a `.zip` on Windows) containing the executable, `README.md` and `CREDITS.md`. On macOS, both `motorust-<version>-<target>.tar.gz` (command-line binary) and `motorust-<version>-<target>-app.zip` (containing `Motorust.app` to launch directly from Finder without opening Terminal) are produced. The WebAssembly build becomes `motorust-<version>-wasm32-unknown-unknown.zip` containing the served files (`index.html`, `motorust.js`, `motorust_bg.wasm`), `README.md` and `CREDITS.md`. Each archive is uploaded as a run artifact named `motorust-<target>`, and the web folder is uploaded as `web-dist`. The version is the release version when `release.yml` calls the workflow (it is also written into `Cargo.toml`, so the executable carries it), and `dev-<short commit hash>` otherwise.
 
 ### `release.yml`
 
