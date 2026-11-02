@@ -22,7 +22,6 @@ fn main() {
         ".git/refs",
         "src",
         "assets",
-        "motorust-engine",
         "Cargo.toml",
         "Cargo.lock",
         "build.rs",

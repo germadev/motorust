@@ -4,3 +4,5 @@
 __pycache__/
 .DS_Store
 motorust-crash.log
+# A local [patch] of the engine (see docs/building.md, "The engine").
+/.cargo/config.toml

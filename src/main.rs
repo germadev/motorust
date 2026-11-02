@@ -1,6 +1,6 @@
 //! Motorust: carreras de motos arcade inspiradas en Moto Racer. The game:
 //! its content, its themes and its own plugins (`src/game/`), over the
-//! engine (`motorust-engine/`, the `motorust_engine` crate).
+//! engine (the `motorust_engine` crate, from jgermade/motorust-engine).
 
 // En Windows, la versión optimizada se abre sin ventana de consola.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]

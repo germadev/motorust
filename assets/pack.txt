@@ -3,8 +3,8 @@
 # path in assets/ a line; a line starting with # is a comment. A desktop
 # development build reads them from the disk instead, but reads none this
 # list leaves out, so a file missing here fails there too. It lies over the
-# engine's pack (motorust-engine/assets/pack.txt: the textures, the font, the
-# gamepads' art): a file is read from here if this list has it, from the
+# engine's pack (its assets/pack.txt, in jgermade/motorust-engine: the
+# textures, the font, the gamepads' art): a file is read from here if this list has it, from the
 # engine's if not; so a file here of the same path as the engine's (the
 # circuits' list, Bahía GP, the roster, game.ron) takes its place.
 

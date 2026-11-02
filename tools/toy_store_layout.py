@@ -18,8 +18,8 @@ steepest grade, distant stretches clear of each other unless one passes more
 than 12 m over the other, the crests the bikes take off over at top speed
 (on straights only), and the branches' bends and how far they part from the
 lap. The centre line and the heights are worked out as `motorust-engine/src/track.rs` does,
-through the engine's `motorust-engine/tools/circuit_layout.py`: keep the
-two in step. The banking is left
+through the engine's `tools/circuit_layout.py` (found with
+`tools/engine_dir.sh`): keep the two in step. The banking is left
 out, and with it the lift of the bends on the floor and the furniture,
 which bank raised (their middles up to about 1.3 m higher, eased in and out:
 see `Banking::raised`); the game's tests check the grades and crests with
@@ -43,23 +43,32 @@ over each stretch between the checkpoints given, and the pace that is (the
 circuit's `pace` is about what that is of Hard's): a first look, before the
 tests ride it for real.
 
-Needs numpy (and matplotlib for the pictures).
+Needs numpy (and matplotlib for the pictures), and cargo to find the
+engine's sources (`tools/engine_dir.sh`).
 """
 
 import argparse
 import math
 import os
 import re
+import subprocess
 import sys
 
 import numpy as np
 
-sys.path.insert(
-    0,
-    os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "motorust-engine", "tools"
-    ),
-)
+
+def engine_tools():
+    """The engine's tools folder, in its sources as Cargo builds the game
+    with them (see `tools/engine_dir.sh`): its checkout at the tag in
+    Cargo.toml, or its clone beside this one under a `[patch]`."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine_dir.sh")
+    folder = subprocess.run(
+        ["bash", script], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    return os.path.join(folder, "tools")
+
+
+sys.path.insert(0, engine_tools())
 import circuit_layout as cl  # noqa: E402
 
 # How far the walls stand from the centre line (m), as `Layout::wall`.

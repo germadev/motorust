@@ -9,6 +9,21 @@ How to build and run motorust on the desktop and in the browser, and how the Git
 - **Linux only:** the system libraries Bevy needs (a C++ compiler, `pkg-config`, ALSA, udev, X11 and Wayland). `make install` installs them with `apt`, `dnf` or `pacman`, using `sudo` unless you are root. On other distributions, install the packages listed in [Bevy's Linux dependencies](https://github.com/bevyengine/bevy/blob/main/docs/linux_dependencies.md).
 - **macOS:** nothing else; `make install` only downloads the crates.
 
+## The engine
+
+The engine is a crate of its own, `motorust_engine`, in its public repository, [jgermade/motorust-engine](https://github.com/jgermade/motorust-engine). The game depends on it by that repository and a tag (`Cargo.toml`, in `[dependencies]` and `[dev-dependencies]`, the latter with its `testing` feature): Cargo fetches its sources at that tag and builds them with the game. Its releases' builds (its demo, the engine on its own content) are not used here.
+
+- **A new version of the engine**: released in its repository (its `release.yml`, which tags it `vX.Y.Z`), then the tag changed in both places in `Cargo.toml`, and `cargo update -p motorust-engine`.
+- **Working on both at once**: the engine's clone beside this one (`../motorust-engine`), and a `[patch]` pointing at it, in `.cargo/config.toml` (ignored by git, never committed):
+
+  ```toml
+  [patch."https://github.com/jgermade/motorust-engine"]
+  motorust-engine = { path = "../motorust-engine" }
+  ```
+
+  The game then builds with the clone as it is (and `Cargo.lock` names the clone instead of the tag: that change is not committed either); the engine's changes are committed, tested and released in its repository.
+- **What else of the engine the game uses**: its credits, which the packages carry as `CREDITS-ENGINE.md`, and its tools (`tools/circuit_layout.py`), found where Cargo has its sources by `tools/engine_dir.sh`.
+
 ## Make targets
 
 ```sh
@@ -28,7 +43,7 @@ make bench.push  # commits bench-results/ and pushes it to the branch
 | `make up` | `cargo run` | Builds and starts the game with the `dev` profile. |
 | `make build` | `cargo build --release` | Optimised executable in `target/release/motorust` (`motorust.exe` on Windows). |
 | `make app` | `cargo build --release`, then `tools/make-app.sh` | macOS only: `target/release/Motorust.app` around the optimised executable (with the icon and `assets/Info.plist`), to open from Finder or keep in the Dock. Its Info.plist says it is a racing game (`LSApplicationCategoryType` `public.app-category.racing-games`, `LSSupportsGameMode`), so macOS (Sonoma and later) turns its Game Mode on when the game goes fullscreen, which a bare executable run from the terminal never gets. The CI's `.app` is made by the same script. Launched from Finder, the game runs from `/`: the benchmark is for `make bench`. |
-| `make test` | `cargo test --workspace` | Runs the tests (see [architecture.md](architecture.md#tests)). |
+| `make test` | `cargo test` | Runs the tests (see [architecture.md](architecture.md#tests)). |
 | `make bench` | `cargo run --release -- --bench` (on macOS under `caffeinate -dis`, so the display does not sleep and take the game's window with it) | The benchmark: the game rides every track on its own, in free ride on autopilot, with one player and with two, under each graphics setting worth comparing (shadows high, medium and low; the ground out of the shadows; MSAA 4× and 2× (where the GPU has two samples), SMAA, FXAA or none; lighter far trees; the world drawn at 70 % and 50 % of the window's resolution; the relief off, at speed, with parallax and on the road; the lawn's tiling; less detail for two players, and that at 70 %, without relief and with the ground out of the shadows), with the frame rate unlimited. Each track is ridden all round, once with one player and once with two, the settings taking turns of 2 s (after half a second to settle) all over the lap, each round in another order, so that every setting is measured on the same roads as the rest; it rides on until it has gone all round and each one has been measured for 10 s (`MOTORUST_BENCH_SECONDS`); each lap begins with every setting tried once, unmeasured, while the shaders compile. On the tracks in `MOTORUST_BENCH_TRACKS` (as `0,2`) or all of them. It says what it is doing in the terminal (the machine: system, CPU, memory, GPU, window, the game's version and commit; where the results go; each lap as it starts, every quarter of it, and as it ends each setting's frame rate, slowest 1 %, frame times, simulation time and CPU, and where on the lap it was slowest and fastest) and on the screen, under the frame rate (the lap, the setting on, the pixels the world is drawn at, how far round). The results go to `bench-results/` in the folder it is run from (the repository, with `make bench`), one file for each run named after when (UTC), the system, the CPU and the GPU (`2026-10-16_1830_macos-26-3-1_apple-m1-pro.txt`), headed with the machine and the commit, each lap's lines written as soon as it is measured, with the run's performance log beside it (`.perf.log`): runs on several machines sit side by side, to commit and compare. Esc stops it, keeping the laps it has measured (not the one under way), and prints the table so far (closing the window or Ctrl+C keep it too). The player's settings are used as they are and never saved over. |
 | `make bench.push` | `git add bench-results`, `git commit -- bench-results`, `git pull --rebase --autostash`, `git push` | Commits the benchmark's results (only `bench-results/`, whatever else is changed and not committed) as "bench: results from <machine>", brings in first what other machines have pushed to the branch (anything not committed is put aside and back), and pushes. With nothing new it says so and makes no commit. |
 
@@ -133,7 +148,7 @@ In a PR, a new push cancels the previous run of the same workflow.
 
 ### `build.yml`
 
-1. **Tests, format and clippy** (Ubuntu): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` (any warning fails the build) and `cargo test`.
+1. **Tests, format and clippy** (Ubuntu): `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings` (any warning fails the build) and `cargo test` (the engine's own tests run in its repository).
 2. **Builds**, once the tests pass, with `cargo build --release --target <target>`:
 
    | Build | Runner | Target |

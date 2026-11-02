@@ -1,8 +1,8 @@
-# The workspace: the game (this package, Motorust: its content, its themes
-# and its own plugins, `src/`) over the engine (`motorust-engine/`, the
-# `motorust_engine` crate). See ROADMAP.md, "The engine apart from the game".
-[workspace]
-members = ["motorust-engine"]
+# Motorust, the game (its content, its themes and its own plugins, `src/`),
+# over the engine: the `motorust_engine` crate, from its repository
+# (jgermade/motorust-engine) at the tag below. To work on both at once,
+# with the engine's clone beside this one, see docs/building.md ("The
+# engine"). See ROADMAP.md, "The engine apart from the game".
 
 [package]
 name = "motorust"
@@ -11,17 +11,18 @@ edition = "2024"
 rust-version = "1.95"
 
 [dependencies]
-motorust-engine = { path = "motorust-engine" }
-# The engine's Bevy and serde (as its own Cargo.toml asks for them, so that
-# it builds on its own too): one of each in the lock, so the two never
-# differ.
+# Its version is its tag: to take a new one, change it here and in
+# [dev-dependencies] alike.
+motorust-engine = { git = "https://github.com/jgermade/motorust-engine", tag = "v0.0.18" }
+# The engine's Bevy and serde (the same versions its Cargo.toml asks for):
+# one of each in the lock, so the two never differ.
 bevy = { version = "0.19", features = ["jpeg", "serialize"] }
 serde = { version = "1", features = ["derive"] }
 
 # The game's tests run the engine's checks on the game's content (see
 # src/game/checks.rs).
 [dev-dependencies]
-motorust-engine = { path = "motorust-engine", features = ["testing"] }
+motorust-engine = { git = "https://github.com/jgermade/motorust-engine", tag = "v0.0.18", features = ["testing"] }
 
 # En Windows, incrusta el icono en el ejecutable (.exe).
 [target.'cfg(windows)'.build-dependencies]

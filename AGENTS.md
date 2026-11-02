@@ -56,15 +56,19 @@ Each entry/block recorded must contain:
 
 3. **Testing & Code Cleanliness:**
    - All pure logic (physics steps, steering, terrain shaping, audio synthesis, camera math) must have unit tests.
-   - Run and verify `cargo test --workspace` before concluding tasks (the engine's crate, `motorust-engine/`, and the game's).
+   - Run and verify `cargo test` before concluding tasks (the game's tests, and the engine's checks run on the game's content).
    - Keep code cleanly formatted with `cargo fmt --all --check`.
-   - Ensure `cargo clippy --workspace --all-targets -- -D warnings` passes.
-   - The engine (`motorust-engine/`) knows nothing of the game's content: what is the game's (its circuits, models, music, themes) stays in `src/game/` and `assets/`, and the engine's tests run on its own content (`motorust-engine/assets/`).
+   - Ensure `cargo clippy --all-targets -- -D warnings` passes.
+
+4. **The engine is a dependency:**
+   - The engine is its own public repository, [jgermade/motorust-engine](https://github.com/jgermade/motorust-engine), with its own `AGENTS.md`; the game depends on it by its git repository and a tag (`Cargo.toml`, in `[dependencies]` and `[dev-dependencies]` alike). Paths in the docs starting with `motorust-engine/` are in the engine's repository.
+   - A change to the engine is made, tested, recorded and released in its repository (its `release.yml` tags it), and the game takes it by changing the tag. To work on both at once, the engine's clone beside this one under a `[patch]` (see `docs/building.md`, "The engine"), never committed.
+   - The engine knows nothing of the game's content: what is the game's (its circuits, models, music, themes) stays in `src/game/` and `assets/`, and nothing of it goes into the engine's repository, which is public.
 
 ---
 
 ## 4. Tools (`tools/`)
 
-- Scripts that are useful beyond the task at hand, above all for working on the circuits (drawing a layout and its height profile, checking it against the limits the tests set), and also importers and packaging helpers, live in `tools/` (the engine's own, as the one drawing a circuit's layout, in `motorust-engine/tools/`): not in a scratch directory, and not inside `src/`.
+- Scripts that are useful beyond the task at hand, above all for working on the circuits (drawing a layout and its height profile, checking it against the limits the tests set), and also importers and packaging helpers, live in `tools/` (the engine's own, as the one drawing a circuit's layout, in the engine's repository, found with `tools/engine_dir.sh`): not in a scratch directory, and not inside `src/`.
 - Each tool opens with a header saying what it does, how to run it and what it needs. Where it mirrors the game's own code (as `motorust-engine/tools/circuit_layout.py` mirrors the centre line and the profile of `motorust-engine/src/track.rs`), keep the two in step.
 - List every tool in `docs/architecture.md`. One-off scratch scripts and temporary harnesses (e.g. for capturing screenshots) are not committed.

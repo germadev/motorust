@@ -2,7 +2,8 @@
 
 The game's own content (this folder). The textures, the maps of the Moon,
 the Earth and the Milky Way, the font and the gamepads' art are the
-engine's, credited in `motorust-engine/assets/CREDITS.md`.
+engine's, credited in its [assets/CREDITS.md](https://github.com/jgermade/motorust-engine/blob/main/assets/CREDITS.md)
+(jgermade/motorust-engine).
 
 ## Models
 
