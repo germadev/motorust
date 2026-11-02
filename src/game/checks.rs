@@ -629,7 +629,27 @@ mod circuits {
     #[test]
     fn circuits_have_checkpoints() {
         crate::game::register();
-        motorust_engine::circuits::tests::circuits_have_checkpoints_on(&CIRCUITS);
+        // As the engine's check (`circuits_have_checkpoints_on`), which has
+        // the game's circuits' checkpoints written in it, but for
+        // Juguetería's, moved with its wider helix and slide.
+        let circuits = &*CIRCUITS;
+        assert_eq!(circuits[0].checkpoints(), vec![780.0]);
+        assert_eq!(circuits[1].checkpoints(), vec![960.0, 1980.0, 2980.0]);
+        assert_eq!(circuits[2].checkpoints(), vec![700.0, 1560.0]);
+        assert_eq!(
+            circuits[3].checkpoints(),
+            vec![1200.0, 2640.0, 3540.0, 4440.0, 5250.0]
+        );
+        assert_eq!(
+            circuits[4].checkpoints(),
+            vec![1000.0, 2200.0, 3150.0, 4230.0, 5100.0]
+        );
+        assert_eq!(circuits[5].checkpoints(), vec![1090.0, 2240.0, 3450.0]);
+        assert_eq!(
+            circuits[6].checkpoints(),
+            vec![868.0, 1905.1, 2955.1, 3585.1, 4565.1]
+        );
+        assert_eq!(circuits[7].checkpoints(), vec![1040.0, 1560.0, 2560.0]);
     }
 }
 

@@ -120,6 +120,11 @@ LOOP_MOUTH_AT = (
 # other at about the same height.
 HELIX_RADIUS = 58.0
 SLIDE_RADIUS = HELIX_RADIUS - 6.0
+# The slide's last quarter's radius (m): tighter, so that the bikes come
+# off it no faster than the way round the loop along the north wall, its
+# booster making up for the loop's length, is about as quick as the lap
+# beside it (off a wide one, flat out, the lap was 1.6 s quicker).
+SLIDE_LAST = 34.0
 SHELVES = HELIX_RADIUS + SLIDE_RADIUS + 27.0
 # The esses: a bend one way, twice as far round the other and back, wide
 # and gentle (their radius, m) so that their banking eases from side to
@@ -133,14 +138,14 @@ def esses_angle(radius, first_radius, first_angle):
     return math.degrees(math.asin(ahead / (4 * radius)))
 
 
-TABLE_ESSES = (60.0, esses_angle(60.0, 35.0, 40.0))
+TABLE_ESSES = (80.0, esses_angle(80.0, 35.0, 40.0))
 DIORAMA_ESSES = (90.0, esses_angle(90.0, 60.0, 20.0))
 EAST_ESSES = (70.0, esses_angle(70.0, 40.0, 35.0))
 # The bend on the train table, round from the ramp up onto it to along the
 # shop's glass (m): wide, the glass ahead all the way round; and the
 # straight on the table before it, where the ramp's top is, so that the
 # bikes take off over it (if at all) on a straight.
-TRAIN_LEAD = 18.0
+TRAIN_LEAD = 12.0
 TRAIN_BEND = 92.0 - TRAIN_LEAD
 # The way through the castle: straight on along the lap at first and last
 # (m), out to the side and back in bends of this radius (m) and angle (°),
@@ -273,11 +278,17 @@ def lap():
     # Along the top of the shelves.
     t.S(SHELVES / 3).at(TOP, "gondola")
     t.S(SHELVES / 3).at(TOP, "shelves end")
-    # The slide, a turn and a quarter down round its tower.
+    # The slide, a turn and a quarter down round its tower, its last
+    # quarter tighter, out from under its first: the bikes come off it
+    # about as fast as the way round the loop ahead is reckoned for (see
+    # `SLIDE_LAST`), on along the floor as far east as off a wide one.
     t.S(SHELVES / 3).at(TOP - 2.0, "slide")
-    for k in range(5):
-        t.R(SLIDE_RADIUS, 90).at(TOP - 2.0 - (TOP - 4.5) * (k + 1) / 5)
-    t.S(30).at(0.3, "floor")
+    # (Down evenly all the way, each quarter as far as it is long.)
+    radii = [SLIDE_RADIUS] * 4 + [SLIDE_LAST]
+    for k, radius in enumerate(radii):
+        down = sum(radii[: k + 1]) / sum(radii)
+        t.R(radius, 90).at(TOP - 2.0 - (TOP - 4.5) * down)
+    t.S(30 + SLIDE_RADIUS - SLIDE_LAST).at(0.3, "floor")
     t.S(36).at(0)
     # How much further north the road along the north wall runs than it did
     # round a smaller helix and slide (at z -300): as much further the road
@@ -304,8 +315,10 @@ def lap():
     t.L(radius, angle).at(0, "east esses")
     t.R(radius, 2 * angle).at(0)
     t.L(radius, angle).at(0, "east esses end")
-    t.S(10).at(0.3)
-    t.S(76).at(T2 - 0.6, "T2")
+    t.S(4).at(0.3)
+    t.S(58).at(T2 - 1.9, "T2")
+    t.S(14).at(T2 - 0.9)
+    t.S(14).at(T2 - 0.4)
     # Round on it in one wide bend, the shop's glass and its doors ahead
     # all the way round and the table's train on its outside, between the
     # road and the glass; and on along the glass, straight off its edge.
