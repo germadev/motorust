@@ -124,7 +124,7 @@ SLIDE_RADIUS = HELIX_RADIUS - 6.0
 # off it no faster than the way round the loop along the north wall, its
 # booster making up for the loop's length, is about as quick as the lap
 # beside it (off a wide one, flat out, the lap was 1.6 s quicker).
-SLIDE_LAST = 34.0
+SLIDE_LAST = 38.0
 SHELVES = HELIX_RADIUS + SLIDE_RADIUS + 27.0
 # The esses: a bend one way, twice as far round the other and back, wide
 # and gentle (their radius, m) so that their banking eases from side to
@@ -255,14 +255,17 @@ def lap():
     # gently) and over the start straight.
     t.S(36).at(T1, "T1 edge")
     t.S(40).at(T1)
+    # (The way through the castle to the right, as the way round the loop
+    # is: the rivals that take the ways off the lap ride on the right, and
+    # do not cross the others to get to it.)
     t.keep("castle fork")
     t.S(CASTLE_LEAD)
-    t.R(CASTLE_BEND, CASTLE_ANGLE)
     t.L(CASTLE_BEND, CASTLE_ANGLE)
+    t.R(CASTLE_BEND, CASTLE_ANGLE)
     t.S(CASTLE_THROUGH / 2).at(T1, "castle")
     t.S(CASTLE_THROUGH / 2)
-    t.L(CASTLE_BEND, CASTLE_ANGLE)
     t.R(CASTLE_BEND, CASTLE_ANGLE)
+    t.L(CASTLE_BEND, CASTLE_ANGLE)
     t.S(CASTLE_LEAD).at(T1, "castle join")
     t.keep("castle join")
     # Swinging right and left over the start straight.
@@ -344,7 +347,7 @@ def branch_from(t, name):
 
 def castle_way(t):
     """The way through the castle, as it leaves the lap at the castle's fork
-    (where the lap swings north): straight on, curving south, straight
+    (where the lap swings south): straight on, curving north, straight
     through the castle, and back onto the lap at its join. Its control
     points (the first and last on the lap left to the game) and the ends of
     its straight through the castle."""
@@ -355,13 +358,13 @@ def castle_way(t):
     # are already round its next bend.
     for _ in range(3):
         b.S(CASTLE_LEAD / 3)
-    b.L(CASTLE_BEND, CASTLE_ANGLE)
     b.R(CASTLE_BEND, CASTLE_ANGLE)
+    b.L(CASTLE_BEND, CASTLE_ANGLE)
     gate = np.array(b.p)
     b.S(CASTLE_THROUGH)
     through = (gate, np.array(b.p))
-    b.R(CASTLE_BEND, CASTLE_ANGLE)
     b.L(CASTLE_BEND, CASTLE_ANGLE)
+    b.R(CASTLE_BEND, CASTLE_ANGLE)
     for _ in range(3):
         b.S(CASTLE_LEAD / 3)
     return np.array(b.points[1:-1]), through
