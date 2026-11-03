@@ -7,7 +7,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Eight tracks** with steep slopes, crests and banked curves (see
+- **Nine tracks** with steep slopes, crests and banked curves (see
   [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
@@ -96,6 +96,11 @@ bricks, shelves of every department round the walls, Hot Wheels boosters
 by the loop, and the shop's glass front, the car park outside it in the
 daylight.
 
+**Costa del Sol** is a sunset run round a bay of the Andalusian coast, the
+water always on the right: a coast road past a whitewashed town, S-bends up
+the cliffs, a tunnel through the mountain at the head of the bay, down the
+far shore and over a bridge across the bay's mouth into a final chicane.
+
 More about each one in [docs/tracks.md](docs/tracks.md).
 
 ## Quick start
@@ -147,7 +152,7 @@ or English: the system's language at first, changed in Options.
 ## Documentation
 
 - [Playing](docs/gameplay.md): handling, bikes, menus, options and sound.
-- [Tracks](docs/tracks.md): the eight tracks, and how to edit one or add a new one.
+- [Tracks](docs/tracks.md): the nine tracks, and how to edit one or add a new one.
 - [Building and releasing](docs/building.md): native and web builds, CI and
   releases.
 - [Architecture](docs/architecture.md): code map and design decisions. The

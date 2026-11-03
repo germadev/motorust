@@ -1,6 +1,6 @@
 # Tracks
 
-Motorust has eight tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All eight are closed roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners: three on the coast under a summer sky, a desert mountain at dusk, an island of feudal Japan, an Earth space center & lunar base under the starry sky of space connected by an interdimensional portal, the journey of *The Fellowship of the Ring*, and the inside of a toy store, under a ceiling of lamps, the bikes as small as toys. Loop Island has a branch with a vertical loop the bikes ride upside down; Gold Mine has four branches without loops through its excavation, Ghost Island and Fellowship Road have three each out in the open, Base Lunar has a two-way crater split on its Moon sector, and Juguetería has a way through a castle and another round a loop.
+Motorust has nine tracks, picked on the track select screen (see [gameplay.md](gameplay.md#screens)). All nine are closed roads with walls on both sides, slopes, crests where the bike takes off when you are flat out, and banked corners: three on the coast under a summer sky, a desert mountain at dusk, an island of feudal Japan, an Earth space center & lunar base under the starry sky of space connected by an interdimensional portal, the journey of *The Fellowship of the Ring*, the inside of a toy store, under a ceiling of lamps, the bikes as small as toys, and a bay of the Andalusian coast at sunset. Loop Island has a branch with a vertical loop the bikes ride upside down; Gold Mine has four branches without loops through its excavation, Ghost Island and Fellowship Road have three each out in the open, Base Lunar has a two-way crater split on its Moon sector, and Juguetería has a way through a castle and another round a loop.
 
 | Track | Length | In the game's words |
 |---|---|---|
@@ -12,6 +12,7 @@ Motorust has eight tracks, picked on the track select screen (see [gameplay.md](
 | [Base Lunar](#base-lunar) ("Moon Base") | 4.6 km | "Centro espacial y observatorio en la Tierra con portal a la Luna: lanzadera, antenas gigantes, cúpulas de telescopio y base lunar" (Earth space center and observatory with portal to the Moon: launchpad, giant radio dishes, telescope domes and lunar base) |
 | [Fellowship Road](#fellowship-road) | 5.75 km | "Inspirada en La Comunidad del Anillo: de la Comarca a los Argonath, un ocho sobre y bajo las montañas, cuestas y dos bifurcaciones" (inspired by *The Fellowship of the Ring*: from the Shire to the Argonath, a figure of eight over and under the mountains, steep hills and two splits) |
 | [Juguetería](#juguetería) ("Toy Store") | 3.20 km | "Una juguetería: Scalextric sobre una silla y las mesas, un castillo, un rizo, una espiral y un tobogán" (a toy store: slot cars over a chair and the tables, a castle, a loop, a spiral and a slide) |
+| [Costa del Sol](#costa-del-sol) | 2.63 km | "Al atardecer, alrededor de una bahía: acantilados, un túnel en la montaña y un puente sobre el mar" (a sunset run round a bay: cliffs, a tunnel through the mountain and a bridge over the sea) |
 
 Distances below are in metres from the finish line, as in the track data.
 
@@ -185,6 +186,22 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
   8. **Under the first table** (2396–2711 m). Round to the right and south under the table, past a third "CHECKPOINT" arch (2564 m) under it, and in wide esses down the east side.
   9. **The train table** (2711–3073 m). Up a ramp onto the yellow table (9 m) and round it to the right in one wide bend, 76 m round, the shop's glass and its doors ahead all the way round and the table's electric train on the bend's outside, between the road and the glass; then straight along the glass and off the table's edge down a ramp back to the floor.
   10. **Home** (3073 m to the finish). Round to the right, round a stack of blocks, onto the drag strip.
+
+## Costa del Sol
+
+Costa del Sol is a sunset run round a bay of the Andalusian coast, under a golden-hour sky (`SkyStyle::GoldenHour`). The lap goes clockwise round the bay, so the water is always on the right, and closes over a bridge across the bay's mouth, with the open sea to the south. Its data is in `assets/circuits/costa_del_sol.ron`. Its song is "Crown of the Track". The curbs are red and white.
+
+- **Scenery.**
+  - The land round the bay is an `Outline`: the bay cuts into it from the south, and the mountains inland close the horizon to the north.
+  - Whitewashed houses and palms along the start straight, with a beach and parasols on the bay below the railing.
+  - Cut rock up the cliffs, a mountain over the tunnel, an islet with sailboats and yachts in the bay, and a lighthouse on the cape east of the mouth.
+- **A lap, in order** (2.63 km):
+  1. **Salida / Recta costera** (start straight, 2600–340 m, north). Along the bay's west shore, the town on the left and the railing, palms and water on the right, under an orange "COSTA DEL SOL" arch.
+  2. **Curvas del acantilado** (380–930 m). S-bends climbing north up the cliffs, from 3 m to about 29 m, cut rock and a stone wall on the left and a railing over the drop on the right. A checkpoint at 800 m.
+  3. **Túnel de la montaña** (985–1150 m). Round to the east at the head of the bay, and through the mountain, level.
+  4. **The east shore** (1230–2236 m). Round to the south and down the bay's east shore, rolling down to about 10 m, a railing over the bay on the right. A checkpoint at 1700 m.
+  5. **Puente costero** (2236–2410 m). A truss bridge heading west over the bay's mouth (`BridgeStyle::Truss`), a few metres over the water.
+  6. **Chicane final** (2440–2580 m). Off the bridge, left, right and left between concrete barriers, its tightest bend 29 m round, and round to the right onto the start straight.
 
 ## Editing or adding a track
 

@@ -17,6 +17,7 @@ music/gold_mine.mp3
 music/autumn_gale.mp3
 music/beyond_the_final_turn.mp3
 music/plastic_velocity_rush.mp3
+music/crown_of_the_track.mp3
 
 # The menus' song and free ride's chill songs, and their list.
 music/music.ron
@@ -35,6 +36,7 @@ circuits/ghost_island.ron
 circuits/moon_base.ron
 circuits/fellowship_road.ron
 circuits/toy_store.ron
+circuits/costa_del_sol.ron
 
 # The bikes' roster.
 bikes/roster.ron

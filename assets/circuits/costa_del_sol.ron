@@ -1,0 +1,318 @@
+// Costa del Sol: a sunset run round a bay of the Andalusian coast. The lap
+// goes clockwise round the bay, the water always on the right, and closes
+// over a bridge across its mouth.
+//
+// 1. Salida / Recta costera: the start straight runs north along the bay's
+//    west shore, a railing, palms and the water on the right, the town's
+//    whitewashed houses on the left.
+// 2. Curvas del acantilado: S-bends climbing north up the cliffs, cut rock
+//    on the left, the bay below on the right, to some 27 m.
+// 3. Túnel de la montaña: round to the east at the head of the bay, and
+//    through the mountain behind it in a tunnel.
+// 4. Out of the tunnel, south down the bay's east shore, rolling down to the
+//    Puente costero, a bridge over the bay's mouth heading west, the open
+//    sea on the left and the bay on the right.
+// 5. Chicane final: off the bridge, left, right and left again, and round
+//    to the right onto the start straight.
+//
+// Where things are, in metres from the finish line:
+//
+// - the start straight:      Span(2600.0, 340.0)
+// - the cliffs:              Span(380.0, 930.0)
+// - the tunnel:              Span(985.0, 1150.0)
+// - the east shore:          Span(1230.0, 2180.0)
+// - the bridge:              Span(2236.0, 2410.0)
+// - the chicane:             Span(2440.0, 2580.0)
+//
+// How a circuit's file is written: see the engine's src/circuits/data.rs.
+(
+    name: "Costa del Sol",
+    name_en: "Costa del Sol",
+    description: "Al atardecer, alrededor de una bahía: acantilados,\nun túnel en la montaña y un puente sobre el mar",
+    description_en: "A sunset run round a bay: cliffs, a tunnel\nthrough the mountain and a bridge over the sea",
+    // A bay at sunset: the sea and its gulls, the cicadas still singing.
+    ambience: (
+        sea: 0.85,
+        gulls: 0.6,
+        birds: 0.2,
+        cicadas: 0.35,
+        wind: 0.25,
+    ),
+    song: (file: "crown_of_the_track.mp3", length: 172.9, loudness: -14.4),
+    pace: 1.0,
+    layout: (
+        control_points: [
+            // 1. The start straight, north (-Z) along the bay's west shore.
+            (0.0, 0.0),
+            (0.0, -100.0),
+            (0.0, -200.0),
+            (0.0, -300.0),
+            // 2. The cliffs: S-bends climbing north, the bay on the right.
+            (-12.0, -380.0),
+            (-40.0, -450.0),
+            (-45.0, -520.0),
+            (-20.0, -585.0),
+            (10.0, -640.0),
+            (15.0, -705.0),
+            (0.0, -770.0),
+            // 3. Round to the east at the head of the bay, and through the
+            //    mountain.
+            (20.0, -835.0),
+            (70.0, -870.0),
+            (140.0, -880.0),
+            (220.0, -878.0),
+            (300.0, -870.0),
+            // 4. Out of the tunnel, round to the south and down the east shore.
+            (370.0, -845.0),
+            (420.0, -790.0),
+            (440.0, -720.0),
+            (445.0, -630.0),
+            (460.0, -540.0),
+            (450.0, -450.0),
+            (430.0, -360.0),
+            (440.0, -270.0),
+            (455.0, -180.0),
+            (450.0, -90.0),
+            // Round to the right, to the bridge over the bay's mouth, west.
+            (425.0, -10.0),
+            (380.0, 50.0),
+            (320.0, 80.0),
+            (240.0, 90.0),
+            (160.0, 90.0),
+            // 5. The chicane, and round to the right onto the start straight.
+            (110.0, 88.0),
+            (75.0, 100.0),
+            (40.0, 95.0),
+            (12.0, 65.0),
+        ],
+        // Level along the start straight, up the cliffs to the tunnel, some
+        // 27 m up, level through the mountain, and down the east shore all the
+        // way to the bridge, a few metres over the water, and the chicane.
+        elevation: [
+            (0.0, 0.0),
+            (100.0, 0.2),
+            (200.0, 0.5),
+            (300.0, 1.0),
+            // Up the cliffs, steadily, with no crest in the bends.
+            (382.0, 2.5),
+            (456.0, 5.5),
+            (528.0, 9.5),
+            (598.0, 13.5),
+            (660.0, 17.0),
+            (726.0, 20.5),
+            (792.0, 23.5),
+            (862.0, 25.8),
+            (924.0, 27.0),
+            // Through the mountain.
+            (994.0, 27.5),
+            (1074.0, 27.8),
+            (1154.0, 27.3),
+            // Down the east shore.
+            (1230.0, 26.0),
+            (1304.0, 24.0),
+            (1378.0, 21.5),
+            (1468.0, 18.8),
+            (1560.0, 16.5),
+            (1650.0, 15.0),
+            (1742.0, 13.3),
+            (1834.0, 12.0),
+            (1924.0, 10.8),
+            (2014.0, 9.8),
+            (2098.0, 9.0),
+            (2174.0, 8.5),
+            // The bridge, a few metres over the water.
+            (2242.0, 8.2),
+            (2322.0, 8.0),
+            (2402.0, 7.4),
+            // Down to the chicane and the start straight.
+            (2452.0, 5.6),
+            (2490.0, 4.0),
+            (2526.0, 2.6),
+            (2568.0, 1.2),
+        ],
+        wall: 11.5,
+    ),
+    scenery: (
+        // The land round the bay, its mouth open to the sea to the south under
+        // the bridge: from the bridge's west end, up the bay's west shore, round
+        // its head under the mountain and down its east shore to the bridge's
+        // east end; then out round the cape with the lighthouse, up the east
+        // coast, round the mountains to the north and down the west coast.
+        coast: Outline([
+            (112.0, 140.0),
+            (118.0, 58.0),
+            (80.0, 48.0),
+            (42.0, 32.0),
+            (38.0, -100.0),
+            (38.0, -300.0),
+            (28.0, -395.0),
+            (6.0, -460.0),
+            (2.0, -520.0),
+            (22.0, -578.0),
+            (50.0, -635.0),
+            (56.0, -700.0),
+            (52.0, -760.0),
+            (90.0, -805.0),
+            (170.0, -820.0),
+            (260.0, -815.0),
+            (335.0, -795.0),
+            (378.0, -750.0),
+            (400.0, -700.0),
+            (406.0, -630.0),
+            (420.0, -540.0),
+            (410.0, -450.0),
+            (392.0, -360.0),
+            (400.0, -270.0),
+            (414.0, -180.0),
+            (408.0, -90.0),
+            (384.0, -28.0),
+            (345.0, 22.0),
+            (322.0, 52.0),
+            (340.0, 140.0),
+            // The cape with the lighthouse, and the east coast.
+            (430.0, 170.0),
+            (530.0, 175.0),
+            (600.0, 140.0),
+            (640.0, 40.0),
+            (660.0, -200.0),
+            (665.0, -500.0),
+            (640.0, -800.0),
+            // Round the mountains to the north, and down the west coast.
+            (520.0, -1020.0),
+            (300.0, -1110.0),
+            (60.0, -1090.0),
+            (-140.0, -980.0),
+            (-230.0, -760.0),
+            (-250.0, -480.0),
+            (-235.0, -200.0),
+            (-200.0, 60.0),
+            (-120.0, 160.0),
+            (0.0, 175.0),
+        ]),
+        hills: 18.0,
+        greens: Mediterranean,
+        grass_shade: 1.0,
+        massifs: [
+            // The mountain at the head of the bay, which the tunnel goes through.
+            (center: (210.0, -930.0), radius: 150.0, height: 62.0),
+            (center: (90.0, -960.0), radius: 90.0, height: 48.0),
+            (center: (340.0, -950.0), radius: 90.0, height: 44.0),
+            // The cliffs above the road on the west, and hills behind the town.
+            (center: (-110.0, -560.0), radius: 80.0, height: 42.0),
+            (center: (-100.0, -730.0), radius: 75.0, height: 48.0),
+            (center: (-130.0, -300.0), radius: 80.0, height: 26.0),
+            // The hills of the east shore, behind the road.
+            (center: (560.0, -680.0), radius: 90.0, height: 36.0),
+            (center: (565.0, -380.0), radius: 80.0, height: 26.0),
+            // An islet in the bay, and another off the cape.
+            (center: (230.0, -330.0), radius: 30.0, height: 11.0),
+            (center: (520.0, 300.0), radius: 26.0, height: 10.0),
+        ],
+        cuttings: [
+            // The cliffs: cut rock on the left all the way up.
+            (span: Span(380.0, 930.0), side: Left, height: 16.0),
+            // Rock on both sides before the mouths of the tunnel.
+            (span: Span(930.0, 990.0), side: Right, height: 12.0),
+            (span: Span(1150.0, 1220.0), side: Left, height: 14.0),
+            (span: Span(1150.0, 1220.0), side: Right, height: 10.0),
+            // A rock wall on the left of the east shore road, high up.
+            (span: Span(1230.0, 1480.0), side: Left, height: 14.0),
+        ],
+        // Mountains closing the horizon inland, to the north; to the south,
+        // open sea.
+        mountains: [
+            Range(
+                center: (200.0, -400.0),
+                near: 1500.0,
+                far: 2600.0,
+                facing: Some((direction: (0.0, -1.0), from: -0.45, to: 0.45)),
+                relief: (low: 90.0, high: 260.0, scale: 300.0, octaves: 4),
+            ),
+        ],
+        curbs: [(0.85, 0.08, 0.06), (0.95, 0.95, 0.95)],
+        walls: [
+            // The start straight: a railing over the bay on the right, stone on
+            // the town's side.
+            (span: Span(2600.0, 340.0), side: Right, style: Railing),
+            (span: Span(2600.0, 340.0), side: Left, style: Stone),
+            // The cliffs: a railing over the drop to the bay, stone against the
+            // rock.
+            (span: Span(340.0, 930.0), side: Right, style: Railing),
+            (span: Span(340.0, 930.0), side: Left, style: Stone),
+            // Down the east shore, a railing over the bay.
+            (span: Span(1230.0, 2236.0), side: Right, style: Railing),
+            // The chicane, between concrete barriers.
+            (span: Span(2410.0, 2600.0), side: Left, style: Concrete),
+            (span: Span(2410.0, 2600.0), side: Right, style: Concrete),
+        ],
+        tunnels: [Span(985.0, 1150.0)],
+        bridges: [(span: Span(2236.0, 2410.0), style: Truss)],
+        gantries: [
+            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA DEL SOL")),
+            (along: 800.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+            (along: 1700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+        ],
+        billboards: [
+            (
+                along: 180.0,
+                side: Left,
+                text: "MOTORUST",
+                color: (0.1, 0.1, 0.12),
+                // RUST in the colour of rust, as in the title.
+                accent: Some((4, (0.9, 0.4, 0.12))),
+            ),
+            (along: 1560.0, side: Left, text: "SUNSET RUN", color: (0.85, 0.35, 0.08)),
+            (along: 2140.0, side: Left, text: "GRAND PRIX", color: (0.1, 0.2, 0.7)),
+        ],
+        lamps: [
+            (span: Span(2600.0, 340.0), side: Left, lateral: 12.4, every: 40.0),
+            (span: Span(1230.0, 2236.0), side: Left, lateral: 12.4, every: 50.0),
+        ],
+        trees: [UmbrellaPine, Olive, Cypress, MaritimePine, Almond],
+        houses: (
+            max: 12,
+            paints: [
+                (0.98, 0.97, 0.94),
+                (0.97, 0.95, 0.9),
+                (0.96, 0.9, 0.76),
+            ],
+            // The town along the start straight, and a few houses on the east
+            // shore.
+            spans: [Span(2600.0, 340.0), Span(1800.0, 2050.0)],
+            style: Cottage,
+        ),
+        palms: [
+            (span: Span(2600.0, 340.0), side: Right, lateral: 15.5, every: 24.0),
+            (span: Span(2600.0, 340.0), side: Left, lateral: 17.0, every: 36.0),
+            (span: Span(1900.0, 2200.0), side: Right, lateral: 15.5, every: 30.0),
+        ],
+        buoys: [(120.0, -150.0), (200.0, -520.0), (300.0, -250.0), (230.0, 200.0)],
+        // On the cape east of the bay's mouth.
+        lighthouses: [(position: (560.0, 150.0), height: 24.0)],
+        boats: [
+            (position: (150.0, -250.0), heading: 0.4, kind: Sailboat),
+            (position: (300.0, -560.0), heading: -1.1, kind: Sailboat),
+            (position: (260.0, -80.0), heading: 2.0, kind: Yacht),
+            (position: (200.0, 260.0), heading: 1.2, kind: Sailboat),
+            (position: (420.0, 330.0), heading: -0.6, kind: Yacht),
+        ],
+        chevrons: [
+            (along: 680.0, side: Right, direction: Left),
+            (along: 760.0, side: Left, direction: Right),
+            (along: 860.0, side: Left, direction: Right),
+            (along: 2110.0, side: Left, direction: Right),
+            (along: 2470.0, side: Right, direction: Left),
+        ],
+        grandstands: [(along: 70.0, side: Left, lateral: 16.5, length: 34.0)],
+        beach_parasols: [
+            (position: (30.0, -160.0), count: 5),
+            (position: (30.0, -250.0), count: 4),
+        ],
+        brake_markers: [
+            (along: 2400.0, side: Left, distance: 50),
+        ],
+        soil: Rock,
+        sky: GoldenHour,
+        water: Sea,
+    ),
+)
