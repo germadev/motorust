@@ -12,7 +12,7 @@ Motorust has nine tracks, picked on the track select screen (see [gameplay.md](g
 | [Base Lunar](#base-lunar) ("Moon Base") | 4.6 km | "Centro espacial y observatorio en la Tierra con portal a la Luna: lanzadera, antenas gigantes, cúpulas de telescopio y base lunar" (Earth space center and observatory with portal to the Moon: launchpad, giant radio dishes, telescope domes and lunar base) |
 | [Fellowship Road](#fellowship-road) | 5.75 km | "Inspirada en La Comunidad del Anillo: de la Comarca a los Argonath, un ocho sobre y bajo las montañas, cuestas y dos bifurcaciones" (inspired by *The Fellowship of the Ring*: from the Shire to the Argonath, a figure of eight over and under the mountains, steep hills and two splits) |
 | [Juguetería](#juguetería) ("Toy Store") | 3.20 km | "Una juguetería: Scalextric sobre una silla y las mesas, un castillo, un rizo, una espiral y un tobogán" (a toy store: slot cars over a chair and the tables, a castle, a loop, a spiral and a slide) |
-| [Costa del Sol](#costa-del-sol) | 2.63 km | "Al atardecer, alrededor de una bahía: acantilados, un túnel en la montaña y un puente sobre el mar" (a sunset run round a bay: cliffs, a tunnel through the mountain and a bridge over the sea) |
+| [Costa del Sol](#costa-del-sol) | 2.83 km | "Al atardecer, alrededor de una bahía: acantilados, un túnel en la montaña y un puente sobre el mar" (a sunset run round a bay: cliffs, a tunnel through the mountain and a bridge over the sea) |
 
 Distances below are in metres from the finish line, as in the track data.
 
@@ -195,13 +195,13 @@ Costa del Sol is a sunset run round a bay of the Andalusian coast, under a golde
   - The land round the bay is an `Outline`: the bay cuts into it from the south, and the mountains inland close the horizon to the north.
   - Whitewashed houses and palms along the start straight, with a beach and parasols on the bay below the railing.
   - Cut rock up the cliffs, a mountain over the tunnel, an islet with sailboats and yachts in the bay, and a lighthouse on the cape east of the mouth.
-- **A lap, in order** (2.63 km):
-  1. **Salida / Recta costera** (start straight, 2600–340 m, north). Along the bay's west shore, the town on the left and the railing, palms and water on the right, under an orange "COSTA DEL SOL" arch.
-  2. **Curvas del acantilado** (380–930 m). S-bends climbing north up the cliffs, from 3 m to about 29 m, cut rock and a stone wall on the left and a railing over the drop on the right. A checkpoint at 800 m.
+- **A lap, in order** (2.83 km):
+  1. **Salida / Recta costera** (start straight, 2700–340 m, north). Along the bay's west shore, the town on the left and the railing, palms and water on the right, under an orange "COSTA DEL SOL" arch. About 155 m into the lap it crosses a crest the bike takes off over when you are flat out, as on Bahía GP's start straight, and lands well before the cliffs.
+  2. **Curvas del acantilado** (380–930 m). S-bends climbing north up the cliffs, from 4 m to about 29 m, cut rock and a stone wall on the left and a railing over the drop on the right. A checkpoint at 800 m.
   3. **Túnel de la montaña** (985–1150 m). Round to the east at the head of the bay, and through the mountain, level.
-  4. **The east shore** (1230–2236 m). Round to the south and down the bay's east shore, rolling down to about 10 m, a railing over the bay on the right. A checkpoint at 1700 m.
-  5. **Puente costero** (2236–2410 m). A truss bridge heading west over the bay's mouth (`BridgeStyle::Truss`), a few metres over the water.
-  6. **Chicane final** (2440–2580 m). Off the bridge, left, right and left between concrete barriers, its tightest bend 29 m round, and round to the right onto the start straight.
+  4. **The east shore** (1230–2336 m). Round to the south and down the bay's east shore, rolling down to about 10 m, a railing over the bay on the right. A checkpoint at 1700 m.
+  5. **Puente costero** (2336–2510 m). A truss bridge heading west over the bay's mouth (`BridgeStyle::Truss`), a few metres over the water.
+  6. **Chicane final** (2540–2680 m). Off the bridge, left, right and left between concrete barriers, its tightest bend 30 m round, and round to the right onto the start straight, straight again some 150 m before the line, where the grid stands.
 
 ## Editing or adding a track
 
