@@ -100,8 +100,9 @@ daylight.
 water always on the right: a coast road past a whitewashed town, S-bends up
 the cliffs, a tunnel through the mountain at the head of the bay, down the
 far shore, up a mountain road on the cliffs over the open sea and down
-round a cape with a lighthouse, and over a bridge across the bay's mouth
-into a final chicane; all of it drawn as 8/16-bit pixel art.
+round a cape with a lighthouse, west along a coast highway over two crests
+in a row between rows of palms and a bridge across the bay's outlet, and
+through a fork before the line; all of it drawn as 8/16-bit pixel art.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 
