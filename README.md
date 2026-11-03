@@ -102,7 +102,7 @@ the cliffs, a tunnel through the mountain at the head of the bay, down the
 far shore, up a mountain road on the cliffs over the open sea and down
 round a cape with a lighthouse, west along a coast highway over two crests
 in a row between rows of palms and a bridge across the bay's outlet, and
-through a fork before the line; all of it drawn as 8/16-bit pixel art.
+through a fork before the line, in homage to the 8- and 16-bit arcade racers.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

@@ -1,12 +1,14 @@
 # Costa del Sol: props to make with Meshy
 
-These are the props to model with Meshy for [Costa del Sol](tracks.md#costa-del-sol). It is a homage to the 8- and 16-bit arcade racers: a sunset coast road, palms, a whitewashed town, a mountain road over the sea. It is drawn as pixel art (`look: Pixel(lines: 224, levels: 16)`).
+These are the props to model with Meshy for [Costa del Sol](tracks.md#costa-del-sol). It is a homage to the 8- and 16-bit arcade racers: a sunset coast road, palms, a whitewashed town, a mountain road over the sea.
+
+> **On hold.** This list was written for a world drawn as pixel art, which has been dropped. Its look may become flat sprites that turn to face the player, combined with voxels; the props, their sizes and their prompts will be revised for it before any is made.
 
 None of these props carries a brand, a logo or a real product. Each is a generic, original design, so that nothing registered appears in the game (see [Trademarks](#trademarks)).
 
 Sizes are in the game's metres, which are real metres: a bike is about 2 m long, and the road's walls stand 11.5 m from its middle. The size is what the importer scales each model to (its `SIZES`): the height, or the length for boats, cars and planes, as each row says.
 
-## How the pixel art changes what a model needs
+## How the pixel art changed what a model needs (no longer applies)
 
 - **Big shapes, bold colours.** The world is drawn at 224 lines, so a 2 m prop 40 m from the road is only a few pixels high. Fine detail (bricks, leaves, small text) is lost; silhouettes and blocks of colour carry. Props are sized a little larger than life (about 1.2×) where noted.
 - **Few, saturated colours.** Every channel is cut to 16 shades with dithering: subtle gradients turn into dither patterns, and noisy textures into speckle. Flat, clearly separated colours read best: white walls, terracotta, deep blue, red, yellow, green.

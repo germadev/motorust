@@ -33,7 +33,7 @@
 // - the east shore:          Span(1230.0, 1540.0)
 // - over the headland:       Span(1540.0, 2040.0), through the forest
 // - up the mountain road:    Span(2040.0, 2500.0), the summit at 2500 m
-// - down round the cape:     Span(2540.0, 3174.0), the lighthouse at (830.0, 540.0)
+// - down round the cape:     Span(2540.0, 3174.0), the lighthouse at (845.0, 580.0)
 // - the coast highway:       Span(3174.0, 3444.0), crests at 3230 and 3340 m
 // - the bridge:              Span(3444.0, 3650.0), over the outlet, 165 m wide
 // - the fork:                Span(3864.0, 4214.0)
@@ -42,8 +42,8 @@
 (
     name: "Costa del Sol",
     name_en: "Costa del Sol",
-    description: "Al atardecer, en pixel art: acantilados, un túnel,\nuna carretera de montaña y una bifurcación",
-    description_en: "A sunset run in pixel art: cliffs, a tunnel,\na mountain road and a fork",
+    description: "Al atardecer: acantilados, un túnel, una carretera\nde montaña, una autopista de la costa y una bifurcación",
+    description_en: "At sunset: cliffs, a tunnel, a mountain road,\na coast highway and a fork",
     // A bay at sunset: the sea and its gulls, the cicadas still singing.
     ambience: (
         sea: 0.85,
@@ -289,7 +289,7 @@
         coast: Outline([
             // The west bank of the bay's outlet, a channel to the sea under the
             // coast highway's bridge.
-            (145.0, 725.0),
+            (145.0, 688.0),
             (145.0, 320.0),
             (135.0, 230.0),
             (118.0, 158.0),
@@ -327,20 +327,28 @@
             // cliffs.
             (315.0, 230.0),
             (310.0, 320.0),
-            (310.0, 725.0),
-            (400.0, 722.0),
-            (560.0, 718.0),
-            (700.0, 705.0),
-            (820.0, 660.0),
-            (890.0, 590.0),
-            (925.0, 480.0),
-            (938.0, 360.0),
-            (950.0, 250.0),
-            (955.0, 100.0),
-            (955.0, -100.0),
-            (950.0, -250.0),
-            (935.0, -380.0),
-            (900.0, -480.0),
+            // The south coast close below the highway, a beach between its
+            // railing and the sea.
+            (310.0, 688.0),
+            (400.0, 686.0),
+            (560.0, 686.0),
+            (650.0, 684.0),
+            (725.0, 676.0),
+            // The cape, jutting out for the lighthouse.
+            (795.0, 668.0),
+            (855.0, 640.0),
+            (885.0, 570.0),
+            (860.0, 505.0),
+            // Right under the mountain road's parapet, some 30 m from its
+            // middle, so that the cliff drops from the wall to the sea.
+            (882.0, 370.0),
+            (906.0, 250.0),
+            (916.0, 130.0),
+            (921.0, 10.0),
+            (923.0, -110.0),
+            (921.0, -230.0),
+            (911.0, -340.0),
+            (898.0, -440.0),
             (830.0, -560.0),
             (760.0, -700.0),
             (640.0, -860.0),
@@ -354,8 +362,8 @@
             (-215.0, 150.0),
             (-205.0, 450.0),
             (-170.0, 650.0),
-            (-70.0, 735.0),
-            (80.0, 738.0),
+            (-70.0, 715.0),
+            (80.0, 700.0),
         ]),
         hills: 18.0,
         greens: Mediterranean,
@@ -372,10 +380,10 @@
             // The hills of the east shore, behind the road.
             (center: (560.0, -680.0), radius: 90.0, height: 36.0),
             (center: (565.0, -380.0), radius: 80.0, height: 26.0),
-            // The mountain the road climbs, cut into its seaward side, and a crag
-            // standing up over it, a mesa of bare rock.
-            (center: (700.0, -120.0), radius: 240.0, height: 72.0, climbed: true),
-            (center: (660.0, 160.0), radius: 75.0, height: 115.0),
+            // The mountain the road climbs, cut into its seaward side; a mesa of
+            // bare rock straight ahead up the climb, over the cape; and a crag.
+            (center: (680.0, -120.0), radius: 190.0, height: 72.0, climbed: true),
+            (center: (735.0, 330.0), radius: 70.0, height: 115.0),
             (center: (640.0, -330.0), radius: 70.0, height: 95.0),
             // An islet in the bay, and another off the cliffs.
             (center: (230.0, -330.0), radius: 30.0, height: 11.0),
@@ -482,7 +490,7 @@
             (990.0, 60.0),
         ],
         // On the cape, below the road coming down round it.
-        lighthouses: [(position: (830.0, 540.0), height: 24.0)],
+        lighthouses: [(position: (845.0, 580.0), height: 24.0)],
         boats: [
             (position: (150.0, -250.0), heading: 0.4, kind: Sailboat),
             (position: (300.0, -560.0), heading: -1.1, kind: Sailboat),
@@ -510,6 +518,9 @@
         beach_parasols: [
             (position: (30.0, -160.0), count: 5),
             (position: (30.0, -250.0), count: 4),
+            // The beach below the coast highway.
+            (position: (440.0, 674.0), count: 4),
+            (position: (580.0, 674.0), count: 5),
         ],
         brake_markers: [
             (along: 3740.0, side: Left, distance: 50),
@@ -517,8 +528,5 @@
         soil: Rock,
         sky: GoldenHour,
         water: Sea,
-        // Drawn as the pixel art of the 8- and 16-bit arcade racers: a few
-        // lines, sharp pixels, a few shades with ordered dithering.
-        look: Pixel(lines: 224, levels: 16),
     ),
 )
