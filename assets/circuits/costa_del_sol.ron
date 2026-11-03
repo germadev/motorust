@@ -528,5 +528,9 @@
         soil: Rock,
         sky: GoldenHour,
         water: Sea,
+        // The ground as small voxels anchored to it, each of one colour, cut to
+        // a palette of 12 shades of each of red, green and blue (the engine's
+        // `Look::Voxel`).
+        look: Voxel(size: 0.25, shades: Some(12)),
     ),
 )
