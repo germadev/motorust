@@ -99,7 +99,9 @@ daylight.
 **Costa del Sol** is a sunset run round a bay of the Andalusian coast, the
 water always on the right: a coast road past a whitewashed town, S-bends up
 the cliffs, a tunnel through the mountain at the head of the bay, down the
-far shore and over a bridge across the bay's mouth into a final chicane.
+far shore, up a mountain road on the cliffs over the open sea and down
+round a cape with a lighthouse, and over a bridge across the bay's mouth
+into a final chicane; all of it drawn as 8/16-bit pixel art.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

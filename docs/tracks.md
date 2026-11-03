@@ -12,7 +12,7 @@ Motorust has nine tracks, picked on the track select screen (see [gameplay.md](g
 | [Base Lunar](#base-lunar) ("Moon Base") | 4.6 km | "Centro espacial y observatorio en la Tierra con portal a la Luna: lanzadera, antenas gigantes, cúpulas de telescopio y base lunar" (Earth space center and observatory with portal to the Moon: launchpad, giant radio dishes, telescope domes and lunar base) |
 | [Fellowship Road](#fellowship-road) | 5.75 km | "Inspirada en La Comunidad del Anillo: de la Comarca a los Argonath, un ocho sobre y bajo las montañas, cuestas y dos bifurcaciones" (inspired by *The Fellowship of the Ring*: from the Shire to the Argonath, a figure of eight over and under the mountains, steep hills and two splits) |
 | [Juguetería](#juguetería) ("Toy Store") | 3.20 km | "Una juguetería: Scalextric sobre una silla y las mesas, un castillo, un rizo, una espiral y un tobogán" (a toy store: slot cars over a chair and the tables, a castle, a loop, a spiral and a slide) |
-| [Costa del Sol](#costa-del-sol) | 2.83 km | "Al atardecer, alrededor de una bahía: acantilados, un túnel en la montaña y un puente sobre el mar" (a sunset run round a bay: cliffs, a tunnel through the mountain and a bridge over the sea) |
+| [Costa del Sol](#costa-del-sol) | 4.08 km | "Al atardecer, en pixel art: acantilados, un túnel, una carretera de montaña y un puente sobre el mar" (a sunset run in pixel art: cliffs, a tunnel, a mountain road and a bridge over the sea) |
 
 Distances below are in metres from the finish line, as in the track data.
 
@@ -189,19 +189,22 @@ Juguetería ("Toy Store") is a lap round the inside of a toy shop, the bikes as 
 
 ## Costa del Sol
 
-Costa del Sol is a sunset run round a bay of the Andalusian coast, under a golden-hour sky (`SkyStyle::GoldenHour`). The lap goes clockwise round the bay, so the water is always on the right, and closes over a bridge across the bay's mouth, with the open sea to the south. Its data is in `assets/circuits/costa_del_sol.ron`. Its song is "Crown of the Track". The curbs are red and white.
+Costa del Sol is a sunset run round a bay of the Andalusian coast, under a golden-hour sky (`SkyStyle::GoldenHour`). It is drawn as pixel art, in homage to the 8- and 16-bit arcade racers: `look: Pixel(lines: 224, levels: 16)`, its world drawn at 224 lines and scaled up with sharp pixels, in 16 shades of each of red, green and blue with ordered dithering. The interface stays sharp (see `motorust-engine/src/render_scale.rs`). The lap goes clockwise round the bay, out over the headland and up a mountain road on the cliffs over the open sea, down round a cape, and closes over a bridge across the bay's mouth. Its data is in `assets/circuits/costa_del_sol.ron`. Its song is "Crown of the Track". The curbs are red and white.
 
 - **Scenery.**
-  - The land round the bay is an `Outline`: the bay cuts into it from the south, and the mountains inland close the horizon to the north.
+  - The land round the bay is an `Outline`: the bay cuts into it from the south, the open sea lies to the east and south, and the mountains inland close the horizon to the north.
+  - The mountain of the new sector (a `climbed` massif the road is cut into, 72 m high), with a mesa of bare rock 115 m high standing over it and a crag to the north, pines over the headland (`forests`), and cut rock on the right of the mountain road.
   - Whitewashed houses and palms along the start straight, with a beach and parasols on the bay below the railing.
-  - Cut rock up the cliffs, a mountain over the tunnel, an islet with sailboats and yachts in the bay, and a lighthouse on the cape east of the mouth.
-- **A lap, in order** (2.83 km):
-  1. **Salida / Recta costera** (start straight, 2700–340 m, north). Along the bay's west shore, the town on the left and the railing, palms and water on the right, under an orange "COSTA DEL SOL" arch. About 155 m into the lap it crosses a crest the bike takes off over when you are flat out, as on Bahía GP's start straight, and lands well before the cliffs.
+  - Cut rock up the cliffs and a mountain over the tunnel.
+  - An islet in the bay and another off the cliffs, yachts and sailboats on the open sea below, and a lighthouse on the cape.
+- **A lap, in order** (4.08 km):
+  1. **Salida / Recta costera** (start straight, 3950–340 m, north). Along the bay's west shore, the town on the left and the railing, palms and water on the right, under an orange "COSTA DEL SOL" arch. About 155 m into the lap it crosses a crest the bike takes off over when you are flat out, as on Bahía GP's start straight, and lands well before the cliffs.
   2. **Curvas del acantilado** (380–930 m). S-bends climbing north up the cliffs, from 4 m to about 29 m, cut rock and a stone wall on the left and a railing over the drop on the right. A checkpoint at 800 m.
   3. **Túnel de la montaña** (985–1150 m). Round to the east at the head of the bay, and through the mountain, level.
-  4. **The east shore** (1230–2336 m). Round to the south and down the bay's east shore, rolling down to about 10 m, a railing over the bay on the right. A checkpoint at 1700 m.
-  5. **Puente costero** (2336–2510 m). A truss bridge heading west over the bay's mouth (`BridgeStyle::Truss`), a few metres over the water.
-  6. **Chicane final** (2540–2680 m). Off the bridge, left, right and left between concrete barriers, its tightest bend 30 m round, and round to the right onto the start straight, straight again some 150 m before the line, where the grid stands.
+  4. **The east shore and the headland** (1230–2040 m). Round to the south, down the bay's east shore to about 17 m, and east over the headland through a pine forest, past a hamlet (a checkpoint at 1700 m), to the open sea.
+  5. **Carretera de la sierra** (2040–3260 m). A mountain road south up the cliffs over the open sea, at up to 8 %, cut rock on the right and a stone parapet over the drop on the left, to a summit 58 m up, on a straight, where the bike takes off when you are flat out (from about 185 km/h), as on the start straight. Then down at about 7 % in bends round the cape, the lighthouse far below (a checkpoint at 2700 m), and off the mountain west along the south coast, past palms and a few houses.
+  6. **Puente costero** (3592–3762 m). Up again past a checkpoint at 3450 m and round to the left onto a truss bridge heading west over the bay's mouth (`BridgeStyle::Truss`), a few metres over the water.
+  7. **Chicane final** (3792–3932 m). Off the bridge, left, right and left between concrete barriers, its tightest bend 30 m round, and round to the right onto the start straight, straight again some 150 m before the line, where the grid stands.
 
 ## Editing or adding a track
 
