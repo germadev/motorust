@@ -4,6 +4,13 @@
 .PHONY: help install up preview build app test bench bench.push linux-deps
 
 CARGO ?= cargo
+# El motor en otra versión que la etiqueta de Cargo.toml, para up, build,
+# app, test y bench: una rama, una etiqueta o un commit de
+# jgermade/motorust-engine, o una carpeta con sus fuentes
+# (`make up ENGINE=mi-rama`, `make up ENGINE=../motorust-engine`). Ver
+# tools/with_engine.sh y docs/building.md ("The engine").
+ENGINE ?=
+RUN := tools/with_engine.sh "$(ENGINE)" $(CARGO)
 # Como root (contenedores, CI) no hace falta sudo, y a veces ni existe.
 SUDO := $(shell [ "$$(id -u)" = 0 ] || echo sudo)
 
@@ -26,8 +33,8 @@ install: ## Instala las dependencias del sistema (en Linux) y descarga las crate
 	@if [ "$$(uname -s)" = Linux ]; then $(MAKE) --no-print-directory linux-deps; fi
 	$(CARGO) fetch
 
-up: ## Arranca el juego en modo desarrollo (compila rápido: Bevy enlazado dinámicamente)
-	$(CARGO) run --features dynamic
+up: ## Arranca el juego en modo desarrollo (compila rápido: Bevy enlazado dinámicamente); ENGINE=rama para otro motor
+	$(RUN) run --features dynamic
 
 preview: ## Lanza la última build generada (sin recompilar)
 	@latest=""; \
@@ -47,24 +54,24 @@ preview: ## Lanza la última build generada (sin recompilar)
 	fi
 
 build: ## Compila la versión optimizada en target/release/motorust
-	$(CARGO) build --release
+	$(RUN) build --release
 
 # Only on macOS: the bundle Finder and the Dock launch, which macOS knows
 # for a game and so gives its Game Mode in fullscreen.
 app: ## (macOS) Compila y monta target/release/Motorust.app, para abrirlo desde Finder o el Dock
 	@[ "$$(uname)" = Darwin ] || { echo "make app es solo para macOS"; exit 1; }
-	$(CARGO) build --release
+	$(RUN) build --release
 	@tools/make-app.sh target/release/motorust "dev-$$(git rev-parse --short HEAD)" target/release
 
 test: ## Pasa los tests
-	$(CARGO) test
+	$(RUN) test
 
 # On macOS, under caffeinate: with no one touching it, the display would go
 # to sleep partway through, its monitor would be gone and the game with it.
 KEEP_AWAKE := $(shell [ "$$(uname)" = Darwin ] && echo "caffeinate -dis")
 
 bench: ## Benchmark: recorre las pistas solo, con cada ajuste, y escribe los resultados (Esc lo para)
-	$(KEEP_AWAKE) $(CARGO) run --release -- --bench
+	$(KEEP_AWAKE) $(RUN) run --release -- --bench
 
 # Solo bench-results/ entra en el commit, aunque haya otros cambios a medias;
 # antes trae lo que hayan subido otras máquinas, para que el push no se rechace.
