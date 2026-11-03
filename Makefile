@@ -7,7 +7,8 @@ CARGO ?= cargo
 # El motor en otra versión que la etiqueta de Cargo.toml, para up, build,
 # app, test y bench: una rama, una etiqueta o un commit de
 # jgermade/motorust-engine, o una carpeta con sus fuentes
-# (`make up ENGINE=mi-rama`, `make up ENGINE=../motorust-engine`). Ver
+# (`make up ENGINE=mi-rama`, `make up ENGINE=../motorust-engine`, o
+# `make up ENGINE=same`: la rama del motor que se llama como la del juego). Ver
 # tools/with_engine.sh y docs/building.md ("The engine").
 ENGINE ?=
 RUN := tools/with_engine.sh "$(ENGINE)" $(CARGO)
@@ -33,7 +34,7 @@ install: ## Instala las dependencias del sistema (en Linux) y descarga las crate
 	@if [ "$$(uname -s)" = Linux ]; then $(MAKE) --no-print-directory linux-deps; fi
 	$(CARGO) fetch
 
-up: ## Arranca el juego en modo desarrollo (compila rápido: Bevy enlazado dinámicamente); ENGINE=rama para otro motor
+up: ## Arranca el juego en modo desarrollo (compila rápido: Bevy enlazado dinámicamente); ENGINE=rama para otro motor (same: la misma rama que el juego)
 	$(RUN) run --features dynamic
 
 preview: ## Lanza la última build generada (sin recompilar)
