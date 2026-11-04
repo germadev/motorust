@@ -377,9 +377,13 @@ EOF
 # ---------------------------------------------------------------------------
 verify_checksum() {
   # verify_checksum <archive> <file name>: checks the sum published with the
-  # release, when it is available.
+  # release, when it is available: on the site, beside the archives, or (for
+  # the releases published before they were there) the GitHub release's.
   local archive="$1" name="$2" sums expected actual
-  sums="$(fetch_text "${releases_url}/download/v${version}/SHA256SUMS.txt" 2>/dev/null || true)"
+  sums="$(fetch_text "${site_url}/downloads/motorust-${version}-SHA256SUMS.txt" 2>/dev/null || true)"
+  if [ -z "$sums" ]; then
+    sums="$(fetch_text "${releases_url}/download/v${version}/SHA256SUMS.txt" 2>/dev/null || true)"
+  fi
   if [ -z "$sums" ]; then
     info "No hay sumas SHA-256 publicadas para esta versión: se continúa sin comprobar."
     return 0

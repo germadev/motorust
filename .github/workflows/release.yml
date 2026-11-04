@@ -99,6 +99,11 @@ jobs:
           pattern: motorust-*
           path: dist/binaries
           merge-multiple: true
+      # The binaries' SHA-256 sums, published beside them, before the site
+      # (and its version.txt, which the game reads to update itself) is: when
+      # the game sees the new version, its sums are already there.
+      - name: Sumas SHA-256 de los binarios
+        run: cd dist/binaries && sha256sum motorust-${{ needs.version.outputs.version }}-* > motorust-${{ needs.version.outputs.version }}-SHA256SUMS.txt && cat motorust-${{ needs.version.outputs.version }}-SHA256SUMS.txt
       - name: Subir motorust_bg.wasm y binarios a Cloudflare R2
         uses: cloudflare/wrangler-action@v3
         with:
@@ -112,6 +117,7 @@ jobs:
             r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin-app.zip --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin-app.zip
             r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-aarch64-apple-darwin.tar.gz --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-aarch64-apple-darwin.tar.gz
             r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin.tar.gz --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-x86_64-apple-darwin.tar.gz
+            r2 object put motorust/downloads/motorust-${{ needs.version.outputs.version }}-SHA256SUMS.txt --file=dist/binaries/motorust-${{ needs.version.outputs.version }}-SHA256SUMS.txt --content-type=text/plain
       - name: Quitar .wasm de dist/web (supera el límite de 25 MiB de Pages)
         run: rm dist/web/motorust_bg.wasm
       - name: Desplegar a Cloudflare Pages

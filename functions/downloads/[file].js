@@ -24,6 +24,8 @@ export async function onRequest(context) {
           headers.set("content-type", "application/zip");
         } else if (file.endsWith(".tar.gz")) {
           headers.set("content-type", "application/gzip");
+        } else if (file.endsWith(".txt")) {
+          headers.set("content-type", "text/plain; charset=utf-8");
         } else {
           headers.set("content-type", "application/octet-stream");
         }

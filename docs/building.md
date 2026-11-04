@@ -191,7 +191,7 @@ curl -fsSL https://motorust.germade.dev/setup.sh | bash
 wget -qO- https://motorust.germade.dev/setup.sh | bash
 ```
 
-It downloads `motorust-<version>-<target>.tar.gz` from `/downloads/` (the Pages function serves it from the R2 bucket, and falls back to the GitHub release), checks it against `SHA256SUMS.txt`, leaves the executable in `~/motorust/motorust` and links it into a directory of `$PATH` (`~/.local/bin` when it is there, otherwise the first writable one) so the game runs with `motorust`. Run it again and it offers to update or uninstall. It also takes `--install`, `--update`, `--uninstall`, `--dir` and `--version`.
+It downloads `motorust-<version>-<target>.tar.gz` from `/downloads/` (the Pages function serves it from the R2 bucket, and falls back to the GitHub release), checks it against the sums published beside it (`motorust-<version>-SHA256SUMS.txt`, or the GitHub release's `SHA256SUMS.txt` for older releases), leaves the executable in `~/motorust/motorust` and links it into a directory of `$PATH` (`~/.local/bin` when it is there, otherwise the first writable one) so the game runs with `motorust`. Run it again and it offers to update or uninstall. It also takes `--install`, `--update`, `--uninstall`, `--dir` and `--version`.
 
 `web/build.sh` writes the version of the build into the script (the `__MOTORUST_VERSION__` placeholder), so the installer always downloads the release the site is publishing, and copies it to `dist/web/setup.sh`.
 
@@ -201,6 +201,8 @@ A release build of the game on the desktop updates itself (the engine's `src/upd
 
 - `latest`: `https://motorust.germade.dev/version.txt`, written by `web/build.sh`;
 - `archive`: `https://motorust.germade.dev/downloads/motorust-{version}-{target}`, the archives `release.yml` uploads (`.zip` on Windows, `-app.zip` for the macOS app, `.tar.gz` otherwise);
-- `sums`: the GitHub release's `SHA256SUMS.txt`.
+- `sums`: `https://motorust.germade.dev/downloads/motorust-{version}-SHA256SUMS.txt`, the archives' SHA-256 sums, which `release.yml` uploads beside them before it deploys the site (so they are there by the time `version.txt` says the release is out).
+
+Everything the game updates from is on the game's own site: the engine is only a library, with no site or binaries of its own.
 
 As it starts, it reads `latest`; if it is newer, the version on the start menu says so, and U downloads the archive, checks it against its sum (nothing is touched if it does not match), unpacks it beside the game, puts the executable (or the app) aside as `<name>.old`, moves the new one into its place and restarts it. What was put aside is removed at the next start. `MOTORUST_NO_UPDATES` in the environment keeps the game from looking; a development build never does.

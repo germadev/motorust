@@ -16,12 +16,12 @@
     icon: Some("icon-256.png"),
     // Where the releases are published, for the game to update itself (the
     // engine's src/updater.rs): {version} is the release's ("0.0.18"),
-    // {target} the platform's ("x86_64-unknown-linux-gnu"). The site's
-    // version.txt is written by web/build.sh; the archives are those
-    // release.yml uploads, and the sums its GitHub release's.
+    // {target} the platform's ("x86_64-unknown-linux-gnu"). All of it on the
+    // game's site: its version.txt, written by web/build.sh, and the archives
+    // and their sums, which release.yml uploads beside them.
     updates: Some((
         latest: "https://motorust.germade.dev/version.txt",
         archive: "https://motorust.germade.dev/downloads/motorust-{version}-{target}",
-        sums: "https://github.com/germadev/motorust/releases/download/v{version}/SHA256SUMS.txt",
+        sums: "https://motorust.germade.dev/downloads/motorust-{version}-SHA256SUMS.txt",
     )),
 )
