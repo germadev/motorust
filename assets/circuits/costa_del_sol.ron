@@ -528,9 +528,10 @@
         soil: Rock,
         sky: GoldenHour,
         water: Sea,
-        // The ground as small voxels anchored to it, each of one colour, cut to
-        // a palette of 12 shades of each of red, green and blue (the engine's
-        // `Look::Voxel`).
-        look: Voxel(size: 0.25, shades: Some(12)),
+        // The ground as voxels, in blocks of one colour, 1 m on a side by the
+        // roads and up to 8 m far off, cut to a palette of 12 shades of each of
+        // red, green and blue; the trees as flat sprites of pixel art facing the
+        // camera (the engine's `Look::Voxel`).
+        look: Voxel(size: 1.0, shades: Some(12)),
     ),
 )
