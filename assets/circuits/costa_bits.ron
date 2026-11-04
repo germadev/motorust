@@ -1,4 +1,4 @@
-// Costa del Sol: a sunset run round a bay of the Andalusian coast. The lap
+// Costa Bits: a sunset run round a bay of the Andalusian coast. The lap
 // goes clockwise round the bay, out over the mountains on the open sea and
 // back along the south coast, over the bay's outlet and through a fork
 // before the line.
@@ -40,8 +40,8 @@
 //
 // How a circuit's file is written: see the engine's src/circuits/data.rs.
 (
-    name: "Costa del Sol",
-    name_en: "Costa del Sol",
+    name: "Costa Bits",
+    name_en: "Costa Bits",
     description: "Al atardecer: acantilados, un túnel, una carretera\nde montaña, una autopista de la costa y una bifurcación",
     description_en: "At sunset: cliffs, a tunnel, a mountain road,\na coast highway and a fork",
     // A bay at sunset: the sea and its gulls, the cicadas still singing.
@@ -52,7 +52,10 @@
         cicadas: 0.35,
         wind: 0.25,
     ),
-    song: (file: "sunset_victory_lap.mp3", length: 176.2, loudness: -14.4),
+    // Called Costa del Sol before it was released: records saved under
+    // that name are moved to this one.
+    formerly: ["Costa del Sol"],
+    song: (file: "victory_in_the_rearview.mp3", length: 176.5, loudness: -13.2),
     pace: 1.0,
     layout: (
         control_points: [

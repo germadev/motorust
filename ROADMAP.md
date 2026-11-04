@@ -9,7 +9,7 @@ The benchmark has not been run since 2026-10-16, before the relief of the textur
 - `make bench` on the M4 mini, and on the M1 Pro, the M4 Pro and the BC-250, at the commit that adds the scenarios below (then `make bench.push`).
 - **The ground in the shadows:** `1p` against `1p-no-ground-shadows`, and `2p` against `2p-no-ground-shadows`. The difference is the most cutting the ground into pieces could save in the shadow maps (step 2).
 - **The edges:** `1p-msaa-2x` and `1p-smaa` against `1p` (MSAA 4×) and `1p-fxaa`: what each costs, and whether the game should start with another one (it starts with FXAA).
-- **Costa del Sol**, the first track drawn as voxels: its ground is a mesh of blocks (1 m by the road, up to 8 m far off) beside the smooth ground, and its trees and palms are cards. Measured against a smooth track of its size, to see what the blocks cost in triangles, in the shadow cascades and on the web.
+- **Costa Bits**, the first track drawn as voxels: its ground is a mesh of blocks (1 m by the road, up to 8 m far off) beside the smooth ground, and its trees and palms are cards. Measured against a smooth track of its size, to see what the blocks cost in triangles, in the shadow cascades and on the web.
 - **Juguetería**, the first track indoors: its ceiling's lamps glow but cast no shadow, and the room, the furniture, the toy tracks and the toys are batched into a few meshes. Measured as it is, and again once Meshy's toys fill it (see [Alongside](#alongside-jugueterías-toys)).
 - The render world's CPU time apart from the simulation's, with Tracy (`--features bevy/trace_tracy`), where a machine is not bound by its GPU (the M4 Pro).
 
@@ -77,18 +77,19 @@ The whole plan, in full and kept up to date: `RECORD/2026-10-31.engine-split-pla
 
 Steps 1 and 2 are worth it before anything is split: circuits tuned without compiling.
 
-## Alongside: Costa del Sol and the voxel look
+## Alongside: Costa Bits and the voxel look
 
 Content and engine together, in the branches `ccr-5ceb056d-y3evh6` of both repositories (the engine's PR #2, the game's PR #35).
 
 Done (`RECORD/2026-11-03.costa-del-sol-track.completed.md`, and the engine's `RECORD/2026-11-03.voxel-ground.completed.md`):
 
-- **The track:** Costa del Sol, the ninth, a homage to the 8- and 16-bit arcade racers with no trademarked element. It is a 4.39 km lap round a bay: a coast road, a mountain road, a coast highway with crests, a fork and a long bridge. Its song is the user's "Sunset Victory Lap".
+- **The track:** Costa Bits, the ninth, a homage to the 8- and 16-bit arcade racers with no trademarked element. It is a 4.39 km lap round a bay: a coast road, a mountain road, a coast highway with crests, a fork and a long bridge. Its song is the user's "Victory in the Rearview" (the first one, "Sunset Victory Lap", is kept, loose).
 - **The look, in the engine, for any circuit:** `look: Voxel(size, shades)`. It brings:
   - the ground in blocks;
   - the trees and palms as flat pixel art;
   - an arcade road with bands, striped curbs, banded walls and flat verges in bands of green;
   - `sky: Synthwave`, the retro sunset.
+- **A music player** in Options > Sound (the engine's `RECORD/2026-11-04.music-player.WIP.md`): every song, with the track it is played for, or the menus, chill, or "Loose" for the five that no track uses (`music.ron`'s `loose`), kept rather than removed.
 - **A pixel filter**, tried first, was dropped (the engine's `RECORD/2026-11-03.pixel-art-look.completed.md`). Its pixels stood still on the screen, where they should move with the ground.
 
 Next:
@@ -99,8 +100,8 @@ Next:
    - run `cargo test` with no `[patch]`;
    - merge PR #35 and release the game.
 
-   Until the tag is named, the game builds only against the engine's branch (`make up ENGINE=same`): the engine at v0.0.19 refuses Costa del Sol's `look` and `sky`, and `game.ron`'s `updates`.
-2. **Meshy's props, on hold** (`docs/costa-del-sol-props.md`): the list was made for the smooth look. It is to be looked at again for the blocks and the flat sprites: perhaps only the few that stand close to the road as models, and the rest as photographed cards, as the trees are now.
+   Until the tag is named, the game builds only against the engine's branch (`make up ENGINE=same`): the engine at v0.0.19 refuses Costa Bits's `look` and `sky`, and `game.ron`'s `updates`.
+2. **Meshy's props, on hold** (`docs/costa-bits-props.md`): the list was made for the smooth look. It is to be looked at again for the blocks and the flat sprites: perhaps only the few that stand close to the road as models, and the rest as photographed cards, as the trees are now.
 3. **The stairs left in the blocks:** past the verges (13 m from the road's middle), where there is no wall, the blocks still rise or fall in steps as the road climbs, further off.
 
 ## Alongside: the website and updating from the game

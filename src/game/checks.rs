@@ -343,6 +343,13 @@ mod sound_music {
     use super::*;
 
     #[test]
+    fn the_music_player_lists_every_song_once_and_plays_it() {
+        motorust_engine::sound::music::tests::the_music_player_lists_every_song_once_and_plays_it_on(
+            &CIRCUITS,
+        );
+    }
+
+    #[test]
     fn every_song_is_in_the_pack() {
         crate::game::register();
         motorust_engine::sound::music::tests::every_song_is_in_the_pack_on(&CIRCUITS);

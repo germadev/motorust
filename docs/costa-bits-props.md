@@ -1,6 +1,6 @@
-# Costa del Sol: props to make with Meshy
+# Costa Bits: props to make with Meshy
 
-These are the props to model with Meshy for [Costa del Sol](tracks.md#costa-del-sol). It is a homage to the 8- and 16-bit arcade racers: a sunset coast road, palms, a whitewashed town, a mountain road over the sea.
+These are the props to model with Meshy for [Costa Bits](tracks.md#costa-bits). It is a homage to the 8- and 16-bit arcade racers: a sunset coast road, palms, a whitewashed town, a mountain road over the sea.
 
 > **On hold.** This list was written for a world drawn as pixel art, which has been dropped. Its look may become flat sprites that turn to face the player, combined with voxels; the props, their sizes and their prompts will be revised for it before any is made.
 

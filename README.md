@@ -96,7 +96,7 @@ bricks, shelves of every department round the walls, Hot Wheels boosters
 by the loop, and the shop's glass front, the car park outside it in the
 daylight.
 
-**Costa del Sol** is a sunset run round a bay of the Andalusian coast, the
+**Costa Bits** is a sunset run round a bay of the Andalusian coast, the
 water always on the right: a coast road past a whitewashed town, S-bends up
 the cliffs, a tunnel through the mountain at the head of the bay, down the
 far shore, up a mountain road on the cliffs over the open sea and down
