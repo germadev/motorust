@@ -52,7 +52,7 @@
         cicadas: 0.35,
         wind: 0.25,
     ),
-    song: (file: "crown_of_the_track.mp3", length: 172.9, loudness: -14.4),
+    song: (file: "sunset_victory_lap.mp3", length: 176.2, loudness: -14.4),
     pace: 1.0,
     layout: (
         control_points: [
@@ -526,7 +526,7 @@
             (along: 3740.0, side: Left, distance: 50),
         ],
         soil: Rock,
-        sky: GoldenHour,
+        sky: Dusk,
         water: Sea,
         // The ground as voxels, in blocks of one colour, 1 m on a side by the
         // roads and up to 8 m far off, cut to a palette of 12 shades of each of

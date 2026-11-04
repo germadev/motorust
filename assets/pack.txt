@@ -17,7 +17,7 @@ music/gold_mine.mp3
 music/autumn_gale.mp3
 music/beyond_the_final_turn.mp3
 music/plastic_velocity_rush.mp3
-music/crown_of_the_track.mp3
+music/sunset_victory_lap.mp3
 
 # The menus' song and free ride's chill songs, and their list.
 music/music.ron
