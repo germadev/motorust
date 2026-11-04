@@ -526,7 +526,7 @@
             (along: 3740.0, side: Left, distance: 50),
         ],
         soil: Rock,
-        sky: Dusk,
+        sky: Synthwave,
         water: Sea,
         // The ground as voxels, in blocks of one colour, 1 m on a side by the
         // roads and up to 8 m far off, cut to a palette of 12 shades of each of
