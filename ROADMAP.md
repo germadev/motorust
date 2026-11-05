@@ -94,13 +94,7 @@ Done (`RECORD/2026-11-03.costa-del-sol-track.completed.md`, and the engine's `RE
 
 Next:
 
-1. **The release, in this order:**
-   - merge the engine's PR #2 and release the engine;
-   - in this repository's `Cargo.toml`, name the new tag in both `motorust-engine` lines;
-   - run `cargo test` with no `[patch]`;
-   - merge PR #35 and release the game.
-
-   Until the tag is named, the game builds only against the engine's branch (`make up ENGINE=same`): the engine at v0.0.19 refuses Costa Bits's `look` and `sky`, and `game.ron`'s `updates`.
+1. **The release:** the engine's PR #2 (the voxel look, the sky, the updater) and #3 (the music player) are merged and released in v0.0.20. This repository's `Cargo.toml` names v0.0.20 in both `motorust-engine` lines. Left: merge PR #35 and release the game.
 2. **Meshy's props, on hold** (`docs/costa-bits-props.md`): the list was made for the smooth look. It is to be looked at again for the blocks and the flat sprites: perhaps only the few that stand close to the road as models, and the rest as photographed cards, as the trees are now.
 3. **The stairs left in the blocks:** past the verges (13 m from the road's middle), where there is no wall, the blocks still rise or fall in steps as the road climbs, further off.
 
