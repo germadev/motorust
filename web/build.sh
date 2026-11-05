@@ -35,6 +35,9 @@ sed "s/const WASM_BYTES = 0;/const WASM_BYTES = $bytes;/; s/const WASM_SHA256 = 
 # always downloads the same release the page is publishing.
 sed "s/__MOTORUST_VERSION__/$version/g" web/setup.sh > "$out/setup.sh"
 chmod +x "$out/setup.sh"
+# The version this site publishes, which the game reads to know whether it
+# can update itself (see `updates` in assets/game.ron).
+printf '%s\n' "$version" > "$out/version.txt"
 cp web/favicon.png "$out/favicon.png"
 [ -f web/favicon.ico ] && cp web/favicon.ico "$out/favicon.ico"
 [ -d web/images ] && cp -r web/images "$out/images"

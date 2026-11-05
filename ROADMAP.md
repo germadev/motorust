@@ -9,6 +9,7 @@ The benchmark has not been run since 2026-10-16, before the relief of the textur
 - `make bench` on the M4 mini, and on the M1 Pro, the M4 Pro and the BC-250, at the commit that adds the scenarios below (then `make bench.push`).
 - **The ground in the shadows:** `1p` against `1p-no-ground-shadows`, and `2p` against `2p-no-ground-shadows`. The difference is the most cutting the ground into pieces could save in the shadow maps (step 2).
 - **The edges:** `1p-msaa-2x` and `1p-smaa` against `1p` (MSAA 4×) and `1p-fxaa`: what each costs, and whether the game should start with another one (it starts with FXAA).
+- **Costa Bits**, the first track drawn as voxels: its ground is a mesh of blocks (1 m by the road, up to 8 m far off) beside the smooth ground, and its trees and palms are cards. Measured against a smooth track of its size, to see what the blocks cost in triangles, in the shadow cascades and on the web.
 - **Juguetería**, the first track indoors: its ceiling's lamps glow but cast no shadow, and the room, the furniture, the toy tracks and the toys are batched into a few meshes. Measured as it is, and again once Meshy's toys fill it (see [Alongside](#alongside-jugueterías-toys)).
 - The render world's CPU time apart from the simulation's, with Tracy (`--features bevy/trace_tracy`), where a machine is not bound by its GPU (the M4 Pro).
 
@@ -64,7 +65,7 @@ The whole plan, in full and kept up to date: `RECORD/2026-10-31.engine-split-pla
    - **4d, two packs, done** (`RECORD/2026-11-01.engine-split-step-4.completed.md`): the engine's content pack, `motorust-engine/assets/` (its identity, demo circuit and roster, the textures, the font, the gamepads' art, their credits), and the game's, `assets/`, laid over it (`content::register_pack`; a file read from the first pack that lists it), each built in by `build.rs` in a release; the modelled trees and the menu's helmet the game's, the engine going on without them. CI runs the engine's tests on its pack alone (`MOTORUST_ENGINE_ONLY=1 cargo test -- --skip game::`).
    - **4e, the move, done** (`RECORD/2026-11-01.engine-split-step-4.completed.md`): a Cargo workspace, the engine the `motorust_engine` library in `motorust-engine/` (its sources, its pack, its `build.rs`, its README), the game the root package (`src/main.rs`, `src/game/`, `assets/`) depending on it; `motorust_engine::app` builds the app, the game registers its pack and themes and adds its plugin; the engine's checks visible to the game's tests through its `testing` feature. Step 4 is done; next, step 6 (the engine published): the repository is there, `jgermade/motorust-engine`.
 5. **The editor**, in the engine, inside the game's own world, so that what is edited is seen as it will be raced: the plan and the height profile; control points, heights, banking and stretches; what stands along the road. The limits `motorust-engine/tools/circuit_layout.py` and the tests check (`curves_are_drivable`, `slopes_and_banking_stay_rideable`, the crests the bike takes off over) shown as it edits, ported to Rust and shared with the tests. Only the road and the ground near a change rebuilt (step 2's pieces).
-   - **The lap's control points, begun** (the engine's `RECORD/2026-11-02.map-editor.WIP.md`, on its branch `ccr-703edef7-3dm1sq`, not yet released): `--edit [circuit]` in a desktop development build opens the circuit from above in its own world, its control points and the lap through them, red where a bend is too tight or a grade too steep (`motorust_engine::editor::limits`, shared with the tests); points dragged, added and taken out, undone and done again, and saved into the circuit's file in place of its own, its comments kept; the circuit read again and built anew. Next: the height profile, banking and stretches, what stands along the road, the crests, entering it from the menus, and only what changed rebuilt.
+   - **The lap's control points, begun** (the engine's `RECORD/2026-11-02.map-editor.WIP.md`, from its branch `ccr-703edef7-3dm1sq`, merged as its PR #1 and released in v0.0.19): `--edit [circuit]` in a desktop development build opens the circuit from above in its own world, its control points and the lap through them, red where a bend is too tight or a grade too steep (`motorust_engine::editor::limits`, shared with the tests); points dragged, added and taken out, undone and done again, and saved into the circuit's file in place of its own, its comments kept; the circuit read again and built anew. Next: the height profile, banking and stretches, what stands along the road, the crests, entering it from the menus, and only what changed rebuilt.
    - **The height profile and the banking, and the tracks menu, begun** (same record, section 2): a panel along the bottom with the lap's height and its marks, and under it the stretches of banking and the bank, edited with the mouse and keys and saved with the rest; the bank and the bumps off the middle of the road shown as the tests check them; E in the tracks menu opens it in a development build (`make up`), Esc goes back. Next: what stands along the road and the scenery's stretches, the branches, the crests, and only what changed rebuilt.
    - **A terrain mode, begun** (same record, section 3): M in the editor, brushes as a theme park game's terrain editor (raise, lower, smooth, flatten, restore; size and strength), the ground's meshes shaped in place as it goes, the roads keeping the ground beside them; saved into the circuit's companion (`circuits/NAME.terrain`, a grid of heights over the land the scenery makes), the circuit built anew with it. Next: painting the ground's kinds, what stands along the road.
    - **Painting, the live rebuild and the roadside mode** (same record, section 4): the ground painted grass, sand or rock; a moment after each change the circuit built anew with it, not saved, the world before it kept in sight till the new one is whole (its trees and grass where the ground now is); arches, billboards, chevrons, brake markers and grandstands placed, dragged along the road, turned and taken out, and written into the circuit's file as they were but for where they stand. Next: the scenery's stretches (walls, tunnels, bridges, rows), the branches, the crests, and only what changed rebuilt.
@@ -75,6 +76,43 @@ The whole plan, in full and kept up to date: `RECORD/2026-10-31.engine-split-pla
    - **Left to the user**: this repository's visibility (private, as planned).
 
 Steps 1 and 2 are worth it before anything is split: circuits tuned without compiling.
+
+## Alongside: Costa Bits and the voxel look
+
+Content and engine together, in the branches `ccr-5ceb056d-y3evh6` of both repositories (the engine's PR #2, the game's PR #35).
+
+Done (`RECORD/2026-11-03.costa-del-sol-track.completed.md`, and the engine's `RECORD/2026-11-03.voxel-ground.completed.md`):
+
+- **The track:** Costa Bits, the ninth, a homage to the 8- and 16-bit arcade racers with no trademarked element. It is a 4.39 km lap round a bay: a coast road, a mountain road, a coast highway with crests, a fork and a long bridge. Its song is the user's "Victory in the Rearview" (the first one, "Sunset Victory Lap", is kept, loose).
+- **The look, in the engine, for any circuit:** `look: Voxel(size, shades)`. It brings:
+  - the ground in blocks;
+  - the trees and palms as flat pixel art;
+  - an arcade road with bands, striped curbs, banded walls and flat verges in bands of green;
+  - `sky: Synthwave`, the retro sunset.
+- **A music player** in Options > Sound (the engine's `RECORD/2026-11-04.music-player.WIP.md`): every song, with the track it is played for, or the menus, chill, or "Loose" for the five that no track uses (`music.ron`'s `loose`), kept rather than removed.
+- **A pixel filter**, tried first, was dropped (the engine's `RECORD/2026-11-03.pixel-art-look.completed.md`). Its pixels stood still on the screen, where they should move with the ground.
+
+Next:
+
+1. **The release:** the engine's PR #2 (the voxel look, the sky, the updater) and #3 (the music player) are merged and released in v0.0.20. This repository's `Cargo.toml` names v0.0.20 in both `motorust-engine` lines. Left: merge PR #35 and release the game.
+2. **Meshy's props, on hold** (`docs/costa-bits-props.md`): the list was made for the smooth look. It is to be looked at again for the blocks and the flat sprites: perhaps only the few that stand close to the road as models, and the rest as photographed cards, as the trees are now.
+3. **The stairs left in the blocks:** past the verges (13 m from the road's middle), where there is no wall, the blocks still rise or fall in steps as the road climbs, further off.
+
+## Alongside: the website and updating from the game
+
+Done (`RECORD/2026-11-04.new-website-and-updates.completed.md`, and the engine's `RECORD/2026-11-04.game-updater.completed.md`):
+
+- **A new landing page** (`web/index.html`) with the game's screenshots, one per track.
+- **The game updating itself:** U on the start screen, in a desktop release. It updates from the game's site:
+  - its `version.txt`;
+  - the archives in `downloads/`;
+  - their sums, `motorust-<version>-SHA256SUMS.txt`, uploaded beside them by `release.yml` before the site is deployed.
+
+  The engine has the mechanism; the game says where in `assets/game.ron`.
+
+Next:
+
+- **The first update taken end to end.** The release that brings this is the first with `version.txt` and the sums on the site, so the check is made from it to the release after it, on Linux, Windows and macOS (the `.app`). Until then, the updater has been tried only by its tests.
 
 ## Alongside: Juguetería's toys
 

@@ -17,6 +17,7 @@ music/gold_mine.mp3
 music/autumn_gale.mp3
 music/beyond_the_final_turn.mp3
 music/plastic_velocity_rush.mp3
+music/victory_in_the_rearview.mp3
 
 # The menus' song and free ride's chill songs, and their list.
 music/music.ron
@@ -24,6 +25,13 @@ music/chill_velvet_dashboard.mp3
 music/chill_sunlight_on_still_water.mp3
 music/chill_leaves_on_the_still_pond.mp3
 music/menu_asphalt_shift.mp3
+
+# The loose songs, which only the music player plays.
+music/sunset_victory_lap.mp3
+music/crown_of_the_track.mp3
+music/last_lap_of_the_quest.mp3
+music/orange_asphalt.mp3
+music/pursuit_at_the_high_pass.mp3
 
 # The circuits: their list, in the menu's order, and their files.
 circuits/circuits.ron
@@ -35,6 +43,7 @@ circuits/ghost_island.ron
 circuits/moon_base.ron
 circuits/fellowship_road.ron
 circuits/toy_store.ron
+circuits/costa_bits.ron
 
 # The bikes' roster.
 bikes/roster.ron

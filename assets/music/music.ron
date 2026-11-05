@@ -1,7 +1,10 @@
 // The music that is not a track's own (each track names its song in its
 // file in assets/circuits/): the menus' song, low in the background, if
-// there is one; and the chill songs free ride can play one after another,
-// a little quieter, if there are any.
+// there is one; the chill songs free ride can play one after another, a
+// little quieter, if there are any; and the loose songs, which no track or
+// screen plays, only the music player (Options > Sound).
+// (the_iron_paddock.mp3 is not among them: it is Moon Base's song, the same
+// file as moon_base.mp3.)
 //
 // Each song: its MP3 in this folder, how long it lasts (s, as `ffprobe`
 // gives it) and how loud it is above 500 Hz, as mastered (LUFS: the `I:` of
@@ -25,6 +28,28 @@
         (
             name: "Leaves on the Still Pond",
             song: (file: "chill_leaves_on_the_still_pond.mp3", length: 176.9, loudness: -17.7),
+        ),
+    ],
+    loose: [
+        (
+            name: "Sunset Victory Lap",
+            song: (file: "sunset_victory_lap.mp3", length: 176.2, loudness: -14.4),
+        ),
+        (
+            name: "Crown of the Track",
+            song: (file: "crown_of_the_track.mp3", length: 172.9, loudness: -14.4),
+        ),
+        (
+            name: "Last Lap of the Quest",
+            song: (file: "last_lap_of_the_quest.mp3", length: 167.8, loudness: -15.8),
+        ),
+        (
+            name: "Orange Asphalt",
+            song: (file: "orange_asphalt.mp3", length: 168.7, loudness: -14.6),
+        ),
+        (
+            name: "Pursuit at the High Pass",
+            song: (file: "pursuit_at_the_high_pass.mp3", length: 166.7, loudness: -18.4),
         ),
     ],
 )

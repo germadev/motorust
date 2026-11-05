@@ -7,10 +7,21 @@
 //   (FOLDER-crash.log);
 // - logo: the title on the start menu, its first part in white and the
 //   rest in rust orange;
-// - icon: the window's icon, a PNG in the content pack (none if left out).
+// - icon: the window's icon, a PNG in the content pack (none if left out);
+// - updates: where its releases are published, for it to update itself.
 (
     title: "Motorust",
     folder: "motorust",
     logo: (plain: "MOTO", accent: "RUST"),
     icon: Some("icon-256.png"),
+    // Where the releases are published, for the game to update itself (the
+    // engine's src/updater.rs): {version} is the release's ("0.0.18"),
+    // {target} the platform's ("x86_64-unknown-linux-gnu"). All of it on the
+    // game's site: its version.txt, written by web/build.sh, and the archives
+    // and their sums, which release.yml uploads beside them.
+    updates: Some((
+        latest: "https://motorust.germade.dev/version.txt",
+        archive: "https://motorust.germade.dev/downloads/motorust-{version}-{target}",
+        sums: "https://motorust.germade.dev/downloads/motorust-{version}-SHA256SUMS.txt",
+    )),
 )

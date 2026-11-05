@@ -22,7 +22,7 @@ The engine is a crate of its own, `motorust_engine`, in its public repository, [
   ```
 
   The game then builds with the clone as it is (and `Cargo.lock` names the clone instead of the tag: that change is not committed either); the engine's changes are committed, tested and released in its repository.
-- **Another version of the engine for a while** (a branch, a tag or a commit of its repository, or a clone of it): `ENGINE` with `make up`, `build`, `app`, `test` and `bench`, as `make up ENGINE=my-branch`, `make test ENGINE=v0.0.20` or `make up ENGINE=../motorust-engine`. `tools/with_engine.sh` checks a branch, tag or commit out in `.tmp/engine/<name>` (cloned the first time, fetched again each time, a branch at its latest), runs cargo with a `[patch]` pointing there given with `--config` (nothing written to `.cargo/config.toml`), and puts `Cargo.lock` back as it was afterwards. Nothing to commit.
+- **Another version of the engine for a while** (a branch, a tag or a commit of its repository, or a clone of it): `ENGINE` with `make up`, `build`, `app`, `test` and `bench`, as `make up ENGINE=my-branch`, `make test ENGINE=v0.0.20` or `make up ENGINE=../motorust-engine`; `make up ENGINE=same` takes the engine's branch named as the game's current one, for a change made on both at once on branches of the same name (it stops if the game is on no branch, or the engine has no branch of that name). `tools/with_engine.sh` checks a branch, tag or commit out in `.tmp/engine/<name>` (cloned the first time, fetched again each time, a branch at its latest), runs cargo with a `[patch]` pointing there given with `--config` (nothing written to `.cargo/config.toml`), and puts `Cargo.lock` back as it was afterwards. Nothing to commit.
 - **What else of the engine the game uses**: its credits, which the packages carry as `CREDITS-ENGINE.md`, and its tools (`tools/circuit_layout.py`), found where Cargo has its sources by `tools/engine_dir.sh`.
 
 ## Make targets
@@ -101,8 +101,9 @@ grep -A1 '^name = "wasm-bindgen"$' Cargo.lock
 2. Runs `wasm-bindgen --target web`, dropping the name and producers sections (the function names take almost as much space as the code).
 3. Copies `web/index.html` into the output folder with the size of the `.wasm` filled in (`WASM_BYTES`), so the progress bar works even when the server sends the file compressed without a length, and its SHA-256 (`WASM_SHA256`), which names the build (see [Caching the game](#caching-the-game)).
 4. Copies `web/setup.sh` into the output folder with the version of the build filled in, so the installer for Linux and macOS downloads the same release the page is publishing (see [The installer for Linux and macOS](#the-installer-for-linux-and-macos)).
+5. Writes `version.txt`, the version the site publishes, which the desktop game reads to know whether it can update itself (see [Updating from the game](#updating-from-the-game)).
 
-The result is three files for the game (`index.html`, `motorust.js` and `motorust_bg.wasm`) plus the installer (`setup.sh`).
+The result is three files for the game (`index.html`, `motorust.js` and `motorust_bg.wasm`) plus the installer (`setup.sh`) and `version.txt`. The page's screenshots are in `web/images/` (one `track-<name>.jpg` for each track, 1280 × 720), copied with it.
 
 ### The page
 
@@ -190,6 +191,18 @@ curl -fsSL https://motorust.germade.dev/setup.sh | bash
 wget -qO- https://motorust.germade.dev/setup.sh | bash
 ```
 
-It downloads `motorust-<version>-<target>.tar.gz` from `/downloads/` (the Pages function serves it from the R2 bucket, and falls back to the GitHub release), checks it against `SHA256SUMS.txt`, leaves the executable in `~/motorust/motorust` and links it into a directory of `$PATH` (`~/.local/bin` when it is there, otherwise the first writable one) so the game runs with `motorust`. Run it again and it offers to update or uninstall. It also takes `--install`, `--update`, `--uninstall`, `--dir` and `--version`.
+It downloads `motorust-<version>-<target>.tar.gz` from `/downloads/` (the Pages function serves it from the R2 bucket, and falls back to the GitHub release), checks it against the sums published beside it (`motorust-<version>-SHA256SUMS.txt`, or the GitHub release's `SHA256SUMS.txt` for older releases), leaves the executable in `~/motorust/motorust` and links it into a directory of `$PATH` (`~/.local/bin` when it is there, otherwise the first writable one) so the game runs with `motorust`. Run it again and it offers to update or uninstall. It also takes `--install`, `--update`, `--uninstall`, `--dir` and `--version`.
 
 `web/build.sh` writes the version of the build into the script (the `__MOTORUST_VERSION__` placeholder), so the installer always downloads the release the site is publishing, and copies it to `dist/web/setup.sh`.
+
+## Updating from the game
+
+A release build of the game on the desktop updates itself (the engine's `src/updater.rs`), from where `updates` in `assets/game.ron` says the releases are:
+
+- `latest`: `https://motorust.germade.dev/version.txt`, written by `web/build.sh`;
+- `archive`: `https://motorust.germade.dev/downloads/motorust-{version}-{target}`, the archives `release.yml` uploads (`.zip` on Windows, `-app.zip` for the macOS app, `.tar.gz` otherwise);
+- `sums`: `https://motorust.germade.dev/downloads/motorust-{version}-SHA256SUMS.txt`, the archives' SHA-256 sums, which `release.yml` uploads beside them before it deploys the site (so they are there by the time `version.txt` says the release is out).
+
+Everything the game updates from is on the game's own site: the engine is only a library, with no site or binaries of its own.
+
+As it starts, it reads `latest`; if it is newer, the version on the start menu says so, and U downloads the archive, checks it against its sum (nothing is touched if it does not match), unpacks it beside the game, puts the executable (or the app) aside as `<name>.old`, moves the new one into its place and restarts it. What was put aside is removed at the next start. `MOTORUST_NO_UPDATES` in the environment keeps the game from looking; a development build never does.

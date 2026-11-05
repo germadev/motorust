@@ -343,6 +343,13 @@ mod sound_music {
     use super::*;
 
     #[test]
+    fn the_music_player_lists_every_song_once_and_plays_it() {
+        motorust_engine::sound::music::tests::the_music_player_lists_every_song_once_and_plays_it_on(
+            &CIRCUITS,
+        );
+    }
+
+    #[test]
     fn every_song_is_in_the_pack() {
         crate::game::register();
         motorust_engine::sound::music::tests::every_song_is_in_the_pack_on(&CIRCUITS);
@@ -650,6 +657,10 @@ mod circuits {
             vec![868.0, 1905.1, 2955.1, 3585.1, 4565.1]
         );
         assert_eq!(circuits[7].checkpoints(), vec![1045.0, 1630.0, 2564.0]);
+        assert_eq!(
+            circuits[8].checkpoints(),
+            vec![800.0, 1700.0, 2700.0, 3700.0]
+        );
     }
 }
 

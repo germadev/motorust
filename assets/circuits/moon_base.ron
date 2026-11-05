@@ -56,7 +56,7 @@
         cicadas: 0.0,
         wind: 0.28,
     ),
-    song: (file: "moon_base.mp3", length: 179.6, loudness: -16.5),
+    song: (file: "moon_base.mp3", length: 179.6, loudness: -16.5, title: Some("The Iron Paddock")),
     pace: 1.0,
     layout: (
         control_points: [

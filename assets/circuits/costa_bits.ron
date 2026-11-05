@@ -1,0 +1,540 @@
+// Costa Bits: a sunset run round a bay of the Andalusian coast. The lap
+// goes clockwise round the bay, out over the mountains on the open sea and
+// back along the south coast, over the bay's outlet and through a fork
+// before the line.
+//
+// 1. Salida / Recta costera: the start straight runs north along the bay's
+//    west shore, a railing, palms and the water on the right, the town's
+//    whitewashed houses on the left.
+// 2. Curvas del acantilado: S-bends climbing north up the cliffs, cut rock
+//    on the left, the bay below on the right, to some 27 m.
+// 3. Túnel de la montaña: round to the east at the head of the bay, and
+//    through the mountain behind it in a tunnel.
+// 4. Out of the tunnel, south down the bay's east shore, and east over the
+//    headland through a pine forest to the open sea.
+// 5. Carretera de la sierra: a mountain road south up the cliffs over the
+//    open sea, cut rock on the right, a stone parapet over the drop on the
+//    left, to a summit some 56 m up, on a straight, where the bike takes
+//    off; then down in bends round the cape, the lighthouse far below, and
+//    off the mountain to the south coast.
+// 6. Autopista de la costa: a straight west along the south coast over two
+//    crests in a row, the bike in the air over each flat out, palms close on
+//    both sides, the sea on the left; and the Puente costero, over the bay's
+//    outlet to the sea.
+// 7. La bifurcación: round to the right, north, and the road splits before
+//    the line: a way to the left over a hump, the lap swinging out to the
+//    right, both as quick, and they meet again on the start straight.
+//
+// Where things are, in metres from the finish line:
+//
+// - the start straight:      Span(4214.0, 340.0), a crest at 155 m
+// - the cliffs:              Span(380.0, 930.0)
+// - the tunnel:              Span(985.0, 1150.0)
+// - the east shore:          Span(1230.0, 1540.0)
+// - over the headland:       Span(1540.0, 2040.0), through the forest
+// - up the mountain road:    Span(2040.0, 2500.0), the summit at 2500 m
+// - down round the cape:     Span(2540.0, 3174.0), the lighthouse at (845.0, 580.0)
+// - the coast highway:       Span(3174.0, 3444.0), crests at 3230 and 3340 m
+// - the bridge:              Span(3444.0, 3650.0), over the outlet, 165 m wide
+// - the fork:                Span(3864.0, 4214.0)
+//
+// How a circuit's file is written: see the engine's src/circuits/data.rs.
+(
+    name: "Costa Bits",
+    name_en: "Costa Bits",
+    description: "Al atardecer: acantilados, un túnel, una carretera\nde montaña, una autopista de la costa y una bifurcación",
+    description_en: "At sunset: cliffs, a tunnel, a mountain road,\na coast highway and a fork",
+    // A bay at sunset: the sea and its gulls, the cicadas still singing.
+    ambience: (
+        sea: 0.85,
+        gulls: 0.6,
+        birds: 0.2,
+        cicadas: 0.35,
+        wind: 0.25,
+    ),
+    // Called Costa del Sol before it was released: records saved under
+    // that name are moved to this one.
+    formerly: ["Costa del Sol"],
+    song: (file: "victory_in_the_rearview.mp3", length: 176.5, loudness: -13.2),
+    pace: 1.0,
+    layout: (
+        control_points: [
+            // 1. The start straight, north (-Z) along the bay's west shore.
+            (0.0, 0.0),
+            (0.0, -100.0),
+            (0.0, -200.0),
+            (0.0, -300.0),
+            // 2. The cliffs: S-bends climbing north, the bay on the right.
+            (-12.0, -380.0),
+            (-40.0, -450.0),
+            (-45.0, -520.0),
+            (-20.0, -585.0),
+            (10.0, -640.0),
+            (15.0, -705.0),
+            (0.0, -770.0),
+            // 3. Round to the east at the head of the bay, and through the
+            //    mountain.
+            (20.0, -835.0),
+            (70.0, -870.0),
+            (140.0, -880.0),
+            (220.0, -878.0),
+            (300.0, -870.0),
+            // 4. Out of the tunnel, round to the south and down the east shore.
+            (370.0, -845.0),
+            (420.0, -790.0),
+            (440.0, -720.0),
+            (445.0, -630.0),
+            // 5. Off the bay's shore, east over the headland to the open sea.
+            (470.0, -565.0),
+            (520.0, -525.0),
+            (600.0, -505.0),
+            (690.0, -495.0),
+            (780.0, -470.0),
+            (850.0, -420.0),
+            // 6. The mountain road: south up the cliffs over the open sea, on the
+            //    left.
+            (880.0, -340.0),
+            (890.0, -230.0),
+            (892.0, -110.0),
+            (890.0, 10.0),
+            (885.0, 130.0),
+            (875.0, 250.0),
+            // Round the cape with the lighthouse, and back west to the bridge.
+            (815.0, 480.0),
+            (778.0, 565.0),
+            (720.0, 627.0),
+            // 7. Autopista de la costa: west along the south coast, straight,
+            //    over two crests, palms close on both sides, and over the bay's
+            //    outlet on the bridge.
+            (645.0, 651.0),
+            (560.0, 652.0),
+            (470.0, 652.0),
+            (380.0, 652.0),
+            (290.0, 652.0),
+            (200.0, 652.0),
+            (125.0, 650.0),
+            // Round to the right, north towards the finish.
+            (72.0, 638.0),
+            (30.0, 610.0),
+            (6.0, 580.0),
+            // 8. The fork: the lap snakes between its ways, as through Ghost
+            //    Island's temple split (Gold Mine's second, turned north), the
+            //    way off it swinging out to the left.
+            (0.0, 560.0),
+            (0.0, 510.0),
+            (-9.1, 468.8),
+            (-23.9, 427.5),
+            (-22.1, 386.2),
+            (0.0, 345.0),
+            (22.1, 303.8),
+            (23.9, 262.5),
+            (9.1, 221.2),
+            (0.0, 180.0),
+            (0.0, 130.0),
+            (0.0, 55.0),
+        ],
+        // Over a crest on the start straight, up the cliffs to the tunnel, some
+        // 27 m up, level through the mountain, down the east shore, up the
+        // mountain road to its summit, down round the cape, over the coast
+        // highway's crests and the bridge, and gently down through the fork.
+        elevation: [
+            (0.0, 0.0),
+            // A crest on the coast road: flat out, the bike takes off over it
+            // and lands on the straight, well before the cliffs.
+            (50.0, 0.6),
+            (120.0, 5.4),
+            (155.0, 7.2),
+            (190.0, 4.2),
+            (250.0, 2.0),
+            (300.0, 1.6),
+            // Up the cliffs, steadily, with no crest in the bends.
+            (382.0, 2.5),
+            (456.0, 5.5),
+            (528.0, 9.5),
+            (598.0, 13.5),
+            (660.0, 17.0),
+            (726.0, 20.5),
+            (792.0, 23.5),
+            (862.0, 25.8),
+            (924.0, 27.0),
+            // Through the mountain.
+            (994.0, 27.5),
+            (1074.0, 27.8),
+            (1154.0, 27.3),
+            // Down the east shore.
+            (1230.0, 26.0),
+            (1304.0, 24.0),
+            (1378.0, 21.5),
+            (1468.0, 18.8),
+            (1560.0, 16.5),
+            // Over the headland, and up the mountain road on the cliffs over the
+            // open sea, steadily, with no crest in the bends.
+            (1650.0, 15.5),
+            (1742.0, 15.0),
+            (1834.0, 16.5),
+            (1956.0, 21.0),
+            (2042.0, 27.0),
+            (2154.0, 36.0),
+            (2274.0, 44.5),
+            (2394.0, 51.0),
+            // The summit, some 56 m up, on a straight: flat out, the bike takes
+            // off over it and lands well before the bends down to the cape.
+            (2465.0, 54.0),
+            (2500.0, 56.0),
+            (2535.0, 53.0),
+            (2580.0, 50.5),
+            (2634.0, 49.5),
+            // Down round the cape, the lighthouse below, and off the mountain to
+            // the south coast.
+            (2756.0, 43.0),
+            (2872.0, 35.0),
+            (2964.0, 29.0),
+            (3050.0, 22.5),
+            (3130.0, 17.0),
+            // The coast highway: two crests in a row on the straight, the bike
+            // in the air over each, flat out, and down again before the next.
+            (3165.0, 14.0),
+            (3195.0, 14.6),
+            (3230.0, 16.0),
+            (3260.0, 13.9),
+            (3285.0, 12.9),
+            (3310.0, 13.7),
+            (3340.0, 15.3),
+            (3370.0, 13.3),
+            (3400.0, 11.5),
+            // Over the bay's outlet on the long bridge, a few metres over the
+            // water.
+            (3444.0, 10.2),
+            (3540.0, 10.0),
+            (3650.0, 9.4),
+            // Round to the right, and gently down through the fork to the line.
+            (3704.0, 8.4),
+            (3754.0, 7.4),
+            (3794.0, 6.6),
+            (3864.0, 5.0),
+            (4214.0, 2.6),
+            (4270.0, 1.4),
+            (4330.0, 0.4),
+        ],
+        wall: 11.5,
+        // Hardly banked where the road splits, as in Ghost Island and Gold
+        // Mine.
+        banking: [(from: 3864.0, to: 4214.0, factor: 0.25)],
+        // The fork before the line: a way to the left of the lap over a hump
+        // where it is furthest from it, broad at its top; the lap swings out to
+        // the right meanwhile, so that neither is the quicker. Its points are
+        // those of Ghost Island's temple split (Gold Mine's second), moved here
+        // as they are: both run north.
+        branches: [
+            (
+                from: 3864.0,
+                to: 4214.0,
+                approach: [
+                    (-1.8, 500.1),
+                    (-12.6, 471.5),
+                    (-35.2, 438.6),
+                    (-57.1, 404.4),
+                    (-68.3, 371.4),
+                    (-65.7, 338.4),
+                    (-51.7, 305.4),
+                    (-32.3, 272.5),
+                    (-13.0, 244.8),
+                    (-3.0, 217.8),
+                    (0.5, 193.4),
+                ],
+                rise: [
+                    (106.3, 0.00),
+                    (112.3, 0.01),
+                    (118.3, 0.06),
+                    (124.3, 0.22),
+                    (130.3, 0.51),
+                    (136.3, 0.87),
+                    (142.3, 1.26),
+                    (148.3, 1.65),
+                    (154.3, 2.04),
+                    (160.3, 2.43),
+                    (166.3, 2.82),
+                    (172.3, 3.20),
+                    (178.3, 3.58),
+                    (184.3, 3.91),
+                    (190.3, 4.17),
+                    (196.3, 4.36),
+                    (202.3, 4.47),
+                    (208.3, 4.50),
+                    (214.3, 4.45),
+                    (220.3, 4.32),
+                    (226.3, 4.11),
+                    (232.3, 3.83),
+                    (238.3, 3.48),
+                    (244.3, 3.11),
+                    (250.3, 2.72),
+                    (256.3, 2.33),
+                    (262.3, 1.94),
+                    (268.3, 1.55),
+                    (274.3, 1.16),
+                    (280.3, 0.77),
+                    (286.3, 0.42),
+                    (292.3, 0.16),
+                    (298.3, 0.04),
+                    (304.3, 0.01),
+                    (310.3, 0.00),
+                ],
+            ),
+        ],
+    ),
+    scenery: (
+        // The land round the bay, its mouth open to the sea to the south under
+        // the bridge: from the bridge's west end, up the bay's west shore, round
+        // its head under the mountain and down its east shore to the bridge's
+        // east end; then out round the cape with the lighthouse, up the open
+        // coast under the cliffs of the mountain road, round the mountains to
+        // the north and down the west coast.
+        coast: Outline([
+            // The west bank of the bay's outlet, a channel to the sea under the
+            // coast highway's bridge.
+            (145.0, 688.0),
+            (145.0, 320.0),
+            (135.0, 230.0),
+            (118.0, 158.0),
+            (80.0, 148.0),
+            (42.0, 120.0),
+            (38.0, 20.0),
+            (38.0, -100.0),
+            (38.0, -300.0),
+            (28.0, -395.0),
+            (6.0, -460.0),
+            (2.0, -520.0),
+            (22.0, -578.0),
+            (50.0, -635.0),
+            (56.0, -700.0),
+            (52.0, -760.0),
+            (90.0, -805.0),
+            (170.0, -820.0),
+            (260.0, -815.0),
+            (335.0, -795.0),
+            (378.0, -750.0),
+            (400.0, -700.0),
+            (406.0, -630.0),
+            (420.0, -540.0),
+            (410.0, -450.0),
+            (392.0, -360.0),
+            (400.0, -270.0),
+            (414.0, -180.0),
+            (408.0, -90.0),
+            (405.0, 0.0),
+            (384.0, 72.0),
+            (345.0, 122.0),
+            (322.0, 152.0),
+            // The outlet's east bank, and out along the south coast below the
+            // coast highway, round the cape with the lighthouse and up under the
+            // cliffs.
+            (315.0, 230.0),
+            (310.0, 320.0),
+            // The south coast close below the highway, a beach between its
+            // railing and the sea.
+            (310.0, 688.0),
+            (400.0, 686.0),
+            (560.0, 686.0),
+            (650.0, 684.0),
+            (725.0, 676.0),
+            // The cape, jutting out for the lighthouse.
+            (795.0, 668.0),
+            (855.0, 640.0),
+            (885.0, 570.0),
+            (860.0, 505.0),
+            // Right under the mountain road's parapet, some 30 m from its
+            // middle, so that the cliff drops from the wall to the sea.
+            (882.0, 370.0),
+            (906.0, 250.0),
+            (916.0, 130.0),
+            (921.0, 10.0),
+            (923.0, -110.0),
+            (921.0, -230.0),
+            (911.0, -340.0),
+            (898.0, -440.0),
+            (830.0, -560.0),
+            (760.0, -700.0),
+            (640.0, -860.0),
+            (520.0, -1020.0),
+            (300.0, -1110.0),
+            (60.0, -1090.0),
+            (-140.0, -980.0),
+            (-230.0, -760.0),
+            (-250.0, -480.0),
+            (-235.0, -200.0),
+            (-215.0, 150.0),
+            (-205.0, 450.0),
+            (-170.0, 650.0),
+            (-70.0, 715.0),
+            (80.0, 700.0),
+        ]),
+        hills: 18.0,
+        greens: Mediterranean,
+        grass_shade: 1.0,
+        massifs: [
+            // The mountain at the head of the bay, which the tunnel goes through.
+            (center: (210.0, -930.0), radius: 150.0, height: 62.0),
+            (center: (90.0, -960.0), radius: 90.0, height: 48.0),
+            (center: (340.0, -950.0), radius: 90.0, height: 44.0),
+            // The cliffs above the road on the west, and hills behind the town.
+            (center: (-110.0, -560.0), radius: 80.0, height: 42.0),
+            (center: (-100.0, -730.0), radius: 75.0, height: 48.0),
+            (center: (-130.0, -300.0), radius: 80.0, height: 26.0),
+            // The hills of the east shore, behind the road.
+            (center: (560.0, -680.0), radius: 90.0, height: 36.0),
+            (center: (565.0, -380.0), radius: 80.0, height: 26.0),
+            // The mountain the road climbs, cut into its seaward side; a mesa of
+            // bare rock straight ahead up the climb, over the cape; and a crag.
+            (center: (680.0, -120.0), radius: 190.0, height: 72.0, climbed: true),
+            (center: (735.0, 330.0), radius: 70.0, height: 115.0),
+            (center: (640.0, -330.0), radius: 70.0, height: 95.0),
+            // An islet in the bay, and another off the cliffs.
+            (center: (230.0, -330.0), radius: 30.0, height: 11.0),
+            (center: (1040.0, 120.0), radius: 26.0, height: 10.0),
+        ],
+        cuttings: [
+            // The cliffs: cut rock on the left all the way up.
+            (span: Span(380.0, 930.0), side: Left, height: 16.0),
+            // Rock on both sides before the mouths of the tunnel.
+            (span: Span(930.0, 990.0), side: Right, height: 12.0),
+            (span: Span(1150.0, 1220.0), side: Left, height: 14.0),
+            (span: Span(1150.0, 1220.0), side: Right, height: 10.0),
+            // A rock wall on the left of the east shore road, high up.
+            (span: Span(1230.0, 1480.0), side: Left, height: 14.0),
+            // The mountain road, cut into the cliffs: rock on the right all the
+            // way up, and on the way down round the cape.
+            (span: Span(2040.0, 2440.0), side: Right, height: 24.0),
+            (span: Span(2600.0, 3000.0), side: Right, height: 20.0),
+        ],
+        // Mountains closing the horizon inland, to the north; to the south,
+        // open sea.
+        mountains: [
+            Range(
+                center: (200.0, -400.0),
+                near: 1500.0,
+                far: 2600.0,
+                facing: Some((direction: (0.0, -1.0), from: -0.45, to: 0.45)),
+                relief: (low: 90.0, high: 260.0, scale: 300.0, octaves: 4),
+            ),
+        ],
+        curbs: [(0.85, 0.08, 0.06), (0.95, 0.95, 0.95)],
+        walls: [
+            // The start straight: a railing over the bay on the right, stone on
+            // the town's side.
+            (span: Span(4214.0, 340.0), side: Right, style: Railing),
+            (span: Span(4214.0, 340.0), side: Left, style: Stone),
+            // The cliffs: a railing over the drop to the bay, stone against the
+            // rock.
+            (span: Span(340.0, 930.0), side: Right, style: Railing),
+            (span: Span(340.0, 930.0), side: Left, style: Stone),
+            // Down the east shore, a railing over the bay.
+            (span: Span(1230.0, 1540.0), side: Right, style: Railing),
+            // The mountain road: a stone parapet over the drop to the sea on the
+            // left; then a railing along the coast highway over the sea, either
+            // side of the bridge.
+            (span: Span(2040.0, 3100.0), side: Left, style: Stone),
+            (span: Span(3100.0, 3444.0), side: Left, style: Railing),
+            (span: Span(3650.0, 3864.0), side: Left, style: Railing),
+        ],
+        tunnels: [Span(985.0, 1150.0)],
+        bridges: [(span: Span(3444.0, 3650.0), style: Truss)],
+        gantries: [
+            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA DEL SOL")),
+            (along: 800.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+            (along: 1700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+            (along: 2700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+            (along: 3700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+        ],
+        billboards: [
+            (
+                along: 180.0,
+                side: Left,
+                text: "MOTORUST",
+                color: (0.1, 0.1, 0.12),
+                // RUST in the colour of rust, as in the title.
+                accent: Some((4, (0.9, 0.4, 0.12))),
+            ),
+            (along: 1560.0, side: Left, text: "SUNSET RUN", color: (0.85, 0.35, 0.08)),
+            (along: 1990.0, side: Right, text: "SIERRA", color: (0.1, 0.2, 0.7)),
+            (along: 3285.0, side: Right, text: "GRAND PRIX", color: (0.1, 0.2, 0.7)),
+        ],
+        lamps: [
+            (span: Span(4214.0, 340.0), side: Left, lateral: 12.4, every: 40.0),
+            (span: Span(1230.0, 1540.0), side: Left, lateral: 12.4, every: 50.0),
+        ],
+        trees: [UmbrellaPine, Olive, Cypress, MaritimePine, Almond],
+        houses: (
+            max: 12,
+            paints: [
+                (0.98, 0.97, 0.94),
+                (0.97, 0.95, 0.9),
+                (0.96, 0.9, 0.76),
+            ],
+            // The town along the start straight, a hamlet over the headland and
+            // a few houses on the cape.
+            spans: [Span(4214.0, 340.0), Span(1700.0, 1950.0), Span(3660.0, 3790.0)],
+            style: Cottage,
+        ),
+        palms: [
+            (span: Span(4214.0, 340.0), side: Right, lateral: 15.5, every: 24.0),
+            (span: Span(4214.0, 340.0), side: Left, lateral: 17.0, every: 36.0),
+            // The coast highway: palms close on both sides, one every 12 m.
+            (span: Span(3174.0, 3444.0), side: Right, lateral: 15.0, every: 12.0),
+            (span: Span(3174.0, 3444.0), side: Left, lateral: 15.0, every: 12.0),
+        ],
+        // A pine forest over the headland and up the foot of the mountain.
+        forests: [(span: Span(1600.0, 2150.0), species: [Tall])],
+        buoys: [
+            (120.0, -150.0),
+            (200.0, -520.0),
+            (300.0, -250.0),
+            (230.0, 290.0),
+            (985.0, -150.0),
+            (990.0, 60.0),
+        ],
+        // On the cape, below the road coming down round it.
+        lighthouses: [(position: (845.0, 580.0), height: 24.0)],
+        boats: [
+            (position: (150.0, -250.0), heading: 0.4, kind: Sailboat),
+            (position: (300.0, -560.0), heading: -1.1, kind: Sailboat),
+            (position: (260.0, -80.0), heading: 2.0, kind: Yacht),
+            (position: (200.0, 260.0), heading: 1.2, kind: Sailboat),
+            // Yachts and sailboats on the open sea below the cliffs, and a
+            // sailboat off the cape.
+            (position: (985.0, -260.0), heading: 1.5, kind: Yacht),
+            (position: (990.0, -40.0), heading: 1.6, kind: Yacht),
+            (position: (985.0, 180.0), heading: 1.4, kind: Yacht),
+            (position: (1010.0, 330.0), heading: -0.6, kind: Sailboat),
+            (position: (640.0, 800.0), heading: 0.3, kind: Sailboat),
+            (position: (380.0, 790.0), heading: -2.6, kind: Yacht),
+        ],
+        chevrons: [
+            (along: 680.0, side: Right, direction: Left),
+            (along: 760.0, side: Left, direction: Right),
+            (along: 860.0, side: Left, direction: Right),
+            // Round the cape, and round to the right off the bridge.
+            (along: 2760.0, side: Left, direction: Right),
+            (along: 2900.0, side: Left, direction: Right),
+            (along: 3680.0, side: Left, direction: Right),
+        ],
+        grandstands: [(along: 70.0, side: Left, lateral: 16.5, length: 34.0)],
+        beach_parasols: [
+            (position: (30.0, -160.0), count: 5),
+            (position: (30.0, -250.0), count: 4),
+            // The beach below the coast highway.
+            (position: (440.0, 674.0), count: 4),
+            (position: (580.0, 674.0), count: 5),
+        ],
+        brake_markers: [
+            (along: 3740.0, side: Left, distance: 50),
+        ],
+        soil: Rock,
+        sky: Synthwave,
+        water: Sea,
+        // The ground as voxels, in blocks of one colour, 1 m on a side by the
+        // roads and up to 8 m far off, cut to a palette of 12 shades of each of
+        // red, green and blue; the trees as flat sprites of pixel art facing the
+        // camera (the engine's `Look::Voxel`).
+        look: Voxel(size: 1.0, shades: Some(12)),
+    ),
+)

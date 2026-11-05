@@ -6,6 +6,8 @@
 #   make up ENGINE=my-branch          # the engine's branch, fetched afresh
 #   make test ENGINE=v0.0.20          # a tag (or a commit)
 #   make up ENGINE=../motorust-engine # a clone of it, as it is
+#   make up ENGINE=same               # the engine's branch named as the
+#                                     # game's current one, fetched afresh
 #
 #   tools/with_engine.sh my-branch cargo run --features dynamic
 #
@@ -14,7 +16,9 @@
 # a [patch] of the engine pointing there, given to cargo with --config, so
 # nothing is written to .cargo/config.toml (see docs/building.md, "The
 # engine"). Cargo.lock, which the patch changes, is put back as it was
-# afterwards. With ENGINE empty, the command is run as it is.
+# afterwards. With ENGINE empty, the command is run as it is. `same` is
+# the branch the game's checkout is on, for a change made on both at once
+# on branches of the same name; the engine must have that branch.
 #
 # Needs git and cargo.
 set -euo pipefail
@@ -27,6 +31,17 @@ if [ -z "$engine" ]; then
 fi
 
 cd "$(dirname "$0")/.."
+if [ "$engine" = "same" ]; then
+  engine="$(git rev-parse --abbrev-ref HEAD)"
+  if [ "$engine" = "HEAD" ]; then
+    echo "ENGINE=same: the game's checkout is on no branch (a detached HEAD)" >&2
+    exit 1
+  fi
+  if ! git ls-remote --exit-code --heads "$URL" "$engine" > /dev/null; then
+    echo "ENGINE=same: the engine has no branch $engine" >&2
+    exit 1
+  fi
+fi
 if [ -d "$engine" ]; then
   folder="$(cd "$engine" && pwd)"
   echo "The engine from $folder ($(git -C "$folder" rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'not a clone'))" >&2
