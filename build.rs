@@ -53,11 +53,14 @@ fn git(args: &[&str]) -> Option<String> {
 /// Writes `pack.rs` in `OUT_DIR`: the game's content pack's files, those
 /// `assets/pack.txt` lists, each by its path in the pack with its bytes
 /// built in (`include_bytes!`), for `motorust_engine::content` to serve
-/// from memory in a release build and on the web (the engine's crate builds
-/// its own pack in the same way).
+/// from memory in a release build (the engine's crate builds its own pack
+/// in the same way). On the web none is built in, so the `.wasm` stays
+/// small: the page downloads them apart, in the `content.pack` that
+/// `web/build.sh` writes, and hands them to the game.
 fn pack() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
     let list = std::fs::read_to_string(root.join("pack.txt")).expect("assets/pack.txt");
+    let web = std::env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|arch| arch == "wasm32");
     let mut code = String::from("pub const FILES: &[(&str, &[u8])] = &[\n");
     for file in list
         .lines()
@@ -66,6 +69,9 @@ fn pack() {
     {
         let path = root.join(file);
         assert!(path.is_file(), "assets/pack.txt: no file assets/{file}");
+        if web {
+            continue;
+        }
         code += &format!(
             "    ({file:?}, include_bytes!({:?})),\n",
             path.display().to_string()
