@@ -638,11 +638,20 @@
     const WASM_BYTES = 0;
     // build.sh fills in the SHA-256 of the .wasm
     const WASM_SHA256 = "";
+    // ...and those of content.pack, the game's files (models, textures,
+    // circuits), which are not inside the .wasm: the page hands them over.
+    const CONTENT_BYTES = 0;
+    const CONTENT_SHA256 = "";
     const GAME_VERSION = "0.0.1";
-    const WASM_URL = WASM_SHA256
-      ? `./motorust_bg.wasm?v=${WASM_SHA256.slice(0, 16)}`
-      : "./motorust_bg.wasm";
-    const WASM_CACHE = "motorust-wasm";
+    // Each build's files have their own URL, named by their SHA-256.
+    const versioned = (file, hash) => (hash ? `./${file}?v=${hash.slice(0, 16)}` : `./${file}`);
+    const WASM = { url: versioned("motorust_bg.wasm", WASM_SHA256), bytes: WASM_BYTES, sha256: WASM_SHA256 };
+    const CONTENT = { url: versioned("content.pack", CONTENT_SHA256), bytes: CONTENT_BYTES, sha256: CONTENT_SHA256 };
+    const FILES = [WASM, CONTENT];
+    // The global the game takes content.pack from (motorust-engine's
+    // src/content.rs, PAGE_GLOBAL).
+    const CONTENT_GLOBAL = "motorustContent";
+    const GAME_CACHE = "motorust-wasm";
 
     const page = document.documentElement;
     const status = document.getElementById("status");
@@ -699,73 +708,92 @@
       fail(`El juego no ha podido arrancar: ${event.message}`);
     });
 
-    async function download(url) {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`${url}: ${response.status}`);
-      const total = WASM_BYTES || Number(response.headers.get("content-length")) || 0;
-      if (!response.body) return response.arrayBuffer();
-      const reader = response.body.getReader();
-      const parts = [];
-      let received = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        parts.push(value);
-        received += value.length;
+    // Downloads the files not kept yet, all at once, with one progress bar.
+    async function downloadAll(files) {
+      const total = files.reduce((sum, file) => sum + file.bytes, 0);
+      const done = new Map();
+      const show = () => {
+        const received = [...done.values()].reduce((sum, bytes) => sum + bytes, 0);
         if (total >= received) {
           progress.style.width = `${(100 * received) / total}%`;
           status.textContent = `Descargando el juego… ${megabytes(received)} de ${megabytes(total)} MB`;
         } else {
           status.textContent = `Descargando el juego… ${megabytes(received)} MB`;
         }
-      }
-      const bytes = new Uint8Array(received);
-      let offset = 0;
-      for (const part of parts) {
-        bytes.set(part, offset);
-        offset += part.length;
-      }
-      return bytes;
+      };
+      return Promise.all(files.map((file) => download(file, (received) => {
+        done.set(file, received);
+        show();
+      })));
     }
 
-    async function openWasmCache() {
-      if (!WASM_SHA256 || !globalThis.caches || !globalThis.crypto?.subtle) return null;
+    // One file, into a single buffer of its known size where it can be, so
+    // a big file is never held twice while it comes.
+    async function download(file, onProgress) {
+      const response = await fetch(file.url);
+      if (!response.ok) throw new Error(`${file.url}: ${response.status}`);
+      if (!response.body) return new Uint8Array(await response.arrayBuffer());
+      const reader = response.body.getReader();
+      let bytes = new Uint8Array(file.bytes || Number(response.headers.get("content-length")) || 0);
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (received + value.length > bytes.length) {
+          const grown = new Uint8Array(Math.max(2 * bytes.length, received + value.length));
+          grown.set(bytes.subarray(0, received));
+          bytes = grown;
+        }
+        bytes.set(value, received);
+        received += value.length;
+        onProgress(received);
+      }
+      return received === bytes.length ? bytes : bytes.slice(0, received);
+    }
+
+    async function openGameCache() {
+      if (!WASM_SHA256 || !CONTENT_SHA256 || !globalThis.caches || !globalThis.crypto?.subtle) return null;
       try {
-        return await caches.open(WASM_CACHE);
+        return await caches.open(GAME_CACHE);
       } catch (error) {
         console.warn("Cache Storage is not available:", error);
         return null;
       }
     }
 
-    async function cachedWasm(cache) {
+    async function cachedFile(cache, file) {
+      if (!cache) return null;
       try {
-        const response = await cache.match(WASM_URL);
+        const response = await cache.match(file.url);
         if (!response) return null;
         const bytes = new Uint8Array(await response.arrayBuffer());
-        if (!WASM_BYTES || bytes.length === WASM_BYTES) return bytes;
+        if (!file.bytes || bytes.length === file.bytes) return bytes;
       } catch (error) {
-        console.warn("The kept .wasm could not be read:", error);
+        console.warn(`The kept ${file.url} could not be read:`, error);
       }
       return null;
     }
 
-    async function keepWasm(cache, bytes) {
+    // Keeps the files downloaded for the next visit, each only if it is this
+    // page's build, and lets go of any other build's.
+    async function keepFiles(cache, downloaded) {
       try {
-        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-        const hash = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
-        if (hash !== WASM_SHA256) {
-          console.warn("The downloaded .wasm is not this page's build; it is not kept");
-          return;
+        for (const [file, bytes] of downloaded) {
+          const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+          const hash = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+          if (hash !== file.sha256) {
+            console.warn(`The downloaded ${file.url} is not this page's build; it is not kept`);
+            continue;
+          }
+          const url = new URL(file.url, location.href).href;
+          await cache.put(url, new Response(bytes));
         }
-        const url = new URL(WASM_URL, location.href).href;
-        const headers = { "content-type": "application/wasm" };
-        await cache.put(url, new Response(bytes, { headers }));
+        const ours = new Set(FILES.map((file) => new URL(file.url, location.href).href));
         for (const request of await cache.keys()) {
-          if (request.url !== url) await cache.delete(request);
+          if (!ours.has(request.url)) await cache.delete(request);
         }
       } catch (error) {
-        console.warn("The .wasm could not be kept for the next visit:", error);
+        console.warn("The game could not be kept for the next visit:", error);
       }
     }
 
@@ -791,12 +819,18 @@
       if (!document.createElement("canvas").getContext("webgl2")) {
         throw new Error("este navegador no tiene WebGL2");
       }
-      const cache = await openWasmCache();
-      let bytes = cache && (await cachedWasm(cache));
-      status.textContent = bytes
+      const cache = await openGameCache();
+      const kept = new Map();
+      for (const file of FILES) {
+        const bytes = await cachedFile(cache, file);
+        if (bytes) kept.set(file, bytes);
+      }
+      const missing = FILES.filter((file) => !kept.has(file));
+      const toDownload = missing.reduce((sum, file) => sum + file.bytes, 0);
+      status.textContent = missing.length === 0
         ? "Ya descargado: empieza al momento"
-        : WASM_BYTES
-          ? `Se descargan unos ${Math.round(WASM_BYTES / 1048576)} MB al empezar`
+        : toDownload
+          ? `Se descargan unos ${Math.round(toDownload / 1048576)} MB al empezar`
           : "Se descarga al empezar";
       startBtn.focus();
       await playChosen();
@@ -804,18 +838,23 @@
       startBtn.disabled = true;
       startBtn.style.display = "none";
       page.dataset.motorust = "loading";
-      if (!bytes) {
+      if (missing.length) {
         status.textContent = "Descargando el juego…";
-        bytes = await download(WASM_URL);
-        if (cache) keepWasm(cache, bytes);
+        const downloaded = await downloadAll(missing);
+        missing.forEach((file, index) => kept.set(file, downloaded[index]));
+        if (cache) keepFiles(cache, missing.map((file) => [file, kept.get(file)]));
       }
       progress.style.width = "100%";
       page.dataset.motorust = "starting";
       status.textContent = "Preparando la pista…";
 
       await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+      // The game takes its files from here (and lets go of them) as it starts.
+      globalThis[CONTENT_GLOBAL] = kept.get(CONTENT);
+      const wasm = kept.get(WASM);
+      kept.clear();
       const { default: init } = await import("./motorust.js");
-      await init({ module_or_path: bytes });
+      await init({ module_or_path: wasm });
     } catch (error) {
       if (!String(error).includes("Using exceptions for control flow")) {
         console.error(error);

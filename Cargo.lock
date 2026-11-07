@@ -3613,14 +3613,15 @@ dependencies = [
 
 [[package]]
 name = "motorust-engine"
-version = "0.0.20"
-source = "git+https://github.com/jgermade/motorust-engine?tag=v0.0.20#b417c7a99629bf0272b9b8ecf9b85c892e563bff"
+version = "0.0.21"
+source = "git+https://github.com/jgermade/motorust-engine?tag=v0.0.21#13acec64dfdf99bfc55d1a7b06a01e66aca0b5a5"
 dependencies = [
  "bevy",
  "erased-serde",
  "flate2",
  "gilrs",
  "image",
+ "js-sys",
  "libc",
  "objc2 0.6.5",
  "objc2-game-controller",
