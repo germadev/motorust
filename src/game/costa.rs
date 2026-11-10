@@ -227,16 +227,23 @@ fn name(model: CostaModel) -> &'static str {
     }
 }
 
-/// Whether a prop is a landmark, to be seen from afar: no tree stands
-/// between it and the road coming at it.
+/// Whether a prop is to be seen from afar: no tree stands between it and
+/// the road coming at it. Every one made with Meshy is, but the small ones
+/// that stand right by the wall (the signs, the posts, the plants, the
+/// boulders and the marshal).
 fn landmark(model: CostaModel) -> bool {
-    matches!(
+    !matches!(
         model,
-        CostaModel::Watchtower
-            | CostaModel::Mirador
-            | CostaModel::Ermita
-            | CostaModel::CastleRuin
-            | CostaModel::GorgeBridge
+        CostaModel::CurveSign
+            | CostaModel::CurveSignLeft
+            | CostaModel::KmPost
+            | CostaModel::PricklyPear
+            | CostaModel::Agave
+            | CostaModel::BoulderA
+            | CostaModel::BoulderB
+            | CostaModel::BoulderC
+            | CostaModel::FlagMarshal
+            | CostaModel::BannerPlane
     )
 }
 
@@ -406,7 +413,8 @@ fn lowest_ground(terrain: &Terrain, position: Vec2, reach: f32) -> f32 {
 }
 
 /// A prop, standing on the lowest of the ground under its box, so that it
-/// never floats; a house on the ground under its middle; the bridge on the road under its arch, a little below the
+/// never floats; one that leans, lifted until its low end is on it; a
+/// house on the ground under its middle; the bridge on the road under its arch, a little below the
 /// lowest of it at its piers. Its surface is given to the water to mirror.
 /// Returns the ground it takes.
 fn spawn_prop(
@@ -436,6 +444,9 @@ fn spawn_prop(
         _ if prop.model == CostaModel::WhiteHouse => terrain.height(position) - HOUSE_SINK,
         _ => lowest_ground(terrain, position, reach),
     };
+    // One that leans (a car on show, its nose up) is lifted until its low
+    // end is on the ground.
+    let foot = foot + (high.x - low.x) / 2.0 * prop.lean.sin().abs();
     let placed = Transform::from_xyz(position.x, foot, position.y)
         .with_rotation(rotation)
         .with_scale(Vec3::splat(prop.scale));
