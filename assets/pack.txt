@@ -107,7 +107,7 @@ models/azura/pilot.bin
 models/azura/pilot_color.jpg
 
 # The scenery's models: the trees, the props of feudal Japan and of
-# Middle-earth, and the toys of the toy store.
+# Middle-earth, the toys of the toy store and Costa Bits' props.
 models/trees/trees.bin
 models/trees/color.jpg
 models/props/props.bin
@@ -118,6 +118,8 @@ models/toys/props.bin
 models/toys/color.jpg
 models/toys2/props.bin
 models/toys2/color.jpg
+models/costa/props.bin
+models/costa/color.jpg
 
 # The game's identity (src/game_info.rs).
 game.ron

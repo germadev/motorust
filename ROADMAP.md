@@ -95,7 +95,7 @@ Done (`RECORD/2026-11-03.costa-del-sol-track.completed.md`, and the engine's `RE
 Next:
 
 1. **The release:** the engine's PR #2 (the voxel look, the sky, the updater) and #3 (the music player) are merged and released in v0.0.20. This repository's `Cargo.toml` names v0.0.20 in both `motorust-engine` lines. Left: merge PR #35 and release the game.
-2. **Meshy's props** (`docs/costa-bits-props.md`): the list is revised for the blocks and the flat sprites. What stands close to the road or has a clear front is drawn as a model; what is far off, round or plant-like is photographed into a card, as the trees are. Next: the author makes them in Meshy, then an importer (`tools/import_costa.py`) and a theme in `src/game/`.
+2. **Meshy's props** (`docs/costa-bits-props.md`): the first are in (`RECORD/2026-11-10.costa-bits-meshy-props.WIP.md`): the town's houses, the beach bar, the fishing boat, the lifeguard's tower, the sports car, the marshal, the watchtowers, the boulders, the viewpoint, the bend signs, and the old bridge over a new gorge on the mountain road, the road under its arch; packed by `tools/import_costa.py` and placed by the theme `costa` (`src/game/costa.rs`). Next: the rest as the author makes them, and those marked as cards drawn as flat sprites.
 3. **The stairs left in the blocks:** past the verges (13 m from the road's middle), where there is no wall, the blocks still rise or fall in steps as the road climbs, further off.
 
 ## Alongside: the website and updating from the game

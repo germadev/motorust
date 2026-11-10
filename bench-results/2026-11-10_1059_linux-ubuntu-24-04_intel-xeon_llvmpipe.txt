@@ -1,0 +1,8 @@
+# motorust 0.0.20 (5cbaa5453-dirty) benchmark on vm
+# system: Linux (Ubuntu 24.04); CPU Intel(R) Xeon(R) Processor @ 2.10GHz (4 cores); memory 15.7 GiB
+# GPU: llvmpipe (LLVM 20.1.2, 256 bits) (Vulkan, llvmpipe)
+# window: 1280 x 720 pixels at 1x; resolution Dynamic, fullscreen no
+# trees new; pipelined rendering true; frames queued 2; frame rate unlimited
+# 2 laps, all round each track with 1 player and with 2, the settings taking turns of 2 s, each measured 10 s at least; about 6 min
+# MSAA 2x left out: this GPU draws one or four samples a pixel
+track            scenario                    fps     1% low   p50 ms   p95 ms   sim ms  cpu %

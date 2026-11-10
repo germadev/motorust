@@ -68,6 +68,12 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | `camper_van` | 1970s camper van, an original design | 4.5 m long | 2,500 | Model | C | Parked at the viewpoint |
 | `castle_ruin` | Ruined Moorish hilltop fortress, walls and towers | 18 m high, 30 m wide | 4,000 | Card | C | On the mesa, or on the mountain over the tunnel, seen from afar |
 
+### The gorge
+
+| Name (`SIZES`) | What | Size | Triangles | Drawn as | Priority | Where |
+|---|---|---|---|---|---|---|
+| `gorge_bridge` | An old stone bridge over a gorge, one great arch | 48 m high, 55 m wide | 3,700 | Model | A | Over the road in the gorge of the mountain road, at 2215 m. Meshy made its arch narrow and closed at its foot; the importer opens it to the ground and widens it to 7.4 m either side of the middle, where the walls close in to 6.5 m |
+
 ### Homage to the arcades (no brands)
 
 | Name (`SIZES`) | What | Size | Triangles | Drawn as | Priority | Where |
@@ -97,6 +103,7 @@ Each prompt below is followed by the shared ending (see [Settings for every mode
 - **`ibex`:** An Iberian ibex, a wild mountain goat with long curved backswept horns, standing proudly on a rock, side view, brown and tan coat.
 - **`camper_van`:** An original 1970s-style camper van, a rounded boxy body, two-tone cream and turquoise paint, a pop-up roof, round headlights, generic design not based on any real van, no badges.
 - **`castle_ruin`:** A ruined Moorish hilltop fortress, crenellated walls of ochre stone on rocky ground, three square towers, one half collapsed, an arched horseshoe gateway, seen from the front.
+- **`gorge_bridge`:** A tall old stone bridge of ochre sandstone blocks, one very tall wide central arch reaching down to the ground, its opening half as wide as the bridge, a smaller arch above it, massive solid piers on both sides, a stone parapet along the top, a small arched window above the central arch, front view. Negative prompt, besides the shared one: cliffs, gorge walls, rocks, river, water, ground, town, buildings.
 - **`arcade_billboard`:** A retro roadside billboard on two steel legs, a wide rectangular panel framed with a row of round light bulbs, the panel painted with a simple orange-and-pink striped sunset over a blue sea with black palm tree silhouettes, no text.
 
 For the cards, the side Meshy shows at the front is the one the engine photographs: the ibex side on, the castle and the hermitage from the front.
@@ -113,7 +120,6 @@ Neither the props nor anything in the game names or copies a registered mark. In
 
 ## Sending them
 
-Send the GLBs named as in the tables (`white_house.glb`, `watchtower.glb`, …), all at once or a few at a time, starting with priority A. To be written when they come:
+Send the GLBs named as in the tables (`white_house.glb`, `watchtower.glb`, …), all at once or a few at a time. `tools/import_costa.py` makes a pack of them in `assets/models/costa/`, and the theme `costa` (`src/game/costa.rs`) places them where the circuit's file says (its `themes`, `"costa"`). Keep the GLBs: the pack is made again from all of them whenever one is added or changed.
 
-- **An importer,** `tools/import_costa.py`, as `tools/import_props.py` is for Ghost Island. It makes a pack of them in `assets/models/costa/`, and for the cards bakes each texture's colour into the vertices, which is what the engine photographs.
-- **A theme** in `src/game/`, placing them where the circuit's file says: the models as the toy store's toys are placed, the cards photographed and planted as the engine's trees are. Planting a prop of the game's as a card may need the engine to offer its sprites to the game.
+Drawn as models so far: every prop, the watchtower too. Drawing those marked **Card** as flat sprites needs the engine to offer its sprites (`src/world/sprites.rs`) to the game's themes, and the importer to bake their textures into their vertices; left for later. The banner plane is left out until there is code to fly it.

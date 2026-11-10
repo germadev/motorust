@@ -14,7 +14,8 @@
 //    headland through a pine forest to the open sea.
 // 5. Carretera de la sierra: a mountain road south up the cliffs over the
 //    open sea, cut rock on the right, a stone parapet over the drop on the
-//    left, to a summit some 56 m up, on a straight, where the bike takes
+//    left; through a gorge, the town's houses on its rims and an old stone
+//    bridge high over the road, which runs under its arch; to a summit some 56 m up, on a straight, where the bike takes
 //    off; then down in bends round the cape, the lighthouse far below, and
 //    off the mountain to the south coast.
 // 6. Autopista de la costa: a straight west along the south coast over two
@@ -33,6 +34,7 @@
 // - the east shore:          Span(1230.0, 1540.0)
 // - over the headland:       Span(1540.0, 2040.0), through the forest
 // - up the mountain road:    Span(2040.0, 2500.0), the summit at 2500 m
+//   - the gorge:             Span(2110.0, 2320.0), the bridge over it at 2215 m
 // - down round the cape:     Span(2540.0, 3174.0), the lighthouse at (845.0, 580.0)
 // - the coast highway:       Span(3174.0, 3444.0), crests at 3230 and 3340 m
 // - the bridge:              Span(3444.0, 3650.0), over the outlet, 165 m wide
@@ -217,6 +219,8 @@
             (4330.0, 0.4),
         ],
         wall: 11.5,
+        // Under the bridge over the gorge, the walls close in to its arch.
+        narrows: [(from: 2200.0, to: 2230.0, wall: 6.5)],
         // Hardly banked where the road splits, as in Ghost Island and Gold
         // Mine.
         banking: [(from: 3864.0, to: 4214.0, factor: 0.25)],
@@ -348,9 +352,14 @@
             (906.0, 250.0),
             (916.0, 130.0),
             (921.0, 10.0),
-            (923.0, -110.0),
-            (921.0, -230.0),
-            (911.0, -340.0),
+            // Out round the gorge, which the rock rises on either side of,
+            // some 100 m east of the road.
+            (950.0, -40.0),
+            (995.0, -110.0),
+            (1000.0, -200.0),
+            (990.0, -280.0),
+            (950.0, -330.0),
+            (911.0, -360.0),
             (898.0, -440.0),
             (830.0, -560.0),
             (760.0, -700.0),
@@ -405,6 +414,10 @@
             // way up, and on the way down round the cape.
             (span: Span(2040.0, 2440.0), side: Right, height: 24.0),
             (span: Span(2600.0, 3000.0), side: Right, height: 20.0),
+            // The gorge, through the mountain's seaward spur: sheer rock on
+            // both sides, the old bridge over it at its rims' height.
+            (span: Span(2110.0, 2320.0), side: Right, height: 46.0),
+            (span: Span(2110.0, 2320.0), side: Left, height: 46.0),
         ],
         // Mountains closing the horizon inland, to the north; to the south,
         // open sea.
@@ -489,7 +502,7 @@
             (200.0, -520.0),
             (300.0, -250.0),
             (230.0, 290.0),
-            (985.0, -150.0),
+            (1060.0, -150.0),
             (990.0, 60.0),
         ],
         // On the cape, below the road coming down round it.
@@ -501,8 +514,8 @@
             (position: (200.0, 260.0), heading: 1.2, kind: Sailboat),
             // Yachts and sailboats on the open sea below the cliffs, and a
             // sailboat off the cape.
-            (position: (985.0, -260.0), heading: 1.5, kind: Yacht),
-            (position: (990.0, -40.0), heading: 1.6, kind: Yacht),
+            (position: (1065.0, -260.0), heading: 1.5, kind: Yacht),
+            (position: (1050.0, -40.0), heading: 1.6, kind: Yacht),
             (position: (985.0, 180.0), heading: 1.4, kind: Yacht),
             (position: (1010.0, 330.0), heading: -0.6, kind: Sailboat),
             (position: (640.0, 800.0), heading: 0.3, kind: Sailboat),
@@ -536,5 +549,59 @@
         // red, green and blue; the trees as flat sprites of pixel art facing the
         // camera (the engine's `Look::Voxel`).
         look: Voxel(size: 1.0, shades: Some(12)),
+        // The game's own themes (see src/world/themes.rs).
+        themes: {
+            "costa": (
+                // The props of Costa Bits, made with Meshy (see
+                // `docs/costa-bits-props.md`), in the order of the lap; facing the
+                // road unless turned.
+                props: [
+                    // The start straight: the town's houses on the left among the
+                    // engine's cottages; on the beach below the railing on the right,
+                    // a lifeguard's tower, the beach bar and a fishing boat drawn up
+                    // on the sand with its fire of skewered fish.
+                    (model: LifeguardTower, spot: Road(along: 115.0, lateral: -26.0)),
+                    (model: Chiringuito, spot: Road(along: 205.0, lateral: -25.0)),
+                    (model: EspetoBoat, spot: Road(along: 228.0, lateral: -28.0), turn: 1.1),
+                    (model: WhiteHouse, spot: Road(along: 232.0, lateral: 26.0)),
+                    (model: WhiteHouse, spot: Road(along: 292.0, lateral: 25.0), turn: 0.2),
+                    // Over the headland, a watchtower inland of the road.
+                    (model: Watchtower, spot: At(position: (700.0, -575.0), heading: 0.0)),
+                    // The gorge: houses on both rims, at their edges, looking down into
+                    // it, and the old bridge over the road.
+                    (model: WhiteHouse, spot: Road(along: 2160.0, lateral: 20.5)),
+                    (model: WhiteHouse, spot: Road(along: 2185.0, lateral: 20.0), turn: -0.15),
+                    (model: WhiteHouse, spot: Road(along: 2250.0, lateral: 21.0), turn: 0.1),
+                    (model: WhiteHouse, spot: Road(along: 2170.0, lateral: -20.5), turn: 0.1),
+                    (model: WhiteHouse, spot: Road(along: 2245.0, lateral: -20.0)),
+                    (model: WhiteHouse, spot: Road(along: 2275.0, lateral: -21.0), turn: -0.2),
+                    (model: GorgeBridge, spot: Over(along: 2215.0)),
+                    // Out of the gorge, a viewpoint over the sea, looking out to it.
+                    (model: Mirador, spot: Road(along: 2400.0, lateral: 16.0), turn: 3.14),
+                    // Boulders at the foot of the cut rock, up the mountain road and
+                    // down round the cape.
+                    (model: BoulderA, spot: Road(along: 2065.0, lateral: -15.5)),
+                    (model: BoulderB, spot: Road(along: 2090.0, lateral: -14.5)),
+                    (model: BoulderC, spot: Road(along: 2370.0, lateral: -16.5), turn: 0.6),
+                    (model: BoulderA, spot: Road(along: 2440.0, lateral: -15.5), turn: 2.0),
+                    (model: BoulderB, spot: Road(along: 2630.0, lateral: -14.5)),
+                    (model: BoulderC, spot: Road(along: 2720.0, lateral: -16.5), turn: -0.8),
+                    (model: BoulderA, spot: Road(along: 2860.0, lateral: -15.5), turn: 1.0),
+                    (model: BoulderB, spot: Road(along: 2975.0, lateral: -14.5)),
+                    // On the cape, by the lighthouse, another watchtower.
+                    (model: Watchtower, spot: At(position: (818.0, 612.0), heading: 0.0)),
+                    // By the grid, a sports car parked, and the marshal by the line
+                    // with his chequered flag.
+                    (model: RetroSportsCar, spot: Road(along: 4302.0, lateral: 16.0)),
+                    (model: FlagMarshal, spot: Road(along: 4384.0, lateral: 13.6)),
+                ],
+                // A sign before every bend of the cliffs and of the way down round
+                // the cape, on the left, its arrow bending as the road does.
+                bend_signs: [
+                    (span: Span(380.0, 930.0), side: Left, lateral: 12.8),
+                    (span: Span(2540.0, 3174.0), side: Left, lateral: 12.8),
+                ],
+            ),
+        },
     ),
 )
