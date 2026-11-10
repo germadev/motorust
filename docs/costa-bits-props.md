@@ -50,7 +50,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | `retro_sports_car` | 1980s wedge-shaped convertible, an original design | 4.4 m long | 3,000 | Model | A | Parked by the grid. Meshy made it red; it was repainted yellow, with two black stripes along its bonnet and boot, to keep it clear of any real car |
 | `watchtower` | Round stone coastal watchtower, 16th century | 14 m high | 1,500 | Card | A | On the cape, by the lighthouse; another on the headland |
 | `lifeguard_tower` | Wooden lifeguard tower, red and white | 5 m high | 1,200 | Model | B | On the bay's beach |
-| `flag_marshal` | Race marshal in white overalls, waving a chequered flag | 2.2 m high | 2,500 | Model | B | By the finish line, beside the road |
+| `flag_marshal` | Race marshal in white overalls, waving a chequered flag | 2.2 m high | 2,500 | Model | B | By the finish line, beside the road. Meshy's chequers came out smeared; they were painted again, square |
 | `banner_plane` | Vintage propeller plane towing a blank banner | 22 m long with the banner | 2,500 | Model | C | Over the bay (moving it needs code) |
 
 ### The mountain road (Carretera de la sierra)
