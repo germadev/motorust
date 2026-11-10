@@ -51,7 +51,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | `watchtower` | Round stone coastal watchtower, 16th century | 14 m high | 1,500 | Card | A | On the cape, by the lighthouse; another on the headland |
 | `lifeguard_tower` | Wooden lifeguard tower, red and white | 5 m high | 1,200 | Model | B | On the bay's beach |
 | `flag_marshal` | Race marshal in white overalls, waving a chequered flag | 2.2 m high | 2,500 | Model | B | By the finish line, beside the road. Meshy's chequers came out smeared; they were painted again, square. Static, behind the wall (13–14 m from the road's middle), on a low platform if the wall hides his legs; his arm may be cut off in the importer and swung about his shoulder later, if wanted |
-| `banner_plane` | Vintage propeller plane towing a blank banner | 22 m long with the banner | 2,500 | Model | C | Over the bay, flying round in a circle 40 m up, banked into its turn (`planes` in the circuit's file) |
+| `banner_plane` | Vintage propeller plane towing a blank banner | 33 m long with the banner (1.5 times life size, to read from the road) | 2,500 | Model | C | Over the bay, flying round in a circle 40 m up, banked into its turn (`planes` in the circuit's file) |
 
 ### The mountain road (Carretera de la sierra)
 
