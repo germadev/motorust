@@ -10,6 +10,7 @@
 //! castle on the mesa, billboards of the arcades' sunset and a kilometre
 //! post every 500 m, a plane towing a banner round over the bay; the old
 //! stone bridge over the gorge, the road running under its arch; and a
+//! stretch of the mountain road under an overhang of rock; and a
 //! yellow sign before every bend of the mountain road, its arrow bending
 //! the way the road does.
 //!
@@ -20,8 +21,11 @@
 //! circuit's file writes it in its `themes` as `"costa": (...)`. Its props
 //! are a pack of the engine's (`models/costa/`).
 
-use bevy::prelude::*;
+use bevy::{
+    asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
+};
 
+use motorust_engine::geometry::{random01, smoothstep};
 use motorust_engine::track::Track;
 use motorust_engine::world::Assets3d;
 use motorust_engine::world::mirror::MirrorPoint;
@@ -48,9 +52,166 @@ pub struct Costa {
     /// Kilometre posts along the lap, if any (see [`KmPosts`]).
     #[serde(default)]
     pub km_posts: Option<KmPosts>,
+    /// Stretches of the lap where the rock beside the road reaches out over
+    /// it.
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
+    pub overhangs: &'static [Overhang],
     /// Planes towing their banners round in circles over the water.
     #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub planes: &'static [Flight],
+}
+
+/// Rock reaching out over the road along `span` from the cut rock on
+/// `side` of it (see [`overhang_mesh`]), as a mountain road cut into a
+/// cliff runs under it: `reach` metres out from the foot of the rock, its
+/// underside `clearance` metres over the road there.
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Overhang {
+    pub span: Span,
+    pub side: Side,
+    pub reach: f32,
+    pub clearance: f32,
+}
+
+/// Where the cut rock rises beside the road (m from its middle), as the
+/// engine's terrain has it, and how far into it an overhang's root goes.
+const ROCK_FOOT: f32 = 13.0;
+const OVERHANG_ROOT: f32 = 4.0;
+/// An overhang's blocks: how wide across the road and how long along it
+/// (m), as the blocks of the ground by the road.
+const OVERHANG_BLOCK: (f32, f32) = (1.0, 2.0);
+/// How thick it is at its root and at its lip (m), how much its underside
+/// rises a metre out, and over how far along the road it grows out at each
+/// end of its stretch (m).
+const OVERHANG_THICK: (f32, f32) = (7.0, 1.5);
+const OVERHANG_RISE: f32 = 0.12;
+const OVERHANG_EASE: f32 = 40.0;
+/// The rock's colour (sRGB), each block a little lighter or darker.
+const OVERHANG_ROCK: [f32; 3] = [0.5, 0.41, 0.38];
+
+impl Overhang {
+    /// How far out from the rock's foot it reaches `into` metres into its
+    /// stretch, `length` long: growing out and drawing back at its ends.
+    fn reach_at(&self, into: f32, length: f32) -> f32 {
+        self.reach
+            * smoothstep(0.0, OVERHANG_EASE, into)
+            * smoothstep(0.0, OVERHANG_EASE, length - into)
+    }
+
+    /// Its underside and its top (m over the road) `out` metres from the
+    /// rock's foot, where it reaches `reach` metres out.
+    fn section(&self, out: f32, reach: f32) -> (f32, f32) {
+        let t = (out / reach.max(1.0)).clamp(0.0, 1.0);
+        let under = self.clearance + OVERHANG_RISE * out.max(0.0);
+        let thick = OVERHANG_THICK.0 + (OVERHANG_THICK.1 - OVERHANG_THICK.0) * t;
+        (under, under + thick)
+    }
+}
+
+/// An overhang's rock (see [`Overhang`]), in blocks as the ground beside
+/// the road is: columns across the road from inside the rock out to its
+/// lip, each a block from its underside to its top, a metre higher or
+/// lower here and there, each of one colour.
+fn overhang_mesh(track: &Track, overhang: &Overhang) -> Mesh {
+    let lap = track.lap_length();
+    let length = overhang.span.length(lap);
+    let sign = overhang.side.sign();
+    let (wide, long) = OVERHANG_BLOCK;
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut colors: Vec<[f32; 4]> = Vec::new();
+    let mut quad = |corners: [Vec3; 4], facing: Vec3, shade: f32| {
+        let normal = (corners[1] - corners[0]).cross(corners[2] - corners[0]);
+        let normal = if normal.dot(facing) < 0.0 {
+            -normal
+        } else {
+            normal
+        }
+        .normalize_or_zero();
+        let order = if (corners[1] - corners[0])
+            .cross(corners[2] - corners[0])
+            .dot(facing)
+            < 0.0
+        {
+            [0, 2, 1, 0, 3, 2]
+        } else {
+            [0, 1, 2, 0, 2, 3]
+        };
+        let color = Color::srgb(
+            OVERHANG_ROCK[0] * shade,
+            OVERHANG_ROCK[1] * shade,
+            OVERHANG_ROCK[2] * shade,
+        )
+        .to_linear();
+        for k in order {
+            positions.push(corners[k].to_array());
+            normals.push(normal.to_array());
+            colors.push([color.red, color.green, color.blue, 1.0]);
+        }
+    };
+    let slices = (length / long).floor() as usize;
+    for slice in 0..slices {
+        let into = slice as f32 * long;
+        let reach = overhang.reach_at(into + long / 2.0, length);
+        if reach < wide {
+            continue;
+        }
+        let (i0, i1) = (
+            track.index_at(overhang.span.from + into),
+            track.index_at(overhang.span.from + into + long),
+        );
+        let (road0, road1) = (
+            track.surface_point(i0, 0.0).y,
+            track.surface_point(i1, 0.0).y,
+        );
+        let ahead = {
+            let (a, b) = (track.offset_point(i0, 0.0), track.offset_point(i1, 0.0));
+            Vec3::new(b.x - a.x, 0.0, b.y - a.y).normalize_or_zero()
+        };
+        let columns = ((reach + OVERHANG_ROOT) / wide).ceil() as usize;
+        for column in 0..columns {
+            let out = column as f32 * wide - OVERHANG_ROOT;
+            let seed = (slice as u32 / 2) * 131 + column as u32 * 7 + 17;
+            let (under, top) = overhang.section(out + wide / 2.0, reach);
+            // A metre up or down here and there, the lip left as it is.
+            let step = (random01(seed) * 3.0).floor() - 1.0;
+            let top = top + step.max(0.0);
+            let under = (under + 0.5 * step.min(0.0).abs()).round_ties_even();
+            let shade = 0.82 + 0.3 * random01(seed + 5);
+            let (l0, l1) = (sign * (ROCK_FOOT - out), sign * (ROCK_FOOT - out - wide));
+            let at = |index: usize, lateral: f32, road: f32, height: f32| {
+                let p = track.offset_point(index, lateral);
+                Vec3::new(p.x, road + height, p.y)
+            };
+            let (a, b, c, d) = (
+                at(i0, l0, road0, under),
+                at(i0, l1, road0, under),
+                at(i1, l1, road1, under),
+                at(i1, l0, road1, under),
+            );
+            let lift = Vec3::Y * (top - under);
+            let towards_road = (b - a).normalize_or_zero();
+            quad([a, b, c, d], Vec3::NEG_Y, shade * 0.62);
+            quad(
+                [a + lift, b + lift, c + lift, d + lift],
+                Vec3::Y,
+                shade * 1.1,
+            );
+            quad([b, c, c + lift, b + lift], towards_road, shade * 0.9);
+            quad([a, b, b + lift, a + lift], -ahead, shade * 0.78);
+            quad([d, c, c + lift, d + lift], ahead, shade * 0.72);
+        }
+    }
+    let count = positions.len() as u32;
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32((0..count).collect()))
 }
 
 /// A plane's flight (see [`Costa::planes`]): round `center` (x, z), `radius`
@@ -297,6 +458,20 @@ impl Theme for Costa {
                 pack,
                 &mut assets.mirrored,
             ));
+        }
+        // The rock over the road.
+        if !self.overhangs.is_empty() {
+            let rock = assets.materials.add(StandardMaterial {
+                perceptual_roughness: 0.95,
+                reflectance: 0.15,
+                ..default()
+            });
+            for overhang in self.overhangs {
+                world.spawn((
+                    Mesh3d(assets.meshes.add(overhang_mesh(track, overhang))),
+                    MeshMaterial3d(rock.clone()),
+                ));
+            }
         }
         // The planes, flying round over the water.
         for flight in self.planes {
@@ -673,5 +848,40 @@ mod tests {
                 assert!(Vec2::new(nose.x, nose.z).normalize().dot(heading) > 0.95);
             }
         }
+    }
+
+    #[test]
+    fn the_rock_over_the_road_is_clear_of_the_riders_and_meets_the_rock() {
+        let mut overhangs = 0;
+        for (circuit, costa) in costas() {
+            let track = Track::new(&circuit.layout);
+            let lap = track.lap_length();
+            for overhang in costa.overhangs {
+                overhangs += 1;
+                let length = overhang.span.length(lap);
+                // High over a rider all the way out, thick at its root.
+                for out in [0.0, 5.0, overhang.reach] {
+                    let (under, top) = overhang.section(out, overhang.reach);
+                    assert!(under >= 6.0, "{}: {under} m over the road", circuit.name);
+                    assert!(top > under + 1.0);
+                }
+                // Out from cut rock on its side, as high as its root at
+                // least, all along it; grown out in its middle, drawn back
+                // at its ends.
+                assert!(overhang.reach_at(length / 2.0, length) > 0.99 * overhang.reach);
+                assert!(overhang.reach_at(0.0, length) < 0.01);
+                let root = overhang.section(0.0, overhang.reach).1;
+                let cut = circuit.scenery.cuttings.iter().any(|cutting| {
+                    cutting.side == overhang.side
+                        && cutting.span.contains(overhang.span.from, lap)
+                        && cutting.span.contains(overhang.span.to, lap)
+                        && cutting.height * 0.75 >= root
+                });
+                assert!(cut, "{}: no rock for it to come out of", circuit.name);
+                let mesh = overhang_mesh(&track, overhang);
+                assert!(mesh.count_vertices() > 1000);
+            }
+        }
+        assert!(overhangs > 0);
     }
 }
