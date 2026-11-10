@@ -229,7 +229,7 @@
         narrows: [
             (from: 2200.0, to: 2230.0, wall: 6.5),
             // Down round the cape the road is a single lane, under the rock.
-            (from: 2740.0, to: 3105.0, wall: 5.0),
+            (from: 2770.0, to: 3090.0, wall: 3.5, ease: 60.0),
         ],
         // Hardly banked where the road splits, as in Ghost Island and Gold
         // Mine.
