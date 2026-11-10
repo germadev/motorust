@@ -49,3 +49,6 @@ colour textures together.
 
 The flowers, the lawn in flower and the snow are painted in code.
 
+
+- The hover bikes (`assets/models/*_hover/`): made with Meshy by the author, prepared by `tools/import_hoverbike.py`.
+- "Apex Velocity" (`assets/music/apex_velocity.mp3`), Puerto Neón's song: provided by the author.

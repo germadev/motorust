@@ -103,6 +103,16 @@ The rider GLB must be the auto-rigged, skinned one. The script keeps the mesh wi
 
 Upload the original GLB files to a model release of the repository so they can be re-imported later, and credit them in `assets/CREDITS.md`.
 
+## Hover bikes
+
+On a circuit whose bikes hover (Puerto Neón), each bike of the roster is its `hover` model (`assets/bikes/roster.ron`: `hover: Some(Model("shogun_hover"))`): a bike with pads where its wheels would be, made with Meshy as one mesh with a colour and a metal-roughness texture, and no rider. Three are made (the Shogun TZ's, the Azura RZ's and the Falcon KRZ's); the other five ride the nearest of those in colour until theirs are.
+
+```sh
+python3 tools/import_hoverbike.py shogun_hover HOVERBIKE.glb shogun
+```
+
+`tools/import_hoverbike.py NAME GLB RIDER` writes `assets/models/NAME/`: `bike.bin` (one part, `chassis`, 2 m long, floating 0.22 m over the ground), `base_color.jpg`, `metallic_roughness.jpg`, a flat `normal.jpg`, `emissive.jpg` (its lights: the bright cyan and blue of its lower part, its pads and thrusters) and `model.ron`: the middles of its pads as its axles, its grips, pegs and seat, `hover: Some((glow: …))` (the colour of the light its pads cast on the road), `rider: Some("RIDER")` (it carries the rider of the bike it is the hover version of, by that bike's folder) and `emissive: true`. List its six files in `assets/pack.txt`. `cargo test` checks that each is its body alone, floating, and that its rider's hands reach its grips and feet its pegs.
+
 ## Trees
 
 The trees were made with [Meshy](https://www.meshy.ai) too, one for each species the tracks plant (stone pine, cypress, olive, tall forest tree, leafy broadleaf, maritime pine, poplar, almond, and Ghost Island's momiji, ginkgo, sakura, Japanese black pine, sugi and bamboo) and a Nordmann fir that grows among the tall trees of the forests. Each is one mesh of about four hundred triangles with a colour texture (Meshy's normal and metal-roughness maps are left out: trees are seen from afar, and their shape is in their normals). Options > Graphics chooses them ("New", the default) or the classic trees built in code (`motorust-engine/src/world/props.rs`).

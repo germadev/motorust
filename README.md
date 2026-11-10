@@ -7,7 +7,7 @@ Arcade motorcycle racing inspired by *Moto Racer* (1997), written in Rust with
 
 **Play it in the browser:** <https://motorust.germade.dev>
 
-- **Nine tracks** with steep slopes, crests and banked curves (see
+- **Ten tracks** with steep slopes, crests and banked curves (see
   [below](#tracks)).
 - **Eight bikes and riders.** You race seven AI rivals that overtake, brake
   for corners and dodge you.
@@ -103,6 +103,13 @@ far shore, up a mountain road on the cliffs over the open sea and down
 round a cape with a lighthouse, west along a coast highway over two crests
 in a row between rows of palms and a bridge across the bay's outlet, and
 through a fork before the line, in homage to the 8- and 16-bit arcade racers.
+
+**Puerto Neón** ("Neon Harbor") is an anti-gravity circuit by night, in
+homage to the anti-gravity racers: its bikes hover (the wheelie's button
+drifts in the bends instead), over a track of plates between barriers lit
+along their tops, round a chain of three loops that crosses itself twice,
+each time through a tunnel and later over it, its east loop climbing over
+the sea on a skyway.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 

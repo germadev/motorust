@@ -107,11 +107,15 @@
             (span: Span(1535.0, 1600.0), side: Left, height: 10.0),
             (span: Span(1535.0, 1600.0), side: Right, height: 10.0),
         ],
+        walls: [
+            (span: Lap, side: Left, style: Barrier),
+            (span: Lap, side: Right, style: Barrier),
+        ],
         tunnels: [Span(800.0, 930.0), Span(1410.0, 1535.0)],
-        bridges: [(span: Span(1660.0, 2470.0), style: Truss)],
+        bridges: [(span: Span(1660.0, 2470.0), style: Skyway)],
         hills: 6.0,
         greens: Lawn,
-        grass_shade: 0.6,
+        grass_shade: 0.45,
         curbs: [(0.1, 0.8, 1.0), (0.05, 0.05, 0.08)],
         gantries: [
             (along: 0.0, color: (0.05, 0.6, 0.9), text: Some("PUERTO NEON")),
@@ -121,7 +125,8 @@
         ],
         houses: (max: 0, paints: [(0.5, 0.5, 0.5)], style: Cottage),
         soil: Rock,
-        sky: Space,
+        sky: Night,
+        paving: Plates,
         water: Sea,
     ),
 )
