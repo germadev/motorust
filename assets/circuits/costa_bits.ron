@@ -641,7 +641,7 @@
                 // A plane towing its blank banner round over the bay, seen ahead
                 // from the start straight and over the water from the cliffs and
                 // the east shore.
-                planes: [(center: (175.0, -240.0), radius: 105.0, height: 45.0, speed: 30.0)],
+                planes: [(center: (150.0, -240.0), radius: 85.0, height: 40.0, speed: 28.0)],
             ),
         },
     ),
