@@ -87,6 +87,10 @@ pub struct Overhang {
 /// engine's terrain has it, and how far into it an overhang's root goes.
 const ROCK_FOOT: f32 = 13.0;
 const OVERHANG_ROOT: f32 = 4.0;
+/// How far the rock keeps off the road's wall where it comes down beside it
+/// (m), and how far into the ground it goes there.
+const WALL_CLEAR: f32 = 0.7;
+const ROCK_INTO_GROUND: f32 = 1.0;
 /// An overhang's blocks: how wide across the road and how long along it
 /// (m), as the blocks of the ground by the road.
 const OVERHANG_BLOCK: (f32, f32) = (1.0, 2.0);
@@ -184,10 +188,24 @@ fn overhang_mesh(track: &Track, overhang: &Overhang) -> Mesh {
             let out = column as f32 * wide - OVERHANG_ROOT;
             let seed = (slice as u32 / 2) * 131 + column as u32 * 7 + 17;
             let (under, top) = overhang.section(out + wide / 2.0, reach);
+            // Between the rock's foot and the road's wall, where the walls
+            // have closed in, the rock comes down to the ground: the road's
+            // inner side is the rock itself.
+            let wall = track.wall_at(i0).max(track.wall_at(i1));
+            let filled = (ROCK_FOOT - wall - WALL_CLEAR) * (reach / overhang.reach);
+            let under = if out + wide <= filled {
+                -ROCK_INTO_GROUND
+            } else {
+                under
+            };
             // A metre up or down here and there, the lip left as it is.
             let step = (random01(seed) * 3.0).floor() - 1.0;
             let top = top + step.max(0.0);
-            let under = (under + 0.5 * step.min(0.0).abs()).round_ties_even();
+            let under = if under < 0.0 {
+                under
+            } else {
+                (under + 0.5 * step.min(0.0).abs()).round_ties_even()
+            };
             let shade = 0.82 + 0.3 * random01(seed + 5);
             let (l0, l1) = (sign * (ROCK_FOOT - out), sign * (ROCK_FOOT - out - wide));
             let at = |index: usize, lateral: f32, road: f32, height: f32| {
