@@ -141,6 +141,8 @@ models/toys/props.bin
 models/toys/color.jpg
 models/toys2/props.bin
 models/toys2/color.jpg
+models/neon/props.bin
+models/neon/color.jpg
 
 # The game's identity (src/game_info.rs).
 game.ron
