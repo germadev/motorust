@@ -454,7 +454,7 @@
         tunnels: [Span(985.0, 1150.0)],
         bridges: [(span: Span(3444.0, 3650.0), style: Truss)],
         gantries: [
-            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA DEL SOL")),
+            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA BITS")),
             (along: 800.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
             (along: 1700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
             (along: 2700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
