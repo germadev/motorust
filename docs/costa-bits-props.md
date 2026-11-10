@@ -57,7 +57,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 
 | Name (`SIZES`) | What | Size | Triangles | Drawn as | Priority | Where |
 |---|---|---|---|---|---|---|
-| `curve_sign` | Yellow diamond warning sign of a bend, on a post | 3 m high | 200 | Model | A | Before the bends of the climb and the way down; many copies |
+| `curve_sign`, `curve_sign_left` | Yellow diamond warning sign of a bend, on a post, bending right and left | 3 m high | 22 | Model | A | Before the bends of the climb and the way down, bending as the road does; many copies. **Not from Meshy:** its arrow came out a smudge, so both are built by `tools/make_curve_sign.py` |
 | `boulder_a`, `boulder_b`, `boulder_c` | Big sandstone boulders, three shapes | 3 to 5 m high | 400 each | Model | A | Along the mountain road and the headland; many copies |
 | `mirador` | Stone viewpoint with a wooden pergola and a bench | 4 m high, 6 m wide | 2,000 | Model | A | On a bend of the climb, about 2,300 m, over the sea |
 | `km_post` | White kilometre post with a red top | 1.2 m high (shown at 1.5 m) | 150 | Model | B | Every 500 m along the lap; many copies |
@@ -88,7 +88,6 @@ Each prompt below is followed by the shared ending (see [Settings for every mode
 - **`lifeguard_tower`:** A wooden beach lifeguard tower on four legs with a ladder, a small box cabin with a sloped roof, painted in wide red and white stripes, a blank flag on a pole.
 - **`flag_marshal`:** A race marshal standing, white overalls, a white cap, holding up a black-and-white chequered flag in the right hand mid-wave, chunky stylized proportions.
 - **`banner_plane`:** A small vintage single-engine propeller plane, high wings, painted yellow and red, towing a long blank white fabric banner on a rope behind it, side view in level flight.
-- **`curve_sign`:** A yellow diamond-shaped road warning sign with a thick black border and a bold black curved arrow bending right, on a grey metal post.
 - **`boulder_a`, `boulder_b`, `boulder_c`:** A large angular sandstone boulder with big flat facets, warm ochre and tan with a few darker bands; `b` taller and narrower, `c` flatter and split in two.
 - **`mirador`:** A small stone scenic viewpoint over a cliff, a low semicircular parapet of rough stone, a wooden pergola of square beams on four stone pillars above it, a wooden bench under it.
 - **`km_post`:** A small roadside kilometre marker post of white concrete, rectangular with a rounded top painted red, a blank face.
