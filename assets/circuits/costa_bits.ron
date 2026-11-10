@@ -420,6 +420,10 @@
             // open to the sky over them.
             (span: Span(2110.0, 2320.0), side: Right, height: 26.0),
             (span: Span(2110.0, 2320.0), side: Left, height: 26.0),
+            // Higher at the bridge, up to the foot of its side arches, which
+            // stand on the rock.
+            (span: Span(2170.0, 2260.0), side: Right, height: 37.0),
+            (span: Span(2170.0, 2260.0), side: Left, height: 37.0),
         ],
         // Mountains closing the horizon inland, to the north; to the south,
         // open sea.

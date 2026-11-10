@@ -23,7 +23,8 @@ through it, so it is mended (`open_bridge`): the wall at the foot of the arch
 is cut away, the faces of the piers it hid are closed with the stone of the
 piers above them, and the middle of the bridge, between the piers, is
 stretched across until the arch is as wide as `SIZES` asks, the piers moved
-out to match, the rest as made.
+out to match, the rest as made; and its ends, which came as stubs hanging
+off its side arches, are drawn down to the ground as abutments.
 
 The bend signs (`curve_sign`, `curve_sign_left`) are not Meshy's: they are
 built by `tools/make_curve_sign.py`.
@@ -88,6 +89,8 @@ SIZES = {
 # bridge and the plane as `SIZES` says (sized already for where they are).
 ARCADE = 1.5
 ARCADE_EXCEPT = {"white_house": 1.25, "gorge_bridge": 1.0, "banner_plane": 1.0}
+# How far in from each end of the bridge its abutments reach (m).
+ABUTMENT = 6.6
 CELL = 512
 COLUMNS = 5
 MARGIN = 2
@@ -221,6 +224,13 @@ def open_bridge(positions, normals, uvs, indices, height, half_opening):
     normals = normals.copy()
     normals[within, 0] /= stretch
     normals /= np.linalg.norm(normals, axis=1, keepdims=True).clip(1e-9)
+    # Its ends, which came as stubs hanging off the side arches (Meshy left
+    # out the gorge's walls they stand on), taken down to the ground as
+    # abutments: the underside of each stub drawn down, its sides with it.
+    reach = np.abs(positions[:, 0] - middle)
+    outer = reach >= reach.max() - ABUTMENT / scale
+    under = outer & (positions[:, 1] <= positions[outer][:, 1].min() + 1.2 / scale)
+    positions[under, 1] = bottom
     print(
         f"gorge_bridge: the wall at its foot cut ({wall.sum()} triangles), its arch stretched {stretch:.2f} times"
     )
