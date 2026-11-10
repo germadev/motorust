@@ -415,9 +415,11 @@
             (span: Span(2040.0, 2440.0), side: Right, height: 24.0),
             (span: Span(2600.0, 3000.0), side: Right, height: 20.0),
             // The gorge, through the mountain's seaward spur: sheer rock on
-            // both sides, the old bridge over it at its rims' height.
-            (span: Span(2110.0, 2320.0), side: Right, height: 46.0),
-            (span: Span(2110.0, 2320.0), side: Left, height: 46.0),
+            // both sides, 26 m high, the old bridge, 60 m high, standing over its
+            // rims, the side arches of its deck (from 42 m up, 21 to 34 m out)
+            // open to the sky over them.
+            (span: Span(2110.0, 2320.0), side: Right, height: 26.0),
+            (span: Span(2110.0, 2320.0), side: Left, height: 26.0),
         ],
         // Mountains closing the horizon inland, to the north; to the south,
         // open sea.
@@ -596,30 +598,30 @@
                     (model: Ibex, spot: Road(along: 2135.0, lateral: -19.0), turn: -1.57),
                     (model: Ibex, spot: Road(along: 2670.0, lateral: -20.0), turn: 1.57),
                     // Out of the gorge, a viewpoint over the sea, looking out to it.
-                    (model: Mirador, spot: Road(along: 2400.0, lateral: 16.0), turn: 3.14),
+                    (model: Mirador, spot: Road(along: 2400.0, lateral: 17.5), turn: 3.14),
                     // A camper van parked by it.
-                    (model: CamperVan, spot: Road(along: 2384.0, lateral: 16.5)),
+                    (model: CamperVan, spot: Road(along: 2378.0, lateral: 17.0)),
                     // Boulders at the foot of the cut rock, up the mountain road and
                     // down round the cape, between the wall and the rock (it rises
-                    // from 13 m out).
-                    (model: BoulderA, spot: Road(along: 2065.0, lateral: -13.6)),
-                    (model: BoulderB, spot: Road(along: 2090.0, lateral: -13.0)),
-                    (model: BoulderC, spot: Road(along: 2370.0, lateral: -15.0), turn: 0.6),
-                    (model: BoulderA, spot: Road(along: 2440.0, lateral: -13.6), turn: 2.0),
-                    (model: BoulderB, spot: Road(along: 2630.0, lateral: -13.0)),
-                    (model: BoulderC, spot: Road(along: 2720.0, lateral: -15.0), turn: -0.8),
-                    (model: BoulderA, spot: Road(along: 2860.0, lateral: -13.6), turn: 1.0),
-                    (model: BoulderB, spot: Road(along: 2975.0, lateral: -13.0)),
+                    // from 13 m out), into which the bigger ones reach.
+                    (model: BoulderA, spot: Road(along: 2065.0, lateral: -14.6)),
+                    (model: BoulderB, spot: Road(along: 2090.0, lateral: -13.6)),
+                    (model: BoulderC, spot: Road(along: 2370.0, lateral: -16.2), turn: 0.6),
+                    (model: BoulderA, spot: Road(along: 2440.0, lateral: -14.6), turn: 2.0),
+                    (model: BoulderB, spot: Road(along: 2630.0, lateral: -13.6)),
+                    (model: BoulderC, spot: Road(along: 2720.0, lateral: -16.2), turn: -0.8),
+                    (model: BoulderA, spot: Road(along: 2860.0, lateral: -14.6), turn: 1.0),
+                    (model: BoulderB, spot: Road(along: 2975.0, lateral: -13.6)),
                     // Prickly pears and agaves on the dry slopes of the mountain
                     // and the cape.
-                    (model: PricklyPear, spot: Road(along: 2050.0, lateral: -12.9)),
-                    (model: Agave, spot: Road(along: 2350.0, lateral: -13.2)),
-                    (model: PricklyPear, spot: Road(along: 2455.0, lateral: -12.9), turn: 0.5),
-                    (model: Agave, spot: Road(along: 2590.0, lateral: -13.2)),
-                    (model: PricklyPear, spot: Road(along: 2760.0, lateral: -12.9), turn: -0.4),
-                    (model: Agave, spot: Road(along: 2820.0, lateral: -13.2)),
-                    (model: PricklyPear, spot: Road(along: 2920.0, lateral: -12.9)),
-                    (model: Agave, spot: Road(along: 3040.0, lateral: -13.2)),
+                    (model: PricklyPear, spot: Road(along: 2050.0, lateral: -13.6)),
+                    (model: Agave, spot: Road(along: 2350.0, lateral: -13.8)),
+                    (model: PricklyPear, spot: Road(along: 2455.0, lateral: -13.6), turn: 0.5),
+                    (model: Agave, spot: Road(along: 2590.0, lateral: -13.8)),
+                    (model: PricklyPear, spot: Road(along: 2760.0, lateral: -13.6), turn: -0.4),
+                    (model: Agave, spot: Road(along: 2820.0, lateral: -13.8)),
+                    (model: PricklyPear, spot: Road(along: 2920.0, lateral: -13.6)),
+                    (model: Agave, spot: Road(along: 3040.0, lateral: -13.8)),
                     // The ruins of a castle on the mesa, over the cape, facing the
                     // mountain road (east).
                     (model: CastleRuin, spot: At(position: (735.0, 330.0), heading: -1.571)),
@@ -627,7 +629,7 @@
                     (model: Watchtower, spot: At(position: (818.0, 612.0), heading: 0.0)),
                     // By the grid, a sports car parked, and the marshal by the line
                     // with his chequered flag.
-                    (model: RetroSportsCar, spot: Road(along: 4302.0, lateral: 16.0)),
+                    (model: RetroSportsCar, spot: Road(along: 4302.0, lateral: 17.0)),
                     (model: FlagMarshal, spot: Road(along: 4384.0, lateral: 13.6)),
                 ],
                 // A sign before every bend of the cliffs and of the way down round

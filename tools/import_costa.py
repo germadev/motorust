@@ -45,8 +45,9 @@ from import_trees import read_glb
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "models" / "costa"
 
-# How big each prop is in the game: by its height (m), or its length (m,
-# the longest way across, for a boat or a car). The bridge by its height
+# How big each prop is, as such a thing is (made bigger in the game by
+# `ARCADE`): by its height (m), or its length (m, the longest way across,
+# for a boat or a car). The bridge by its height
 # and how far from its middle the inner faces of its piers stand once its
 # arch is widened (m): clear of the road's walls, which close in to 6.5 m
 # under it (`narrows` in `assets/circuits/costa_bits.ron`).
@@ -79,8 +80,14 @@ SIZES = {
     # Flying over the bay, towing its banner: half as big again as such a
     # plane is, so that it reads from the road.
     "banner_plane": ("length", 33.0),
-    "gorge_bridge": ("bridge", 48.0, 7.4),
+    "gorge_bridge": ("bridge", 60.0, 7.4),
 }
+# How much bigger than `SIZES` each prop is made in the game: half as big
+# again, as the arcade racers drew what stood by their roads, so that it
+# reads at speed; the houses a quarter, among the engine's cottages; the
+# bridge and the plane as `SIZES` says (sized already for where they are).
+ARCADE = 1.5
+ARCADE_EXCEPT = {"white_house": 1.25, "gorge_bridge": 1.0, "banner_plane": 1.0}
 CELL = 512
 COLUMNS = 5
 MARGIN = 2
@@ -247,6 +254,8 @@ def main():
         )
 
         sized = SIZES[name]
+        larger = ARCADE_EXCEPT.get(name, ARCADE)
+        sized = (sized[0], sized[1] * larger) + tuple(sized[2:])
         if sized[0] == "bridge":
             positions, normals, uvs, indices = open_bridge(
                 positions, normals, uvs, indices, *sized[1:]

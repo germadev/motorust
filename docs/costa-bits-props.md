@@ -4,7 +4,7 @@ These are the props to model with Meshy for [Costa Bits](tracks.md#costa-bits). 
 
 None of these props carries a brand, a logo or a real product. Each is a generic, original design, so that nothing registered appears in the game (see [Trademarks](#trademarks)).
 
-Sizes are in the game's metres, which are real metres: a bike is about 2 m long, and the road's walls stand 11.5 m from its middle. The size is what the importer scales each model to (its `SIZES`): the height, or the length for boats, cars and planes, as each row says.
+Sizes are in the game's metres, which are real metres: a bike is about 2 m long, and the road's walls stand 11.5 m from its middle. The size is what the importer scales each model to (its `SIZES`): the height, or the length for boats, cars and planes, as each row says. In the game every prop is half as big again as the tables say (`ARCADE` in `tools/import_costa.py`), as the arcade racers drew their roadside, so that it reads at speed: seen at life size from a bike at speed, most were hardly noticed. The houses are a quarter bigger, and the bridge and the plane as the tables say.
 
 ## How the track is drawn, and what it asks of a model
 
@@ -72,7 +72,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 
 | Name (`SIZES`) | What | Size | Triangles | Drawn as | Priority | Where |
 |---|---|---|---|---|---|---|
-| `gorge_bridge` | An old stone bridge over a gorge, one great arch | 48 m high, 55 m wide | 3,700 | Model | A | Over the road in the gorge of the mountain road, at 2215 m. Meshy made its arch narrow and closed at its foot; the importer opens it to the ground and widens it to 7.4 m either side of the middle, where the walls close in to 6.5 m |
+| `gorge_bridge` | An old stone bridge over a gorge, one great arch | 60 m high, 65 m wide | 3,700 | Model | A | Over the road in the gorge of the mountain road, at 2215 m. Meshy made its arch narrow and closed at its foot; the importer opens it to the ground and widens it to 7.4 m either side of the middle, where the walls close in to 6.5 m |
 
 ### Homage to the arcades (no brands)
 
