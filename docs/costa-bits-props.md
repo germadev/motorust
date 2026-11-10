@@ -47,7 +47,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | `white_house` | Andalusian whitewashed house, two floors | 9 m high | 2,000 | Model | A | Along the start straight, in place of some of the engine's cottages, a few copies turned differently |
 | `chiringuito` | Beach bar with a reed roof | 4.5 m high | 2,500 | Model | A | On the bay's beach below the start straight |
 | `espeto_boat` | Small wooden fishing boat on the sand, filled with sand, a fire with fish skewers | 5 m long | 1,500 | Model | A | On the beach, by the beach bar |
-| `retro_sports_car` | 1980s wedge-shaped red convertible, an original design | 4.4 m long | 3,000 | Model | A | Parked by the grid |
+| `retro_sports_car` | 1980s wedge-shaped convertible, an original design | 4.4 m long | 3,000 | Model | A | Parked by the grid. Meshy made it red; it was repainted yellow, with two black stripes along its bonnet and boot, to keep it clear of any real car |
 | `watchtower` | Round stone coastal watchtower, 16th century | 14 m high | 1,500 | Card | A | On the cape, by the lighthouse; another on the headland |
 | `lifeguard_tower` | Wooden lifeguard tower, red and white | 5 m high | 1,200 | Model | B | On the bay's beach |
 | `flag_marshal` | Race marshal in white overalls, waving a chequered flag | 2.2 m high | 2,500 | Model | B | By the finish line, beside the road |
