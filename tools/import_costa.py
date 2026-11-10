@@ -103,6 +103,8 @@ BULB_GROUPS = 3
 # each frame's size (px).
 FRAME_GRID = (2, 2)
 FRAME_SIZE = (1024, 512)
+# How many of the image's pixels across each pixel of its pixel art is.
+PICTURE_PIXEL = 5
 # How far in from each end of the bridge its abutments reach (m).
 ABUTMENT = 6.6
 CELL = 512
@@ -253,86 +255,83 @@ def open_bridge(positions, normals, uvs, indices, height, half_opening):
 
 def sunset(width, height, phase):
     """A frame of the billboard's picture, `width` by `height` pixels,
-    `phase` (0..1) through its loop: a striped sun going down into the sea
-    under a sky from orange to magenta, its stripes sliding down it, its
-    light glinting on the water, and palms in black against it at either
-    side, their fronds swaying. No text. Drawn twice the size and brought
-    down, so its edges are smooth."""
-    w, h = 2 * width, 2 * height
-    horizon = int(h * 0.62)
-    # The sky and the sea, each a gradient down the picture.
-    rows = np.arange(h, dtype=np.float64)[:, None]
-    stops_sky = np.array(
-        [[255, 170, 45], [255, 120, 60], [240, 80, 110], [200, 70, 160]], float
-    )
-    t = (rows / horizon).clip(0.0, 1.0) * (len(stops_sky) - 1)
-    k = np.minimum(t.astype(int), len(stops_sky) - 2)
-    sky = stops_sky[k[:, 0]] + (stops_sky[k[:, 0] + 1] - stops_sky[k[:, 0]]) * (t - k)
-    u = ((rows - horizon) / (h - horizon)).clip(0.0, 1.0)
-    sea = (
-        np.array([60, 110, 225], float)
-        + (np.array([20, 40, 130], float) - [60, 110, 225]) * u
-    )
-    column = np.where(rows < horizon, sky, sea)
-    image = Image.fromarray(np.repeat(column[:, None, :], w, axis=1).astype(np.uint8))
+    `phase` (0..1) through its loop: pixel art, drawn `PICTURE_PIXEL` times
+    smaller and shown large with its pixels square. A striped sun going down
+    into the sea under a sky in bands from orange to pink, its stripes
+    sliding down it, its light in dashes shifting on the water, and palms in
+    black against it at either side, their fronds swaying. No text."""
+    w, h = width // PICTURE_PIXEL, height // PICTURE_PIXEL
+    image = Image.new("RGB", (w, h))
     draw = ImageDraw.Draw(image)
+    horizon = int(h * 0.62)
+    sky = [
+        (255, 150, 40),
+        (255, 120, 50),
+        (250, 95, 75),
+        (240, 80, 110),
+        (225, 80, 150),
+    ]
+    for k, colour in enumerate(sky):
+        draw.rectangle(
+            [0, horizon * k // len(sky), w, horizon * (k + 1) // len(sky)], fill=colour
+        )
     # The sun, half under the horizon, cut by stripes of the sky behind it
-    # that slide down it and widen towards the sea.
+    # that slide down it, wider towards the sea.
     radius = int(h * 0.3)
     middle = w // 2
     sun = Image.new("L", (w, h), 0)
-    ImageDraw.Draw(sun).ellipse(
+    cut = ImageDraw.Draw(sun)
+    cut.ellipse(
         [middle - radius, horizon - radius, middle + radius, horizon + radius], fill=255
     )
-    cut = ImageDraw.Draw(sun)
-    stripes = 6
-    for n in range(stripes + 1):
-        down = (n + phase) / stripes
-        y = horizon - radius + radius * down
-        thick = 2 + radius * 0.07 * down
-        cut.rectangle([middle - radius, y, middle + radius, y + thick], fill=0)
-    cut.rectangle([0, horizon, w, h], fill=0)
-    image.paste(Image.new("RGB", (w, h), (255, 222, 70)), (0, 0), sun)
-    # The sun's light on the water: dashes narrowing towards the shore,
-    # shifting from side to side.
-    for n in range(7):
-        y = horizon + 6 + n * (h - horizon - 12) // 7
-        half = radius * (8 - n) / 9.0
-        shift = radius * 0.12 * np.sin(2 * np.pi * (phase + n * 0.37))
-        draw.rounded_rectangle(
-            [middle - half + shift, y, middle + half + shift, y + max(3, h // 90)],
-            radius=h // 180,
-            fill=(255, 205, 120),
+    stripes = 5
+    for k in range(stripes + 1):
+        down = (k + phase) / stripes
+        y = round(horizon - radius + radius * down)
+        cut.rectangle(
+            [middle - radius, y, middle + radius, y + round(2 * down)], fill=0
         )
-    black = (14, 10, 22)
+    cut.rectangle([0, horizon, w, h], fill=0)
+    image.paste(Image.new("RGB", (w, h), (255, 215, 60)), (0, 0), sun)
+    sea = [(40, 90, 210), (30, 70, 180), (25, 55, 150)]
+    for k, colour in enumerate(sea):
+        draw.rectangle([0, horizon + (h - horizon) * k // len(sea), w, h], fill=colour)
+    # The sun's light on the water, in dashes narrowing towards the shore,
+    # shifting from side to side.
+    for k in range(5):
+        y = horizon + 2 + k * (h - horizon - 4) // 5
+        half = radius * (5 - k) // 6
+        shift = round(2 * np.sin(2 * np.pi * (phase + k * 0.37)))
+        draw.rectangle(
+            [middle - half + shift, y, middle + half + shift, y + 1],
+            fill=(255, 190, 90),
+        )
+    black = (16, 12, 24)
 
     def palm(foot, top, lean, sway):
         """A palm from `foot` (x) up to `top` (y), its trunk bending by
-        `lean` pixels, its fronds arching out and drooping, swaying."""
+        `lean` pixels, and its fronds drooping from its head, swaying."""
         points = []
-        for n in range(25):
-            t = n / 24.0
+        for k in range(13):
+            t = k / 12.0
             points.append((foot + lean * t * t, h - (h - top) * t))
-        draw.line(points, fill=black, width=max(4, w // 90), joint="curve")
+        draw.line(points, fill=black, width=max(2, w // 64))
         head_x, head_y = points[-1]
         length = h * 0.3
-        for angle in (-2.75, -2.2, -1.75, -1.3, -0.85, -0.4, 0.2, 3.35):
-            angle += 0.07 * np.sin(2 * np.pi * (phase + sway)) * np.cos(angle)
-            upper, lower = [], []
-            for n in range(13):
-                t = n / 12.0
-                # Out along its angle, falling as the square of how far out.
-                x = head_x + length * t * np.cos(angle)
-                y = head_y + length * t * np.sin(angle) * 0.7 + length * 0.42 * t * t
-                broad = length * 0.11 * np.sin(np.pi * t) ** 0.7
-                upper.append((x, y - broad * 0.35))
-                lower.append((x, y + broad))
-            draw.polygon(upper + lower[::-1], fill=black)
+        for angle in (-2.6, -2.0, -1.2, -0.5, 0.3, 0.9, 3.5):
+            angle += 0.1 * np.sin(2 * np.pi * (phase + sway)) * np.cos(angle)
+            tip = (
+                head_x + length * np.cos(angle),
+                head_y + length * 0.75 * np.sin(angle),
+            )
+            droop = (tip[0], tip[1] + length * 0.16)
+            elbow = ((head_x + tip[0]) / 2, (head_y + tip[1]) / 2 - length * 0.18)
+            draw.polygon([(head_x, head_y), elbow, tip, droop], fill=black)
 
-    palm(w * 0.12, h * 0.2, w * 0.05, 0.0)
-    palm(w * 0.24, h * 0.44, -w * 0.03, 0.3)
-    palm(w * 0.87, h * 0.24, -w * 0.06, 0.6)
-    return image.resize((width, height), Image.LANCZOS)
+    palm(w * 0.13, h * 0.2, w * 0.05, 0.0)
+    palm(w * 0.25, h * 0.42, -w * 0.03, 0.3)
+    palm(w * 0.86, h * 0.24, -w * 0.06, 0.6)
+    return image.resize((width, height), Image.NEAREST)
 
 
 def billboard_frames():

@@ -90,10 +90,11 @@ const OVERHANG_ROOT: f32 = 4.0;
 /// An overhang's blocks: how wide across the road and how long along it
 /// (m), as the blocks of the ground by the road.
 const OVERHANG_BLOCK: (f32, f32) = (1.0, 2.0);
-/// How thick it is at its root and at its lip (m), how much its underside
+/// How thick it is at its root and at its lip (m: a mass of rock over the
+/// road, not a visor), how much its underside
 /// rises a metre out, and over how far along the road it grows out at each
 /// end of its stretch (m).
-const OVERHANG_THICK: (f32, f32) = (7.0, 1.5);
+const OVERHANG_THICK: (f32, f32) = (16.0, 6.0);
 const OVERHANG_RISE: f32 = 0.12;
 const OVERHANG_EASE: f32 = 40.0;
 /// The rock's colour (sRGB), each block a little lighter or darker.
@@ -736,6 +737,19 @@ fn bend(track: &Track, along: f32) -> f32 {
     sum / (2 * reach + 1) as f32
 }
 
+/// How far the castle's foot goes into the highest of the rock under it
+/// (m).
+const CASTLE_SINK: f32 = 2.0;
+
+/// The highest of the ground under a prop round `position`, `reach` metres
+/// across its middle.
+fn highest_ground(terrain: &Terrain, position: Vec2, reach: f32) -> f32 {
+    [Vec2::ZERO, Vec2::X, -Vec2::X, Vec2::Y, -Vec2::Y]
+        .into_iter()
+        .map(|offset| terrain.height(position + offset * 0.6 * reach))
+        .fold(f32::MIN, f32::max)
+}
+
 /// The lowest of the ground under a prop round `position`, `reach` metres
 /// across its middle.
 fn lowest_ground(terrain: &Terrain, position: Vec2, reach: f32) -> f32 {
@@ -785,6 +799,11 @@ fn spawn_prop(
         // out over the edge, as the houses over a gorge do; anything else on
         // the lowest of the ground under it.
         _ if prop.model == CostaModel::WhiteHouse => terrain.height(position) - HOUSE_SINK,
+        // The castle stands on the highest of the rock under it, the crags
+        // at its own foot down into it: no rock before it hides it.
+        _ if prop.model == CostaModel::CastleRuin => {
+            highest_ground(terrain, position, reach) - CASTLE_SINK
+        }
         _ => lowest_ground(terrain, position, reach),
     };
     // One that leans is lifted until its low end (the car's low side) is on

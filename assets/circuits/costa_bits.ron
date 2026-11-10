@@ -149,8 +149,12 @@
             (120.0, 5.4),
             (155.0, 7.2),
             (190.0, 4.2),
-            (250.0, 2.0),
-            (300.0, 1.6),
+            // Down to the beach: the road low over the sand by the lifeguard's
+            // tower and the beach bar.
+            (225.0, 0.8),
+            (250.0, -1.6),
+            (322.0, -1.6),
+            (352.0, 0.6),
             // Up the cliffs, steadily, with no crest in the bends.
             (382.0, 2.5),
             (456.0, 5.5),
@@ -224,8 +228,8 @@
         // Under the bridge over the gorge, the walls close in to its arch.
         narrows: [
             (from: 2200.0, to: 2230.0, wall: 6.5),
-            // Down round the cape the road is narrow, under the rock.
-            (from: 2740.0, to: 3105.0, wall: 6.8),
+            // Down round the cape the road is a single lane, under the rock.
+            (from: 2740.0, to: 3105.0, wall: 5.0),
         ],
         // Hardly banked where the road splits, as in Ghost Island and Gold
         // Mine.
@@ -310,7 +314,11 @@
             (42.0, 120.0),
             (38.0, 20.0),
             (38.0, -100.0),
-            (38.0, -300.0),
+            // The beach, wider out from the road.
+            (42.0, -205.0),
+            (64.0, -240.0),
+            (66.0, -310.0),
+            (44.0, -345.0),
             (28.0, -395.0),
             (6.0, -460.0),
             (2.0, -520.0),
@@ -353,15 +361,17 @@
             (558.0, 688.0),
             (650.0, 684.0),
             (725.0, 676.0),
-            // The cape, jutting out, a watchtower on it.
+            // The cape, jutting out.
             (795.0, 668.0),
             (855.0, 640.0),
             (885.0, 570.0),
             (860.0, 505.0),
             // Right under the mountain road's parapet, some 30 m from its
             // middle, so that the cliff drops from the wall to the sea.
-            (882.0, 370.0),
-            (906.0, 250.0),
+            (884.0, 370.0),
+            (906.0, 330.0),
+            (912.0, 290.0),
+            (908.0, 250.0),
             (916.0, 130.0),
             (921.0, 10.0),
             // Out round the gorge, which the rock rises on either side of,
@@ -425,7 +435,7 @@
             // The mountain road, cut into the cliffs: rock on the right all the
             // way up, and on the way down round the cape.
             (span: Span(2040.0, 2440.0), side: Right, height: 24.0),
-            (span: Span(2600.0, 3165.0), side: Right, height: 24.0),
+            (span: Span(2600.0, 3165.0), side: Right, height: 36.0),
             // The gorge, through the mountain's seaward spur: sheer rock on
             // both sides, 26 m high, the old bridge, 60 m high, standing over its
             // rims, the side arches of its deck (from 42 m up, 21 to 34 m out)
@@ -452,7 +462,9 @@
         walls: [
             // The start straight: a railing over the bay on the right, stone on
             // the town's side.
-            (span: Span(4214.0, 340.0), side: Right, style: Railing),
+            (span: Span(4214.0, 232.0), side: Right, style: Railing),
+            // By the beach, a low wooden fence, the sand and the sea over it.
+            (span: Span(232.0, 340.0), side: Right, style: Fence),
             (span: Span(4214.0, 340.0), side: Left, style: Stone),
             // The cliffs: a railing over the drop to the bay, stone against the
             // rock.
@@ -518,7 +530,22 @@
             (span: Span(3174.0, 3444.0), side: Left, lateral: 15.0, every: 12.0),
         ],
         // A pine forest over the headland and up the foot of the mountain.
-        forests: [(span: Span(1600.0, 2150.0), species: [Tall])],
+        // (A clearing in it round the hermitage, 1880 m round the lap.)
+        forests: [
+            (span: Span(1600.0, 1790.0), species: [Tall]),
+            (span: Span(1960.0, 2150.0), species: [Tall]),
+        ],
+        // The hermitage's knoll, a few metres over the road; and
+        terraces: [
+            (center: (802.8, -492.1), radius: 9.0, height: 24.5, skirt: 12.0),
+            // The beach by the start straight: level and low, so that it is
+            // sand from the road's fence to the water.
+            (center: (34.0, -258.0), radius: 24.0, height: 0.1, skirt: 12.0),
+            (center: (36.0, -300.0), radius: 24.0, height: 0.1, skirt: 12.0),
+            // A shoulder of the cliff out over the sea for the watchtower, level
+            // with the road, before the rock reaches over it.
+            (center: (886.5, 308.0), radius: 9.0, height: 48.0, skirt: 6.0),
+        ],
         buoys: [
             (120.0, -150.0),
             (200.0, -520.0),
@@ -611,8 +638,13 @@
                     ),
                     // Over the headland, a watchtower inland of the road.
                     (model: Watchtower, spot: At(position: (700.0, -575.0), heading: 0.0)),
-                    // The hamlet's hermitage, over the headland, facing the road.
-                    (model: Ermita, spot: Road(along: 1880.0, lateral: 32.0)),
+                    // The hamlet's hermitage, over the headland, on a knoll in a
+                    // clearing of the forest, its front to the riders coming.
+                    (
+                        model: Ermita,
+                        spot: Road(along: 1880.0, lateral: 30.0),
+                        facing_riders: true,
+                    ),
                     // The gorge: houses on both rims, at their edges, their fronts
                     // turned down the road to the riders coming up it, and the old bridge over the road.
                     (model: WhiteHouse, spot: Road(along: 2125.0, lateral: 20.5), turn: -0.8),
@@ -656,11 +688,12 @@
                     // the mesa, ahead of the riders coming off the summit.
                     (
                         model: CastleRuin,
-                        spot: Road(along: 2665.0, lateral: -34.0),
+                        spot: Road(along: 2665.0, lateral: -30.0),
                         facing_riders: true,
                     ),
-                    // On the cape, another watchtower.
-                    (model: Watchtower, spot: At(position: (818.0, 612.0), heading: 0.0)),
+                    // Another watchtower over the sea on the left, before the rock
+                    // reaches over the road.
+                    (model: Watchtower, spot: Road(along: 2688.0, lateral: 21.0)),
                     // The marshal by the line with his chequered flag.
                     (model: FlagMarshal, spot: Road(along: 4384.0, lateral: 13.6)),
                 ],
@@ -673,10 +706,11 @@
                 // A kilometre post every 500 m, on the right.
                 km_posts: Some((every: 500.0, side: Right, lateral: 12.6)),
                 // Down round the cape, the rock on the right reaches out over the
-                // narrow road, almost to its far wall, as over a road cut into a cliff,
+                // narrow road and past its far wall, a great mass of it, as over a road
+                // cut into a cliff,
                 // all the way off the mountain.
                 overhangs: [
-                    (span: Span(2735.0, 3135.0), side: Right, reach: 19.0, clearance: 7.0),
+                    (span: Span(2735.0, 3135.0), side: Right, reach: 25.0, clearance: 7.0),
                 ],
                 // A plane towing its blank banner round over the bay, seen ahead
                 // from the start straight and over the water from the cliffs and
