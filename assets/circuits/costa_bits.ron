@@ -585,10 +585,10 @@
                     (model: Ermita, spot: Road(along: 1880.0, lateral: 32.0)),
                     // The gorge: houses on both rims, at their edges, looking down into
                     // it, and the old bridge over the road.
-                    (model: WhiteHouse, spot: Road(along: 2160.0, lateral: 20.5)),
-                    (model: WhiteHouse, spot: Road(along: 2185.0, lateral: 20.0), turn: -0.15),
+                    (model: WhiteHouse, spot: Road(along: 2125.0, lateral: 20.5)),
+                    (model: WhiteHouse, spot: Road(along: 2150.0, lateral: 20.0), turn: -0.15),
                     (model: WhiteHouse, spot: Road(along: 2250.0, lateral: 21.0), turn: 0.1),
-                    (model: WhiteHouse, spot: Road(along: 2170.0, lateral: -20.5), turn: 0.1),
+                    (model: WhiteHouse, spot: Road(along: 2135.0, lateral: -20.5), turn: 0.1),
                     (model: WhiteHouse, spot: Road(along: 2245.0, lateral: -20.0)),
                     (model: WhiteHouse, spot: Road(along: 2275.0, lateral: -21.0), turn: -0.2),
                     (model: GorgeBridge, spot: Over(along: 2215.0)),

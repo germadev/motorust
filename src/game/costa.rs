@@ -253,9 +253,11 @@ const BENDS_APART: f32 = 60.0;
 /// How far the bridge's foot goes below the road at its piers (m), so that
 /// it never stands on air where the road climbs.
 const BRIDGE_SINK: f32 = 0.5;
-/// How far a house's foot goes below the ground under its middle (m), so
-/// that it stands in rock that is not quite level.
-const HOUSE_SINK: f32 = 1.0;
+/// How far a house's foot goes below the ground under its middle (m): its
+/// ground floor in the rock of the rim it stands on, as the houses over a
+/// gorge are built down into it, so that those on the gorge's rims stand
+/// low before the bridge's side arches.
+const HOUSE_SINK: f32 = 4.5;
 /// Where the bridge's piers stand, either side of the road's middle (m),
 /// for the height of its foot.
 const BRIDGE_PIERS: f32 = 9.0;
