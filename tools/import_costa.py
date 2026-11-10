@@ -12,6 +12,7 @@ Japan:
 - `props.bin`: every prop as a piece named after it, centred on the origin
   with its lowest point on the ground, up along +Y, at the game's size
   (`SIZES`).
+- `billboard.jpg`: the frames of the billboard's picture.
 - `color.jpg`: their colour textures together, each brought down to `CELL`
   pixels square, in a grid of `COLUMNS`, the texture coordinates of each
   prop moved into its cell: one texture and one material for every prop.
@@ -26,6 +27,13 @@ stretched across until the arch is as wide as `SIZES` asks, the piers moved
 out to match, the rest as made; and its ends, which came as stubs hanging
 off its side arches, are drawn down to the ground as abutments.
 
+The billboard (`arcade_billboard`) came with its picture blurred and its
+palms smeared: a panel is laid over it inside the frame (`mend_billboard`,
+the piece `arcade_billboard_panel`), for a picture of our own that the game
+shows frame by frame (`sunset`, its frames together in `billboard.jpg`); and
+its bulbs are taken apart in three groups (`arcade_billboard_bulbs_N`), which
+the game lights one after another.
+
 The bend signs (`curve_sign`, `curve_sign_left`) are not Meshy's: they are
 built by `tools/make_curve_sign.py`.
 
@@ -37,7 +45,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from import_props import compact, place
@@ -89,6 +97,12 @@ SIZES = {
 # bridge and the plane as `SIZES` says (sized already for where they are).
 ARCADE = 1.5
 ARCADE_EXCEPT = {"white_house": 1.25, "gorge_bridge": 1.0, "banner_plane": 1.0}
+# How many groups the billboard's bulbs are in, lit one after another.
+BULB_GROUPS = 3
+# The billboard's picture: how many frames across and down its image, and
+# each frame's size (px).
+FRAME_GRID = (2, 2)
+FRAME_SIZE = (1024, 512)
 # How far in from each end of the bridge its abutments reach (m).
 ABUTMENT = 6.6
 CELL = 512
@@ -237,6 +251,173 @@ def open_bridge(positions, normals, uvs, indices, height, half_opening):
     return positions, normals, uvs, indices.astype(np.uint32)
 
 
+def sunset(width, height, phase):
+    """A frame of the billboard's picture, `width` by `height` pixels,
+    `phase` (0..1) through its loop: a striped sun going down into the sea
+    under a sky from orange to magenta, its stripes sliding down it, its
+    light glinting on the water, and palms in black against it at either
+    side, their fronds swaying. No text. Drawn twice the size and brought
+    down, so its edges are smooth."""
+    w, h = 2 * width, 2 * height
+    horizon = int(h * 0.62)
+    # The sky and the sea, each a gradient down the picture.
+    rows = np.arange(h, dtype=np.float64)[:, None]
+    stops_sky = np.array(
+        [[255, 170, 45], [255, 120, 60], [240, 80, 110], [200, 70, 160]], float
+    )
+    t = (rows / horizon).clip(0.0, 1.0) * (len(stops_sky) - 1)
+    k = np.minimum(t.astype(int), len(stops_sky) - 2)
+    sky = stops_sky[k[:, 0]] + (stops_sky[k[:, 0] + 1] - stops_sky[k[:, 0]]) * (t - k)
+    u = ((rows - horizon) / (h - horizon)).clip(0.0, 1.0)
+    sea = (
+        np.array([60, 110, 225], float)
+        + (np.array([20, 40, 130], float) - [60, 110, 225]) * u
+    )
+    column = np.where(rows < horizon, sky, sea)
+    image = Image.fromarray(np.repeat(column[:, None, :], w, axis=1).astype(np.uint8))
+    draw = ImageDraw.Draw(image)
+    # The sun, half under the horizon, cut by stripes of the sky behind it
+    # that slide down it and widen towards the sea.
+    radius = int(h * 0.3)
+    middle = w // 2
+    sun = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(sun).ellipse(
+        [middle - radius, horizon - radius, middle + radius, horizon + radius], fill=255
+    )
+    cut = ImageDraw.Draw(sun)
+    stripes = 6
+    for n in range(stripes + 1):
+        down = (n + phase) / stripes
+        y = horizon - radius + radius * down
+        thick = 2 + radius * 0.07 * down
+        cut.rectangle([middle - radius, y, middle + radius, y + thick], fill=0)
+    cut.rectangle([0, horizon, w, h], fill=0)
+    image.paste(Image.new("RGB", (w, h), (255, 222, 70)), (0, 0), sun)
+    # The sun's light on the water: dashes narrowing towards the shore,
+    # shifting from side to side.
+    for n in range(7):
+        y = horizon + 6 + n * (h - horizon - 12) // 7
+        half = radius * (8 - n) / 9.0
+        shift = radius * 0.12 * np.sin(2 * np.pi * (phase + n * 0.37))
+        draw.rounded_rectangle(
+            [middle - half + shift, y, middle + half + shift, y + max(3, h // 90)],
+            radius=h // 180,
+            fill=(255, 205, 120),
+        )
+    black = (14, 10, 22)
+
+    def palm(foot, top, lean, sway):
+        """A palm from `foot` (x) up to `top` (y), its trunk bending by
+        `lean` pixels, its fronds arching out and drooping, swaying."""
+        points = []
+        for n in range(25):
+            t = n / 24.0
+            points.append((foot + lean * t * t, h - (h - top) * t))
+        draw.line(points, fill=black, width=max(4, w // 90), joint="curve")
+        head_x, head_y = points[-1]
+        length = h * 0.3
+        for angle in (-2.75, -2.2, -1.75, -1.3, -0.85, -0.4, 0.2, 3.35):
+            angle += 0.07 * np.sin(2 * np.pi * (phase + sway)) * np.cos(angle)
+            upper, lower = [], []
+            for n in range(13):
+                t = n / 12.0
+                # Out along its angle, falling as the square of how far out.
+                x = head_x + length * t * np.cos(angle)
+                y = head_y + length * t * np.sin(angle) * 0.7 + length * 0.42 * t * t
+                broad = length * 0.11 * np.sin(np.pi * t) ** 0.7
+                upper.append((x, y - broad * 0.35))
+                lower.append((x, y + broad))
+            draw.polygon(upper + lower[::-1], fill=black)
+
+    palm(w * 0.12, h * 0.2, w * 0.05, 0.0)
+    palm(w * 0.24, h * 0.44, -w * 0.03, 0.3)
+    palm(w * 0.87, h * 0.24, -w * 0.06, 0.6)
+    return image.resize((width, height), Image.LANCZOS)
+
+
+def billboard_frames():
+    """The frames of the billboard's picture (`sunset`) together in one
+    image, `FRAME_GRID` across and down, in the order of the loop from the
+    top left."""
+    columns, rows = FRAME_GRID
+    width, height = FRAME_SIZE
+    sheet = Image.new("RGB", (columns * width, rows * height))
+    for frame in range(columns * rows):
+        picture = sunset(width, height, frame / (columns * rows))
+        sheet.paste(picture, ((frame % columns) * width, (frame // columns) * height))
+    return sheet
+
+
+def mend_billboard(positions, normals, uvs, indices, color):
+    """The billboard with its picture drawn again: Meshy's came blurred,
+    its palms smeared, and small in its texture. A panel is laid just
+    before the old one, inside the frame, a piece of its own with texture
+    coordinates over the whole of a picture of its own (`billboard_frames`,
+    which the game shows frame by frame). Its bulbs are taken apart from it,
+    in `BULB_GROUPS` groups by turns round the frame, for the game to light
+    one group after another. Returns the mesh, its triangles without the
+    bulbs, each group's triangles and the panel's."""
+    corners_of = indices.reshape(-1, 3)
+    triangles = positions[corners_of]
+    normal = np.cross(
+        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
+    )
+    area = np.linalg.norm(normal, axis=1)
+    front = normal[:, 2] / area.clip(1e-12) > 0.9
+    middle = triangles.mean(axis=1)
+    pixels = np.asarray(color.resize((512, 512))).astype(np.float64) / 255.0
+    at = (np.clip(uvs[corners_of].mean(axis=1), 0.0, 0.999) * 512).astype(int)
+    rgb = pixels[at[:, 1], at[:, 0]]
+    vivid = rgb.max(axis=1) - rgb.min(axis=1) > 0.25
+    # The bulbs: the yellow lumps on the frame's front, forward of it.
+    yellow = (rgb[:, 0] > 0.6) & (rgb[:, 1] > 0.45) & (rgb[:, 2] < 0.45 * rgb[:, 0])
+    # The picture: the big faces looking forward in vivid colours; the frame
+    # round it, and the legs, are grey.
+    picture = front & vivid & (area > np.percentile(area[front], 60)) & ~yellow
+    panel = triangles[picture].reshape(-1, 3)
+    x0, x1 = np.percentile(panel[:, 0], [1, 99])
+    y0, y1 = np.percentile(panel[:, 1], [1, 99])
+    panel_z = np.median(panel[:, 2])
+    inside = (
+        (middle[:, 0] > x0 - 0.06) & (middle[:, 0] < x1 + 0.06)
+        & (middle[:, 1] > y0 - 0.06) & (middle[:, 1] < y1 + 0.06)
+    )  # fmt: skip
+    bulb = yellow & inside & (middle[:, 2] > panel_z + 0.004) & ~picture
+    z = panel_z + 0.003
+    corners = np.array([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]])
+    start = len(positions)
+    positions = np.vstack([positions, corners])
+    normals = np.vstack([normals, np.tile([0.0, 0.0, 1.0], (4, 1))])
+    uvs = np.vstack([uvs, [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]])
+    quad = np.array(
+        [start, start + 1, start + 2, start, start + 2, start + 3], dtype=np.uint32
+    )
+
+    # Each bulb is the triangles close together; round the frame from its
+    # top left, one to each group in turn.
+    centre = np.array([(x0 + x1) / 2.0, (y0 + y1) / 2.0])
+    bulbs = []
+    for k in np.where(bulb)[0]:
+        for lump in bulbs:
+            if np.linalg.norm(middle[k, :2] - middle[lump[0], :2]) < 0.03:
+                lump.append(k)
+                break
+        else:
+            bulbs.append([k])
+    bulbs.sort(key=lambda lump: np.arctan2(*(middle[lump[0], :2] - centre)))
+    groups = [[] for _ in range(BULB_GROUPS)]
+    for k, lump in enumerate(bulbs):
+        groups[k % BULB_GROUPS].extend(lump)
+    rest = np.ones(len(corners_of), dtype=bool)
+    rest[np.where(bulb)[0]] = False
+    indices = corners_of[rest].reshape(-1).astype(np.uint32)
+    lit = [corners_of[group].reshape(-1).astype(np.uint32) for group in groups]
+    print(
+        f"arcade_billboard: a panel for its picture; {len(bulbs)} bulbs in {BULB_GROUPS} groups"
+    )
+    return positions, normals, uvs, indices, lit, quad
+
+
 def main():
     props = []
     for argument in sys.argv[1:]:
@@ -253,6 +434,11 @@ def main():
     pieces = []
     for slot, (name, path) in enumerate(props):
         positions, normals, uvs, indices, color = read_glb(path)
+        lit, panel = [], None
+        if name == "arcade_billboard":
+            positions, normals, uvs, indices, lit, panel = mend_billboard(
+                positions, normals, uvs, indices, color
+            )
         column, row = slot % COLUMNS, slot // COLUMNS
         inner = CELL - 2 * MARGIN
         texture = color.resize((inner, inner), Image.LANCZOS)
@@ -275,6 +461,14 @@ def main():
         placed, turned, _, _ = place(positions, normals, sized)
         p, n, u, i = compact(placed, turned, moved, indices)
         pieces.append((name, p, n, u, i))
+        # The billboard's bulbs, each group a piece of its own, in its frame,
+        # and its panel, with texture coordinates over its own picture.
+        for group, part in enumerate(lit):
+            pieces.append(
+                (f"{name}_bulbs_{group}", *compact(placed, turned, moved, part))
+            )
+        if panel is not None:
+            pieces.append((f"{name}_panel", *compact(placed, turned, uvs, panel)))
         low, high = p.min(axis=0), p.max(axis=0)
         print(
             f"{name}: {len(p)} vertices, {len(i) // 3} triangles, "
@@ -297,6 +491,8 @@ def main():
             out.write(uvs.astype("<f4").tobytes())
             out.write(indices.astype("<u4").tobytes())
     atlas.save(OUT / "color.jpg", quality=88, optimize=True)
+    if any(name == "arcade_billboard" for name, _ in props):
+        billboard_frames().save(OUT / "billboard.jpg", quality=90, optimize=True)
     print(f"{OUT / 'props.bin'}, {OUT / 'color.jpg'} ({atlas.size[0]}x{atlas.size[1]})")
 
 

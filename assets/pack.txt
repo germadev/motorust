@@ -120,6 +120,7 @@ models/toys2/props.bin
 models/toys2/color.jpg
 models/costa/props.bin
 models/costa/color.jpg
+models/costa/billboard.jpg
 
 # The game's identity (src/game_info.rs).
 game.ron

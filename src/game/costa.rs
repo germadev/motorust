@@ -7,7 +7,9 @@
 //! a viewpoint over the sea, boulders along the mountain road, prickly
 //! pears and agaves on its dry slopes, ibex on the rocks over it, a
 //! hermitage on the headland, a camper van at the viewpoint, a ruined
-//! castle on the mesa, billboards of the arcades' sunset and a kilometre
+//! castle on the shelf of rock below the mesa, billboards of the arcades'
+//! sunset, their pictures moving and their bulbs lit in a chase round their
+//! frames, and a kilometre
 //! post every 500 m, a plane towing a banner round over the bay; the old
 //! stone bridge over the gorge, the road running under its arch; and a
 //! stretch of the mountain road under an overhang of rock; and a
@@ -25,6 +27,7 @@ use bevy::{
     asset::RenderAssetUsages, mesh::Indices, prelude::*, render::render_resource::PrimitiveTopology,
 };
 
+use motorust_engine::bike::model::imported::texture;
 use motorust_engine::geometry::{random01, smoothstep};
 use motorust_engine::track::Track;
 use motorust_engine::world::Assets3d;
@@ -37,6 +40,12 @@ use motorust_engine::world::themes::Theme;
 
 /// The pack of its props, in `assets/models/`.
 const PACK: &str = "costa";
+/// The billboard's bulbs in the pack: this and the number of their group.
+const BILLBOARD_BULBS: &str = "arcade_billboard_bulbs_";
+/// The billboard's panel in the pack, and its picture's frames in the
+/// content.
+const BILLBOARD_PANEL: &str = "arcade_billboard_panel";
+const BILLBOARD_PICTURE: &str = "models/costa/billboard.jpg";
 
 /// The scenery of Costa Bits (see [`crate::game::costa`]): props made
 /// with Meshy standing about, the bridge over the gorge, and signs before
@@ -257,12 +266,114 @@ impl Flight {
     }
 }
 
-/// The theme's systems: the planes flying.
+/// The theme's systems: the planes flying, the billboards' bulbs chasing
+/// round their frames and their pictures moving.
 pub struct CostaPlugin;
 
 impl Plugin for CostaPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, fly);
+        app.add_systems(Update, (fly, chase_bulbs, run_pictures));
+    }
+}
+
+/// A billboard's picture (see [`run_pictures`]): its panel, in a material
+/// of its own with the picture's frames.
+#[derive(Component)]
+struct Picture;
+
+/// The billboard's picture's frames in its image (`billboard.jpg`, as
+/// `tools/import_costa.py` draws it): how many across and down, in the
+/// order of the loop from the top left; how many a second are shown; and
+/// how far in from a frame's edges its panel shows (of the frame), so that
+/// no other frame shows along them from afar.
+const PICTURE_GRID: UVec2 = UVec2::new(2, 2);
+const PICTURE_RATE: f32 = 6.0;
+const PICTURE_INSET: f32 = 0.004;
+/// How bright the picture shines of itself, lit from behind as a
+/// billboard's is.
+const PICTURE_GLOW: f32 = 0.55;
+
+/// The frame of the picture shown `time` seconds in.
+fn picture_frame(time: f32) -> u32 {
+    (time * PICTURE_RATE) as u32 % (PICTURE_GRID.x * PICTURE_GRID.y)
+}
+
+/// Where frame `frame` is in the picture's image: what takes a panel's
+/// texture coordinates (0..1 over it) to that frame's.
+fn frame_uv(frame: u32) -> bevy::math::Affine2 {
+    let cell = Vec2::ONE / PICTURE_GRID.as_vec2();
+    let corner = UVec2::new(frame % PICTURE_GRID.x, frame / PICTURE_GRID.x).as_vec2() * cell;
+    bevy::math::Affine2::from_scale_angle_translation(
+        cell * (1.0 - 2.0 * PICTURE_INSET),
+        0.0,
+        corner + cell * PICTURE_INSET,
+    )
+}
+
+/// Shows the billboards' pictures frame by frame (their material changed
+/// only as the frame does: a few times a second, one material for them
+/// all).
+fn run_pictures(
+    time: Res<Time>,
+    pictures: Query<&MeshMaterial3d<StandardMaterial>, With<Picture>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut last: Local<Option<u32>>,
+) {
+    let frame = picture_frame(time.elapsed_secs());
+    if *last == Some(frame) || pictures.is_empty() {
+        return;
+    }
+    *last = Some(frame);
+    for material in &pictures {
+        if let Some(mut material) = materials.get_mut(&material.0) {
+            material.uv_transform = frame_uv(frame);
+        }
+    }
+}
+
+/// A group of a billboard's bulbs (see [`chase_bulbs`]): one of
+/// [`BULB_GROUPS`], round the frame by turns.
+#[derive(Component)]
+struct Bulbs {
+    group: usize,
+}
+
+/// How many groups a billboard's bulbs are in (as `tools/import_costa.py`
+/// makes them, `arcade_billboard_bulbs_N`), how many times a second the
+/// light steps on from one group to the next, and the light of a bulb lit
+/// and unlit.
+const BULB_GROUPS: usize = 3;
+const BULB_RATE: f32 = 5.0;
+const BULB_LIT: LinearRgba = LinearRgba::rgb(9.0, 6.5, 1.6);
+const BULB_UNLIT: LinearRgba = LinearRgba::rgb(0.12, 0.08, 0.02);
+
+/// Which group of bulbs is lit `time` seconds in: one after another, round
+/// and round, so that the light runs round the frame.
+fn lit_group(time: f32) -> usize {
+    (time * BULB_RATE) as usize % BULB_GROUPS
+}
+
+/// Lights the billboards' bulbs one group after another (their materials
+/// changed only as the light steps on).
+fn chase_bulbs(
+    time: Res<Time>,
+    bulbs: Query<(&Bulbs, &MeshMaterial3d<StandardMaterial>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut last: Local<Option<usize>>,
+) {
+    let lit = lit_group(time.elapsed_secs());
+    if *last == Some(lit) || bulbs.is_empty() {
+        return;
+    }
+    *last = Some(lit);
+    for (bulbs, material) in &bulbs {
+        if let Some(mut material) = materials.get_mut(&material.0) {
+            material.emissive = if bulbs.group == lit {
+                BULB_LIT
+            } else {
+                BULB_UNLIT
+            };
+        }
     }
 }
 
@@ -441,6 +552,39 @@ impl Theme for Costa {
     ) -> Vec<Footprint> {
         let pack = assets.packs.get(PACK);
         let mut taken = Vec::new();
+        // The billboards' bulbs: each group in a material of its own, the
+        // props' with a light of its own (see `chase_bulbs`).
+        let bulbs: Vec<Handle<StandardMaterial>> = (0..BULB_GROUPS)
+            .map(|_| {
+                let material = assets
+                    .materials
+                    .get(&pack.material)
+                    .cloned()
+                    .unwrap_or_default();
+                assets.materials.add(material)
+            })
+            .collect();
+        // Their picture: its frames in an image of its own, shining a
+        // little of itself.
+        let has_billboard = self
+            .props
+            .iter()
+            .any(|prop| prop.model == CostaModel::ArcadeBillboard);
+        let picture = has_billboard.then(|| {
+            let frames = assets.images.add(texture(
+                motorust_engine::content::file(BILLBOARD_PICTURE),
+                true,
+            ));
+            assets.materials.add(StandardMaterial {
+                base_color_texture: Some(frames.clone()),
+                emissive: LinearRgba::gray(PICTURE_GLOW),
+                emissive_texture: Some(frames),
+                perceptual_roughness: 0.9,
+                reflectance: 0.1,
+                uv_transform: frame_uv(0),
+                ..default()
+            })
+        });
         let signs = self
             .bend_signs
             .iter()
@@ -450,14 +594,28 @@ impl Theme for Costa {
             .map(|posts| km_posts(track, scenery, &posts))
             .unwrap_or_default();
         for prop in self.props.iter().copied().chain(signs).chain(posts) {
-            taken.push(spawn_prop(
-                world,
-                track,
-                terrain,
-                &prop,
-                pack,
-                &mut assets.mirrored,
-            ));
+            let (footprint, placed) =
+                spawn_prop(world, track, terrain, &prop, pack, &mut assets.mirrored);
+            taken.push(footprint);
+            if prop.model == CostaModel::ArcadeBillboard {
+                for (group, material) in bulbs.iter().enumerate() {
+                    let piece = pack.piece(&format!("{BILLBOARD_BULBS}{group}"));
+                    world.spawn((
+                        Mesh3d(piece.mesh.clone()),
+                        MeshMaterial3d(material.clone()),
+                        placed,
+                        Bulbs { group },
+                    ));
+                }
+                if let Some(picture) = &picture {
+                    world.spawn((
+                        Mesh3d(pack.piece(BILLBOARD_PANEL).mesh.clone()),
+                        MeshMaterial3d(picture.clone()),
+                        placed,
+                        Picture,
+                    ));
+                }
+            }
         }
         // The rock over the road.
         if !self.overhangs.is_empty() {
@@ -592,7 +750,7 @@ fn lowest_ground(terrain: &Terrain, position: Vec2, reach: f32) -> f32 {
 /// car tipped towards the road, on show); a
 /// house on the ground under its middle; the bridge on the road under its arch, a little below the
 /// lowest of it at its piers. Its surface is given to the water to mirror.
-/// Returns the ground it takes.
+/// Returns the ground it takes, and where it was put.
 fn spawn_prop(
     world: &mut ChildSpawnerCommands,
     track: &Track,
@@ -600,7 +758,7 @@ fn spawn_prop(
     prop: &Prop<CostaModel>,
     props: &PropPack,
     mirrored: &mut Vec<MirrorPoint>,
-) -> Footprint {
+) -> (Footprint, Transform) {
     let piece = props.piece(name(prop.model));
     // The car is on show: its `lean` tips it about its length towards its
     // front (the side it shows the road), so that its bonnet, its seats
@@ -646,8 +804,7 @@ fn spawn_prop(
         placed,
     ));
     mirrored.extend(piece.surface.iter().map(|point| point.placed(&placed)));
-    // The bridge takes the ground of its piers, not the road's.
-    (position, reach)
+    ((position, reach), placed)
 }
 
 #[cfg(test)]
@@ -693,7 +850,10 @@ mod tests {
             let (low, high) = bounds(mesh);
             assert!(low.y.abs() < 1e-3, "{name} stands on the ground");
             assert!((low.x + high.x).abs() < 0.05 * (high.x - low.x), "{name}");
-            assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");
+            // (The billboard is centred with its bulbs, pieces of their own.)
+            if model != CostaModel::ArcadeBillboard {
+                assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");
+            }
             let triangles = mesh.indices().unwrap().len() / 3;
             assert!(triangles < 4_500, "{name}: {triangles} triangles");
         }
@@ -898,5 +1058,46 @@ mod tests {
             }
         }
         assert!(overhangs > 0);
+    }
+
+    #[test]
+    fn the_billboard_s_bulbs_are_lit_one_group_after_another() {
+        crate::game::register();
+        let pack = pack();
+        // Each group in the pack, round the billboard's frame: over its
+        // legs, within its width.
+        let (low, high) = bounds(piece(&pack, name(CostaModel::ArcadeBillboard)));
+        for group in 0..BULB_GROUPS {
+            let (bulbs_low, bulbs_high) =
+                bounds(piece(&pack, &format!("{BILLBOARD_BULBS}{group}")));
+            assert!(bulbs_low.y > 0.3 * high.y, "group {group}: {bulbs_low}");
+            assert!(bulbs_low.x >= low.x - 0.1 && bulbs_high.x <= high.x + 0.1);
+        }
+        // The light steps round every group in turn, each as long.
+        let step = 1.0 / BULB_RATE;
+        let lit: Vec<usize> = (0..2 * BULB_GROUPS)
+            .map(|k| lit_group((k as f32 + 0.5) * step))
+            .collect();
+        assert_eq!(lit, [0, 1, 2, 0, 1, 2]);
+        // Its picture: a panel inside its frame, and its frames, each a
+        // quarter of the image, shown in turn.
+        let (panel_low, panel_high) = bounds(piece(&pack, BILLBOARD_PANEL));
+        assert!(panel_low.y > 0.3 * high.y && panel_high.y < high.y);
+        assert!(panel_low.x > low.x && panel_high.x < high.x);
+        assert!(!motorust_engine::content::file(BILLBOARD_PICTURE).is_empty());
+        let frames: Vec<Vec2> = (0..4)
+            .map(|frame| frame_uv(frame).transform_point2(Vec2::splat(0.5)))
+            .collect();
+        assert_eq!(
+            frames,
+            [
+                Vec2::new(0.25, 0.25),
+                Vec2::new(0.75, 0.25),
+                Vec2::new(0.25, 0.75),
+                Vec2::new(0.75, 0.75)
+            ]
+        );
+        assert_eq!(picture_frame(0.0), 0);
+        assert_eq!(picture_frame(4.5 / PICTURE_RATE), 0);
     }
 }
