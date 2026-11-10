@@ -595,12 +595,13 @@
                         spot: Road(along: 34.0, lateral: 21.5),
                         facing_riders: true,
                     ),
-                    // Under the first, past the start arch, the sports car on show:
-                    // side on to the riders coming, its nose up.
+                    // Under the first, between its legs, the sports car on show: along
+                    // the billboard, tipped towards the riders coming so that its
+                    // bonnet, its seats and its boot are seen from the road.
                     (
                         model: RetroSportsCar,
-                        spot: Road(along: 34.0, lateral: 16.5),
-                        lean: -0.3,
+                        spot: Road(along: 32.5, lateral: 21.0),
+                        lean: 0.7,
                         facing_riders: true,
                     ),
                     (

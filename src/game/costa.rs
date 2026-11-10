@@ -588,7 +588,8 @@ fn lowest_ground(terrain: &Terrain, position: Vec2, reach: f32) -> f32 {
 }
 
 /// A prop, standing on the lowest of the ground under its box, so that it
-/// never floats; one that leans, lifted until its low end is on it; a
+/// never floats; one that leans, lifted until its low end is on it (the
+/// car tipped towards the road, on show); a
 /// house on the ground under its middle; the bridge on the road under its arch, a little below the
 /// lowest of it at its piers. Its surface is given to the water to mirror.
 /// Returns the ground it takes.
@@ -601,7 +602,16 @@ fn spawn_prop(
     mirrored: &mut Vec<MirrorPoint>,
 ) -> Footprint {
     let piece = props.piece(name(prop.model));
-    let (position, rotation) = spot(track, prop);
+    // The car is on show: its `lean` tips it about its length towards its
+    // front (the side it shows the road), so that its bonnet, its seats
+    // and its boot are seen from there, not its nose up or down.
+    let on_show = prop.model == CostaModel::RetroSportsCar;
+    let (position, rotation) = if on_show {
+        let (position, upright) = spot(track, &Prop { lean: 0.0, ..*prop });
+        (position, upright * Quat::from_rotation_x(prop.lean))
+    } else {
+        spot(track, prop)
+    };
     let (low, high) = (piece.low * prop.scale, piece.high * prop.scale);
     let reach = (high.x - low.x).max(high.z - low.z) / 2.0;
     let foot = match prop.spot {
@@ -619,9 +629,14 @@ fn spawn_prop(
         _ if prop.model == CostaModel::WhiteHouse => terrain.height(position) - HOUSE_SINK,
         _ => lowest_ground(terrain, position, reach),
     };
-    // One that leans (a car on show, its nose up) is lifted until its low
-    // end is on the ground.
-    let foot = foot + (high.x - low.x) / 2.0 * prop.lean.sin().abs();
+    // One that leans is lifted until its low end (the car's low side) is on
+    // the ground.
+    let across = if on_show {
+        high.z - low.z
+    } else {
+        high.x - low.x
+    };
+    let foot = foot + across / 2.0 * prop.lean.sin().abs();
     let placed = Transform::from_xyz(position.x, foot, position.y)
         .with_rotation(rotation)
         .with_scale(Vec3::splat(prop.scale));
