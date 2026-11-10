@@ -76,6 +76,8 @@ SIZES = {
     "castle_ruin": ("height", 18.0),
     # The homage to the arcades.
     "arcade_billboard": ("height", 7.0),
+    # Flying over the bay, towing its banner.
+    "banner_plane": ("length", 22.0),
     "gorge_bridge": ("bridge", 48.0, 7.4),
 }
 CELL = 512

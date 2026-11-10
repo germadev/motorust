@@ -51,7 +51,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | `watchtower` | Round stone coastal watchtower, 16th century | 14 m high | 1,500 | Card | A | On the cape, by the lighthouse; another on the headland |
 | `lifeguard_tower` | Wooden lifeguard tower, red and white | 5 m high | 1,200 | Model | B | On the bay's beach |
 | `flag_marshal` | Race marshal in white overalls, waving a chequered flag | 2.2 m high | 2,500 | Model | B | By the finish line, beside the road. Meshy's chequers came out smeared; they were painted again, square. Static, behind the wall (13–14 m from the road's middle), on a low platform if the wall hides his legs; his arm may be cut off in the importer and swung about his shoulder later, if wanted |
-| `banner_plane` | Vintage propeller plane towing a blank banner | 22 m long with the banner | 2,500 | Model | C | Over the bay (moving it needs code) |
+| `banner_plane` | Vintage propeller plane towing a blank banner | 22 m long with the banner | 2,500 | Model | C | Over the bay, flying round in a circle 45 m up, banked into its turn (`planes` in the circuit's file) |
 
 ### The mountain road (Carretera de la sierra)
 
@@ -122,4 +122,4 @@ Neither the props nor anything in the game names or copies a registered mark. In
 
 Send the GLBs named as in the tables (`white_house.glb`, `watchtower.glb`, …), all at once or a few at a time. `tools/import_costa.py` makes a pack of them in `assets/models/costa/`, and the theme `costa` (`src/game/costa.rs`) places them where the circuit's file says (its `themes`, `"costa"`). Keep the GLBs: the pack is made again from all of them whenever one is added or changed.
 
-Drawn as models so far: every prop, those marked **Card** too. Drawing those marked **Card** as flat sprites needs the engine to offer its sprites (`src/world/sprites.rs`) to the game's themes, and the importer to bake their textures into their vertices; left for later. The banner plane is left out until there is code to fly it.
+Drawn as models so far: every prop, those marked **Card** too. Drawing those marked **Card** as flat sprites needs the engine to offer its sprites (`src/world/sprites.rs`) to the game's themes, and the importer to bake their textures into their vertices; left for later. The banner plane flies round over the bay, 45 m up (`planes`, moved by the theme).

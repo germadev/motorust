@@ -638,6 +638,10 @@
                 ],
                 // A kilometre post every 500 m, on the right.
                 km_posts: Some((every: 500.0, side: Right, lateral: 12.6)),
+                // A plane towing its blank banner round over the bay, seen ahead
+                // from the start straight and over the water from the cliffs and
+                // the east shore.
+                planes: [(center: (175.0, -240.0), radius: 105.0, height: 45.0, speed: 30.0)],
             ),
         },
     ),

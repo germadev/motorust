@@ -77,6 +77,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         register();
         app.add_plugins((
+            costa::CostaPlugin,
             desert::DesertPlugin,
             mine::MinePlugin,
             space::SpacePlugin,

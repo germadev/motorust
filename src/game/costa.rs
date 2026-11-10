@@ -8,7 +8,7 @@
 //! pears and agaves on its dry slopes, ibex on the rocks over it, a
 //! hermitage on the headland, a camper van at the viewpoint, a ruined
 //! castle on the mesa, billboards of the arcades' sunset and a kilometre
-//! post every 500 m; the old
+//! post every 500 m, a plane towing a banner round over the bay; the old
 //! stone bridge over the gorge, the road running under its arch; and a
 //! yellow sign before every bend of the mountain road, its arrow bending
 //! the way the road does.
@@ -25,7 +25,7 @@ use bevy::prelude::*;
 use motorust_engine::track::Track;
 use motorust_engine::world::Assets3d;
 use motorust_engine::world::mirror::MirrorPoint;
-use motorust_engine::world::prop_pack::{PropPack, in_view, spot};
+use motorust_engine::world::prop_pack::{PropPack, facing, in_view, spot};
 use motorust_engine::world::props::Footprint;
 use motorust_engine::world::scenery::{Prop, Scenery, Side, Span, Spot};
 use motorust_engine::world::terrain::Terrain;
@@ -48,6 +48,69 @@ pub struct Costa {
     /// Kilometre posts along the lap, if any (see [`KmPosts`]).
     #[serde(default)]
     pub km_posts: Option<KmPosts>,
+    /// Planes towing their banners round in circles over the water.
+    #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
+    pub planes: &'static [Flight],
+}
+
+/// A plane's flight (see [`Costa::planes`]): round `center` (x, z), `radius`
+/// metres from it, `height` metres over the sea, at `speed` metres a
+/// second, anticlockwise seen from above, starting `phase` radians round
+/// from the east.
+#[derive(Clone, Copy, Debug, Component, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Flight {
+    pub center: Vec2,
+    pub radius: f32,
+    pub height: f32,
+    pub speed: f32,
+    #[serde(default)]
+    pub phase: f32,
+}
+
+/// How far a plane banks into its turn (rad).
+const BANK: f32 = 0.22;
+
+impl Flight {
+    /// Where the plane is `time` seconds into its flight (x, height, z),
+    /// and which way it heads (x, z).
+    fn at(&self, time: f32) -> (Vec3, Vec2) {
+        let angle = self.phase + time * self.speed / self.radius;
+        let (sin, cos) = angle.sin_cos();
+        let position = self.center + Vec2::new(cos, -sin) * self.radius;
+        let heading = Vec2::new(-sin, -cos);
+        (Vec3::new(position.x, self.height, position.y), heading)
+    }
+
+    /// The plane's transform `time` seconds into its flight: its nose (-X
+    /// as made) the way it heads, banked into the turn.
+    fn transform(&self, time: f32) -> Transform {
+        let (position, heading) = self.at(time);
+        // Made with its nose to -X: a quarter turn brings it to +Z, which
+        // `facing` turns the way it heads; then it rolls about its length
+        // into the turn, its left wing (+Z as made) down.
+        let rotation = facing(heading)
+            * Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
+            * Quat::from_rotation_x(BANK);
+        Transform::from_translation(position).with_rotation(rotation)
+    }
+}
+
+/// The theme's systems: the planes flying.
+pub struct CostaPlugin;
+
+impl Plugin for CostaPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, fly);
+    }
+}
+
+/// Moves each plane round its flight.
+fn fly(time: Res<Time>, mut planes: Query<(&Flight, &mut Transform)>) {
+    let now = time.elapsed_secs();
+    for (flight, mut transform) in &mut planes {
+        *transform = flight.transform(now);
+    }
 }
 
 /// A kilometre post every `every` metres round the lap from the line, on
@@ -98,6 +161,9 @@ pub enum CostaModel {
     CamperVan,
     CastleRuin,
     ArcadeBillboard,
+    /// A small plane towing a blank banner, flying round over the bay (see
+    /// [`Costa::planes`]); not placed among the props.
+    BannerPlane,
     /// The old stone bridge over the gorge, over the road: placed
     /// `Over(along)`, the road running under its arch, where the walls
     /// close in.
@@ -106,7 +172,7 @@ pub enum CostaModel {
 
 /// Every prop of the theme.
 #[cfg(test)]
-const MODELS: [CostaModel; 22] = [
+const MODELS: [CostaModel; 23] = [
     CostaModel::WhiteHouse,
     CostaModel::Chiringuito,
     CostaModel::EspetoBoat,
@@ -128,6 +194,7 @@ const MODELS: [CostaModel; 22] = [
     CostaModel::CamperVan,
     CostaModel::CastleRuin,
     CostaModel::ArcadeBillboard,
+    CostaModel::BannerPlane,
     CostaModel::GorgeBridge,
 ];
 
@@ -155,6 +222,7 @@ fn name(model: CostaModel) -> &'static str {
         CostaModel::CamperVan => "camper_van",
         CostaModel::CastleRuin => "castle_ruin",
         CostaModel::ArcadeBillboard => "arcade_billboard",
+        CostaModel::BannerPlane => "banner_plane",
         CostaModel::GorgeBridge => "gorge_bridge",
     }
 }
@@ -219,6 +287,16 @@ impl Theme for Costa {
                 &prop,
                 pack,
                 &mut assets.mirrored,
+            ));
+        }
+        // The planes, flying round over the water.
+        for flight in self.planes {
+            let piece = pack.piece(name(CostaModel::BannerPlane));
+            world.spawn((
+                Mesh3d(piece.mesh.clone()),
+                MeshMaterial3d(pack.material.clone()),
+                flight.transform(0.0),
+                *flight,
             ));
         }
         // No tree in the way of the landmarks, from where the road comes at
@@ -551,6 +629,35 @@ mod tests {
                         .iter()
                         .any(|t| t.contains(along, lap))
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn the_planes_fly_round_over_the_water_clear_of_the_road() {
+        let flights: Vec<_> = costas()
+            .into_iter()
+            .flat_map(|(circuit, costa)| costa.planes.iter().map(move |f| (circuit, f)))
+            .collect();
+        assert!(!flights.is_empty());
+        for (circuit, flight) in flights {
+            let track = Track::new(&circuit.layout);
+            let lap = 2.0 * std::f32::consts::PI * flight.radius / flight.speed;
+            for k in 0..64 {
+                let time = lap * k as f32 / 64.0;
+                let (position, heading) = flight.at(time);
+                let point = Vec2::new(position.x, position.z);
+                assert!(
+                    track.nearest(point).distance > 60.0,
+                    "{}: the plane at {point} over the road",
+                    circuit.name
+                );
+                // Heading round the circle, its nose forward.
+                let ahead = flight.at(time + 0.5).0;
+                let moved = Vec2::new(ahead.x - position.x, ahead.z - position.z);
+                assert!(moved.normalize().dot(heading) > 0.99);
+                let nose = flight.transform(time).rotation * Vec3::NEG_X;
+                assert!(Vec2::new(nose.x, nose.z).normalize().dot(heading) > 0.95);
             }
         }
     }
