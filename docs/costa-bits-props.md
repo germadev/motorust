@@ -113,7 +113,7 @@ For the cards, the side Meshy shows at the front is the one the engine photograp
 Neither the props nor anything in the game names or copies a registered mark. In particular:
 
 - **No game names in the game:** neither the names of the arcade racers this track pays homage to nor their makers. The prompts above don't use them either: the style is described instead (sunset, palms, coast road, bold colours).
-- **No real vehicles:** the car and the van are original designs. Look at what Meshy makes: if it comes out recognisable as a real model (its grille, its lights, its proportions), make it again.
+- **No real vehicles:** the car and the van are original designs. Look at what Meshy makes: if it comes out recognisable as a real model (its grille, its lights, its proportions), make it again. The van Meshy made is close to a well-known bus of the 1970s (its rounded front, two tones and pop-up roof); told so, the author chose to keep it.
 - **Not the black bull silhouette of the Spanish roadsides:** it is a registered mark, so no bulls on hills.
 - **No real brands:** no drinks, beers or ice creams on the beach bar, the parasols or the billboards; no fuel brands on signs.
 - **No real arcade cabinets or console logos.**
@@ -122,4 +122,4 @@ Neither the props nor anything in the game names or copies a registered mark. In
 
 Send the GLBs named as in the tables (`white_house.glb`, `watchtower.glb`, …), all at once or a few at a time. `tools/import_costa.py` makes a pack of them in `assets/models/costa/`, and the theme `costa` (`src/game/costa.rs`) places them where the circuit's file says (its `themes`, `"costa"`). Keep the GLBs: the pack is made again from all of them whenever one is added or changed.
 
-Drawn as models so far: every prop, the watchtower too. Drawing those marked **Card** as flat sprites needs the engine to offer its sprites (`src/world/sprites.rs`) to the game's themes, and the importer to bake their textures into their vertices; left for later. The banner plane is left out until there is code to fly it.
+Drawn as models so far: every prop, those marked **Card** too. Drawing those marked **Card** as flat sprites needs the engine to offer its sprites (`src/world/sprites.rs`) to the game's themes, and the importer to bake their textures into their vertices; left for later. The banner plane is left out until there is code to fly it.

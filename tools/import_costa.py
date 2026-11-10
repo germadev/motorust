@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepares Costa Bits' props, made with Meshy, for the game: the town's
-houses and the beach, the mountain road's rocks, signs and viewpoint, the
+houses and the beach, the mountain road's rocks, signs, plants, ibex and
+viewpoint, the hermitage, the castle on the mesa, the billboards, the
 bridge over the gorge (see `docs/costa-bits-props.md`).
 
 Reads one GLB per prop (a single textured mesh, normalised to a unit box,
@@ -65,6 +66,16 @@ SIZES = {
     "boulder_b": ("height", 5.0),
     "boulder_c": ("height", 2.6),
     "mirador": ("height", 4.0),
+    "km_post": ("height", 1.5),
+    "ermita": ("height", 10.0),
+    "prickly_pear": ("height", 2.5),
+    "agave": ("height", 4.0),
+    # Standing on its rock: the ibex itself some 1.5 m high.
+    "ibex": ("height", 2.1),
+    "camper_van": ("length", 4.5),
+    "castle_ruin": ("height", 18.0),
+    # The homage to the arcades.
+    "arcade_billboard": ("height", 7.0),
     "gorge_bridge": ("bridge", 48.0, 7.4),
 }
 CELL = 512

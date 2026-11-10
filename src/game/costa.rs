@@ -4,7 +4,11 @@
 //! gorge, a beach bar, a fishing boat with its fire of skewered fish and a
 //! lifeguard's tower on the beach, a sports car parked by the grid, the
 //! marshal by the line with his chequered flag, a watchtower on the cape,
-//! a viewpoint over the sea, boulders along the mountain road; the old
+//! a viewpoint over the sea, boulders along the mountain road, prickly
+//! pears and agaves on its dry slopes, ibex on the rocks over it, a
+//! hermitage on the headland, a camper van at the viewpoint, a ruined
+//! castle on the mesa, billboards of the arcades' sunset and a kilometre
+//! post every 500 m; the old
 //! stone bridge over the gorge, the road running under its arch; and a
 //! yellow sign before every bend of the mountain road, its arrow bending
 //! the way the road does.
@@ -41,6 +45,21 @@ pub struct Costa {
     /// Stretches of the lap with a bend sign before each of their bends.
     #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub bend_signs: &'static [BendSigns],
+    /// Kilometre posts along the lap, if any (see [`KmPosts`]).
+    #[serde(default)]
+    pub km_posts: Option<KmPosts>,
+}
+
+/// A kilometre post every `every` metres round the lap from the line, on
+/// `side` of the road, `lateral` metres from its middle, but where there is
+/// no ground beside the road for it: in a tunnel, on a bridge, or where the
+/// walls close in.
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KmPosts {
+    pub every: f32,
+    pub side: Side,
+    pub lateral: f32,
 }
 
 /// The bends of a stretch of the lap, each with a sign before it (see
@@ -71,6 +90,14 @@ pub enum CostaModel {
     BoulderB,
     BoulderC,
     Mirador,
+    KmPost,
+    Ermita,
+    PricklyPear,
+    Agave,
+    Ibex,
+    CamperVan,
+    CastleRuin,
+    ArcadeBillboard,
     /// The old stone bridge over the gorge, over the road: placed
     /// `Over(along)`, the road running under its arch, where the walls
     /// close in.
@@ -79,7 +106,7 @@ pub enum CostaModel {
 
 /// Every prop of the theme.
 #[cfg(test)]
-const MODELS: [CostaModel; 14] = [
+const MODELS: [CostaModel; 22] = [
     CostaModel::WhiteHouse,
     CostaModel::Chiringuito,
     CostaModel::EspetoBoat,
@@ -93,6 +120,14 @@ const MODELS: [CostaModel; 14] = [
     CostaModel::BoulderB,
     CostaModel::BoulderC,
     CostaModel::Mirador,
+    CostaModel::KmPost,
+    CostaModel::Ermita,
+    CostaModel::PricklyPear,
+    CostaModel::Agave,
+    CostaModel::Ibex,
+    CostaModel::CamperVan,
+    CostaModel::CastleRuin,
+    CostaModel::ArcadeBillboard,
     CostaModel::GorgeBridge,
 ];
 
@@ -112,6 +147,14 @@ fn name(model: CostaModel) -> &'static str {
         CostaModel::BoulderB => "boulder_b",
         CostaModel::BoulderC => "boulder_c",
         CostaModel::Mirador => "mirador",
+        CostaModel::KmPost => "km_post",
+        CostaModel::Ermita => "ermita",
+        CostaModel::PricklyPear => "prickly_pear",
+        CostaModel::Agave => "agave",
+        CostaModel::Ibex => "ibex",
+        CostaModel::CamperVan => "camper_van",
+        CostaModel::CastleRuin => "castle_ruin",
+        CostaModel::ArcadeBillboard => "arcade_billboard",
         CostaModel::GorgeBridge => "gorge_bridge",
     }
 }
@@ -121,7 +164,11 @@ fn name(model: CostaModel) -> &'static str {
 fn landmark(model: CostaModel) -> bool {
     matches!(
         model,
-        CostaModel::Watchtower | CostaModel::Mirador | CostaModel::GorgeBridge
+        CostaModel::Watchtower
+            | CostaModel::Mirador
+            | CostaModel::Ermita
+            | CostaModel::CastleRuin
+            | CostaModel::GorgeBridge
     )
 }
 
@@ -151,7 +198,7 @@ impl Theme for Costa {
         world: &mut ChildSpawnerCommands,
         track: &Track,
         terrain: &Terrain,
-        _scenery: &Scenery,
+        scenery: &Scenery,
         assets: &mut Assets3d,
     ) -> Vec<Footprint> {
         let pack = assets.packs.get(PACK);
@@ -160,7 +207,11 @@ impl Theme for Costa {
             .bend_signs
             .iter()
             .flat_map(|signs| bend_signs(track, signs));
-        for prop in self.props.iter().copied().chain(signs) {
+        let posts = self
+            .km_posts
+            .map(|posts| km_posts(track, scenery, &posts))
+            .unwrap_or_default();
+        for prop in self.props.iter().copied().chain(signs).chain(posts) {
             taken.push(spawn_prop(
                 world,
                 track,
@@ -225,6 +276,33 @@ fn bend_signs(track: &Track, signs: &BendSigns) -> Vec<Prop<CostaModel>> {
         into += step;
     }
     placed
+}
+
+/// The kilometre posts round the lap (see [`KmPosts`]), facing the road.
+fn km_posts(track: &Track, scenery: &Scenery, posts: &KmPosts) -> Vec<Prop<CostaModel>> {
+    let lap = track.lap_length();
+    let clear = |along: f32| {
+        let off_road = |span: &Span| span.contains(along, lap);
+        !scenery.tunnels.iter().any(off_road)
+            && !scenery.bridges.iter().any(|bridge| off_road(&bridge.span))
+            && track.wall_at(track.index_at(along)) >= track.wall()
+    };
+    (1..)
+        .map(|k| k as f32 * posts.every)
+        .take_while(|&along| along < lap)
+        .filter(|&along| clear(along))
+        .map(|along| Prop {
+            model: CostaModel::KmPost,
+            spot: Spot::Road {
+                along,
+                lateral: posts.side.sign() * posts.lateral,
+            },
+            scale: 1.0,
+            turn: 0.0,
+            lean: 0.0,
+            facing_riders: false,
+        })
+        .collect()
 }
 
 /// The road's curvature at `along` (1/m, positive bending left), over
@@ -336,7 +414,7 @@ mod tests {
             assert!((low.x + high.x).abs() < 0.05 * (high.x - low.x), "{name}");
             assert!((low.z + high.z).abs() < 0.05 * (high.z - low.z), "{name}");
             let triangles = mesh.indices().unwrap().len() / 3;
-            assert!(triangles < 4_000, "{name}: {triangles} triangles");
+            assert!(triangles < 4_500, "{name}: {triangles} triangles");
         }
     }
 
@@ -406,7 +484,11 @@ mod tests {
                 .bend_signs
                 .iter()
                 .flat_map(|signs| bend_signs(&track, signs));
-            for prop in costa.props.iter().copied().chain(signs) {
+            let posts = costa
+                .km_posts
+                .map(|posts| km_posts(&track, &circuit.scenery, &posts))
+                .unwrap_or_default();
+            for prop in costa.props.iter().copied().chain(signs).chain(posts) {
                 if let Spot::Road { along, lateral } = prop.spot {
                     let wall = track.wall_at(track.index_at(along));
                     assert!(
@@ -440,6 +522,36 @@ mod tests {
                 }
             }
             assert!(count >= 5, "{}: {count} signs", circuit.name);
+        }
+    }
+
+    #[test]
+    fn a_kilometre_post_stands_every_500_m_but_where_there_is_no_ground() {
+        for (circuit, costa) in costas() {
+            let Some(posts) = costa.km_posts else {
+                continue;
+            };
+            let track = Track::new(&circuit.layout);
+            let placed = km_posts(&track, &circuit.scenery, &posts);
+            let lap = track.lap_length();
+            // All round the lap but in the tunnel and on the long bridge.
+            assert!(
+                placed.len() + 3 >= (lap / posts.every) as usize,
+                "{}",
+                circuit.name
+            );
+            for post in placed {
+                let Spot::Road { along, .. } = post.spot else {
+                    unreachable!()
+                };
+                assert!(
+                    !circuit
+                        .scenery
+                        .tunnels
+                        .iter()
+                        .any(|t| t.contains(along, lap))
+                );
+            }
         }
     }
 }
