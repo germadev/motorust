@@ -109,14 +109,14 @@ fn crowd_spacing() -> f32 {
 }
 
 /// How many people and poses the spectators' picture holds; how high a
-/// cell of it stands (m: a person a little over 2 m, half as big again as
-/// a person is, as every prop of the theme, and their arms raised over
-/// them); how far apart they stand along a row unless the crowd says, and
+/// cell of it stands (m: a person standing, 52 of its 84 pixels, some
+/// 2.3 m, half as big again as a person is, as every prop of the theme; the
+/// rest their arms raised and their jumps, `tools/make_crowd.py`); how far apart they stand along a row unless the crowd says, and
 /// how far its rows are from each other (m), give or take `CROWD_JITTER`
 /// of that.
 const CROWD_PEOPLE: u32 = 20;
 const CROWD_POSES: u32 = 4;
-const CROWD_HEIGHT: f32 = 2.9;
+const CROWD_HEIGHT: f32 = 3.7;
 const CROWD_SPACING: f32 = 5.0;
 /// How much further out each of three people in a row stands than the one
 /// before (m): staggered, so that seen down the road none hides the next.

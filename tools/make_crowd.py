@@ -7,8 +7,10 @@ The sheet (made with an image generator) has the spectators in columns, one
 person to a column, each row a pose of a loop of cheering, on a flat magenta
 ground. Its pixels are not on a grid (each of the art's pixels some three of
 the sheet's, blurred at their edges by its compression), so each figure is
-keyed out of the magenta, brought down to `HEIGHT` pixels high (its art's own
-pixels, roughly) and its edge cut sharp: each pixel solid or see-through.
+keyed out of the magenta, brought down until a person standing is `FIGURE`
+pixels high (the art's own pixels, roughly; every sheet's people of a size,
+whatever size it drew them) and its edge cut sharp: each pixel solid or
+see-through.
 
 The rows and columns are found from the gaps between the figures; a row cut
 off by the sheet's edge (its figures' feet missing) is left out, as is any
@@ -16,7 +18,7 @@ row past `POSES`. Each person's poses are cut by one box round all of them,
 so that they move in it as they did on the sheet (a jump rises), their feet
 at the bottom of their cell.
 
-Written as one image: a cell `CELL` pixels across and high per person and
+Written as one image: a cell as big as the biggest pose per person and
 pose, the people across, the poses down, see-through round them.
 
 Several sheets may be given: their people one after another.
@@ -34,10 +36,11 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "models" / "costa" / "crowd.png"
 
-# How many poses of each person are kept (a loop played forwards and back), and how many pixels high the
-# tallest of them is made (of the sheet's some 215).
+# How many poses of each person are kept (a loop played forwards and back),
+# and how many pixels high a person standing is made (of the sheets' some
+# 160 to 185): their raised arms and jumps reach higher.
 POSES = 4
-HEIGHT = 64
+FIGURE = 52
 # How far from the magenta (0..1 a channel) a pixel is still ground.
 KEY = 0.33
 # The least gap between figures (sheet pixels), across and down, and how many
@@ -78,7 +81,9 @@ def runs(filled, gap):
 
 def people(path):
     """The people of a sheet: each a list of their poses, RGBA, a pose's
-    feet at its bottom, all of a person's poses as wide."""
+    feet at its bottom, all of a person's poses as wide, brought down so
+    that a person standing (their first pose, the middle of the sheet's) is
+    `FIGURE` pixels high, whatever size the sheet drew them."""
     rgb = np.asarray(Image.open(path).convert("RGB")).astype(np.float64) / 255.0
     solid = ~ground(rgb)
     # The rows: where many pixels across are figures (a fist raised may
@@ -113,7 +118,12 @@ def people(path):
         else:
             sys.exit(f"{path}: row {a}..{b}: {len(found)} figures, not {len(columns)}")
     tallest = max(b - a for a, b in whole)
-    scale = HEIGHT / tallest
+    a, b = whole[0]
+    standing = []
+    for left, right in (spans[0] for spans in columns):
+        rows = np.nonzero(solid[a:b, left:right].any(axis=1))[0]
+        standing.append(rows.max() - rows.min() + 1)
+    scale = FIGURE / float(np.median(standing))
     found = []
     for spans in columns:
         # Across all their poses, so that they move in it as on the sheet.
