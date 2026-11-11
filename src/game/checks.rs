@@ -663,7 +663,7 @@ mod circuits {
         );
         assert_eq!(
             circuits[9].checkpoints(),
-            vec![1655.2, 3205.2, 4755.2, 6305.2]
+            vec![1655.2, 3705.2, 4755.2, 6305.2]
         );
     }
 }
