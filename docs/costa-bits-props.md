@@ -79,6 +79,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | Name (`SIZES`) | What | Size | Triangles | Drawn as | Priority | Where |
 |---|---|---|---|---|---|---|
 | `arcade_billboard` | Retro roadside billboard on two legs, framed with light bulbs, painted with a sunset and palms | 7 m high, 10 m wide | 1,000 | Model | B | On the start straight and the coast highway |
+| `start_arch` | Arch of two lattice towers hung with pennants, a blank banner across it (the importer draws "COSTA BITS" on it) | 26 m wide, 11.4 m high (as sized, not half as big again) | 2,500 | Model | B | Over the road where it comes down to the beach, 220 m |
 
 Dropped since the list was first written: `palm_retro`. The palms are already flat cards photographed from the engine's own, and read well.
 

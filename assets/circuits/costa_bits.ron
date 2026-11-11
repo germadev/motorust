@@ -620,6 +620,10 @@
                     (model: Chiringuito, spot: Road(along: 276.0, lateral: -21.0)),
                     (model: EspetoBoat, spot: Road(along: 300.0, lateral: -19.0), turn: 0.4),
                     (model: WhiteHouse, spot: Road(along: 232.0, lateral: 26.0)),
+                    // Over the road where it comes down to the beach, an arch of
+                    // lattice towers hung with pennants, a banner across it with the
+                    // circuit's name.
+                    (model: StartArch, spot: Over(along: 220.0)),
                     (model: WhiteHouse, spot: Road(along: 292.0, lateral: 25.0), turn: 0.2),
                     // Billboards of the arcades' sunset, past the start arch and on
                     // the coast highway, turned to the riders coming.
@@ -717,6 +721,23 @@
                 // from the start straight and over the water from the cliffs and
                 // the east shore.
                 planes: [(center: (150.0, -240.0), radius: 85.0, height: 40.0, speed: 28.0)],
+                // People cheering by the road, a few metres apart, not crowded: a
+                // row of them behind the wall on the town's side by the line; on
+                // the sand below the fence along the beach; and in small groups
+                // here and there round the lap.
+                crowds: [
+                    (span: Span(4300.0, 4376.0), side: Left, lateral: 13.6, spacing: 3.5),
+                    (span: Span(255.0, 335.0), side: Right, lateral: 13.2, spacing: 6.0),
+                    (span: Span(790.0, 804.0), side: Right, lateral: 13.5),
+                    (span: Span(1260.0, 1275.0), side: Right, lateral: 13.5),
+                    (span: Span(1690.0, 1708.0), side: Left, lateral: 13.5),
+                    (span: Span(1990.0, 2004.0), side: Right, lateral: 13.5),
+                    (span: Span(2460.0, 2474.0), side: Right, lateral: 13.5),
+                    (span: Span(3195.0, 3210.0), side: Right, lateral: 13.5),
+                    (span: Span(3290.0, 3304.0), side: Right, lateral: 13.5),
+                    (span: Span(3700.0, 3716.0), side: Right, lateral: 13.5),
+                    (span: Span(3890.0, 3905.0), side: Left, lateral: 13.5),
+                ],
             ),
         },
     ),

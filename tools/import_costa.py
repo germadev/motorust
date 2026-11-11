@@ -90,13 +90,22 @@ SIZES = {
     # plane is, so that it reads from the road.
     "banner_plane": ("length", 33.0),
     "gorge_bridge": ("bridge", 60.0, 7.4),
+    # Over the road where it comes down to the beach: as wide as the road
+    # between its walls, 11.5 m either side of its middle, and a little
+    # more.
+    "start_arch": ("length", 26.0),
 }
 # How much bigger than `SIZES` each prop is made in the game: half as big
 # again, as the arcade racers drew what stood by their roads, so that it
 # reads at speed; the houses a quarter, among the engine's cottages; the
 # bridge and the plane as `SIZES` says (sized already for where they are).
 ARCADE = 1.5
-ARCADE_EXCEPT = {"white_house": 1.25, "gorge_bridge": 1.0, "banner_plane": 1.0}
+ARCADE_EXCEPT = {
+    "white_house": 1.25,
+    "gorge_bridge": 1.0,
+    "banner_plane": 1.0,
+    "start_arch": 1.0,
+}
 # How many groups the billboard's bulbs are in, lit one after another.
 BULB_GROUPS = 3
 # The billboard's picture: how many frames across and down its image, and
@@ -105,6 +114,11 @@ FRAME_GRID = (2, 2)
 FRAME_SIZE = (1024, 512)
 # How many of the image's pixels across each pixel of its pixel art is.
 PICTURE_PIXEL = 5
+# The arch's banner: its pixel art's size (px), as long against high as the
+# banner, and how many of the image's pixels across each of its pixels is.
+BANNER_ART = (160, 24)
+BANNER_PIXEL = 6
+BANNER_TEXT = "COSTA BITS"
 # How far in from each end of the bridge its abutments reach (m).
 ABUTMENT = 6.6
 CELL = 512
@@ -416,6 +430,121 @@ def mend_billboard(positions, normals, uvs, indices, color):
     )
     return positions, normals, uvs, indices, lit, quad
 
+# The letters of the arch's banner, 5 pixels across and 7 down.
+LETTERS = {
+    "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+    "C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+    "I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
+    "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+    "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+    "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+    " ": ["00000"] * 7,
+}
+
+
+def banner():
+    """The arch's banner: `BANNER_TEXT` in fat orange letters outlined in
+    dark, on white between red stripes, a chequered flag's squares at either
+    end. Pixel art, `BANNER_ART` pixels, shown `BANNER_PIXEL` times larger
+    with its pixels square."""
+    w, h = BANNER_ART
+    art = np.zeros((h, w, 3), np.uint8)
+    art[:] = (250, 246, 236)
+    red, dark, orange = (215, 30, 25), (40, 20, 24), (245, 120, 20)
+    art[:2] = red
+    art[-2:] = red
+    # The chequered squares, 2 pixels each, at either end.
+    for y in range(3, h - 3):
+        for x in range(2, 16):
+            if ((x - 2) // 2 + (y - 3) // 2) % 2 == 0:
+                art[y, x] = dark
+                art[y, w - 1 - x] = dark
+    scale = 2
+    glyphs = [LETTERS[c] for c in BANNER_TEXT]
+    across = len(glyphs) * 5 * scale + (len(glyphs) - 1) * 2
+    x0, y0 = (w - across) // 2, (h - 7 * scale) // 2
+    ink = np.zeros((h, w), bool)
+    for k, glyph in enumerate(glyphs):
+        for gy, line in enumerate(glyph):
+            for gx, bit in enumerate(line):
+                if bit == "1":
+                    x = x0 + k * (5 * scale + 2) + gx * scale
+                    y = y0 + gy * scale
+                    ink[y : y + scale, x : x + scale] = True
+    # An outline of a pixel round the letters.
+    around = np.zeros_like(ink)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            around |= np.roll(np.roll(ink, dy, axis=0), dx, axis=1)
+    art[around & ~ink] = dark
+    art[ink] = orange
+    # Lighter along the top of each letter's strokes.
+    top = ink & ~np.roll(ink, 1, axis=0)
+    art[top] = (255, 190, 70)
+    image = Image.fromarray(art)
+    return image.resize((w * BANNER_PIXEL, h * BANNER_PIXEL), Image.NEAREST)
+
+
+def mend_arch(positions, normals, uvs, indices, color):
+    """The arch with its banner blank no more: Meshy's came white. The
+    banner's two faces (the big white and grey ones between the towers,
+    looking forward and back) are taken out into a piece of their own, with
+    texture coordinates over a picture of their own (`banner`), across the
+    banner from its left end to its right as seen from each side, so that
+    it reads from both, and down it from its top edge to its bottom where
+    it sags. Returns the mesh, its triangles without the banner, and the
+    banner's."""
+    corners_of = indices.reshape(-1, 3)
+    triangles = positions[corners_of]
+    normal = np.cross(
+        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
+    )
+    normal /= np.linalg.norm(normal, axis=1, keepdims=True).clip(1e-12)
+    middle = triangles.mean(axis=1)
+    pixels = np.asarray(color.resize((512, 512))).astype(np.float64) / 255.0
+    at = (np.clip(uvs[corners_of].mean(axis=1), 0.0, 0.999) * 512).astype(int)
+    rgb = pixels[at[:, 1], at[:, 0]]
+    pale = (rgb.min(axis=1) > 0.5) & (rgb.max(axis=1) - rgb.min(axis=1) < 0.15)
+    # The towers stand out past 0.4 either side of the middle; the banner
+    # hangs between them, in the top half.
+    reach = np.abs(positions[:, 0]).max()
+    between = np.abs(middle[:, 0]) < reach * 0.84
+    face = np.abs(normal[:, 2]) > 0.5
+    cloth = pale & between & face & (middle[:, 1] > 0.0)
+    corners = np.unique(corners_of[cloth])
+    x0, x1 = positions[corners, 0].min(), positions[corners, 0].max()
+    # Its top and bottom edges along it, where it sags.
+    bins = 12
+    edges = np.linspace(x0, x1, bins + 1)
+    bin_of = np.clip(np.digitize(positions[corners, 0], edges) - 1, 0, bins - 1)
+    filled = [b for b in range(bins) if (bin_of == b).any()]
+    tops = np.array([positions[corners[bin_of == b], 1].max() for b in filled])
+    bottoms = np.array([positions[corners[bin_of == b], 1].min() for b in filled])
+    centres = np.array([positions[corners[bin_of == b], 0].mean() for b in filled])
+    # Each of its faces' corners a vertex of its own, as the two faces read
+    # each its own way.
+    picked = corners_of[cloth]
+    forward = normal[cloth, 2] > 0.0
+    start = len(positions)
+    flat = picked.reshape(-1)
+    points = positions[flat]
+    across = (points[:, 0] - x0) / (x1 - x0)
+    across = np.where(np.repeat(forward, 3), across, 1.0 - across)
+    top = np.interp(points[:, 0], centres, tops)
+    bottom = np.interp(points[:, 0], centres, bottoms)
+    down = ((top - points[:, 1]) / np.maximum(top - bottom, 1e-6)).clip(0.0, 1.0)
+    positions = np.vstack([positions, points])
+    normals = np.vstack([normals, normals[flat]])
+    uvs = np.vstack([uvs, np.stack([across, down], axis=1)])
+    cloth_indices = np.arange(start, start + len(flat), dtype=np.uint32)
+    indices = corners_of[~cloth].reshape(-1).astype(np.uint32)
+    print(
+        f"start_arch: its banner, {cloth.sum()} triangles "
+        f"({forward.sum()} forward), drawn \"{BANNER_TEXT}\""
+    )
+    return positions, normals, uvs, indices, cloth_indices
+
 
 def main():
     props = []
@@ -434,6 +563,10 @@ def main():
     for slot, (name, path) in enumerate(props):
         positions, normals, uvs, indices, color = read_glb(path)
         lit, panel = [], None
+        if name == "start_arch":
+            positions, normals, uvs, indices, panel = mend_arch(
+                positions, normals, uvs, indices, color
+            )
         if name == "arcade_billboard":
             positions, normals, uvs, indices, lit, panel = mend_billboard(
                 positions, normals, uvs, indices, color
@@ -461,13 +594,15 @@ def main():
         p, n, u, i = compact(placed, turned, moved, indices)
         pieces.append((name, p, n, u, i))
         # The billboard's bulbs, each group a piece of its own, in its frame,
-        # and its panel, with texture coordinates over its own picture.
+        # and its panel (or the arch's banner), with texture coordinates over
+        # its own picture.
         for group, part in enumerate(lit):
             pieces.append(
                 (f"{name}_bulbs_{group}", *compact(placed, turned, moved, part))
             )
         if panel is not None:
-            pieces.append((f"{name}_panel", *compact(placed, turned, uvs, panel)))
+            part = "banner" if name == "start_arch" else "panel"
+            pieces.append((f"{name}_{part}", *compact(placed, turned, uvs, panel)))
         low, high = p.min(axis=0), p.max(axis=0)
         print(
             f"{name}: {len(p)} vertices, {len(i) // 3} triangles, "
@@ -492,6 +627,8 @@ def main():
     atlas.save(OUT / "color.jpg", quality=88, optimize=True)
     if any(name == "arcade_billboard" for name, _ in props):
         billboard_frames().save(OUT / "billboard.jpg", quality=90, optimize=True)
+    if any(name == "start_arch" for name, _ in props):
+        banner().save(OUT / "arch_banner.jpg", quality=92, optimize=True)
     print(f"{OUT / 'props.bin'}, {OUT / 'color.jpg'} ({atlas.size[0]}x{atlas.size[1]})")
 
 
