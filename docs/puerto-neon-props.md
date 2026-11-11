@@ -65,6 +65,68 @@ Each prompt below is followed by the shared ending (see [Settings for every mode
 - **`radar_dish`:** A large parabolic antenna dish on a rotating turret base, lattice struts holding the feed horn at its focus, white dish with a dark back, tilted up at forty-five degrees.
 - **`tunnel_mouth`:** A futuristic tunnel portal for a wide track: a thick angular arch of dark concrete and metal panels, a continuous ring of bright cyan light around the opening, sloped wing walls either side, wide open passage through it.
 
+## The city round the lap: filler to make
+
+The lap runs between three rows of filler either side, all round it (`city` in the circuit's file, `src/game/neon.rs`). For now four in five are plain blocks built in code and one in five a tower of the pack; these models take the blocks' place as they come, and not all of them are buildings. Each is repeated many times, turned and scaled a little, so each should read well from any side and be light.
+
+Same settings and shared ending as above. Their lights (windows, strips, signs without lettering) should be drawn in the colour texture: the game lights them of their own.
+
+| Name | What | Size in the game | Triangles | Priority |
+|---|---|---|---|---|
+| `block_office` | Plain office slab, a grid of lit windows | 90 m high | 1,200 | A |
+| `block_residential` | Residential tower of stacked balconies | 110 m high | 1,800 | A |
+| `block_megablock` | Huge windowless megastructure with a few slits of light | 140 m high, 70 m wide | 1,500 | A |
+| `block_ziggurat` | Stepped pyramid building with terraces | 80 m high | 2,000 | A |
+| `block_cylinder` | Round tower with a ring of light at its top | 120 m high | 1,500 | B |
+| `block_stacked` | Tower of offset stacked boxes | 100 m high | 1,800 | B |
+| `chimney_stack` | Cluster of three industrial chimneys with warning lights | 90 m high | 1,000 | A |
+| `cooling_towers` | Pair of hyperboloid cooling towers | 70 m high | 1,200 | A |
+| `refinery` | Refinery of pipes, columns and a flare stack | 60 m high, 60 m wide | 3,500 | A |
+| `gas_holder` | Round gas holder in a lattice frame | 45 m high | 1,500 | B |
+| `silo_row` | Row of four grain silos with a conveyor on top | 40 m high, 50 m long | 1,200 | B |
+| `substation` | Electrical substation of transformers and gantries | 20 m high, 40 m wide | 2,500 | C |
+| `antenna_mast` | Lattice mast with dishes and red beacons | 130 m high | 1,200 | A |
+| `sign_tower` | Tall pylon carrying three blank lit panels, one over another | 60 m high | 800 | A |
+| `hologram_ring` | Mast with a large glowing ring round its top | 50 m high | 800 | B |
+| `searchlights` | Platform with four searchlights pointing up | 12 m high | 800 | C |
+| `rail_viaduct` | Straight piece of an elevated railway on pillars | 60 m long, 25 m high | 1,200 | A |
+| `pipe_bridge` | Bundle of big pipes carried on trestles | 60 m long, 18 m high | 1,200 | B |
+| `multistorey_park` | Open multi-storey car park with a ramp | 30 m high, 50 m wide | 2,500 | B |
+| `stadium` | Oval stadium with a ring of floodlights | 45 m high, 160 m long | 4,500 | B |
+| `dome_hall` | Geodesic dome hall lit from inside | 45 m high | 2,000 | B |
+| `ferris_wheel` | Giant observation wheel with lit cabins | 90 m high | 3,000 | B |
+| `dry_dock` | Dry dock with a ship's hull in it and two cranes | 40 m high, 150 m long | 4,500 | C |
+| `oil_platform` | Offshore platform on four legs with a derrick | 70 m high | 3,500 | C |
+| `wind_turbine` | Offshore wind turbine (its blades as one piece) | 110 m high | 800 | C |
+
+### Their prompts
+
+- **`block_office`:** A plain rectangular futuristic office tower, a dark glass slab with a regular grid of windows, about a third of them lit warm white, a recessed top floor with machinery, no signs.
+- **`block_residential`:** A tall futuristic residential tower made of stacked apartment floors with protruding balconies on all four sides, dark concrete, scattered lit windows in warm and cold white, small plants on a few balconies.
+- **`block_megablock`:** A huge windowless brutalist megastructure, a massive dark concrete block with slanted buttresses, a few long horizontal slits of cyan light, ventilation grilles, a flat roof with machinery.
+- **`block_ziggurat`:** A futuristic stepped pyramid building with wide terraces at each step, dark stone and glass, rows of lit windows along each terrace, a glowing amber top.
+- **`block_cylinder`:** A tall cylindrical futuristic tower of dark glass, vertical ribs, bands of lit windows, a bright ring of magenta light round its top, a short antenna.
+- **`block_stacked`:** A tower of five large boxes stacked slightly offset and rotated from one another, dark panels and glass, lit windows, a light strip along the edge of each box.
+- **`chimney_stack`:** A cluster of three tall industrial chimneys of different heights on a shared concrete base, banded red and white near the top, red warning lights, a gantry walkway joining them.
+- **`cooling_towers`:** Two large hyperboloid concrete cooling towers side by side, weathered pale concrete, a ring of small lights round each rim, pipes at their bases.
+- **`refinery`:** An oil refinery unit, a dense cluster of pipes, distillation columns of different heights, tanks, walkways and ladders, one tall flare stack with a small flame, many small work lights.
+- **`gas_holder`:** A large cylindrical gas holder inside a round steel lattice guide frame, dark painted metal, a spiral stair, a ring of lights round the top.
+- **`silo_row`:** A row of four tall cylindrical grain silos joined together, pale concrete, a covered conveyor gallery running along their tops, a small elevator tower at one end.
+- **`substation`:** An electrical substation, rows of large grey transformers with ceramic insulators, steel lattice gantries carrying cables above them, a small control building, a fence.
+- **`antenna_mast`:** A very tall steel lattice communications mast, triangular section, several round microwave dishes and panel antennas at different heights, red beacon lights, guy-wire anchors at its base.
+- **`sign_tower`:** A tall slim pylon carrying three large rectangular lit panels one above another, each panel a blank glowing field in cyan, magenta and amber, a dark frame, no lettering.
+- **`hologram_ring`:** A slender mast holding a large upright ring of glowing cyan light at its top, a second smaller ring inside it, a dark machinery base.
+- **`searchlights`:** A low square platform carrying four large searchlights pointing straight up, dark metal housings with glass fronts lit white, cables and a control box.
+- **`rail_viaduct`:** A straight section of elevated railway, a concrete trough deck with two tracks on a row of single round pillars, overhead wire masts, a light strip under the deck edge, open at both ends.
+- **`pipe_bridge`:** A straight industrial pipe bridge, a bundle of six large pipes in different colours carried on steel trestles, a walkway with railings along one side, valves, open at both ends.
+- **`multistorey_park`:** An open multi-storey car park of six levels, concrete decks with low parapets, a spiral ramp at one corner, strip lights under each deck, no cars.
+- **`stadium`:** An oval sports stadium, a continuous ring of stands under a sweeping roof, four tall floodlight masts lit white, a dark pitch in the middle, external ramps.
+- **`dome_hall`:** A large geodesic dome exhibition hall, a triangulated frame of dark metal with translucent panels glowing softly from inside, a low entrance ring round its base.
+- **`ferris_wheel`:** A giant observation wheel on an A-frame support, slim spokes, about twenty enclosed cabins lit from inside, a ring of small lights round the rim.
+- **`dry_dock`:** A shipyard dry dock, a long concrete basin holding the unfinished dark hull of a large ship on blocks, scaffolding along its side, two tall yellow cranes on rails beside it, work lights.
+- **`oil_platform`:** An offshore oil platform standing on four thick legs, stacked decks of machinery, a lattice derrick, a helideck, a flare boom with a small flame, many small lights.
+- **`wind_turbine`:** A tall offshore wind turbine, a white tubular tower on a yellow base, a nacelle and three long blades, a red light on top of the nacelle.
+
 ## The hover bikes
 
 Three are in (the Shogun TZ's, the Azura RZ's and the Falcon KRZ's); the other five (Legend 88, Kraken RS, Stiletto V4, Cobra XT, Ronin YS) ride one of those three until theirs are made. Ask for each as those three were: the same pose and proportions (about 1.9 long in Meshy's units, nose to -X), about 15,000 triangles, base colour and metal-roughness, no rider, hover pads where the wheels would be, in that bike's colours.
