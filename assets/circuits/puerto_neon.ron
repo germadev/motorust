@@ -393,6 +393,14 @@
                 (model: TowerStepped, spot: At(position: (1721.2, -870.8), heading: -0.4)),
                 (model: TowerStepped, spot: At(position: (911.2, 344.2), heading: 3.0)),
                 (model: TowerSpire, spot: At(position: (1417.5, 324.0), heading: 2.5)),
+                // The landmarks of the city: the stadium inside the east
+                // loop, the observation wheel by the start straight, its
+                // face to it, the hologram rings by the road.
+                (model: Stadium, spot: At(position: (2040.0, -260.0), heading: 0.3)),
+                (model: FerrisWheel, spot: At(position: (-82.0, -170.0), heading: -1.57)),
+                (model: HologramRing, spot: Road(along: 900.0, lateral: 34.0), facing_riders: true),
+                (model: HologramRing, spot: Road(along: 3900.0, lateral: -34.0), facing_riders: true),
+                (model: HologramRing, spot: Road(along: 7000.0, lateral: 34.0), facing_riders: true),
             ],
             // The city the lap runs through: blocks with their windows lit
             // and towers, close on both sides all round it.

@@ -67,7 +67,13 @@ Each prompt below is followed by the shared ending (see [Settings for every mode
 
 ## The city round the lap: filler to make
 
-The lap runs between three rows of filler either side, all round it (`city` in the circuit's file, `src/game/neon.rs`). For now four in five are plain blocks built in code and one in five a tower of the pack; these models take the blocks' place as they come, and not all of them are buildings. Each is repeated many times, turned and scaled a little, so each should read well from any side and be light.
+The lap runs between three rows of filler either side, all round it (`city` in the circuit's file, `src/game/neon.rs`). Each is repeated many times, turned and scaled a little, so each should read well from any side and be light.
+
+**Imported** (2026-11-11), into a pack of their own, `assets/models/neon_city/`, by `tools/import_city.py`, which also says how each is lit (its `MODELS`): the blocks and towers (`block_office`, `block_residential`, `block_megablock`, `block_ziggurat`, `block_cylinder`, `block_stacked`, and towers made again as the city's, `tower_spire`, `tower_stepped`, `tower_twin` and a faceted spire), the industry (`chimney_stack`, `cooling_towers`, `refinery`, `silo_row`, `antenna_mast`, `rail_viaduct`), `sign_tower` (two sets of colours), what stands in the sea (`wind_turbine`, `oil_platform`) and the landmarks (`stadium`, `ferris_wheel`, `hologram_ring`). Not made: `gas_holder`, `substation`, `searchlights`, `pipe_bridge`, `multistorey_park`, `dome_hall`, `dry_dock`.
+
+**Windows drawn by the game.** The later models ("game ready") were made with their windows as flat, bright yellow patches; the importer draws a grid of windows over them, on the walls, some lit, some dark glass. For more: ask Meshy for a pure, saturated yellow, flat, on the walls only (not on roofs), and for nothing else of the model in yellow. Where yellow means something else (a stadium's pitch, a wheel's cabins, a hologram ring, an offshore turbine's paint, a helideck), the importer says so per model.
+
+**What turns.** The wind turbine's rotor and the observation wheel are cut from their models by their connected parts (the rotor in front of the tower; the wheel, its legs and, one by one, its cabins, which hang upright as it turns).
 
 Same settings and shared ending as above. Their lights (windows, strips, signs without lettering) should be drawn in the colour texture: the game lights them of their own.
 

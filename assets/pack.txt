@@ -143,6 +143,9 @@ models/toys2/props.bin
 models/toys2/color.jpg
 models/neon/props.bin
 models/neon/color.jpg
+models/neon_city/props.bin
+models/neon_city/color.jpg
+models/neon_city/glow.jpg
 
 # The game's identity (src/game_info.rs).
 game.ron

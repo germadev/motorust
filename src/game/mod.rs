@@ -79,6 +79,7 @@ impl Plugin for GamePlugin {
         app.add_plugins((
             desert::DesertPlugin,
             mine::MinePlugin,
+            neon::NeonPlugin,
             space::SpacePlugin,
             toys::ToysPlugin,
         ));
