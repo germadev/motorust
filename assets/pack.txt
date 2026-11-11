@@ -130,7 +130,7 @@ models/falcon_hover/normal.jpg
 models/falcon_hover/emissive.jpg
 
 # The scenery's models: the trees, the props of feudal Japan and of
-# Middle-earth, and the toys of the toy store.
+# Middle-earth, the toys of the toy store and Costa Bits' props.
 models/trees/trees.bin
 models/trees/color.jpg
 models/props/props.bin
@@ -146,6 +146,12 @@ models/neon/color.jpg
 models/neon_city/props.bin
 models/neon_city/color.jpg
 models/neon_city/glow.jpg
+models/costa/props.bin
+models/costa/color.jpg
+models/costa/billboard.jpg
+models/costa/arch_banner.jpg
+models/costa/checkpoint_banner.jpg
+models/costa/crowd.png
 
 # The game's identity (src/game_info.rs).
 game.ron

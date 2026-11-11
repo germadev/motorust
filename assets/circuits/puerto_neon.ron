@@ -96,14 +96,14 @@
         // in the tightest), and gripping harder, for the bikes to drift
         // round them.
         banking: [
-            (from: 480.0, to: 1931.8, factor: 2.8, grip: 1.3, steep: 2.0),
+            (from: 480.0, to: 1931.8, factor: 2.5, grip: 1.3, steep: 2.0),
             // Hardly banked where the way off it parts from it and crosses
             // it, and where it joins it again, as at the forks of the other
             // circuits.
             (from: 1931.8, to: 2701.7, factor: 0.25),
-            (from: 2701.7, to: 3641.6, factor: 2.8, grip: 1.3, steep: 2.0),
+            (from: 2701.7, to: 3641.6, factor: 2.5, grip: 1.3, steep: 2.0),
             (from: 3641.6, to: 3801.6, factor: 0.25),
-            (from: 3801.6, to: 7731.2, factor: 2.8, grip: 1.3, steep: 2.0),
+            (from: 3801.6, to: 7731.2, factor: 2.5, grip: 1.3, steep: 2.0),
         ],
         // Where the nitro fills, as the bikes ride over its bars of pink
         // light: down the start straight, past its crest, and on the long

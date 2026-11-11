@@ -8,6 +8,7 @@ pub mod bricks;
 #[cfg(test)]
 mod checks;
 pub mod circuits;
+pub mod costa;
 pub mod desert;
 pub mod japan;
 pub mod middle_earth;
@@ -61,6 +62,7 @@ pub fn register() {
         "ghost_island_volcano_relief",
         circuits::ghost_island::volcano_gullies,
     );
+    themes::register::<costa::Costa>("costa");
     themes::register::<desert::Desert>("desert");
     themes::register::<japan::Japan>("japan");
     themes::register::<middle_earth::MiddleEarth>("middle_earth");
@@ -77,6 +79,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         register();
         app.add_plugins((
+            costa::CostaPlugin,
             desert::DesertPlugin,
             mine::MinePlugin,
             neon::NeonPlugin,
