@@ -426,7 +426,10 @@ pub struct CostaPlugin;
 
 impl Plugin for CostaPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (fly, chase_bulbs, run_pictures, cheer));
+        app.add_systems(
+            Update,
+            (fly, chase_bulbs, run_pictures, cheer, wobble, wave_banners),
+        );
     }
 }
 
@@ -540,6 +543,103 @@ fn cheer(time: Res<Time>, mut spectators: Query<(&mut Spectator, &mut Mesh3d)>) 
         if pose != spectator.shown {
             spectator.shown = pose;
             mesh.0 = spectator.poses[pose].clone();
+        }
+    }
+}
+
+/// An inflatable arch swaying in the wind (see [`wobble`]): where it stands
+/// at rest, and how far into its sway it starts.
+#[derive(Component, Clone, Copy)]
+struct Wobble {
+    rest: Transform,
+    phase: f32,
+}
+
+/// How far an inflatable arch leans to and fro along the road at most (rad,
+/// about its foot: its top some 0.3 m either way), how quickly (rad/s), and
+/// how much it leans across too, slower.
+const WOBBLE_LEAN: f32 = 0.022;
+const WOBBLE_RATE: f32 = 2.1;
+const WOBBLE_ACROSS: f32 = 0.008;
+
+/// How an inflatable arch leans `time` seconds in, from `phase`: to and fro
+/// along the road and a little across it, at rates that never quite repeat.
+fn wobble_turn(time: f32, phase: f32) -> Quat {
+    let t = time * WOBBLE_RATE + phase;
+    let along = WOBBLE_LEAN * (0.7 * t.sin() + 0.3 * (2.3 * t + 1.0).sin());
+    let across = WOBBLE_ACROSS * (0.61 * t + 2.0).sin();
+    Quat::from_rotation_x(along) * Quat::from_rotation_z(across)
+}
+
+/// Sways the inflatable arches (and their banners).
+fn wobble(time: Res<Time>, mut arches: Query<(&Wobble, &mut Transform)>) {
+    let now = time.elapsed_secs();
+    for (wobble, mut transform) in &mut arches {
+        transform.rotation = wobble.rest.rotation * wobble_turn(now, wobble.phase);
+    }
+}
+
+/// A banner waving in the wind (see [`wave_banners`]): its points at rest,
+/// and how far along it each is (0 at one end, 1 at the other).
+#[derive(Component)]
+struct Waving {
+    rest: Vec<[f32; 3]>,
+    along: Vec<f32>,
+}
+
+/// How far a banner's middle billows out at most (m), how many waves run
+/// along it at once, and how quickly (rad/s).
+const WAVE_DEPTH: f32 = 0.35;
+const WAVE_COUNT: f32 = 1.5;
+const WAVE_RATE: f32 = 2.6;
+
+impl Waving {
+    /// A banner's waving, and its mesh of its own to move (`None` if the
+    /// mesh has no points).
+    fn new(mesh: Mesh) -> Option<(Self, Mesh)> {
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(rest)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION).cloned()
+        else {
+            return None;
+        };
+        let (low, high) = rest
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p[0]), b.max(p[0])));
+        let along = rest
+            .iter()
+            .map(|p| (p[0] - low) / (high - low).max(1e-3))
+            .collect();
+        Some((Self { rest, along }, mesh))
+    }
+
+    /// Its points `time` seconds in: pushed back and forth (along z, its
+    /// faces') by waves running along it, not at all at its ends, tied to
+    /// the towers, most in the middle.
+    fn points(&self, time: f32) -> Vec<[f32; 3]> {
+        self.rest
+            .iter()
+            .zip(&self.along)
+            .map(|(&[x, y, z], &u)| {
+                let tied = (u * std::f32::consts::PI).sin();
+                let wave =
+                    (u * WAVE_COUNT * std::f32::consts::TAU - time * WAVE_RATE + 0.4 * y).sin();
+                [x, y, z + WAVE_DEPTH * tied * wave]
+            })
+            .collect()
+    }
+}
+
+/// Waves the banners (their meshes' points moved every frame: a few hundred
+/// of them).
+fn wave_banners(
+    time: Res<Time>,
+    banners: Query<(&Waving, &Mesh3d)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    let now = time.elapsed_secs();
+    for (waving, mesh) in &banners {
+        if let Some(mut mesh) = meshes.get_mut(&mesh.0) {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, waving.points(now));
         }
     }
 }
@@ -810,16 +910,38 @@ impl Theme for Costa {
             .map(|posts| km_posts(track, scenery, &posts))
             .unwrap_or_default();
         for prop in self.props.iter().copied().chain(signs).chain(posts) {
-            let (footprint, placed) =
+            let (footprint, placed, entity) =
                 spawn_prop(world, track, terrain, &prop, pack, &mut assets.mirrored);
             taken.push(footprint);
+            // An inflatable arch sways in the wind, its banner with it.
+            let wobble = (prop.model == CostaModel::CheckpointArch).then(|| Wobble {
+                rest: placed,
+                phase: random01(taken.len() as u32 + 77) * std::f32::consts::TAU,
+            });
+            if let Some(wobble) = wobble {
+                world.commands().entity(entity).insert(wobble);
+            }
             for (model, piece, banner) in &banners {
                 if let (true, Some(banner)) = (prop.model == *model, banner) {
-                    world.spawn((
-                        Mesh3d(pack.piece(piece).mesh.clone()),
-                        MeshMaterial3d(banner.clone()),
-                        placed,
-                    ));
+                    let mesh = pack.piece(piece).mesh.clone();
+                    // The start arch's banner waves (a mesh of its own, its
+                    // points moved as it does).
+                    let waving = (prop.model == CostaModel::StartArch)
+                        .then(|| assets.meshes.get(&mesh).cloned())
+                        .flatten()
+                        .and_then(Waving::new);
+                    let mesh = match &waving {
+                        Some((_, cloth)) => assets.meshes.add(cloth.clone()),
+                        None => mesh,
+                    };
+                    let mut banner =
+                        world.spawn((Mesh3d(mesh), MeshMaterial3d(banner.clone()), placed));
+                    if let Some((waving, _)) = waving {
+                        banner.insert(waving);
+                    }
+                    if let Some(wobble) = wobble {
+                        banner.insert(wobble);
+                    }
                 }
             }
             if let (CostaModel::Grandstand, Some(cards)) = (prop.model, &crowd_cards) {
@@ -1126,7 +1248,7 @@ fn spawn_prop(
     prop: &Prop<CostaModel>,
     props: &PropPack,
     mirrored: &mut Vec<MirrorPoint>,
-) -> (Footprint, Transform) {
+) -> (Footprint, Transform, Entity) {
     let piece = props.piece(name(prop.model));
     // The car is on show: its `lean` tips it about its length towards its
     // front (the side it shows the road), so that its bonnet, its seats
@@ -1171,13 +1293,15 @@ fn spawn_prop(
     let placed = Transform::from_xyz(position.x, foot, position.y)
         .with_rotation(rotation)
         .with_scale(Vec3::splat(prop.scale));
-    world.spawn((
-        Mesh3d(piece.mesh.clone()),
-        MeshMaterial3d(props.material.clone()),
-        placed,
-    ));
+    let entity = world
+        .spawn((
+            Mesh3d(piece.mesh.clone()),
+            MeshMaterial3d(props.material.clone()),
+            placed,
+        ))
+        .id();
     mirrored.extend(piece.surface.iter().map(|point| point.placed(&placed)));
-    ((position, reach), placed)
+    ((position, reach), placed, entity)
 }
 
 #[cfg(test)]
@@ -1504,6 +1628,35 @@ mod tests {
                     assert!(high.x * prop.scale > wall + 0.5, "{}", circuit.name);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn the_start_banner_waves_tied_at_its_ends_and_the_checkpoints_sway_a_little() {
+        let pack = pack();
+        let (waving, _) = Waving::new(piece(&pack, ARCH_BANNER).clone()).unwrap();
+        for time in [0.0, 0.7, 3.1] {
+            let points = waving.points(time);
+            for ((point, rest), &u) in points.iter().zip(&waving.rest).zip(&waving.along) {
+                let off = (point[2] - rest[2]).abs();
+                assert!(off <= WAVE_DEPTH + 1e-4);
+                if !(0.02..=0.98).contains(&u) {
+                    assert!(off < 0.03, "an end moves {off} m");
+                }
+            }
+        }
+        let moved = |time| {
+            waving
+                .points(time)
+                .iter()
+                .zip(&waving.rest)
+                .map(|(p, r)| (p[2] - r[2]).abs())
+                .fold(0.0, f32::max)
+        };
+        assert!(moved(0.5) > 0.1);
+        for k in 0..50 {
+            let lean = wobble_turn(k as f32 * 0.37, 1.0).angle_between(Quat::IDENTITY);
+            assert!(lean < WOBBLE_LEAN + WOBBLE_ACROSS + 1e-3, "{lean}");
         }
     }
 
