@@ -123,6 +123,7 @@ models/costa/color.jpg
 models/costa/billboard.jpg
 models/costa/arch_banner.jpg
 models/costa/checkpoint_banner.jpg
+models/costa/arcade_screen.png
 models/costa/crowd.png
 
 # The game's identity (src/game_info.rs).
