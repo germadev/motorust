@@ -36,6 +36,8 @@ use motorust_engine::world::prop_pack::{PropPack, facing, in_view, spot};
 use motorust_engine::world::props::Footprint;
 use motorust_engine::world::scenery::{Prop, Scenery, Side, Span, Spot};
 use motorust_engine::world::sprites::{FacingCamera, card_material};
+
+mod arcade;
 use motorust_engine::world::terrain::Terrain;
 use motorust_engine::world::themes::Theme;
 
@@ -53,10 +55,6 @@ const ARCH_BANNER_PICTURE: &str = "models/costa/arch_banner.jpg";
 /// The checkpoints' arch's banner, and its picture ("CHECKPOINT").
 const CHECKPOINT_BANNER: &str = "checkpoint_arch_banner";
 const CHECKPOINT_BANNER_PICTURE: &str = "models/costa/checkpoint_banner.jpg";
-/// The arcade game shown on the rock over the tunnel's mouth, its frames
-/// (`tools/make_arcade_screen.py`): its sprites alone, see-through round
-/// them, drawn on the rock as it is.
-const ARCADE_SCREEN: &str = "models/costa/arcade_screen.png";
 /// The spectators' poses (`tools/make_crowd.py`): a cell per person and
 /// pose, the people across, the poses down.
 const CROWD_PICTURE: &str = "models/costa/crowd.png";
@@ -94,7 +92,8 @@ pub struct Costa {
 /// A screen over the road at `along`, on the rock over a tunnel's mouth,
 /// facing the riders coming: its foot `lift` metres over the road, `height`
 /// metres high, as wide as an arcade's upright screen is (3 across to 4 up),
-/// a vertical shoot-'em-up playing on it, glowing.
+/// a vertical shoot-'em-up playing itself on it ([`arcade::Game`]), its
+/// sprites alone glowing on the rock.
 #[derive(Clone, Copy, Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Screen {
@@ -103,19 +102,17 @@ pub struct Screen {
     pub height: f32,
 }
 
-/// The arcade game's frames in its image: how many across and down, in the
-/// order of the loop from the top left, how many a second are shown, how
-/// far in from a frame's edges the screen shows, and how bright it shines.
-const SCREEN_GRID: UVec2 = UVec2::new(4, 2);
-const SCREEN_RATE: f32 = 8.0;
-const SCREEN_INSET: f32 = 0.003;
+/// How bright the arcade game's sprites shine of themselves.
 const SCREEN_GLOW: f32 = 0.85;
 /// How wide a screen is against how high.
-const SCREEN_ASPECT: f32 = 0.75;
+const SCREEN_ASPECT: f32 = arcade::SIZE.x as f32 / arcade::SIZE.y as f32;
 
-/// A screen on the rock (see [`run_screens`]).
+/// A screen on the rock (see [`play_arcade`]): the image its game is drawn
+/// into.
 #[derive(Component)]
-struct ArcadeScreen;
+struct ArcadeScreen {
+    image: Handle<Image>,
+}
 
 /// People standing by the road along `span`, on `side` of it, cheering the
 /// riders on, `spacing` metres apart (give or take): the nearest row
@@ -466,7 +463,7 @@ impl Plugin for CostaPlugin {
                 fly,
                 chase_bulbs,
                 run_pictures,
-                run_screens,
+                play_arcade,
                 cheer,
                 wobble,
                 wave_banners,
@@ -515,31 +512,6 @@ fn grid_uv(frame: u32, grid: UVec2, inset: f32) -> bevy::math::Affine2 {
     )
 }
 
-/// The frame of the arcade game shown `time` seconds in.
-fn screen_frame(time: f32) -> u32 {
-    (time * SCREEN_RATE) as u32 % (SCREEN_GRID.x * SCREEN_GRID.y)
-}
-
-/// Plays the arcade game on the screens (their material changed only as the
-/// frame does, one material for them all).
-fn run_screens(
-    time: Res<Time>,
-    screens: Query<&MeshMaterial3d<StandardMaterial>, With<ArcadeScreen>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut last: Local<Option<u32>>,
-) {
-    let frame = screen_frame(time.elapsed_secs());
-    if *last == Some(frame) || screens.is_empty() {
-        return;
-    }
-    *last = Some(frame);
-    for material in &screens {
-        if let Some(mut material) = materials.get_mut(&material.0) {
-            material.uv_transform = grid_uv(frame, SCREEN_GRID, SCREEN_INSET);
-        }
-    }
-}
-
 /// Shows the billboards' pictures frame by frame (their material changed
 /// only as the frame does: a few times a second, one material for them
 /// all).
@@ -557,6 +529,32 @@ fn run_pictures(
     for material in &pictures {
         if let Some(mut material) = materials.get_mut(&material.0) {
             material.uv_transform = frame_uv(frame);
+        }
+    }
+}
+
+/// Plays the arcade games on the screens, each a step at a time at
+/// [`arcade::RATE`], and draws each into its image as it steps.
+fn play_arcade(
+    time: Res<Time>,
+    mut screens: Query<(&mut arcade::Game, &ArcadeScreen)>,
+    mut images: ResMut<Assets<Image>>,
+    mut owed: Local<f32>,
+) {
+    *owed += time.delta_secs() * arcade::RATE;
+    let steps = (*owed as u32).min(4);
+    *owed = (*owed - steps as f32).min(1.0);
+    if steps == 0 {
+        return;
+    }
+    for (mut game, screen) in &mut screens {
+        for _ in 0..steps {
+            game.step();
+        }
+        if let Some(mut image) = images.get_mut(&screen.image)
+            && let Some(data) = image.data.as_mut()
+        {
+            game.draw(data);
         }
     }
 }
@@ -1066,31 +1064,39 @@ impl Theme for Costa {
                 *flight,
             ));
         }
-        // The arcade game on the rock over the road.
-        if !self.screens.is_empty() {
+        // The arcade game on the rock over the road, playing itself.
+        for (k, screen) in self.screens.iter().enumerate() {
+            let mut image = Image::new_fill(
+                bevy::render::render_resource::Extent3d {
+                    width: arcade::SIZE.x,
+                    height: arcade::SIZE.y,
+                    depth_or_array_layers: 1,
+                },
+                bevy::render::render_resource::TextureDimension::D2,
+                &[0, 0, 0, 0],
+                bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+                RenderAssetUsages::default(),
+            );
+            image.sampler = bevy::image::ImageSampler::nearest();
+            let image = assets.images.add(image);
             // Its sprites alone, sharp as pixel art, glowing; the rock shows
             // round them.
-            let frames = assets
-                .images
-                .add(crowd_picture(motorust_engine::content::file(ARCADE_SCREEN)));
             let material = assets.materials.add(StandardMaterial {
-                base_color_texture: Some(frames.clone()),
+                base_color_texture: Some(image.clone()),
                 emissive: LinearRgba::gray(SCREEN_GLOW),
-                emissive_texture: Some(frames),
+                emissive_texture: Some(image.clone()),
                 alpha_mode: AlphaMode::Mask(0.5),
                 perceptual_roughness: 0.9,
                 reflectance: 0.05,
-                uv_transform: grid_uv(0, SCREEN_GRID, SCREEN_INSET),
                 ..default()
             });
-            for screen in self.screens {
-                world.spawn((
-                    Mesh3d(assets.meshes.add(screen_mesh(screen.height))),
-                    MeshMaterial3d(material.clone()),
-                    screen_transform(track, screen),
-                    ArcadeScreen,
-                ));
-            }
+            world.spawn((
+                Mesh3d(assets.meshes.add(screen_mesh(screen.height))),
+                MeshMaterial3d(material),
+                screen_transform(track, screen),
+                ArcadeScreen { image },
+                arcade::Game::new(k as u32 + 1),
+            ));
         }
         // The people by the road, cheering.
         if let Some(cards) = &crowd_cards {
@@ -1233,8 +1239,8 @@ fn stand_places(seed: u32) -> Vec<(Vec3, u32)> {
     places
 }
 
-/// A picture of sprites (a PNG, see-through round them: the spectators',
-/// the arcade game's), its pixels sharp, as pixel art's.
+/// The spectators' picture (a PNG, see-through round them), its pixels
+/// sharp, as pixel art's.
 fn crowd_picture(bytes: &[u8]) -> Image {
     let mut image = Image::from_buffer(
         bytes,
@@ -1780,12 +1786,6 @@ mod tests {
     #[test]
     fn the_arcade_game_plays_on_a_screen_over_the_road_facing_the_riders() {
         crate::game::register();
-        assert!(!motorust_engine::content::file(ARCADE_SCREEN).is_empty());
-        // Every frame in turn, round and round.
-        let frames: Vec<u32> = (0..10)
-            .map(|k| screen_frame((k as f32 + 0.5) / SCREEN_RATE))
-            .collect();
-        assert_eq!(frames, [0, 1, 2, 3, 4, 5, 6, 7, 0, 1]);
         for (circuit, costa) in costas() {
             let track = Track::new(&circuit.layout);
             for screen in costa.screens {
