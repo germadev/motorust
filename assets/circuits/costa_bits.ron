@@ -737,7 +737,7 @@
                 // Over the tunnel's mouth, on the rock face over it, a screen
                 // of an arcade's vertical shoot-'em-up, glowing, playing to the
                 // riders coming up to it.
-                screens: [(along: 984.0, lift: 9.0, height: 36.0)],
+                screens: [(along: 984.0, lift: 8.0, width: 34.0, height: 30.0)],
                 crowds: [
                     (span: Span(4300.0, 4388.0), side: Left, lateral: 13.6, spacing: 3.5),
                     (span: Span(255.0, 335.0), side: Right, lateral: 13.2, spacing: 6.0),

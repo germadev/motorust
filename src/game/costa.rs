@@ -90,22 +90,22 @@ pub struct Costa {
 }
 
 /// A screen over the road at `along`, on the rock over a tunnel's mouth,
-/// facing the riders coming: its foot `lift` metres over the road, `height`
-/// metres high, as wide as an arcade's upright screen is (3 across to 4 up),
-/// a vertical shoot-'em-up playing itself on it ([`arcade::Game`]), its
-/// sprites alone glowing on the rock.
+/// facing the riders coming: its foot `lift` metres over the road, `width`
+/// metres across and `height` up (the whole of the rock's face), a vertical
+/// shoot-'em-up playing itself on it ([`arcade::Game`], as many pixels
+/// across as the screen's shape makes square), its sprites alone glowing on
+/// the rock.
 #[derive(Clone, Copy, Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Screen {
     pub along: f32,
     pub lift: f32,
+    pub width: f32,
     pub height: f32,
 }
 
 /// How bright the arcade game's sprites shine of themselves.
 const SCREEN_GLOW: f32 = 0.85;
-/// How wide a screen is against how high.
-const SCREEN_ASPECT: f32 = arcade::SIZE.x as f32 / arcade::SIZE.y as f32;
 
 /// A screen on the rock (see [`play_arcade`]): the image its game is drawn
 /// into.
@@ -1068,8 +1068,8 @@ impl Theme for Costa {
         for (k, screen) in self.screens.iter().enumerate() {
             let mut image = Image::new_fill(
                 bevy::render::render_resource::Extent3d {
-                    width: arcade::SIZE.x,
-                    height: arcade::SIZE.y,
+                    width: screen_pixels(screen),
+                    height: arcade::HEIGHT,
                     depth_or_array_layers: 1,
                 },
                 bevy::render::render_resource::TextureDimension::D2,
@@ -1091,11 +1091,11 @@ impl Theme for Costa {
                 ..default()
             });
             world.spawn((
-                Mesh3d(assets.meshes.add(screen_mesh(screen.height))),
+                Mesh3d(assets.meshes.add(screen_mesh(screen.width, screen.height))),
                 MeshMaterial3d(material),
                 screen_transform(track, screen),
                 ArcadeScreen { image },
-                arcade::Game::new(k as u32 + 1),
+                arcade::Game::new(screen_pixels(screen), k as u32 + 1),
             ));
         }
         // The people by the road, cheering.
@@ -1116,10 +1116,16 @@ impl Theme for Costa {
     }
 }
 
-/// A screen's panel: `height` metres high, as wide as [`SCREEN_ASPECT`]
-/// says, its foot at the origin, facing +Z.
-fn screen_mesh(height: f32) -> Mesh {
-    Mesh::from(Rectangle::new(height * SCREEN_ASPECT, height)).translated_by(Vec3::Y * height / 2.0)
+/// How many of the game's pixels across a screen is: as many as make them
+/// square, [`arcade::HEIGHT`] up.
+fn screen_pixels(screen: &Screen) -> u32 {
+    (arcade::HEIGHT as f32 * screen.width / screen.height).round() as u32
+}
+
+/// A screen's panel: `width` metres across and `height` up, its foot at the
+/// origin, facing +Z.
+fn screen_mesh(width: f32, height: f32) -> Mesh {
+    Mesh::from(Rectangle::new(width, height)).translated_by(Vec3::Y * height / 2.0)
 }
 
 /// Where a screen stands: over the middle of the road at its `along`, its
