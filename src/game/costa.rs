@@ -650,13 +650,25 @@ fn wobble(time: Res<Time>, mut arches: Query<(&Wobble, &mut Transform)>) {
     }
 }
 
-/// A banner waving in the wind (see [`wave_banners`]): its points at rest,
-/// and how far along it each is (0 at one end, 1 at the other).
-#[derive(Component)]
+/// A banner waving in the wind: its points at rest, and how far along it
+/// each is (0 at one end, 1 at the other).
 struct Waving {
     rest: Vec<[f32; 3]>,
     along: Vec<f32>,
 }
+
+/// A banner waving (see [`wave_banners`]): its meshes, one for each moment
+/// of a wave's going by, worked out as it is put up, shown in turn; no mesh
+/// is changed once drawn (changing one every frame upsets the renderer's
+/// buffers), and which is shown.
+#[derive(Component)]
+struct WavingFrames {
+    frames: Vec<Handle<Mesh>>,
+    shown: usize,
+}
+
+/// How many meshes a wave's going by is in.
+const WAVE_FRAMES: usize = 24;
 
 /// How far a banner's middle billows out at most (m), how many waves run
 /// along it at once, and how quickly (rad/s).
@@ -665,9 +677,8 @@ const WAVE_COUNT: f32 = 1.5;
 const WAVE_RATE: f32 = 2.6;
 
 impl Waving {
-    /// A banner's waving, and its mesh of its own to move (`None` if the
-    /// mesh has no points).
-    fn new(mesh: Mesh) -> Option<(Self, Mesh)> {
+    /// A banner's waving (`None` if its mesh has no points).
+    fn new(mesh: &Mesh) -> Option<Self> {
         let Some(bevy::mesh::VertexAttributeValues::Float32x3(rest)) =
             mesh.attribute(Mesh::ATTRIBUTE_POSITION).cloned()
         else {
@@ -680,7 +691,25 @@ impl Waving {
             .iter()
             .map(|p| (p[0] - low) / (high - low).max(1e-3))
             .collect();
-        Some((Self { rest, along }, mesh))
+        Some(Self { rest, along })
+    }
+
+    /// How long a wave takes to go by (s): its meshes loop over it.
+    fn period() -> f32 {
+        std::f32::consts::TAU / WAVE_RATE
+    }
+
+    /// Its meshes for a wave's going by, `mesh` with its points as they are
+    /// at each of [`WAVE_FRAMES`] moments of it.
+    fn frames(&self, mesh: &Mesh) -> Vec<Mesh> {
+        (0..WAVE_FRAMES)
+            .map(|k| {
+                let time = Self::period() * k as f32 / WAVE_FRAMES as f32;
+                let mut frame = mesh.clone();
+                frame.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.points(time));
+                frame
+            })
+            .collect()
     }
 
     /// Its points `time` seconds in: pushed back and forth (along z, its
@@ -700,17 +729,14 @@ impl Waving {
     }
 }
 
-/// Waves the banners (their meshes' points moved every frame: a few hundred
-/// of them).
-fn wave_banners(
-    time: Res<Time>,
-    banners: Query<(&Waving, &Mesh3d)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    let now = time.elapsed_secs();
-    for (waving, mesh) in &banners {
-        if let Some(mut mesh) = meshes.get_mut(&mesh.0) {
-            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, waving.points(now));
+/// Waves the banners: each shows the mesh of the moment of its wave.
+fn wave_banners(time: Res<Time>, mut banners: Query<(&mut WavingFrames, &mut Mesh3d)>) {
+    let into = (time.elapsed_secs() / Waving::period()).fract();
+    for (mut waving, mut mesh) in &mut banners {
+        let frame = (into * waving.frames.len() as f32) as usize % waving.frames.len().max(1);
+        if frame != waving.shown {
+            waving.shown = frame;
+            mesh.0 = waving.frames[frame].clone();
         }
     }
 }
@@ -995,20 +1021,18 @@ impl Theme for Costa {
             for (model, piece, banner) in &banners {
                 if let (true, Some(banner)) = (prop.model == *model, banner) {
                     let mesh = pack.piece(piece).mesh.clone();
-                    // The start arch's banner waves (a mesh of its own, its
-                    // points moved as it does).
-                    let waving = (prop.model == CostaModel::StartArch)
+                    // The start arch's banner waves: its meshes for each
+                    // moment of a wave, shown in turn.
+                    let frames: Option<Vec<Handle<Mesh>>> = (prop.model == CostaModel::StartArch)
                         .then(|| assets.meshes.get(&mesh).cloned())
                         .flatten()
-                        .and_then(Waving::new);
-                    let mesh = match &waving {
-                        Some((_, cloth)) => assets.meshes.add(cloth.clone()),
-                        None => mesh,
-                    };
+                        .and_then(|cloth| Waving::new(&cloth).map(|w| w.frames(&cloth)))
+                        .map(|frames| frames.into_iter().map(|f| assets.meshes.add(f)).collect());
+                    let shown = frames.as_ref().map_or(mesh, |frames| frames[0].clone());
                     let mut banner =
-                        world.spawn((Mesh3d(mesh), MeshMaterial3d(banner.clone()), placed));
-                    if let Some((waving, _)) = waving {
-                        banner.insert(waving);
+                        world.spawn((Mesh3d(shown), MeshMaterial3d(banner.clone()), placed));
+                    if let Some(frames) = frames {
+                        banner.insert(WavingFrames { frames, shown: 0 });
                     }
                     if let Some(wobble) = wobble {
                         banner.insert(wobble);
@@ -1095,6 +1119,9 @@ impl Theme for Costa {
                 MeshMaterial3d(material),
                 screen_transform(track, screen),
                 ArcadeScreen { image },
+                // Light, not lit: its sprites cast no shadow on the rock.
+                bevy::light::NotShadowCaster,
+                bevy::light::NotShadowReceiver,
                 arcade::Game::new(screen_pixels(screen), k as u32 + 1),
             ));
         }
@@ -1128,16 +1155,21 @@ fn screen_mesh(width: f32, height: f32) -> Mesh {
     Mesh::from(Rectangle::new(width, height)).translated_by(Vec3::Y * height / 2.0)
 }
 
-/// Where a screen stands: over the middle of the road at its `along`, its
-/// foot `lift` over the road, square across the road, facing the riders
-/// coming up it.
+/// How far out from the rock face a screen stands (m): just clear of it.
+const SCREEN_OFF_ROCK: f32 = 0.3;
+
+/// Where a screen stands: on the rock face over a tunnel's mouth at its
+/// `along` (the tunnel's start), in its plane, as the engine builds it
+/// (across the road there, square to its heading), [`SCREEN_OFF_ROCK`] out
+/// from it towards the riders coming, its foot `lift` over the road's
+/// middle.
 fn screen_transform(track: &Track, screen: &Screen) -> Transform {
     let index = track.index_at(screen.along);
-    let foot = track.surface_point(index, 0.0) + Vec3::Y * screen.lift;
-    let point = Vec2::new(foot.x, foot.z);
-    // Square across the road there: facing back down it.
-    let ahead = track.offset_point(track.index_at(screen.along + 4.0), 0.0);
-    Transform::from_translation(foot).with_rotation(facing(point - ahead))
+    let (_, heading) = track.pose_at(index);
+    let ahead = motorust_engine::geometry::forward(heading);
+    let out = Vec3::new(-ahead.x, 0.0, -ahead.y);
+    let foot = track.surface_point(index, 0.0) + Vec3::Y * screen.lift + out * SCREEN_OFF_ROCK;
+    Transform::from_translation(foot).with_rotation(facing(-ahead))
 }
 
 /// The spectators' cards: every person's every pose, and their material.
@@ -1763,7 +1795,8 @@ mod tests {
     #[test]
     fn the_start_banner_waves_tied_at_its_ends_and_the_checkpoints_sway_a_little() {
         let pack = pack();
-        let (waving, _) = Waving::new(piece(&pack, ARCH_BANNER).clone()).unwrap();
+        let waving = Waving::new(piece(&pack, ARCH_BANNER)).unwrap();
+        assert_eq!(waving.frames(piece(&pack, ARCH_BANNER)).len(), WAVE_FRAMES);
         for time in [0.0, 0.7, 3.1] {
             let points = waving.points(time);
             for ((point, rest), &u) in points.iter().zip(&waving.rest).zip(&waving.along) {
@@ -1796,10 +1829,16 @@ mod tests {
             let track = Track::new(&circuit.layout);
             for screen in costa.screens {
                 let placed = screen_transform(&track, screen);
-                // Over the road's middle, its foot over the riders' heads.
+                // Its foot over the riders' heads.
                 let index = track.index_at(screen.along);
                 let road = track.surface_point(index, 0.0);
-                assert!(placed.translation.xz().distance(road.xz()) < 0.1);
+                // Just clear of the rock face there (built across the road
+                // at the tunnel's start), towards the riders coming.
+                let (_, heading) = track.pose_at(index);
+                let ahead = motorust_engine::geometry::forward(heading);
+                let out = placed.translation.xz() - road.xz();
+                assert!((out.dot(ahead) + SCREEN_OFF_ROCK).abs() < 0.01, "{out}");
+                assert!(out.perp_dot(ahead).abs() < 0.01, "{out}");
                 assert!(placed.translation.y > road.y + 6.0);
                 // Facing back down the road, to the riders coming.
                 let back = track.offset_point(track.index_at(screen.along - 10.0), 0.0) - road.xz();
