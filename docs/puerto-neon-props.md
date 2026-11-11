@@ -71,6 +71,8 @@ The lap runs between three rows of filler either side, all round it (`city` in t
 
 Same settings and shared ending as above. Their lights (windows, strips, signs without lettering) should be drawn in the colour texture: the game lights them of their own.
 
+A city is not all cyan, magenta and amber: for these, leave "with cyan, magenta and amber light strips" out of the shared ending, and let each prompt say its own colours. Most windows are the whites of offices and homes (warm white, cold white, pale yellow); walls are concrete greys, dark blue glass, rust and weathered metal; colour is the exception (a red beacon, a green-blue sign, sodium-orange work lights), a different one on each model.
+
 | Name | What | Size in the game | Triangles | Priority |
 |---|---|---|---|---|
 | `block_office` | Plain office slab, a grid of lit windows | 90 m high | 1,200 | A |

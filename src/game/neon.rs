@@ -133,7 +133,7 @@ pub struct Building {
 /// How many kinds of block there are (their windows' colours), how far a
 /// building keeps from the middle of any road (m, over its own half
 /// width), and one building in so many is a tower of the pack.
-pub const BLOCK_KINDS: usize = 3;
+pub const BLOCK_KINDS: usize = 7;
 const CITY_CLEAR: f32 = 16.0;
 const TOWER_EVERY: u32 = 5;
 
@@ -183,7 +183,8 @@ pub fn buildings(track: &Track, city: &City) -> Vec<Building> {
                     heading: heading + 0.25 * (chance(n + 53) - 0.5),
                     size: Vec3::new(width, height, depth),
                     tower,
-                    kind: (n as usize / 3) % BLOCK_KINDS,
+                    // Most of them the whites; the colours here and there.
+                    kind: (chance(n + 211).powi(2) * BLOCK_KINDS as f32) as usize % BLOCK_KINDS,
                 });
             }
         }
@@ -192,8 +193,9 @@ pub fn buildings(track: &Track, city: &City) -> Vec<Building> {
 }
 
 /// The picture of a block's face: dark, with rows of windows, some lit in
-/// `lit`, most dark. The same on every face of every block of its kind.
-fn windows_image(lit: Color, seed: u32) -> Image {
+/// `lit` (`share` of them), the rest dark. The same on every face of every
+/// block of its kind.
+fn windows_image(lit: Color, share: f32, seed: u32) -> Image {
     use bevy::asset::RenderAssetUsages;
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
     const ACROSS: u32 = 12;
@@ -204,7 +206,7 @@ fn windows_image(lit: Color, seed: u32) -> Image {
     for y in 0..UP * CELL {
         for x in 0..ACROSS * CELL {
             let window = (x % CELL) > 0 && (y % CELL) > 1;
-            let on = chance(seed + (y / CELL) * ACROSS + x / CELL) < 0.42;
+            let on = chance(seed + (y / CELL) * ACROSS + x / CELL) < share;
             let (r, g, b) = if window && on {
                 (lit.red, lit.green, lit.blue)
             } else if window {
@@ -230,11 +232,47 @@ fn windows_image(lit: Color, seed: u32) -> Image {
     image
 }
 
-/// The colours of the windows of each kind of block: warm, cold and pink.
-const WINDOWS: [Color; BLOCK_KINDS] = [
-    Color::srgb(1.0, 0.72, 0.35),
-    Color::srgb(0.45, 0.85, 1.0),
-    Color::srgb(1.0, 0.4, 0.75),
+/// Each kind of block: the colour of its lit windows, of its walls, and
+/// how many of its windows are lit. A city's own mix, most of it the
+/// whites of offices and homes, a few in colour: warm white, cold white,
+/// pale yellow, a green-blue, dim sodium orange, a few red, and one of the
+/// circuit's pink.
+const KINDS: [(Color, Color, f32); BLOCK_KINDS] = [
+    (
+        Color::srgb(1.0, 0.9, 0.72),
+        Color::srgb(0.2, 0.19, 0.18),
+        0.45,
+    ),
+    (
+        Color::srgb(0.85, 0.93, 1.0),
+        Color::srgb(0.14, 0.16, 0.2),
+        0.55,
+    ),
+    (
+        Color::srgb(1.0, 0.95, 0.55),
+        Color::srgb(0.24, 0.22, 0.19),
+        0.3,
+    ),
+    (
+        Color::srgb(0.5, 0.95, 0.85),
+        Color::srgb(0.12, 0.17, 0.17),
+        0.35,
+    ),
+    (
+        Color::srgb(1.0, 0.62, 0.3),
+        Color::srgb(0.22, 0.17, 0.14),
+        0.25,
+    ),
+    (
+        Color::srgb(1.0, 0.25, 0.2),
+        Color::srgb(0.1, 0.1, 0.11),
+        0.12,
+    ),
+    (
+        Color::srgb(1.0, 0.45, 0.8),
+        Color::srgb(0.15, 0.13, 0.18),
+        0.3,
+    ),
 ];
 
 /// How high a prop's foot stands: over the road, on the road there; else
@@ -289,13 +327,15 @@ impl Theme for Neon {
         // towers the pack's, as tall as each is.
         if let Some(city) = &self.city {
             let block = assets.meshes.add(Cuboid::from_length(1.0));
-            let kinds: Vec<Handle<StandardMaterial>> = WINDOWS
+            let kinds: Vec<Handle<StandardMaterial>> = KINDS
                 .iter()
                 .enumerate()
-                .map(|(kind, &lit)| {
-                    let windows = assets.images.add(windows_image(lit, 977 * kind as u32));
+                .map(|(kind, &(lit, wall, share))| {
+                    let windows = assets
+                        .images
+                        .add(windows_image(lit, share, 977 * kind as u32));
                     assets.materials.add(StandardMaterial {
-                        base_color: Color::srgb(0.16, 0.17, 0.2),
+                        base_color: wall,
                         emissive: LinearRgba::rgb(2.2, 2.2, 2.2),
                         emissive_texture: Some(windows),
                         perceptual_roughness: 0.5,
