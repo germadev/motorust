@@ -229,7 +229,7 @@
         narrows: [
             (from: 2200.0, to: 2230.0, wall: 6.5),
             // Down round the cape the road is a single lane, under the rock.
-            (from: 2770.0, to: 3090.0, wall: 3.5, ease: 60.0),
+            (from: 2770.0, to: 3090.0, wall: 4.5, ease: 60.0),
         ],
         // Hardly banked where the road splits, as in Ghost Island and Gold
         // Mine.
@@ -486,11 +486,13 @@
         tunnels: [Span(985.0, 1150.0)],
         bridges: [(span: Span(3444.0, 3650.0), style: Truss)],
         gantries: [
-            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA BITS")),
-            (along: 800.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
-            (along: 1700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
-            (along: 2700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
-            (along: 3700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+            // The line and the checkpoints, their arches the theme's (`costa`):
+            // the start arch, and an inflatable arch at each checkpoint.
+            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA BITS"), drawn: false),
+            (along: 800.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
+            (along: 1700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
+            (along: 2700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
+            (along: 3700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
         ],
         billboards: [
             (
@@ -586,7 +588,6 @@
             (along: 2900.0, side: Left, direction: Right),
             (along: 3680.0, side: Left, direction: Right),
         ],
-        grandstands: [(along: 70.0, side: Left, lateral: 16.5, length: 34.0)],
         beach_parasols: [
             (position: (30.0, -160.0), count: 5),
             (position: (30.0, -250.0), count: 4),
@@ -620,16 +621,23 @@
                     (model: Chiringuito, spot: Road(along: 276.0, lateral: -21.0)),
                     (model: EspetoBoat, spot: Road(along: 300.0, lateral: -19.0), turn: 0.4),
                     (model: WhiteHouse, spot: Road(along: 232.0, lateral: 26.0)),
-                    // Over the road where it comes down to the beach, an arch of
-                    // lattice towers hung with pennants, a banner across it with the
-                    // circuit's name.
-                    (model: StartArch, spot: Over(along: 220.0)),
+                    // Over the line, the start arch: lattice towers hung with
+                    // pennants, a banner across it with the circuit's name.
+                    (model: StartArch, spot: Over(along: 0.0)),
+                    // At each checkpoint, an inflatable arch over the road.
+                    (model: CheckpointArch, spot: Over(along: 800.0)),
+                    (model: CheckpointArch, spot: Over(along: 1700.0)),
+                    (model: CheckpointArch, spot: Over(along: 2700.0)),
+                    (model: CheckpointArch, spot: Over(along: 3700.0)),
+                    // Beside the start straight on the left, a small grandstand,
+                    // people cheering on its steps.
+                    (model: Grandstand, spot: Road(along: 70.0, lateral: 20.5)),
                     (model: WhiteHouse, spot: Road(along: 292.0, lateral: 25.0), turn: 0.2),
-                    // Billboards of the arcades' sunset, past the start arch and on
-                    // the coast highway, turned to the riders coming.
+                    // Billboards of the arcades' sunset, on the crest of the start
+                    // straight and on the coast highway, turned to the riders coming.
                     (
                         model: ArcadeBillboard,
-                        spot: Road(along: 34.0, lateral: 21.5),
+                        spot: Road(along: 150.0, lateral: 21.5),
                         facing_riders: true,
                     ),
                     // Under the first, between its legs, the sports car on show: along
@@ -637,7 +645,7 @@
                     // bonnet, its seats and its boot are seen from the road.
                     (
                         model: RetroSportsCar,
-                        spot: Road(along: 32.5, lateral: 21.0),
+                        spot: Road(along: 148.5, lateral: 21.0),
                         lean: 0.7,
                         facing_riders: true,
                     ),
@@ -649,11 +657,14 @@
                     // Over the headland, a watchtower inland of the road.
                     (model: Watchtower, spot: At(position: (700.0, -575.0), heading: 0.0)),
                     // The hamlet's hermitage, over the headland, on a knoll in a
-                    // clearing of the forest, its front to the riders coming.
+                    // clearing of the forest, its front to the riders coming, turned
+                    // a little so that its side shows too.
                     (
                         model: Ermita,
                         spot: Road(along: 1880.0, lateral: 30.0),
                         facing_riders: true,
+                        // Turned a little off the riders, three-quarters on to them.
+                        turn: -0.55,
                     ),
                     // The gorge: houses on both rims, at their edges, their fronts
                     // turned down the road to the riders coming up it, and the old bridge over the road.

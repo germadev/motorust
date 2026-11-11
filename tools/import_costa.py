@@ -94,6 +94,12 @@ SIZES = {
     # between its walls, 11.5 m either side of its middle, and a little
     # more.
     "start_arch": ("length", 26.0),
+    # The checkpoints' inflatable arch: 13 m high, widened between its legs
+    # until their inner sides stand 12 m from its middle, clear of the
+    # road's walls.
+    "checkpoint_arch": ("arch", 13.0, 12.0),
+    # Beside the start straight, its steps for the spectators' cards.
+    "grandstand": ("length", 30.0),
 }
 # How much bigger than `SIZES` each prop is made in the game: half as big
 # again, as the arcade racers drew what stood by their roads, so that it
@@ -105,6 +111,8 @@ ARCADE_EXCEPT = {
     "gorge_bridge": 1.0,
     "banner_plane": 1.0,
     "start_arch": 1.0,
+    "checkpoint_arch": 1.0,
+    "grandstand": 1.0,
 }
 # How many groups the billboard's bulbs are in, lit one after another.
 BULB_GROUPS = 3
@@ -119,6 +127,10 @@ PICTURE_PIXEL = 5
 BANNER_ART = (160, 24)
 BANNER_PIXEL = 6
 BANNER_TEXT = "COSTA BITS"
+# The checkpoints' arch's band: as long against high as it is once widened,
+# its own chequers at its ends already.
+CHECKPOINT_ART = (172, 24)
+CHECKPOINT_TEXT = "CHECKPOINT"
 # How far in from each end of the bridge its abutments reach (m).
 ABUTMENT = 6.6
 CELL = 512
@@ -435,6 +447,11 @@ LETTERS = {
     "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
     "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
     "C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+    "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+    "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+    "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+    "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
     "I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
     "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
     "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
@@ -443,12 +460,12 @@ LETTERS = {
 }
 
 
-def banner():
-    """The arch's banner: `BANNER_TEXT` in fat orange letters outlined in
-    dark, on white between red stripes, a chequered flag's squares at either
-    end. Pixel art, `BANNER_ART` pixels, shown `BANNER_PIXEL` times larger
-    with its pixels square."""
-    w, h = BANNER_ART
+def banner(text=BANNER_TEXT, size=BANNER_ART, chequers=True):
+    """An arch's banner: `text` in fat orange letters outlined in dark, on
+    white between red stripes, a chequered flag's squares at either end
+    (unless the arch has its own). Pixel art, `size` pixels, shown
+    `BANNER_PIXEL` times larger with its pixels square."""
+    w, h = size
     art = np.zeros((h, w, 3), np.uint8)
     art[:] = (250, 246, 236)
     red, dark, orange = (215, 30, 25), (40, 20, 24), (245, 120, 20)
@@ -457,11 +474,11 @@ def banner():
     # The chequered squares, 2 pixels each, at either end.
     for y in range(3, h - 3):
         for x in range(2, 16):
-            if ((x - 2) // 2 + (y - 3) // 2) % 2 == 0:
+            if chequers and ((x - 2) // 2 + (y - 3) // 2) % 2 == 0:
                 art[y, x] = dark
                 art[y, w - 1 - x] = dark
     scale = 2
-    glyphs = [LETTERS[c] for c in BANNER_TEXT]
+    glyphs = [LETTERS[c] for c in text]
     across = len(glyphs) * 5 * scale + (len(glyphs) - 1) * 2
     x0, y0 = (w - across) // 2, (h - 7 * scale) // 2
     ink = np.zeros((h, w), bool)
@@ -486,7 +503,28 @@ def banner():
     return image.resize((w * BANNER_PIXEL, h * BANNER_PIXEL), Image.NEAREST)
 
 
-def mend_arch(positions, normals, uvs, indices, color):
+def widen_arch(positions, height, inner):
+    """The inflatable arch widened between its legs: scaled to `height`
+    (m), then its legs moved apart, the band between them stretched across,
+    until their inner sides at their feet stand `inner` metres from its
+    middle. Returns the positions (in the model's own units, as it came)."""
+    low, high = positions.min(axis=0), positions.max(axis=0)
+    scale = height / (high[1] - low[1])
+    feet = positions[positions[:, 1] < low[1] + 0.05 * (high[1] - low[1])]
+    leg = np.abs(feet[:, 0]).min()
+    shift = inner / scale - leg
+    # Inside the legs' inner sides, stretched; past them, moved out as far.
+    x = positions[:, 0]
+    widened = np.where(
+        np.abs(x) < leg, x * (leg + shift) / leg, x + np.sign(x) * shift
+    )
+    out = positions.copy()
+    out[:, 0] = widened
+    print(f"checkpoint_arch: widened {(leg + shift) / leg:.2f} times between its legs")
+    return out
+
+
+def mend_arch(positions, normals, uvs, indices, color, name="start_arch", text=BANNER_TEXT):
     """The arch with its banner blank no more: Meshy's came white. The
     banner's two faces (the big white and grey ones between the towers,
     looking forward and back) are taken out into a piece of their own, with
@@ -512,6 +550,12 @@ def mend_arch(positions, normals, uvs, indices, color):
     between = np.abs(middle[:, 0]) < reach * 0.84
     face = np.abs(normal[:, 2]) > 0.5
     cloth = pale & between & face & (middle[:, 1] > 0.0)
+    # Short of chequers of its own at the band's ends (the inflatable arch's,
+    # blue and white): their white squares are not the banner's.
+    blue = (rgb[:, 2] > rgb[:, 0] + 0.2) & (rgb[:, 2] > rgb[:, 1] + 0.1)
+    chequer = blue & between & face & (middle[:, 1] > 0.0)
+    if chequer.any():
+        cloth &= np.abs(middle[:, 0]) < np.abs(middle[chequer, 0]).min() - 0.005
     corners = np.unique(corners_of[cloth])
     x0, x1 = positions[corners, 0].min(), positions[corners, 0].max()
     # Its top and bottom edges along it, where it sags.
@@ -540,8 +584,8 @@ def mend_arch(positions, normals, uvs, indices, color):
     cloth_indices = np.arange(start, start + len(flat), dtype=np.uint32)
     indices = corners_of[~cloth].reshape(-1).astype(np.uint32)
     print(
-        f"start_arch: its banner, {cloth.sum()} triangles "
-        f"({forward.sum()} forward), drawn \"{BANNER_TEXT}\""
+        f"{name}: its banner, {cloth.sum()} triangles "
+        f"({forward.sum()} forward), drawn \"{text}\""
     )
     return positions, normals, uvs, indices, cloth_indices
 
@@ -567,6 +611,11 @@ def main():
             positions, normals, uvs, indices, panel = mend_arch(
                 positions, normals, uvs, indices, color
             )
+        if name == "checkpoint_arch":
+            positions = widen_arch(positions, *SIZES[name][1:])
+            positions, normals, uvs, indices, panel = mend_arch(
+                positions, normals, uvs, indices, color, name, CHECKPOINT_TEXT
+            )
         if name == "arcade_billboard":
             positions, normals, uvs, indices, lit, panel = mend_billboard(
                 positions, normals, uvs, indices, color
@@ -584,6 +633,8 @@ def main():
         sized = SIZES[name]
         larger = ARCADE_EXCEPT.get(name, ARCADE)
         sized = (sized[0], sized[1] * larger) + tuple(sized[2:])
+        if sized[0] == "arch":
+            sized = ("height", sized[1])
         if sized[0] == "bridge":
             positions, normals, uvs, indices = open_bridge(
                 positions, normals, uvs, indices, *sized[1:]
@@ -601,7 +652,7 @@ def main():
                 (f"{name}_bulbs_{group}", *compact(placed, turned, moved, part))
             )
         if panel is not None:
-            part = "banner" if name == "start_arch" else "panel"
+            part = "banner" if name.endswith("_arch") else "panel"
             pieces.append((f"{name}_{part}", *compact(placed, turned, uvs, panel)))
         low, high = p.min(axis=0), p.max(axis=0)
         print(
@@ -629,6 +680,10 @@ def main():
         billboard_frames().save(OUT / "billboard.jpg", quality=90, optimize=True)
     if any(name == "start_arch" for name, _ in props):
         banner().save(OUT / "arch_banner.jpg", quality=92, optimize=True)
+    if any(name == "checkpoint_arch" for name, _ in props):
+        banner(CHECKPOINT_TEXT, CHECKPOINT_ART, chequers=False).save(
+            OUT / "checkpoint_banner.jpg", quality=92, optimize=True
+        )
     print(f"{OUT / 'props.bin'}, {OUT / 'color.jpg'} ({atlas.size[0]}x{atlas.size[1]})")
 
 

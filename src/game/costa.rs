@@ -50,6 +50,9 @@ const BILLBOARD_PICTURE: &str = "models/costa/billboard.jpg";
 /// The arch's banner in the pack, and what is written on it.
 const ARCH_BANNER: &str = "start_arch_banner";
 const ARCH_BANNER_PICTURE: &str = "models/costa/arch_banner.jpg";
+/// The checkpoints' arch's banner, and its picture ("CHECKPOINT").
+const CHECKPOINT_BANNER: &str = "checkpoint_arch_banner";
+const CHECKPOINT_BANNER_PICTURE: &str = "models/costa/checkpoint_banner.jpg";
 /// The spectators' poses (`tools/make_crowd.py`): a cell per person and
 /// pose, the people across, the poses down.
 const CROWD_PICTURE: &str = "models/costa/crowd.png";
@@ -114,7 +117,10 @@ fn crowd_spacing() -> f32 {
 const CROWD_PEOPLE: u32 = 20;
 const CROWD_POSES: u32 = 4;
 const CROWD_HEIGHT: f32 = 2.9;
-const CROWD_SPACING: f32 = 4.0;
+const CROWD_SPACING: f32 = 5.0;
+/// How much further out each of three people in a row stands than the one
+/// before (m): staggered, so that seen down the road none hides the next.
+const CROWD_STAGGER: f32 = 1.2;
 const CROWD_ROWS_APART: f32 = 1.3;
 const CROWD_JITTER: f32 = 0.35;
 /// How many poses a second a person goes through, the slowest and the
@@ -175,7 +181,8 @@ fn spectator_card(size: Vec2, person: u32, pose: u32) -> Mesh {
 /// Where the people of a crowd stand (along the lap and from the road's
 /// middle, m), and who each is: along its span every [`CROWD_SPACING`], in
 /// its rows, each a little off their place, the rows behind between those in
-/// front.
+/// front, and each of three a little further out than the one before, so
+/// that seen down the road none hides the next.
 fn crowd_places(track: &Track, crowd: &Crowd, seed: u32) -> Vec<(f32, f32, u32)> {
     let lap = track.length();
     let count = (crowd.span.length(lap) / crowd.spacing).floor() as u32 + 1;
@@ -188,7 +195,9 @@ fn crowd_places(track: &Track, crowd: &Crowd, seed: u32) -> Vec<(f32, f32, u32)>
             let along =
                 (crowd.span.from + (k as f32 + shift + jitter(1)) * crowd.spacing).rem_euclid(lap);
             let lateral = crowd.side.sign()
-                * (crowd.lateral + (row as f32 + jitter(2).abs()) * CROWD_ROWS_APART);
+                * (crowd.lateral
+                    + (row as f32 + jitter(2).abs()) * CROWD_ROWS_APART
+                    + (k % 3) as f32 * CROWD_STAGGER);
             let person = (random01(key + 3) * CROWD_PEOPLE as f32) as u32 % CROWD_PEOPLE;
             places.push((along, lateral, person));
         }
@@ -594,6 +603,11 @@ pub enum CostaModel {
     /// An arch of lattice towers over the road, a banner across it with the
     /// circuit's name: placed `Over(along)`, the road running under it.
     StartArch,
+    /// An inflatable arch over the road, "CHECKPOINT" across it: placed
+    /// `Over(along)` where a checkpoint is (its gantry not drawn).
+    CheckpointArch,
+    /// A small open grandstand, spectators on its steps.
+    Grandstand,
     /// A small plane towing a blank banner, flying round over the bay (see
     /// [`Costa::planes`]); not placed among the props.
     BannerPlane,
@@ -605,7 +619,7 @@ pub enum CostaModel {
 
 /// Every prop of the theme.
 #[cfg(test)]
-const MODELS: [CostaModel; 24] = [
+const MODELS: [CostaModel; 26] = [
     CostaModel::WhiteHouse,
     CostaModel::Chiringuito,
     CostaModel::EspetoBoat,
@@ -628,6 +642,8 @@ const MODELS: [CostaModel; 24] = [
     CostaModel::CastleRuin,
     CostaModel::ArcadeBillboard,
     CostaModel::StartArch,
+    CostaModel::CheckpointArch,
+    CostaModel::Grandstand,
     CostaModel::BannerPlane,
     CostaModel::GorgeBridge,
 ];
@@ -657,6 +673,8 @@ fn name(model: CostaModel) -> &'static str {
         CostaModel::CastleRuin => "castle_ruin",
         CostaModel::ArcadeBillboard => "arcade_billboard",
         CostaModel::StartArch => "start_arch",
+        CostaModel::CheckpointArch => "checkpoint_arch",
+        CostaModel::Grandstand => "grandstand",
         CostaModel::BannerPlane => "banner_plane",
         CostaModel::GorgeBridge => "gorge_bridge",
     }
@@ -748,25 +766,41 @@ impl Theme for Costa {
                 ..default()
             })
         });
-        // The arch's banner: the circuit's name, in an image of its own.
-        let has_arch = self
+        // The arches' banners: the circuit's name, and "CHECKPOINT", each
+        // in an image of its own.
+        let mut banner = |model: CostaModel, picture: &str| {
+            self.props.iter().any(|prop| prop.model == model).then(|| {
+                let image = assets
+                    .images
+                    .add(texture(motorust_engine::content::file(picture), true));
+                assets.materials.add(StandardMaterial {
+                    base_color_texture: Some(image),
+                    perceptual_roughness: 0.9,
+                    reflectance: 0.1,
+                    double_sided: true,
+                    cull_mode: None,
+                    ..default()
+                })
+            })
+        };
+        let banners = [
+            (
+                CostaModel::StartArch,
+                ARCH_BANNER,
+                banner(CostaModel::StartArch, ARCH_BANNER_PICTURE),
+            ),
+            (
+                CostaModel::CheckpointArch,
+                CHECKPOINT_BANNER,
+                banner(CostaModel::CheckpointArch, CHECKPOINT_BANNER_PICTURE),
+            ),
+        ];
+        // The spectators' cards, if any stand anywhere.
+        let has_stand = self
             .props
             .iter()
-            .any(|prop| prop.model == CostaModel::StartArch);
-        let banner = has_arch.then(|| {
-            let image = assets.images.add(texture(
-                motorust_engine::content::file(ARCH_BANNER_PICTURE),
-                true,
-            ));
-            assets.materials.add(StandardMaterial {
-                base_color_texture: Some(image),
-                perceptual_roughness: 0.9,
-                reflectance: 0.1,
-                double_sided: true,
-                cull_mode: None,
-                ..default()
-            })
-        });
+            .any(|prop| prop.model == CostaModel::Grandstand);
+        let crowd_cards = (has_stand || !self.crowds.is_empty()).then(|| CrowdCards::new(assets));
         let signs = self
             .bend_signs
             .iter()
@@ -779,12 +813,19 @@ impl Theme for Costa {
             let (footprint, placed) =
                 spawn_prop(world, track, terrain, &prop, pack, &mut assets.mirrored);
             taken.push(footprint);
-            if let (CostaModel::StartArch, Some(banner)) = (prop.model, &banner) {
-                world.spawn((
-                    Mesh3d(pack.piece(ARCH_BANNER).mesh.clone()),
-                    MeshMaterial3d(banner.clone()),
-                    placed,
-                ));
+            for (model, piece, banner) in &banners {
+                if let (true, Some(banner)) = (prop.model == *model, banner) {
+                    world.spawn((
+                        Mesh3d(pack.piece(piece).mesh.clone()),
+                        MeshMaterial3d(banner.clone()),
+                        placed,
+                    ));
+                }
+            }
+            if let (CostaModel::Grandstand, Some(cards)) = (prop.model, &crowd_cards) {
+                for (n, (at, person)) in stand_places(taken.len() as u32).into_iter().enumerate() {
+                    cards.spawn(world, placed.transform_point(at), person, 50_000 + n as u32);
+                }
             }
             if prop.model == CostaModel::ArcadeBillboard {
                 for (group, material) in bulbs.iter().enumerate() {
@@ -831,8 +872,8 @@ impl Theme for Costa {
             ));
         }
         // The people by the road, cheering.
-        if !self.crowds.is_empty() {
-            taken.extend(spawn_crowds(world, track, terrain, self.crowds, assets));
+        if let Some(cards) = &crowd_cards {
+            taken.extend(spawn_crowds(world, track, terrain, self.crowds, cards));
         }
         // No tree in the way of the landmarks, from where the road comes at
         // them.
@@ -848,6 +889,54 @@ impl Theme for Costa {
     }
 }
 
+/// The spectators' cards: every person's every pose, and their material.
+struct CrowdCards {
+    material: Handle<StandardMaterial>,
+    cards: Vec<[Handle<Mesh>; CROWD_POSES as usize]>,
+}
+
+impl CrowdCards {
+    fn new(assets: &mut Assets3d) -> Self {
+        let picture = crowd_picture(motorust_engine::content::file(CROWD_PICTURE));
+        let cell = Vec2::new(
+            picture.width() as f32 / CROWD_PEOPLE as f32,
+            picture.height() as f32 / CROWD_POSES as f32,
+        );
+        let size = Vec2::new(CROWD_HEIGHT * cell.x / cell.y, CROWD_HEIGHT);
+        let material = assets
+            .materials
+            .add(card_material(assets.images.add(picture)));
+        let cards = (0..CROWD_PEOPLE)
+            .map(|person| {
+                std::array::from_fn(|pose| {
+                    assets.meshes.add(spectator_card(size, person, pose as u32))
+                })
+            })
+            .collect();
+        Self { material, cards }
+    }
+
+    /// Person `person` standing at `at`, a card turning to face the camera,
+    /// cheering at a pace and from a pose of their own (from `key`).
+    fn spawn(&self, world: &mut ChildSpawnerCommands, at: Vec3, person: u32, key: u32) {
+        let rate = CHEER_RATE.0 + (CHEER_RATE.1 - CHEER_RATE.0) * random01(key + 11);
+        let phase = random01(key + 13) * (2 * CROWD_POSES - 2) as f32;
+        let poses = self.cards[person as usize % self.cards.len()].clone();
+        world.spawn((
+            Mesh3d(poses[0].clone()),
+            MeshMaterial3d(self.material.clone()),
+            Transform::from_translation(at),
+            FacingCamera,
+            Spectator {
+                poses,
+                rate,
+                phase,
+                shown: 0,
+            },
+        ));
+    }
+}
+
 /// The spectators of `crowds` (see [`Crowd`]), each a card of their own that
 /// turns to face the camera, all in one material, their poses' cards shared.
 /// Returns the ground they take, for no tree to grow among them.
@@ -856,49 +945,53 @@ fn spawn_crowds(
     track: &Track,
     terrain: &Terrain,
     crowds: &[Crowd],
-    assets: &mut Assets3d,
+    cards: &CrowdCards,
 ) -> Vec<Footprint> {
     let mut taken = Vec::new();
-    let picture = crowd_picture(motorust_engine::content::file(CROWD_PICTURE));
-    let cell = Vec2::new(
-        picture.width() as f32 / CROWD_PEOPLE as f32,
-        picture.height() as f32 / CROWD_POSES as f32,
-    );
-    let size = Vec2::new(CROWD_HEIGHT * cell.x / cell.y, CROWD_HEIGHT);
-    let material = assets
-        .materials
-        .add(card_material(assets.images.add(picture)));
-    let cards: Vec<[Handle<Mesh>; CROWD_POSES as usize]> = (0..CROWD_PEOPLE)
-        .map(|person| {
-            std::array::from_fn(|pose| assets.meshes.add(spectator_card(size, person, pose as u32)))
-        })
-        .collect();
     for (k, crowd) in crowds.iter().enumerate() {
         for (n, (along, lateral, person)) in
             crowd_places(track, crowd, k as u32).into_iter().enumerate()
         {
             let point = track.offset_point(track.index_at(along), lateral);
             let at = Vec3::new(point.x, terrain.height(point), point.y);
-            let key = (k as u32) * 100_003 + n as u32;
-            let rate = CHEER_RATE.0 + (CHEER_RATE.1 - CHEER_RATE.0) * random01(key + 11);
-            let phase = random01(key + 13) * (2 * CROWD_POSES - 2) as f32;
-            let poses = cards[person as usize].clone();
             taken.push((Vec2::new(at.x, at.z), 1.5));
-            world.spawn((
-                Mesh3d(poses[0].clone()),
-                MeshMaterial3d(material.clone()),
-                Transform::from_translation(at),
-                FacingCamera,
-                Spectator {
-                    poses,
-                    rate,
-                    phase,
-                    shown: 0,
-                },
-            ));
+            cards.spawn(world, at, person, (k as u32) * 100_003 + n as u32);
         }
     }
     taken
+}
+
+/// The grandstand's steps (as `tools/import_costa.py` sizes it, 30 m long):
+/// how high each is over its foot and how far forward of its middle (m),
+/// from the lowest, at its front, to the top, under its canopy; how far
+/// along them either way spectators stand (m), how far apart, give or take,
+/// and how many of their places are taken.
+const STAND_STEPS: [(f32, f32); 4] = [(2.33, 2.65), (3.59, 0.21), (4.54, -2.13), (5.65, -4.85)];
+const STAND_REACH: f32 = 12.5;
+const STAND_SPACING: f32 = 2.4;
+const STAND_TAKEN: f32 = 0.6;
+
+/// Where the spectators on a grandstand stand on its steps (as it was made:
+/// its front +Z), and who each is: here and there along each step, about
+/// [`STAND_TAKEN`] of the places taken.
+fn stand_places(seed: u32) -> Vec<(Vec3, u32)> {
+    let mut places = Vec::new();
+    let count = (2.0 * STAND_REACH / STAND_SPACING) as u32 + 1;
+    for (step, &(up, forward)) in STAND_STEPS.iter().enumerate() {
+        for k in 0..count {
+            let key = seed.wrapping_mul(7907) + step as u32 * 1_009 + k * 37;
+            if random01(key) > STAND_TAKEN {
+                continue;
+            }
+            let x = -STAND_REACH + (k as f32 + 0.6 * (random01(key + 1) - 0.5)) * STAND_SPACING;
+            let person = (random01(key + 2) * CROWD_PEOPLE as f32) as u32 % CROWD_PEOPLE;
+            places.push((
+                Vec3::new(x.clamp(-STAND_REACH, STAND_REACH), up, forward),
+                person,
+            ));
+        }
+    }
+    places
 }
 
 /// The spectators' picture (a PNG, see-through round them), its pixels
@@ -1412,6 +1505,56 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_grandstand_s_spectators_stand_on_its_steps() {
+        let pack = pack();
+        let stand = piece(&pack, name(CostaModel::Grandstand));
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) =
+            stand.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            panic!("no positions");
+        };
+        let indices: Vec<usize> = stand.indices().unwrap().iter().collect();
+        // The height of the step under a point (x, z): the highest face
+        // looking up under it, below the canopy.
+        let step_under = |x: f32, z: f32, below: f32| {
+            indices
+                .chunks(3)
+                .filter_map(|t| {
+                    let [a, b, c] = [0, 1, 2].map(|k| Vec3::from_array(positions[t[k]]));
+                    let normal = (b - a).cross(c - a).normalize_or_zero();
+                    if normal.y < 0.8 {
+                        return None;
+                    }
+                    let p = Vec2::new(x, z);
+                    let (a2, b2, c2) = (a.xz(), b.xz(), c.xz());
+                    let d = (b2 - a2).perp_dot(c2 - a2);
+                    let u = (b2 - p).perp_dot(c2 - p) / d;
+                    let v = (c2 - p).perp_dot(a2 - p) / d;
+                    let w = 1.0 - u - v;
+                    (u >= -0.01 && v >= -0.01 && w >= -0.01)
+                        .then_some(u * a.y + v * b.y + w * c.y)
+                        .filter(|&y| y < below)
+                })
+                .fold(f32::MIN, f32::max)
+        };
+        for &(up, forward) in &STAND_STEPS {
+            for x in [-STAND_REACH, 0.0, STAND_REACH] {
+                let step = step_under(x, forward, up + 1.0);
+                assert!(
+                    (step - up).abs() < 0.35,
+                    "at ({x}, {forward}): a step {step} m up, not {up}"
+                );
+            }
+        }
+        let places = stand_places(3);
+        assert!(
+            places.len() > 15 && places.len() < 4 * 11,
+            "{}",
+            places.len()
+        );
     }
 
     #[test]

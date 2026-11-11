@@ -79,8 +79,9 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | Name (`SIZES`) | What | Size | Triangles | Drawn as | Priority | Where |
 |---|---|---|---|---|---|---|
 | `arcade_billboard` | Retro roadside billboard on two legs, framed with light bulbs, painted with a sunset and palms | 7 m high, 10 m wide | 1,000 | Model | B | On the start straight and the coast highway |
-| `grandstand` | Small open-air grandstand, five plain white concrete steps, a red-and-white front wall, a striped canopy over the top steps (no seats, no people: the spectators' cards stand on its steps) | 30 m long, 9 m deep, 9 m high to the canopy (as sized) | 3,000 | Model | A | By the start straight, 70 m, on the left, in place of the engine's |
-| `start_arch` | Arch of two lattice towers hung with pennants, a blank banner across it (the importer draws "COSTA BITS" on it) | 26 m wide, 11.4 m high (as sized, not half as big again) | 2,500 | Model | B | Over the road where it comes down to the beach, 220 m |
+| `grandstand` | Small open-air grandstand, five plain white concrete steps, a red-and-white front wall, a striped canopy over the top steps (no seats, no people: the spectators' cards stand on its steps) | 30 m long, 9 m deep, 9 m high to the canopy (as sized) | 3,000 | Model | A | By the start straight, 70 m, on the left, in place of the engine's; its spectators' cards on its four steps |
+| `checkpoint_arch` | Inflatable race arch in orange and yellow, a white band across its top with blue chequers at its ends (the importer draws "CHECKPOINT" on it) | 13 m high, widened between its legs to stand 12 m either side of the road's middle (33 m wide) | 2,500 | Model | A | At each checkpoint, in place of the engine's gantry |
+| `start_arch` | Arch of two lattice towers hung with pennants, a blank banner across it (the importer draws "COSTA BITS" on it) | 26 m wide, 11.4 m high (as sized, not half as big again) | 2,500 | Model | B | Over the line, in place of the engine's gantry |
 
 Dropped since the list was first written: `palm_retro`. The palms are already flat cards photographed from the engine's own, and read well.
 
