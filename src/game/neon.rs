@@ -28,6 +28,8 @@ const SUNK: f32 = 0.3;
 const DRAUGHT: f32 = 2.5;
 /// How high over the water what stands in it has its foot (m).
 const AFLOAT: f32 = 0.8;
+/// How far under the road beside it a platform's top is (m).
+const BELOW_ROAD: f32 = 4.0;
 /// The pylon under what stands by a skyway: its colour, and how much
 /// narrower than what it carries it is.
 const PYLON: Color = Color::srgb(0.12, 0.13, 0.16);
@@ -97,7 +99,143 @@ impl NeonModel {
 pub struct Neon {
     #[serde(deserialize_with = "motorust_engine::circuits::data::leak", default)]
     pub props: &'static [Prop<NeonModel>],
+    /// The city round the lap, if it runs through one (see [`City`]).
+    #[serde(default)]
+    pub city: Option<City>,
 }
+
+/// A city the lap runs through: blocks built in code, their windows lit,
+/// and the pack's towers among them, in `rows` rows either side of the lap,
+/// one every `every` metres along it, from `near` to `far` metres from its
+/// middle, standing on the ground or in the water; none where another
+/// stretch of the lap passes.
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct City {
+    pub every: f32,
+    pub near: f32,
+    pub far: f32,
+    pub rows: usize,
+}
+
+/// A building of a city: where it stands, how it is turned, how wide and
+/// deep and how tall it is, and which it is: one of the towers of the
+/// pack, or a block built in code, of one of [`BLOCK_KINDS`] kinds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Building {
+    pub position: Vec2,
+    pub heading: f32,
+    pub size: Vec3,
+    pub tower: Option<NeonModel>,
+    pub kind: usize,
+}
+
+/// How many kinds of block there are (their windows' colours), how far a
+/// building keeps from the middle of any road (m, over its own half
+/// width), and one building in so many is a tower of the pack.
+pub const BLOCK_KINDS: usize = 3;
+const CITY_CLEAR: f32 = 16.0;
+const TOWER_EVERY: u32 = 5;
+
+/// A number from 0 to 1 for `n`, the same every time: what makes each
+/// building its own.
+fn chance(n: u32) -> f32 {
+    let mut x = n.wrapping_mul(0x9E37_79B9) ^ 0x85EB_CA6B;
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x2C1B_3C6D);
+    x ^= x >> 12;
+    (x & 0xFFFF) as f32 / 65535.0
+}
+
+/// The buildings of `city` round `track`: row after row out from the lap
+/// on both sides, each its own size, the further rows taller; none within
+/// reach of a road (the lap comes back past itself).
+pub fn buildings(track: &Track, city: &City) -> Vec<Building> {
+    let lap = track.lap_length();
+    let count = (lap / city.every) as u32;
+    let mut built = Vec::new();
+    for k in 0..count {
+        let index = track.index_at(k as f32 * city.every);
+        for (s, side) in [1.0_f32, -1.0].into_iter().enumerate() {
+            for row in 0..city.rows {
+                let n = (k * 2 + s as u32) * 8 + row as u32;
+                let width = 16.0 + 22.0 * chance(n);
+                let depth = 16.0 + 22.0 * chance(n + 101);
+                let out = city.near
+                    + (city.far - city.near) * (row as f32 + 0.8 * chance(n + 7))
+                        / city.rows as f32;
+                let position = track.offset_point(index, side * (out + depth / 2.0));
+                let reach = width.max(depth) * 0.75;
+                if track.distance_to_centerline(position) < reach + CITY_CLEAR {
+                    continue;
+                }
+                let tower = (n % TOWER_EVERY == 0).then(|| {
+                    [
+                        NeonModel::TowerStepped,
+                        NeonModel::TowerSpire,
+                        NeonModel::TowerTwin,
+                    ][(n / TOWER_EVERY) as usize % 3]
+                });
+                let height = (40.0 + 110.0 * chance(n + 31).powi(2)) * (1.0 + 0.35 * row as f32);
+                let (_, heading) = track.pose_at(index);
+                built.push(Building {
+                    position,
+                    heading: heading + 0.25 * (chance(n + 53) - 0.5),
+                    size: Vec3::new(width, height, depth),
+                    tower,
+                    kind: (n as usize / 3) % BLOCK_KINDS,
+                });
+            }
+        }
+    }
+    built
+}
+
+/// The picture of a block's face: dark, with rows of windows, some lit in
+/// `lit`, most dark. The same on every face of every block of its kind.
+fn windows_image(lit: Color, seed: u32) -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    const ACROSS: u32 = 12;
+    const UP: u32 = 40;
+    const CELL: u32 = 4;
+    let lit = lit.to_srgba();
+    let mut data = Vec::with_capacity((ACROSS * UP * CELL * CELL * 4) as usize);
+    for y in 0..UP * CELL {
+        for x in 0..ACROSS * CELL {
+            let window = (x % CELL) > 0 && (y % CELL) > 1;
+            let on = chance(seed + (y / CELL) * ACROSS + x / CELL) < 0.42;
+            let (r, g, b) = if window && on {
+                (lit.red, lit.green, lit.blue)
+            } else if window {
+                (0.05, 0.06, 0.08)
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+            data.extend([(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, 255]);
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: ACROSS * CELL,
+            height: UP * CELL,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = bevy::image::ImageSampler::nearest();
+    image
+}
+
+/// The colours of the windows of each kind of block: warm, cold and pink.
+const WINDOWS: [Color; BLOCK_KINDS] = [
+    Color::srgb(1.0, 0.72, 0.35),
+    Color::srgb(0.45, 0.85, 1.0),
+    Color::srgb(1.0, 0.4, 0.75),
+];
 
 /// How high a prop's foot stands: over the road, on the road there; else
 /// on the lowest of the ground under it, a little sunk.
@@ -106,6 +244,11 @@ pub fn foot(track: &Track, terrain: &Terrain, prop: &Prop<NeonModel>, reach: f32
     match (prop.model, prop.spot) {
         (NeonModel::ContainerShip, _) => SEA_LEVEL - DRAUGHT,
         (NeonModel::AirshipCobalt | NeonModel::AirshipNeon, _) => AIRSHIP_HEIGHT,
+        // What is low and wide stands on a platform up near the road's
+        // height, in view from it, not down on the water.
+        (NeonModel::FusionPlant | NeonModel::HarbourCrane, _) => {
+            track.road_height(position) - BELOW_ROAD
+        }
         (_, Spot::Over { along } | Spot::Road { along, .. }) => {
             // Over the road, on it; by the road, level with it (on its own
             // pylon where the road is a skyway, see `spawn`).
@@ -142,6 +285,52 @@ impl Theme for Neon {
             })
         });
         let material = lit.unwrap_or_else(|| pack.material.clone());
+        // The city: its blocks one mesh and a material for each kind; its
+        // towers the pack's, as tall as each is.
+        if let Some(city) = &self.city {
+            let block = assets.meshes.add(Cuboid::from_length(1.0));
+            let kinds: Vec<Handle<StandardMaterial>> = WINDOWS
+                .iter()
+                .enumerate()
+                .map(|(kind, &lit)| {
+                    let windows = assets.images.add(windows_image(lit, 977 * kind as u32));
+                    assets.materials.add(StandardMaterial {
+                        base_color: Color::srgb(0.16, 0.17, 0.2),
+                        emissive: LinearRgba::rgb(2.2, 2.2, 2.2),
+                        emissive_texture: Some(windows),
+                        perceptual_roughness: 0.5,
+                        ..default()
+                    })
+                })
+                .collect();
+            for building in buildings(track, city) {
+                let ground = terrain.height(building.position).max(SEA_LEVEL) - SUNK;
+                let at = Vec3::new(building.position.x, ground, building.position.y);
+                let turn = Quat::from_rotation_y(building.heading);
+                match building.tower {
+                    Some(model) => {
+                        let piece = pack.piece(model.name());
+                        let scale = building.size.y / (piece.high.y - piece.low.y);
+                        world.spawn((
+                            Mesh3d(piece.mesh.clone()),
+                            MeshMaterial3d(material.clone()),
+                            Transform::from_translation(at)
+                                .with_rotation(turn)
+                                .with_scale(Vec3::splat(scale.max(0.5))),
+                        ));
+                    }
+                    None => {
+                        world.spawn((
+                            Mesh3d(block.clone()),
+                            MeshMaterial3d(kinds[building.kind].clone()),
+                            Transform::from_translation(at + Vec3::Y * building.size.y / 2.0)
+                                .with_rotation(turn)
+                                .with_scale(building.size),
+                        ));
+                    }
+                }
+            }
+        }
         let pylon = assets.meshes.add(Cuboid::from_length(1.0));
         let dark = assets.materials.add(StandardMaterial {
             base_color: PYLON,
@@ -163,9 +352,13 @@ impl Theme for Neon {
                         .with_rotation(rotation)
                         .with_scale(Vec3::splat(prop.scale)),
                 ));
-                // By the road, high over the ground or the water: on a pylon.
+                // High over the ground or the water: on a pylon.
                 let ground = terrain.height(position);
-                if matches!(prop.spot, Spot::Road { .. }) && foot - ground > 1.5 {
+                let flies = matches!(
+                    prop.model,
+                    NeonModel::AirshipCobalt | NeonModel::AirshipNeon
+                );
+                if !flies && !matches!(prop.spot, Spot::Over { .. }) && foot - ground > 1.5 {
                     let tall = foot - ground + 2.0;
                     world.spawn((
                         Mesh3d(pylon.clone()),
@@ -306,6 +499,44 @@ mod tests {
                 "{:?} at {position}: {clear} m from the road's middle",
                 prop.model
             );
+        }
+    }
+
+    #[test]
+    fn the_city_stands_close_on_both_sides_all_round_the_lap_clear_of_its_roads() {
+        crate::game::register();
+        let circuit = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.name_en == "Neon Harbor")
+            .expect("Puerto Neón");
+        let neon = circuit.scenery.themes.get::<Neon>().expect("its props");
+        let city = neon.city.expect("its city");
+        let track = Track::new(&circuit.layout);
+        let built = buildings(&track, &city);
+        // Many, the same every time, of every kind, towers among them.
+        assert!(built.len() > 300, "{}", built.len());
+        assert_eq!(built, buildings(&track, &city));
+        for kind in 0..BLOCK_KINDS {
+            assert!(built.iter().any(|b| b.tower.is_none() && b.kind == kind));
+        }
+        assert!(built.iter().filter(|b| b.tower.is_some()).count() > 30);
+        // None in the way of a road, each tall enough to stand over it.
+        for building in &built {
+            let clear = track.distance_to_centerline(building.position)
+                - building.size.x.max(building.size.z) / 2.0;
+            assert!(clear > WALL_DISTANCE + 2.0, "{building:?}: {clear}");
+            assert!(building.size.y >= 40.0);
+        }
+        // All round the lap there is one near: within 120 m of every
+        // point of it, both sides taken together.
+        let lap = track.lap_length();
+        for along in (0..lap as usize).step_by(100) {
+            let here = track.offset_point(track.index_at(along as f32), 0.0);
+            let nearest = built
+                .iter()
+                .map(|b| b.position.distance(here))
+                .fold(f32::MAX, f32::min);
+            assert!(nearest < 120.0, "{nearest} m at {along} m");
         }
     }
 }
