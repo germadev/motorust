@@ -133,6 +133,51 @@ fn rain(wall: vec2<f32>) -> vec3<f32> {
     return shown * colour * fade * mix(mark, 0.3, crowded);
 }
 
+// A sign's panel as a screen of lit dots, as an LCD's (`panel` its number,
+// `at` where on it: m across from its middle, m up from its foot): the
+// panel's own lit colour behind, dimmed, and over it its dots lit in turns
+// of animations, each panel at its own: bars rising and falling as a
+// sound's, stripes running across, rings spreading from its middle,
+// characters running past. How much of its light shines there.
+fn screen(panel: i32, at: vec2<f32>) -> f32 {
+    let pitch = 0.8;
+    let dots = at / pitch;
+    let dot = floor(dots);
+    let inside = dots - dot;
+    let fw = fwidth(dots);
+    // Each dot a square with a dark gap round it.
+    let lens = in_box(inside, vec2(0.38), fw);
+    let t = globals.time;
+    let turn = i32(floor(t / 7.0 + f32(panel) * 0.37));
+    let mode = (turn + panel) % 4;
+    var on = false;
+    if mode == 0 {
+        // Bars rising and falling, as a sound's.
+        let level = (0.5 + 0.5 * sin(t * 4.0 + dot.x * 0.9 + f32(panel))) * 15.0;
+        on = dot.y < level;
+    } else if mode == 1 {
+        // Stripes running across.
+        on = ((i32(dot.x + dot.y) + i32(floor(t * 9.0))) % 8 + 8) % 8 < 3;
+    } else if mode == 2 {
+        // Rings spreading from the middle.
+        let d = length(dot - vec2(0.0, 8.0));
+        on = fract(d / 4.0 - t * 0.9) < 0.38;
+    } else {
+        // Characters running past: three by five dots each, in cells of four
+        // by seven.
+        let x = i32(dot.x + floor(t * 10.0) + 100.0);
+        let y = i32(dot.y);
+        let glyph = vec3(x / 4, y / 7, panel * 13);
+        let gx = x % 4;
+        let gy = y % 7;
+        on = gx < 3 && gy > 0 && gy < 6 && hash3(glyph + vec3(gx * 3, gy * 5, 7)) < 0.55;
+    }
+    // Far off, its average.
+    let crowded = smoothstep(0.2, 0.6, max(fw.x, fw.y));
+    let near = select(0.3, 1.0, on) * (0.55 + 0.45 * lens);
+    return mix(near, 0.6, crowded);
+}
+
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var pbr_input = pbr_input_from_standard_material(in, is_front);
@@ -147,9 +192,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let lit_windows = windows(wall, n.xz);
     let code = rain(wall);
     let light = select(lit_windows, code, look.shape.w > 0.5);
-    let on = select(0.0, 1.0, wall.y > -500.0 && marked > 0.5);
+    let on = select(0.0, 1.0, wall.y > -500.0 && marked > 0.5 && wall.x < 5000.0);
+    // A sign's panel: its light as a screen's.
+    let is_screen = wall.x > 5000.0;
+    let panel = i32(floor((wall.x - 10000.0 + 500.0) / 1000.0));
+    let across = wall.x - 10000.0 - 1000.0 * f32(panel);
+    let shown = screen(panel, vec2(across, wall.y));
+    let dimmed = select(1.0, shown, is_screen);
     pbr_input.material.emissive = vec4(
-        pbr_input.material.emissive.rgb + on * light * look.tint.rgb * look.tint.w,
+        pbr_input.material.emissive.rgb * dimmed + on * light * look.tint.rgb * look.tint.w,
         pbr_input.material.emissive.a,
     );
 #endif

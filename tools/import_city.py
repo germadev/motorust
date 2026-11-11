@@ -35,7 +35,10 @@ entry says:
 - `signs`: no texture at all (only its shape): it is given one, dark steel,
   and its three panels (its three largest parts, faced front and back)
   glow, each a colour of `SIGNS`, in as many sets as there are; one piece
-  for each set.
+  for each set. Its panels' points have second coordinates too: the
+  panel's number in the thousands over 10 000, plus how far across from
+  its middle (m), and how high over its foot: the game draws them as
+  screens.
 
 Two models turn: the wind turbine's rotor (its parts in front of the tower,
 over its middle) and the observation wheel (the wheel and, each hanging
@@ -320,15 +323,25 @@ def signs(path, inner):
             base[:, k * side : (k + 1) * side] = np.array(colour) * 0.7
             glow[:, k * side : (k + 1) * side] = colour
         uv = np.full((len(triangles), 2), [swatch(0), 0.5])
+        # Which panel each point's face is (-1, none), and where on it it
+        # is (across, from its middle, and up; in the model's own units).
+        panel = np.full(len(triangles), -1)
         for p, root in enumerate(panels):
             face = (roots == root) & (np.abs(normals[:, 2]) > 0.8)
             uv[face] = [swatch(1 + 3 * s + p), 0.5]
+            panel[face] = 3 * s + p
+        flat = corners.reshape(-1, 3)
+        on_panel = np.repeat(panel, 3)
+        middle = np.zeros(len(flat))
+        for k in np.unique(panel[panel >= 0]):
+            middle[on_panel == k] = flat[on_panel == k, 0].mean()
         sets.append(
             (
-                corners.reshape(-1, 3),
+                flat,
                 np.repeat(normals, 3, axis=0),
                 np.repeat(uv, 3, axis=0),
                 np.arange(len(triangles) * 3, dtype=np.uint32),
+                (on_panel, np.stack([flat[:, 0] - middle, flat[:, 1]], axis=1)),
             )
         )
     return base, glow, sets
@@ -447,7 +460,7 @@ def main():
             models = [(f"{name}_{'abcdefgh'[k]}", *model) for k, model in enumerate(sets)]
         else:
             positions, normals, uvs, indices, color = read_glb(path)
-            models = [(name, positions, normals, uvs, indices)]
+            models = [(name, positions, normals, uvs, indices, None)]
             color = ImageEnhance.Color(color).enhance(COLOURFUL)
             color = ImageEnhance.Brightness(color).enhance(BRIGHTER)
             rgb = np.asarray(color.resize((inner, inner), Image.LANCZOS)).astype(np.float64) / 255.0
@@ -463,7 +476,7 @@ def main():
             cell.paste(to_image(values), (MARGIN, MARGIN))
             image.paste(cell, (column * CELL, row * CELL))
 
-        for model, positions, normals, uvs, indices in models:
+        for model, positions, normals, uvs, indices, screens in models:
             moved = (corner + uvs.clip(0.0, 1.0) * inner) / size
             parts, axle = parts_of(name, positions, indices)
             used = np.unique(np.concatenate([part for _, part in parts]))
@@ -490,6 +503,20 @@ def main():
                     # its foot on the ground, the axle where it is.
                     if piece != name:
                         p = p - pivot
+                if screens is not None:
+                    # A sign's panels: where on each a point is (m), the
+                    # panel's number in the thousands over 10 000, for the
+                    # game to draw them as screens; elsewhere, nowhere.
+                    on_panel, at = screens
+                    # Up from the panel's foot.
+                    up = p[:, 1].copy()
+                    for k in np.unique(on_panel[on_panel >= 0]):
+                        up[on_panel == k] -= up[on_panel == k].min()
+                    second = np.where(
+                        (on_panel >= 0)[:, None],
+                        np.stack([10000.0 + 1000.0 * on_panel + at[:, 0] * scale[0], up], axis=1),
+                        np.array([0.0, -1000.0]),
+                    )
                 piece_name = piece if mode != "signs" else model
                 pieces.append((piece_name, p, n, u, i, second))
                 low, high = p.min(axis=0), p.max(axis=0)
