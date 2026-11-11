@@ -2,8 +2,8 @@
 //! by `tools/import_costa.py`, see `docs/costa-bits-props.md`) standing
 //! about the bay: whitewashed houses in the town and on the rims of the
 //! gorge, a beach bar, a fishing boat with its fire of skewered fish and a
-//! lifeguard's tower on the beach, a sports car parked by the grid, the
-//! marshal by the line with his chequered flag, a watchtower on the cape,
+//! lifeguard's tower on the beach, a sports car parked by the grid,
+//! people cheering by the road, a watchtower on the cape,
 //! a viewpoint over the sea, boulders along the mountain road, prickly
 //! pears and agaves on its dry slopes, ibex on the rocks over it, a
 //! hermitage on the headland, a camper van at the viewpoint, a ruined

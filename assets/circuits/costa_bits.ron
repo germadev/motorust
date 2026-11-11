@@ -699,8 +699,6 @@
                     // Another watchtower over the sea on the left, before the rock
                     // reaches over the road.
                     (model: Watchtower, spot: Road(along: 2688.0, lateral: 21.0)),
-                    // The marshal by the line with his chequered flag.
-                    (model: FlagMarshal, spot: Road(along: 4384.0, lateral: 13.6)),
                 ],
                 // A sign before every bend of the cliffs and of the way down round
                 // the cape, on the left, its arrow bending as the road does.
@@ -726,7 +724,7 @@
                 // the sand below the fence along the beach; and in small groups
                 // here and there round the lap.
                 crowds: [
-                    (span: Span(4300.0, 4376.0), side: Left, lateral: 13.6, spacing: 3.5),
+                    (span: Span(4300.0, 4388.0), side: Left, lateral: 13.6, spacing: 3.5),
                     (span: Span(255.0, 335.0), side: Right, lateral: 13.2, spacing: 6.0),
                     (span: Span(790.0, 804.0), side: Right, lateral: 13.5),
                     (span: Span(1260.0, 1275.0), side: Right, lateral: 13.5),
