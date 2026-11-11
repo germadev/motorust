@@ -98,7 +98,7 @@ MARGIN = 2
 # is glass, and how many are lit; the colours they are lit in, and how
 # often each (the whites most).
 WINDOW = (3.2, 3.8)
-GLASS = (0.68, 0.58)
+GLASS = (0.62, 0.52)
 LIT = 0.68
 LIGHTS = [
     ((1.0, 0.86, 0.62), 0.3),
@@ -109,7 +109,7 @@ LIGHTS = [
     ((0.65, 0.45, 1.0), 0.1),
 ]
 DARK_GLASS = (0.05, 0.06, 0.08)
-MULLION = (0.09, 0.09, 0.1)
+MULLION = (0.03, 0.03, 0.035)
 # How much brighter and more colourful the models' own colours are made,
 # and how much of them shines of its own at night, all over: a city
 # bright and in colour, not dark blocks with windows.
@@ -529,8 +529,10 @@ def main():
             out.write(normals.astype("<f4").tobytes())
             out.write(uvs.astype("<f4").tobytes())
             out.write(indices.astype("<u4").tobytes())
-    atlas.save(OUT / "color.jpg", quality=85, optimize=True)
-    glows.save(OUT / "glow.jpg", quality=85, optimize=True)
+    # Full colour resolution (no chroma subsampling) and little loss: the
+    # windows are fine patterns of colour, blurred otherwise.
+    atlas.save(OUT / "color.jpg", quality=90, subsampling=0, optimize=True)
+    glows.save(OUT / "glow.jpg", quality=94, subsampling=0, optimize=True)
     print(f"{OUT}: props.bin, color.jpg, glow.jpg ({atlas.size[0]}x{atlas.size[1]})")
 
 

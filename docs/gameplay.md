@@ -96,10 +96,10 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
 
 ### Hover bikes
 
-On Puerto Neón (see [tracks.md](tracks.md#puerto-neón)) the bikes hover: far faster than on wheels (some 540 km/h flat out, near 600 km/h with the nitro; the speedometer reads to 600 km/h, or 360 mph), they bob a little when stopped and roar as turbines, deep, with the rumble of their thrust.
+On Puerto Neón (see [tracks.md](tracks.md#puerto-neón)) the bikes hover: far faster than on wheels (some 540 km/h flat out, near 600 km/h with the nitro; the speedometer reads to 600 km/h, or 360 mph), they bob a little when stopped and sound as modern machines: loud, deep and driven, the rumble of their thrust under an electric whine.
 
 - **Drift.** The wheelie control (X, □ on PlayStation) drifts in the bends: the bike slides, its nose turned into the bend, and turns tighter.
-- **Nitro.** The pink bar marked NITRO at the foot of the speedometer. Drifting fills it: while you drift, a paler stretch after it shows what letting go will add, and throbs once the drift has been long enough (0.6 s) to give any; let go and it is added. The pink bars across the road on the recharge stretches fill it too, as you ride over them. The nitro control (A, ✕ on PlayStation; E on the keyboard) burns it, for a push and a higher top speed while it lasts: the bar lights up, and a beam of pink light trails the bike on the road from under it. Full, the bar throbs.
+- **Nitro.** The pink bar over the speedometer, a bottle of gas at its left. Drifting fills it: while you drift, a paler stretch after it shows what letting go will add, and throbs once the drift has been long enough (0.6 s) to give any; let go and it is added. The pink bars across the road on the recharge stretches fill it too, as you ride over them. The nitro control (A, ✕ on PlayStation; E on the keyboard) burns it, for a push and a higher top speed while it lasts: the bar lights up, and a beam of pink light trails the bike on the road from under it. Full, the bar throbs. Falling off keeps what you had, to get going again.
 - **The tube.** In the glass tube the bike is held to run along it, the more firmly the faster it goes: it turns as the tube does, and steering only points it a little off its line, to move round the tube's wall.
 - **Speed pads.** The green chevrons on the road push the bike on as it rides over them.
 

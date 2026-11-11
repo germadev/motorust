@@ -27,8 +27,19 @@ use motorust_engine::world::themes::Theme;
 /// The packs of its props and of its city, in `assets/models/`.
 const PACK: &str = "neon";
 const CITY_PACK: &str = "neon_city";
-/// How bright what shines of the city's pack shines, over its glow.
+/// How bright what shines of the city's pack shines, over its glow, and
+/// the tints it shines in, building by building (its windows and walls
+/// lit white, pink, cyan, amber, green or violet): a city in colour, not
+/// all of a hue.
 const CITY_GLOW: f32 = 3.0;
+const CITY_TINTS: [Vec3; 6] = [
+    Vec3::new(1.0, 1.0, 1.0),
+    Vec3::new(1.25, 0.72, 1.05),
+    Vec3::new(0.72, 1.1, 1.3),
+    Vec3::new(1.3, 1.0, 0.6),
+    Vec3::new(0.75, 1.3, 0.85),
+    Vec3::new(1.0, 0.75, 1.35),
+];
 /// How bright the props are lit of their own, over their colours.
 const GLOW: f32 = 0.9;
 /// How far under the ground a prop's foot goes (m): none of it floats where
@@ -45,6 +56,13 @@ const BELOW_ROAD: f32 = 4.0;
 const PYLON: Color = Color::srgb(0.12, 0.13, 0.16);
 const PYLON_SHARE: f32 = 0.45;
 const AIRSHIP_HEIGHT: f32 = 110.0;
+/// The mist the city stands in, low over the water: its layers' heights
+/// over the sea (m), each as thick (how opaque) and its colour, the
+/// city's light in it; how far round the lap it reaches (m).
+const MIST: [f32; 4] = [1.5, 4.5, 8.0, 11.5];
+const MIST_ALPHA: f32 = 0.2;
+const MIST_COLOR: Color = Color::srgb(0.42, 0.2, 0.45);
+const MIST_REACH: f32 = 700.0;
 
 /// One of the theme's props, by its name in the pack.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
@@ -416,6 +434,153 @@ impl Beacon {
     }
 }
 
+/// The signs of a city, as in Tokyo's streets: lit boards hung on the
+/// sides of its blocks, tall and narrow (their faces patterned as lines of
+/// characters, none real), in the colours of neon; how many a block has
+/// at most, their sizes (m: width, height, between the least and most),
+/// how far out from the wall, how thick, and how bright.
+const SIGN_COLOURS: [Color; 9] = [
+    Color::srgb(1.0, 0.15, 0.6),
+    Color::srgb(1.0, 0.18, 0.15),
+    Color::srgb(0.1, 0.9, 1.0),
+    Color::srgb(0.25, 1.0, 0.4),
+    Color::srgb(1.0, 0.85, 0.15),
+    Color::srgb(1.0, 0.5, 0.1),
+    Color::srgb(0.35, 0.45, 1.0),
+    Color::srgb(0.75, 0.3, 1.0),
+    Color::srgb(1.0, 0.95, 0.9),
+];
+const SIGNS_MOST: u32 = 3;
+const SIGN_WIDTH: (f32, f32) = (3.0, 6.5);
+const SIGN_HEIGHT: (f32, f32) = (9.0, 26.0);
+const SIGN_OUT: f32 = 1.2;
+const SIGN_THICK: f32 = 0.5;
+const SIGN_GLOW: f32 = 4.0;
+/// The blocks that take signs: those whose sides are walls (not the
+/// ziggurat's terraces nor the spires' slopes).
+const SIGNED: [&str; 7] = [
+    "city_office",
+    "city_residential",
+    "city_megablock",
+    "city_cylinder",
+    "city_stacked",
+    "city_stepped",
+    "city_twin",
+];
+
+/// The face of a sign: a column of characters, none real, lit on dark,
+/// in a frame; `seed` making each its own.
+fn sign_image(seed: u32) -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    const WIDE: u32 = 16;
+    const TALL: u32 = 64;
+    let mut data = Vec::with_capacity((WIDE * TALL * 4) as usize);
+    for y in 0..TALL {
+        for x in 0..WIDE {
+            let frame = x == 0 || y == 0 || x == WIDE - 1 || y == TALL - 1;
+            // A character every 12 pixels down, of strokes on a 3 x 3 grid.
+            let (cx, cy) = (x.saturating_sub(2), (y.saturating_sub(2)) % 12);
+            let inside = (2..WIDE - 2).contains(&x) && cy < 10 && y > 1 && y < TALL - 2;
+            let stroke = inside && {
+                let character = (y.saturating_sub(2)) / 12;
+                let (gx, gy) = (cx / 4, cy / 4);
+                let horizontal =
+                    chance(seed * 131 + character * 17 + gy * 3 + 1) < 0.55 && cy % 4 == 1;
+                let vertical =
+                    chance(seed * 131 + character * 17 + gx * 5 + 7) < 0.5 && cx % 4 == 1;
+                horizontal || vertical
+            };
+            let value = if frame || stroke { 255 } else { 18 };
+            data.extend([value, value, value, 255]);
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: WIDE,
+            height: TALL,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = bevy::image::ImageSampler::linear();
+    image
+}
+
+/// What the signs share: their box, and a material for each colour and
+/// face.
+struct Signs {
+    board: Handle<Mesh>,
+    looks: Vec<Handle<StandardMaterial>>,
+}
+
+impl Signs {
+    const FACES: u32 = 4;
+
+    fn parts(assets: &mut Assets3d) -> Self {
+        let faces: Vec<Handle<Image>> = (0..Self::FACES)
+            .map(|k| assets.images.add(sign_image(k + 1)))
+            .collect();
+        let looks = SIGN_COLOURS
+            .iter()
+            .flat_map(|&colour| {
+                faces
+                    .iter()
+                    .map(|face| {
+                        assets.materials.add(StandardMaterial {
+                            base_color: Color::BLACK,
+                            emissive: colour.to_linear() * SIGN_GLOW,
+                            emissive_texture: Some(face.clone()),
+                            ..default()
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        Self {
+            board: assets.meshes.add(Cuboid::from_length(1.0)),
+            looks,
+        }
+    }
+
+    /// Hangs `building`'s signs, if it is a block that takes them.
+    fn hang(&self, world: &mut ChildSpawnerCommands, building: &Building, foot: Vec3, number: u32) {
+        if !SIGNED.contains(&building.piece) {
+            return;
+        }
+        let turn = Quat::from_rotation_y(building.heading);
+        let n = number * 31 + 5;
+        let count = 1 + (chance(n) * SIGNS_MOST as f32) as u32 % SIGNS_MOST;
+        for k in 0..count {
+            let m = n + 97 * (k + 1);
+            let side = if chance(m) < 0.5 { 1.0 } else { -1.0 };
+            let width = SIGN_WIDTH.0 + (SIGN_WIDTH.1 - SIGN_WIDTH.0) * chance(m + 1);
+            let height = (SIGN_HEIGHT.0 + (SIGN_HEIGHT.1 - SIGN_HEIGHT.0) * chance(m + 2))
+                .min(0.5 * building.size.y);
+            let low = 6.0 + (0.6 * building.size.y - height - 6.0).max(0.0) * chance(m + 3);
+            let along = (chance(m + 4) - 0.5) * 0.6 * building.size.z;
+            // Standing out of the wall, square to it, along the street.
+            let local = Vec3::new(
+                side * (building.size.x / 2.0 + SIGN_OUT + width / 2.0),
+                low + height / 2.0,
+                along,
+            );
+            let look = (chance(m + 5) * self.looks.len() as f32) as usize % self.looks.len();
+            world.spawn((
+                Mesh3d(self.board.clone()),
+                MeshMaterial3d(self.looks[look].clone()),
+                Transform::from_translation(foot + turn * local)
+                    .with_rotation(turn)
+                    .with_scale(Vec3::new(width, height, SIGN_THICK)),
+                bevy::light::NotShadowCaster,
+            ));
+        }
+    }
+}
+
 /// Spawns the piece `name` of the pack `folder` where `transform` puts it;
 /// the wheel and a turbine with what of them turns, `number` making each
 /// its own.
@@ -573,9 +738,55 @@ impl Theme for Neon {
                 .expect("a pack of the theme's")
         };
         let beacon = Beacon::parts(assets);
-        // The city: the city pack's buildings, each as big as it is put.
+        let signs = Signs::parts(assets);
+        // The mist: sheets of it low over the water, through which the
+        // city rises, its feet lost in it.
+        if self.city.is_some() {
+            let points = track.centerline();
+            let (low, high) = points.iter().fold(
+                (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN)),
+                |(low, high), &p| (low.min(p), high.max(p)),
+            );
+            let (low, high) = (
+                low - Vec2::splat(MIST_REACH),
+                high + Vec2::splat(MIST_REACH),
+            );
+            let size = high - low;
+            let middle = (low + high) / 2.0;
+            let sheet = assets
+                .meshes
+                .add(Plane3d::default().mesh().size(size.x, size.y));
+            let mist = assets.materials.add(StandardMaterial {
+                base_color: MIST_COLOR.with_alpha(MIST_ALPHA),
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                cull_mode: None,
+                ..default()
+            });
+            for height in MIST {
+                world.spawn((
+                    Mesh3d(sheet.clone()),
+                    MeshMaterial3d(mist.clone()),
+                    Transform::from_xyz(middle.x, SEA_LEVEL + height, middle.y),
+                    bevy::light::NotShadowCaster,
+                ));
+            }
+        }
+        // The city: the city pack's buildings, each as big as it is put,
+        // each lit in its tint.
         if let Some(city) = &self.city {
-            let material = material_of(CITY_PACK);
+            let base = material_of(CITY_PACK);
+            let tinted: Vec<Handle<StandardMaterial>> = CITY_TINTS
+                .iter()
+                .map(|tint| {
+                    let lit = assets.materials.get(&base).cloned().unwrap_or_default();
+                    let glow = *tint * CITY_GLOW;
+                    assets.materials.add(StandardMaterial {
+                        emissive: LinearRgba::rgb(glow.x, glow.y, glow.z),
+                        ..lit
+                    })
+                })
+                .collect();
             let clear = self.landmarks(track);
             for (number, building) in buildings(track, terrain, city, &clear)
                 .into_iter()
@@ -586,16 +797,19 @@ impl Theme for Neon {
                 let transform = Transform::from_translation(at)
                     .with_rotation(Quat::from_rotation_y(building.heading))
                     .with_scale(Vec3::splat(building.scale));
+                let material = &tinted
+                    [(chance(number as u32 * 7 + 3) * tinted.len() as f32) as usize % tinted.len()];
                 spawn_piece(
                     world,
                     assets,
                     CITY_PACK,
                     building.piece,
-                    &material,
+                    material,
                     &beacon,
                     transform,
                     number as u32,
                 );
+                signs.hang(world, &building, at, number as u32);
             }
         }
         let pylon = assets.meshes.add(Cuboid::from_length(1.0));
