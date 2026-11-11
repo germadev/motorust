@@ -26,6 +26,12 @@ const GLOW: f32 = 0.9;
 const SUNK: f32 = 0.3;
 /// How deep the ship lies in the water, and how high the airships fly (m).
 const DRAUGHT: f32 = 2.5;
+/// How high over the water what stands in it has its foot (m).
+const AFLOAT: f32 = 0.8;
+/// The pylon under what stands by a skyway: its colour, and how much
+/// narrower than what it carries it is.
+const PYLON: Color = Color::srgb(0.12, 0.13, 0.16);
+const PYLON_SHARE: f32 = 0.45;
 const AIRSHIP_HEIGHT: f32 = 110.0;
 
 /// One of the theme's props, by its name in the pack.
@@ -100,12 +106,18 @@ pub fn foot(track: &Track, terrain: &Terrain, prop: &Prop<NeonModel>, reach: f32
     match (prop.model, prop.spot) {
         (NeonModel::ContainerShip, _) => SEA_LEVEL - DRAUGHT,
         (NeonModel::AirshipCobalt | NeonModel::AirshipNeon, _) => AIRSHIP_HEIGHT,
-        (_, Spot::Over { along }) => track.surface_point(track.index_at(along), 0.0).y,
+        (_, Spot::Over { along } | Spot::Road { along, .. }) => {
+            // Over the road, on it; by the road, level with it (on its own
+            // pylon where the road is a skyway, see `spawn`).
+            track.surface_point(track.index_at(along), 0.0).y
+        }
         _ => {
             [Vec2::ZERO, Vec2::X, -Vec2::X, Vec2::Y, -Vec2::Y]
                 .into_iter()
                 .map(|offset| terrain.height(position + offset * 0.6 * reach))
                 .fold(f32::MAX, f32::min)
+                // In the water, on it: a city on the sea.
+                .max(SEA_LEVEL + AFLOAT)
                 - SUNK
         }
     }
@@ -130,6 +142,12 @@ impl Theme for Neon {
             })
         });
         let material = lit.unwrap_or_else(|| pack.material.clone());
+        let pylon = assets.meshes.add(Cuboid::from_length(1.0));
+        let dark = assets.materials.add(StandardMaterial {
+            base_color: PYLON,
+            perceptual_roughness: 0.6,
+            ..default()
+        });
         self.props
             .iter()
             .map(|prop| {
@@ -145,6 +163,22 @@ impl Theme for Neon {
                         .with_rotation(rotation)
                         .with_scale(Vec3::splat(prop.scale)),
                 ));
+                // By the road, high over the ground or the water: on a pylon.
+                let ground = terrain.height(position);
+                if matches!(prop.spot, Spot::Road { .. }) && foot - ground > 1.5 {
+                    let tall = foot - ground + 2.0;
+                    world.spawn((
+                        Mesh3d(pylon.clone()),
+                        MeshMaterial3d(dark.clone()),
+                        Transform::from_xyz(position.x, foot - tall / 2.0, position.y)
+                            .with_rotation(rotation)
+                            .with_scale(Vec3::new(
+                                PYLON_SHARE * size.x,
+                                tall,
+                                PYLON_SHARE * size.z,
+                            )),
+                    ));
+                }
                 // A gate over the road and what flies take no ground from
                 // what stands by them.
                 match (prop.model, prop.spot) {

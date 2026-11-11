@@ -104,12 +104,13 @@ round a cape with a lighthouse, west along a coast highway over two crests
 in a row between rows of palms and a bridge across the bay's outlet, and
 through a fork before the line, in homage to the 8- and 16-bit arcade racers.
 
-**Puerto Neón** ("Neon Harbor") is an anti-gravity circuit by night, in
-homage to the anti-gravity racers: its bikes hover (the wheelie's button
-drifts in the bends instead), over a track of plates between barriers lit
-along their tops, round a chain of three loops that crosses itself twice,
-each time through a tunnel and later over it, its east loop climbing over
-the sea on a skyway.
+**Puerto Neón** ("Neon Harbor") is an anti-gravity circuit over a harbour
+city by night, in homage to the anti-gravity racers: its bikes hover (the
+wheelie's button drifts in the bends instead, charging a boost), all of it in
+the air on a skyway of plates between barriers lit along their tops, round a
+chain of three loops that crosses itself twice, the way back through a tube
+of glass the bikes can ride all the way round, upside down, over both
+crossings, among towers, cranes and airships modelled with Meshy.
 
 More about each one in [docs/tracks.md](docs/tracks.md).
 
