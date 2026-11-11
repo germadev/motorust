@@ -79,6 +79,7 @@ Check each result before sending it. Meshy sometimes invents letters or logos on
 | Name (`SIZES`) | What | Size | Triangles | Drawn as | Priority | Where |
 |---|---|---|---|---|---|---|
 | `arcade_billboard` | Retro roadside billboard on two legs, framed with light bulbs, painted with a sunset and palms | 7 m high, 10 m wide | 1,000 | Model | B | On the start straight and the coast highway |
+| `grandstand` | Small open-air grandstand, five plain white concrete steps, a red-and-white front wall, a striped canopy over the top steps (no seats, no people: the spectators' cards stand on its steps) | 30 m long, 9 m deep, 9 m high to the canopy (as sized) | 3,000 | Model | A | By the start straight, 70 m, on the left, in place of the engine's |
 | `start_arch` | Arch of two lattice towers hung with pennants, a blank banner across it (the importer draws "COSTA BITS" on it) | 26 m wide, 11.4 m high (as sized, not half as big again) | 2,500 | Model | B | Over the road where it comes down to the beach, 220 m |
 
 Dropped since the list was first written: `palm_retro`. The palms are already flat cards photographed from the engine's own, and read well.
@@ -105,6 +106,7 @@ Each prompt below is followed by the shared ending (see [Settings for every mode
 - **`camper_van`:** An original 1970s-style camper van, a rounded boxy body, two-tone cream and turquoise paint, a pop-up roof, round headlights, generic design not based on any real van, no badges.
 - **`castle_ruin`:** A ruined Moorish hilltop fortress, crenellated walls of ochre stone on rocky ground, three square towers, one half collapsed, an arched horseshoe gateway, seen from the front.
 - **`gorge_bridge`:** A tall old stone bridge of ochre sandstone blocks, one very tall wide central arch reaching down to the ground, its opening half as wide as the bridge, a smaller arch above it, massive solid piers on both sides, a stone parapet along the top, a small arched window above the central arch, front view. Negative prompt, besides the shared one: cliffs, gorge walls, rocks, river, water, ground, town, buildings.
+- **`grandstand`:** A small open-air grandstand for a seaside motorbike race, long and shallow, about three times as long as it is deep: five wide plain concrete steps rising from front to back, each step flat and deep, painted white, no seats, no benches, no people. A low front wall painted in red and white blocks along its whole length. A thin flat roof canopy over the top steps only, on slim blue steel posts at the back, striped in orange and white. Short whitewashed side walls at both ends. Andalusian coastal style, 1980s, the front of the steps facing the viewer. Negative: people, spectators, crowd, seats, chairs, benches, railings on the steps.
 - **`arcade_billboard`:** A retro roadside billboard on two steel legs, a wide rectangular panel framed with a row of round light bulbs, the panel painted with a simple orange-and-pink striped sunset over a blue sea with black palm tree silhouettes, no text.
 
 For the cards, the side Meshy shows at the front is the one the engine photographs: the ibex side on, the castle and the hermitage from the front.
