@@ -734,10 +734,11 @@
                 // row of them behind the wall on the town's side by the line; on
                 // the sand below the fence along the beach; and in small groups
                 // here and there round the lap.
-                // Over the tunnel's mouth, on the rock face over it, a screen
+                // Over the tunnel's mouth, before the rock face over it (a few
+                // metres out, as the face is not square across the road), a screen
                 // of an arcade's vertical shoot-'em-up, glowing, playing to the
                 // riders coming up to it.
-                screens: [(along: 984.0, lift: 8.0, width: 34.0, height: 30.0)],
+                screens: [(along: 976.0, lift: 8.0, width: 34.0, height: 27.0)],
                 crowds: [
                     (span: Span(4300.0, 4388.0), side: Left, lateral: 13.6, spacing: 3.5),
                     (span: Span(255.0, 335.0), side: Right, lateral: 13.2, spacing: 6.0),

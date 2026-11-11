@@ -5,10 +5,11 @@
 //! A formation of saucers marches across the screen a pixel at a time, all
 //! together, a step down and back at each edge, quicker as fewer are left,
 //! their legs stepping as they march, and drops bombs from the lowest of a
-//! column now and then. The ship at the foot picks the column whose lowest
-//! saucer is nearest, slides under it and fires (one shot on the screen at
-//! a time, as such games had it) until the column is empty, then picks the
-//! next; it slips aside from a bomb coming down on it, and when one hits
+//! column now and then. The ship at the foot plays as a player would: it
+//! takes up a place, waits there for the formation to bring a saucer over
+//! it and fires (one shot on the screen at a time, as such games had it),
+//! and every few seconds moves on to another place, nearer where the
+//! saucers are; it slips aside from a bomb coming down on it, and when one hits
 //! it, it bursts and comes back a moment later. Each saucer bursts when hit
 //! and the score counts up; when the formation is gone, or has come down
 //! too far, a new one comes in at the top after a pause.
@@ -115,6 +116,9 @@ const BOMBS_EVERY: (u32, u32) = (35, 90);
 /// The ship's row (px from the top), and how far over it a bomb has to be,
 /// and how near across, for it to slip aside.
 const SHIP_Y: f32 = HEIGHT as f32 - 12.0;
+/// How long the ship waits at a place before moving on (steps, the least and
+/// the most).
+const STAY: (u32, u32) = (60, 150);
 const DODGE: (f32, f32) = (34.0, 7.0);
 
 /// A game under way.
@@ -129,8 +133,9 @@ pub struct Game {
     march: f32,
     legs: usize,
     ship: f32,
-    /// The column it is after, if any.
-    target: Option<usize>,
+    /// Where it waits, and steps till it moves on.
+    place: f32,
+    stay: u32,
     /// Steps till the ship is back after a hit, and till a new formation.
     down: u32,
     pause: u32,
@@ -154,7 +159,8 @@ impl Game {
             march: MARCH.0,
             legs: 0,
             ship: width as f32 / 2.0,
-            target: None,
+            place: width as f32 / 2.0,
+            stay: 0,
             down: 0,
             pause: 0,
             shot: None,
@@ -180,7 +186,6 @@ impl Game {
         let across = (COLUMNS - 1) as f32 * APART.x + 9.0;
         self.formation = Vec2::new((self.width as f32 - across) / 2.0, START_Y);
         self.heading = 1.0;
-        self.target = None;
     }
 
     fn chance(&self, n: u32) -> f32 {
@@ -299,55 +304,59 @@ impl Game {
             self.bursts
                 .push((Vec2::new(self.ship - 4.5, SHIP_Y), BURST_STEPS));
             self.down = RESPAWN;
-            self.target = None;
         }
         self.bombs.retain(|b| b.y < HEIGHT as f32);
     }
 
-    /// The ship goes after its column, slipping aside from bombs, and fires
-    /// once under it.
+    /// The ship waits at its place, fires at a saucer coming over it, slips
+    /// aside from bombs, and now and then moves on to another place.
     fn ride(&mut self) {
         if self.down > 0 {
             self.down -= 1;
             if self.down == 0 {
                 self.ship = self.width as f32 / 2.0;
+                self.place = self.ship;
             }
             return;
         }
-        // Its column, kept till it is empty: the one whose lowest saucer
-        // is nearest across.
-        if self.target.is_none_or(|col| self.lowest(col).is_none()) {
-            self.target = (0..COLUMNS)
-                .filter_map(|col| self.lowest(col).map(|k| (col, self.saucer(k).x + 4.5)))
-                .min_by(|a, b| (a.1 - self.ship).abs().total_cmp(&(b.1 - self.ship).abs()))
-                .map(|(col, _)| col);
+        let width = self.width as f32;
+        // A new place now and then: under the formation's columns that
+        // are left, one of them at random, give or take.
+        self.stay = self.stay.saturating_sub(1);
+        if self.stay == 0 {
+            let columns: Vec<f32> = (0..COLUMNS)
+                .filter_map(|col| self.lowest(col).map(|k| self.saucer(k).x + 4.5))
+                .collect();
+            if !columns.is_empty() {
+                let pick = (self.chance(3) * columns.len() as f32) as usize % columns.len();
+                self.place = columns[pick] + (self.chance(4) - 0.5) * APART.x * 2.0;
+            }
+            let (least, most) = STAY;
+            self.stay = least + (self.chance(5) * (most - least) as f32) as u32;
         }
-        let under = self
-            .target
-            .and_then(|col| self.lowest(col))
-            .map(|k| self.saucer(k).x + 4.5);
         let threat = self
             .bombs
             .iter()
             .filter(|b| b.y > SHIP_Y - DODGE.0 && b.y < SHIP_Y && (b.x - self.ship).abs() < DODGE.1)
             .map(|b| b.x)
             .next();
-        let width = self.width as f32;
-        let goal = match (threat, under) {
-            (Some(x), _) if x >= self.ship => self.ship - DODGE.1 * 2.0,
-            (Some(_), _) => self.ship + DODGE.1 * 2.0,
-            (None, Some(x)) => x,
-            (None, None) => self.ship,
-        };
-        let goal = goal.clamp(6.0, width - 6.0);
-        // Still within half a pixel of it: no dithering to and fro.
+        if let Some(x) = threat {
+            // Aside, and wait there.
+            self.place = if x >= self.ship {
+                self.ship - DODGE.1 * 2.0
+            } else {
+                self.ship + DODGE.1 * 2.0
+            };
+        }
+        let goal = self.place.clamp(6.0, width - 6.0);
         if (goal - self.ship).abs() > 0.5 {
             self.ship += (goal - self.ship).clamp(-SHIP_SPEED, SHIP_SPEED);
         }
-        if threat.is_none()
-            && self.shot.is_none()
-            && under.is_some_and(|x| (x - self.ship).abs() < 1.5)
-        {
+        // Fire at a saucer over it, the lowest of its column.
+        let over = (0..COLUMNS)
+            .filter_map(|col| self.lowest(col))
+            .any(|k| (self.saucer(k).x + 4.5 - self.ship).abs() < 3.5);
+        if threat.is_none() && self.shot.is_none() && over {
             self.shot = Some(Vec2::new(self.ship.round(), SHIP_Y - 3.0));
         }
     }
