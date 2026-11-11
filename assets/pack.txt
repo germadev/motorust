@@ -146,6 +146,7 @@ models/neon/color.jpg
 models/neon_city/props.bin
 models/neon_city/color.jpg
 models/neon_city/glow.jpg
+models/neon_city/windows.jpg
 models/costa/props.bin
 models/costa/color.jpg
 models/costa/billboard.jpg

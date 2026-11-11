@@ -594,7 +594,7 @@ fn spawn_piece(
     beacon: &Beacon,
     transform: Transform,
     number: u32,
-) {
+) -> Entity {
     let pack = assets.packs.get(folder);
     let mut root = world.spawn((
         Mesh3d(pack.piece(name).mesh.clone()),
@@ -659,6 +659,7 @@ fn spawn_piece(
         }
         _ => {}
     }
+    root.id()
 }
 
 /// Turns what turns, and blinks the red lights.
@@ -666,7 +667,128 @@ pub struct NeonPlugin;
 
 impl Plugin for NeonPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (spin, blink));
+        bevy::asset::embedded_asset!(app, "neon_city.wgsl");
+        app.add_plugins(MaterialPlugin::<CityMaterial>::default())
+            .init_resource::<CityLooks>()
+            .add_systems(Update, (spin, blink, light_the_city));
+    }
+}
+
+/// The city pack's own material, with its windows drawn (see
+/// `neon_city.wgsl`).
+pub type CityMaterial = bevy::pbr::ExtendedMaterial<StandardMaterial, CityLights>;
+
+/// What the city's windows are drawn with: their look, and where on the
+/// pack's models they are (`windows.jpg`).
+#[derive(Asset, TypePath, bevy::render::render_resource::AsBindGroup, Clone, Debug)]
+pub struct CityLights {
+    #[uniform(100)]
+    pub look: CityLook,
+    #[texture(101)]
+    #[sampler(102)]
+    pub windows: Handle<Image>,
+}
+
+impl bevy::pbr::MaterialExtension for CityLights {
+    fn fragment_shader() -> bevy::shader::ShaderRef {
+        "embedded://motorust/game/neon_city.wgsl".into()
+    }
+}
+
+/// Must match `CityLook` in `neon_city.wgsl`.
+#[derive(Clone, Copy, Debug, bevy::render::render_resource::ShaderType)]
+pub struct CityLook {
+    /// The light's tint (rgb) and how bright the windows are (w).
+    pub tint: Vec4,
+    /// A window's width and a floor's height (m), how many are lit, and 1
+    /// for the rain of code instead of windows.
+    pub shape: Vec4,
+}
+
+/// The windows: how wide one is and how high a floor (m), how many are
+/// lit, and how bright they are; and which blocks may have the rain of
+/// code on them instead, and how many of them do.
+const WINDOW: Vec2 = Vec2::new(3.2, 3.8);
+const WINDOWS_LIT: f32 = 0.62;
+const WINDOW_GLOW: f32 = 4.5;
+const RAINING: [&str; 4] = [
+    "city_office",
+    "city_cylinder",
+    "city_megablock",
+    "city_stacked",
+];
+const RAIN_SHARE: f32 = 0.18;
+
+/// On a building of the city: the tint its light is in (of [`CITY_TINTS`])
+/// and whether the rain of code runs down it.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CityLit {
+    pub tint: usize,
+    pub rain: bool,
+}
+
+/// The city's materials, made once: where the windows are, and a material
+/// for each tint, with windows or with the rain.
+#[derive(Resource, Default)]
+struct CityLooks {
+    windows: Option<Handle<Image>>,
+    made: std::collections::HashMap<(AssetId<StandardMaterial>, bool), Handle<CityMaterial>>,
+}
+
+/// Draws the city's buildings, as they come into the world, with their
+/// windows: their own material, extended.
+fn light_the_city(
+    mut commands: Commands,
+    mut looks: ResMut<CityLooks>,
+    mut images: ResMut<Assets<Image>>,
+    standard: Res<Assets<StandardMaterial>>,
+    mut city: ResMut<Assets<CityMaterial>>,
+    lit: Query<(Entity, &CityLit, &MeshMaterial3d<StandardMaterial>), Added<CityLit>>,
+) {
+    if lit.is_empty() {
+        return;
+    }
+    let windows = looks
+        .windows
+        .get_or_insert_with(|| {
+            let image = motorust_engine::content::try_file("models/neon_city/windows.jpg")
+                .map(|bytes| motorust_engine::bike::model::imported::texture(bytes, false))
+                .unwrap_or_default();
+            images.add(image)
+        })
+        .clone();
+    for (entity, building, material) in &lit {
+        let key = (material.0.id(), building.rain);
+        let handle = match looks.made.get(&key) {
+            Some(handle) => handle.clone(),
+            None => {
+                let Some(base) = standard.get(&material.0).cloned() else {
+                    continue;
+                };
+                let tint = CITY_TINTS[building.tint % CITY_TINTS.len()];
+                let handle = city.add(CityMaterial {
+                    base,
+                    extension: CityLights {
+                        look: CityLook {
+                            tint: tint.extend(WINDOW_GLOW),
+                            shape: Vec4::new(
+                                WINDOW.x,
+                                WINDOW.y,
+                                WINDOWS_LIT,
+                                if building.rain { 1.0 } else { 0.0 },
+                            ),
+                        },
+                        windows: windows.clone(),
+                    },
+                });
+                looks.made.insert(key, handle.clone());
+                handle
+            }
+        };
+        commands
+            .entity(entity)
+            .remove::<MeshMaterial3d<StandardMaterial>>()
+            .insert(MeshMaterial3d(handle));
     }
 }
 
@@ -797,18 +919,26 @@ impl Theme for Neon {
                 let transform = Transform::from_translation(at)
                     .with_rotation(Quat::from_rotation_y(building.heading))
                     .with_scale(Vec3::splat(building.scale));
-                let material = &tinted
-                    [(chance(number as u32 * 7 + 3) * tinted.len() as f32) as usize % tinted.len()];
-                spawn_piece(
+                let tint =
+                    (chance(number as u32 * 7 + 3) * tinted.len() as f32) as usize % tinted.len();
+                let id = spawn_piece(
                     world,
                     assets,
                     CITY_PACK,
                     building.piece,
-                    material,
+                    &tinted[tint],
                     &beacon,
                     transform,
                     number as u32,
                 );
+                // Drawn with its windows (or a rain of code) by the city's
+                // own material, once it is in the world (see `light_the_city`).
+                let rain = RAINING.contains(&building.piece)
+                    && chance(number as u32 * 13 + 1) < RAIN_SHARE;
+                world
+                    .commands_mut()
+                    .entity(id)
+                    .insert(CityLit { tint, rain });
                 signs.hang(world, &building, at, number as u32);
             }
         }
@@ -924,7 +1054,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("no {} in the pack", model.name()));
             let low = points.iter().map(|p| p.y).fold(f32::MAX, f32::min);
             assert!(low.abs() < 0.01, "{}: {low}", model.name());
-            assert!(points.len() < 8000, "{}: {}", model.name(), points.len());
+            assert!(points.len() < 12000, "{}: {}", model.name(), points.len());
         }
     }
 

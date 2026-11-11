@@ -7,20 +7,20 @@ Reads one GLB per model and writes to `assets/models/neon_city/` what the
 game loads (`src/game/neon.rs`): `props.bin`, every model as a piece named
 after it, centred on the origin with its lowest point on the ground, facing
 +Z, at the game's size (`MODELS`); `color.jpg`, their colours together, in a
-grid of cells; and `glow.jpg`, laid out as `color.jpg`, what of them shines
-of its own at night.
+grid of cells; `glow.jpg`, laid out as `color.jpg`, what of them shines of
+its own at night; and `windows.jpg`, where the game draws windows.
 
 What shines is drawn from the models' own colours, each as its `MODELS`
 entry says:
 
 - `windows`: the models were made with their windows as flat yellow
-  patches; on the walls those become a grid of windows, a floor every
-  3.8 m and one every 3.2 m along, most lit (warm or cold white, cyan,
-  magenta, amber, violet), the rest dark glass. Yellow on a roof is dark.
-
-Every model is made brighter and more colourful than as made, and its own
-colours glow a little all over (`FACADE`): the city is bright and in
-colour at night.
+  patches: those are dark glass, marked in `windows.jpg` (laid out as
+  `color.jpg`, white where they are), and the game draws the windows over
+  them, sharp however near (see `src/game/neon_city.wgsl`), by where they
+  are on their walls: so each piece of these is written with its triangles
+  each on their own points and a second set of coordinates (`UV_1`), how
+  far along its wall and how far up each point is (m; a round tower's
+  measured round it; a roof's nowhere).
 - `painted`: their lit windows are painted on, warm: those glow.
 - `lamps`: their own warm and bright touches (warning lights, the yellow
   edges of the silos) glow, as lamps.
@@ -28,7 +28,8 @@ colour at night.
   as a hologram, cyan.
 - `stadium`: its yellow facing up is the pitch, green under floodlights;
   on its sides, its stands' lights.
-- `rig`: its yellow facing up is a helideck, lit; the rest, windows.
+- `rig`: its yellow facing up is a helideck, lit; the rest, windows as
+  `windows`.
 - `paint`: its yellow is paint (an offshore turbine's): nothing glows.
 - `facets`: dark glass with pale streaks: the streaks glow, cold.
 - `signs`: no texture at all (only its shape): it is given one, dark steel,
@@ -79,7 +80,7 @@ MODELS = {
     "chimney_stack": (("height", 90.0), "lamps"),
     "cooling_towers": (("height", 70.0), "lamps"),
     "refinery": (("length", 60.0), "lamps"),
-    "silo_row": (("length", 50.0), "lamps"),
+    "silo_row": (("length", 50.0), "windows"),
     "antenna_mast": (("height", 130.0), "lamps"),
     "rail_viaduct": (("length", 60.0), "lamps"),
     "sign_tower": (("height", 60.0), "signs"),
@@ -94,22 +95,8 @@ CELL = 1024
 COLUMNS = 5
 MARGIN = 2
 
-# The windows: how far apart (m) along a wall and up it, how much of each
-# is glass, and how many are lit; the colours they are lit in, and how
-# often each (the whites most).
-WINDOW = (3.2, 3.8)
-GLASS = (0.62, 0.52)
-LIT = 0.68
-LIGHTS = [
-    ((1.0, 0.86, 0.62), 0.3),
-    ((0.82, 0.92, 1.0), 0.2),
-    ((0.35, 0.95, 1.0), 0.14),
-    ((1.0, 0.35, 0.8), 0.14),
-    ((1.0, 0.72, 0.25), 0.12),
-    ((0.65, 0.45, 1.0), 0.1),
-]
+# Under the windows the game draws: dark glass.
 DARK_GLASS = (0.05, 0.06, 0.08)
-MULLION = (0.03, 0.03, 0.035)
 # How much brighter and more colourful the models' own colours are made,
 # and how much of them shines of its own at night, all over: a city
 # bright and in colour, not dark blocks with windows.
@@ -146,27 +133,6 @@ def yellow(rgb):
     """The window yellow of the models made with it."""
     hue, saturation, value = hsv(rgb)
     return (hue > 36.0) & (hue < 64.0) & (saturation > 0.5) & (value > 0.5)
-
-
-def chance(*numbers):
-    """A number from 0 to 1 for `numbers`, the same every time."""
-    x = 1469598103934665603
-    for n in numbers:
-        x = ((x ^ (int(n) & 0xFFFFFFFF)) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-    x ^= x >> 29
-    return (x % 100000) / 100000.0
-
-
-def light(cell):
-    """The colour a lit window is lit in, if it is (else None)."""
-    if chance(*cell, 7) > LIT:
-        return None
-    pick = chance(*cell, 13)
-    for colour, share in LIGHTS:
-        if pick < share:
-            return colour
-        pick -= share
-    return LIGHTS[0][0]
 
 
 def raster(positions, uvs, indices, inner, keep):
@@ -206,37 +172,6 @@ def raster(positions, uvs, indices, inner, keep):
     if not out_xy:
         return np.zeros((0, 2), int), np.zeros((0, 3)), np.zeros((0, 3))
     return np.concatenate(out_xy), np.concatenate(out_point), np.concatenate(out_normal)
-
-
-def windows(base, glow, positions, uvs, indices, mask, seed):
-    """Over the texels of `mask`, a grid of windows on the walls (in the
-    model's metres), lit or dark; dark on its roofs and where no triangle
-    covers it."""
-    inner = base.shape[0]
-    base[mask] = DARK_GLASS
-    xy, point, normal = raster(positions, uvs, indices, inner, mask)
-    if len(xy) == 0:
-        return
-    wall = np.abs(normal[:, 1]) < 0.6
-    across = np.cross(np.array([0.0, 1.0, 0.0]), normal)
-    across /= np.linalg.norm(across, axis=1, keepdims=True).clip(1e-9)
-    along = (point * across).sum(axis=1)
-    up = point[:, 1]
-    column, floor = np.floor(along / WINDOW[0]), np.floor(up / WINDOW[1])
-    fx, fy = along / WINDOW[0] - column, up / WINDOW[1] - floor
-    glass = (np.abs(fx - 0.5) < GLASS[0] / 2) & (np.abs(fy - 0.55) < GLASS[1] / 2) & wall
-    facing = np.round(np.arctan2(normal[:, 0], normal[:, 2]) / (np.pi / 4)).astype(int)
-    for k in np.flatnonzero(wall & ~glass):
-        x, y = xy[k]
-        base[y, x] = MULLION
-    for k in np.flatnonzero(glass):
-        x, y = xy[k]
-        colour = light((seed, facing[k], column[k], floor[k]))
-        if colour is None:
-            base[y, x] = DARK_GLASS
-        else:
-            base[y, x] = np.array(colour) * 0.8
-            glow[y, x] = colour
 
 
 def components(positions, indices):
@@ -401,19 +336,22 @@ def signs(path, inner):
 
 def shine(mode, name, rgb, positions, uvs, indices, seed):
     """The colours and the glow of a model's cell (`rgb`, 0..1), as its
-    mode says."""
+    mode says, and where on it the game draws windows (a mask of it)."""
     base, glow = rgb.copy(), np.zeros_like(rgb)
     hue, saturation, value = hsv(rgb)
     mask = yellow(rgb)
+    walls = np.zeros(mask.shape, bool)
     if mode == "windows":
-        windows(base, glow, positions, uvs, indices, mask, seed)
+        base[mask] = DARK_GLASS
+        walls = mask
     elif mode == "rig":
         inner = rgb.shape[0]
         xy, _, normal = raster(positions, uvs, indices, inner, mask)
         up = np.zeros(mask.shape, bool)
         up[xy[:, 1], xy[:, 0]] = normal[:, 1] > 0.7
         glow[up] = HELIDECK
-        windows(base, glow, positions, uvs, indices, mask & ~up, seed)
+        base[mask & ~up] = DARK_GLASS
+        walls = mask & ~up
         base[up] = np.array(HELIDECK) * 0.8
     elif mode == "stadium":
         inner = rgb.shape[0]
@@ -440,7 +378,41 @@ def shine(mode, name, rgb, positions, uvs, indices, seed):
     elif mode == "facets":
         streak = (value > 0.55) & (saturation < 0.45)
         glow[streak] = np.array([0.6, 0.85, 1.0]) * value[streak, None]
-    return base, glow
+    return base, glow, walls
+
+
+# Models whose walls are round about their middle: their windows run round
+# them, measured round the wall, not across each of its facets.
+ROUND = ("city_cylinder",)
+
+
+def wall_coordinates(name, positions, indices):
+    """For a model the game draws windows on: its triangles each on their
+    own points (flat), and for each point where it is on its wall (m): how
+    far along the wall, how far up; on a roof or a floor, nowhere (-1000
+    up), where no window is drawn."""
+    triangles = indices.reshape(-1, 3)
+    corners = positions[triangles]
+    normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    normal /= np.linalg.norm(normal, axis=1, keepdims=True).clip(1e-12)
+    flat = corners.reshape(-1, 3)
+    up = flat[:, 1].copy()
+    if name in ROUND:
+        middle = (positions.min(axis=0) + positions.max(axis=0)) / 2.0
+        radius = np.hypot(flat[:, 0] - middle[0], flat[:, 2] - middle[2])
+        # Round the wall at its own radius, from a seam behind it; each
+        # triangle on its side of the seam.
+        angle = np.arctan2(flat[:, 0] - middle[0], flat[:, 2] - middle[2]).reshape(-1, 3)
+        seam = (angle.max(axis=1) - angle.min(axis=1)) > np.pi
+        angle[seam] = np.where(angle[seam] < 0, angle[seam] + 2 * np.pi, angle[seam])
+        along = angle.reshape(-1) * radius.mean()
+    else:
+        across = np.cross(np.array([0.0, 1.0, 0.0]), normal)
+        across /= np.linalg.norm(across, axis=1, keepdims=True).clip(1e-9)
+        along = (corners * across[:, None, :]).sum(axis=2).reshape(-1)
+    roof = np.repeat(np.abs(normal[:, 1]) > 0.6, 3)
+    up[roof] = -1000.0
+    return flat, np.stack([along, up], axis=1), np.arange(len(flat), dtype=np.uint32)
 
 
 def to_image(values):
@@ -461,6 +433,7 @@ def main():
     size = np.array([COLUMNS * CELL, rows * CELL], dtype=np.float64)
     atlas = Image.new("RGB", (COLUMNS * CELL, rows * CELL))
     glows = Image.new("RGB", (COLUMNS * CELL, rows * CELL))
+    masks = Image.new("RGB", (COLUMNS * CELL, rows * CELL))
     inner = CELL - 2 * MARGIN
     pieces = []
     for slot, name in enumerate(MODELS):
@@ -470,6 +443,7 @@ def main():
         if mode == "signs":
             base, glow, sets = signs(path, inner)
             glow = np.maximum(glow, base * FACADE)
+            mask_cell = np.zeros_like(base)
             models = [(f"{name}_{'abcdefgh'[k]}", *model) for k, model in enumerate(sets)]
         else:
             positions, normals, uvs, indices, color = read_glb(path)
@@ -479,10 +453,12 @@ def main():
             rgb = np.asarray(color.resize((inner, inner), Image.LANCZOS)).astype(np.float64) / 255.0
             # The model at the game's size, for its windows in metres.
             _, _, centre, scale = place(positions, normals, sizing)
-            base, glow = shine(mode, name, rgb, (positions - centre) * scale, uvs.clip(0.0, 1.0), indices, slot * 1009)
-            # Its walls glow a little in their own colours too.
-            glow = np.maximum(glow, base * FACADE)
-        for image, values in ((atlas, base), (glows, glow)):
+            base, glow, walls = shine(mode, name, rgb, (positions - centre) * scale, uvs.clip(0.0, 1.0), indices, slot * 1009)
+            # Its walls glow a little in their own colours too (but where
+            # the game draws its windows).
+            glow = np.maximum(glow, base * FACADE * ~walls[..., None])
+            mask_cell = walls.astype(np.float64)[..., None].repeat(3, axis=2)
+        for image, values in ((atlas, base), (glows, glow), (masks, mask_cell)):
             cell = to_image(values).resize((CELL, CELL), Image.NEAREST)
             cell.paste(to_image(values), (MARGIN, MARGIN))
             image.paste(cell, (column * CELL, row * CELL))
@@ -501,13 +477,21 @@ def main():
                 pivot[2] = 0.0
             for piece, part in parts:
                 p, n, u, i = compact(placed, turned, moved, part)
+                second = None
+                if mode in ("windows", "rig"):
+                    # Flat, each triangle on its own points, with where on
+                    # its wall each is.
+                    t = i.reshape(-1, 3)
+                    n = n[t].reshape(-1, 3)
+                    u = u[t].reshape(-1, 2)
+                    p, second, i = wall_coordinates(piece, p, i)
                 if pivot is not None:
                     # The turning pieces about their axle; what holds them,
                     # its foot on the ground, the axle where it is.
                     if piece != name:
                         p = p - pivot
                 piece_name = piece if mode != "signs" else model
-                pieces.append((piece_name, p, n, u, i))
+                pieces.append((piece_name, p, n, u, i, second))
                 low, high = p.min(axis=0), p.max(axis=0)
                 print(
                     f"{piece_name}: {len(p)} vertices, {len(i) // 3} triangles, "
@@ -520,19 +504,23 @@ def main():
     with open(OUT / "props.bin", "wb") as out:
         out.write(b"MRMESH01")
         out.write(len(pieces).to_bytes(4, "little"))
-        for name, positions, normals, uvs, indices in pieces:
+        for name, positions, normals, uvs, indices, second in pieces:
             encoded = name.encode()
             out.write(len(encoded).to_bytes(4, "little") + encoded)
-            for count in (len(positions), len(indices), 0):
+            flags = 0 if second is None else 2
+            for count in (len(positions), len(indices), flags):
                 out.write(int(count).to_bytes(4, "little"))
             out.write(positions.astype("<f4").tobytes())
             out.write(normals.astype("<f4").tobytes())
             out.write(uvs.astype("<f4").tobytes())
+            if second is not None:
+                out.write(second.astype("<f4").tobytes())
             out.write(indices.astype("<u4").tobytes())
     # Full colour resolution (no chroma subsampling) and little loss: the
     # windows are fine patterns of colour, blurred otherwise.
     atlas.save(OUT / "color.jpg", quality=90, subsampling=0, optimize=True)
     glows.save(OUT / "glow.jpg", quality=94, subsampling=0, optimize=True)
+    masks.convert("L").save(OUT / "windows.jpg", quality=90, optimize=True)
     print(f"{OUT}: props.bin, color.jpg, glow.jpg ({atlas.size[0]}x{atlas.size[1]})")
 
 
