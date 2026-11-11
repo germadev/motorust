@@ -72,7 +72,9 @@
             (1026.0, 20.86),
             (1061.0, 18.64),
             (1121.0, 17.03),
-            (1485.0, 17.00),
+            (1340.0, 18.60),
+            (1572.0, 14.00),
+            (1810.0, 18.00),
             (1914.3, 18.00),
             (2160.0, 19.00),
             (2362.5, 24.00),
@@ -93,7 +95,60 @@
         wall: 11.5,
         // Its bends banked well, and gripping as much harder, for the bikes to
         // drift round them.
-        banking: [(from: 320.0, to: 4950.0, factor: 1.7, grip: 1.3)],
+        banking: [
+            (from: 320.0, to: 1150.0, factor: 1.7, grip: 1.3),
+            // Hardly banked where the way off it parts from it and joins it
+            // again, as at the forks of the other circuits.
+            (from: 1150.0, to: 2010.0, factor: 0.25),
+            (from: 2010.0, to: 4950.0, factor: 1.7, grip: 1.3),
+        ],
+        // A fork braided with the lap: its way off swings out to the right of
+        // the lap, climbs some 5 m while the lap drops 5 m, crosses over it
+        // (10 m apart, at 1572 m of the lap) as it winds through its chicane
+        // below, runs on along its left and comes down to it again, joining
+        // it under the tube. 760 m long, far longer than the other
+        // circuits' forks.
+        branches: [
+            (
+                from: 1200.0,
+                to: 1960.0,
+                approach: [
+                    (548.5, -123.2),
+                    (568.2, -91.8),
+                    (592.3, -41.2),
+                    (635.0, 12.0),
+                    (680.0, 48.0),
+                    (735.0, 60.0),
+                    (790.0, 40.0),
+                    (835.0, -5.0),
+                    (875.0, -50.0),
+                    (920.0, -85.0),
+                    (965.0, -108.0),
+                    (1007.1, -124.1),
+                    (1044.2, -160.4),
+                    (1070.3, -191.5),
+                    (1087.9, -216.0),
+                    (1098.9, -235.1),
+                ],
+                // Level with the lap until the two are well apart, then up
+                // 9.5 m, over the lap, and down again before it joins it.
+                rise: [
+                    (200.0, 0.00),
+                    (233.0, 1.34),
+                    (266.0, 3.53),
+                    (299.0, 6.10),
+                    (332.0, 8.46),
+                    (365.0, 10.02),
+                    (398.0, 10.40),
+                    (431.0, 9.55),
+                    (464.0, 7.71),
+                    (497.0, 5.30),
+                    (530.0, 2.86),
+                    (563.0, 0.95),
+                    (595.0, 0.00),
+                ],
+            ),
+        ],
         // A tube of glass, floating over the lap's second crossing.
         tubes: [(from: 3388.5, to: 4360.5, radius: 7.5)],
     ),
