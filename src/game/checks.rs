@@ -599,6 +599,12 @@ mod bike {
     }
 
     #[test]
+    fn in_a_tube_the_bike_is_held_to_run_along_it() {
+        crate::game::register();
+        motorust_engine::bike::tests::in_a_tube_the_bike_is_held_to_run_along_it_on(&CIRCUITS);
+    }
+
+    #[test]
     fn flat_out_steering_only_laps_without_touching_the_walls() {
         crate::game::register();
         motorust_engine::bike::tests::flat_out_steering_only_laps_without_touching_the_walls_on(
