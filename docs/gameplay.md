@@ -94,10 +94,19 @@ The handling is arcade, like *Moto Racer*. The goal is a bike that is quick to p
   - When a rider goes down, bike and rider separate. The bike drops onto its side and slides with the velocity it had after the hit. The harder the hit and the faster it was going, the harder it rolls over: a fall at low speed just lays it on its side, while at 200 km/h or more it barrel-rolls once or several times over its handlebars, footpegs and screen, bouncing up when it lands on its side hard, before it settles on one side. Stopped head on (into a wall, or into a bike much slower), it is thrown up and flips once end over end over its front wheel. Its wheels keep spinning, slowing down little by little. The rider keeps the momentum they had before it, so they are thrown on past the bike, land, tumble and slide on their back until friction stops them. Their arms and legs move as in real racing crashes: thrown, the arms let go loosely out to the sides and the legs come apart; tumbling, they go limp and bent (face down, knees to the ground and feet up); sliding on the back, feet first, the legs stay together and loosely bent and the hands are held up over the chest, off the asphalt, while the legs drag behind; once still, the arms rest by the sides. Off the bike the hands hang relaxed from the forearms instead of gripping. Hands and feet hang loosely from that pose, like on damped springs (the legs looser than the arms, each knee swaying on its own): they lag behind when the body is stopped, flop when it lands and fling out when it spins, without shaking, and never go under the asphalt (riders slide on asphalt with a drag factor of about 0.6, a bike on its side about 0.45, more on grass). Walls stop both.
   - Once bike and rider are still (4 s at most), the bike is put back on the track at once, upright and stopped, next to where it ended up, facing along the track and clear of other bikes.
 
+### Hover bikes
+
+On Puerto Neón (see [tracks.md](tracks.md#puerto-neón)) the bikes hover: far faster than on wheels (some 540 km/h flat out, near 600 km/h with the nitro; the speedometer reads to 600 km/h, or 360 mph), they bob a little when stopped and sound as modern machines: loud, deep and driven, the rumble of their thrust under an electric whine.
+
+- **Drift.** The wheelie control (X, □ on PlayStation) drifts in the bends: the bike slides, its nose turned into the bend, and turns tighter.
+- **Nitro.** The pink bar over the speedometer, a bottle of gas at its left. Drifting fills it: while you drift, a paler stretch after it shows what letting go will add, and throbs once the drift has been long enough (0.6 s) to give any; let go and it is added. The pink bars across the road on the recharge stretches fill it too, as you ride over them. The nitro control (A, ✕ on PlayStation; E on the keyboard) burns it, for a push and a higher top speed while it lasts: the bar lights up, and a beam of pink light trails the bike on the road from under it. Full, the bar throbs. Falling off keeps what you had, to get going again.
+- **The tube.** In the glass tube the bike is held to run along it, the more firmly the faster it goes: it turns as the tube does, and steering only points it a little off its line, to move round the tube's wall.
+- **Speed pads.** The green chevrons on the road push the bike on as it rides over them.
+
 ### Jumps, wheelies and suspension
 
 - **Jumps.** Taken flat out, crests make the bike take off. Jumps are short and sharp: in the air the bike falls with more gravity than in real life. You can correct your direction a little, but you cannot accelerate. Pulling back in the air lifts the nose.
-- **Wheelies.** Hold the wheelie control (Space, or B on a gamepad) with the throttle open to lift the front wheel. With the wheel in the air you can barely steer, but you gain a little acceleration and top speed, so it pays off on straights.
+- **Wheelies.** Hold the wheelie control (Space, or X or B on a gamepad) with the throttle open to lift the front wheel. With the wheel in the air you can barely steer, but you gain a little acceleration and top speed, so it pays off on straights.
 - **Suspension and inertia.** The bike has weight you can feel:
   - The rear squats under acceleration and the fork dives under braking. Braking hard at speed lifts the rear.
   - In the air the suspension unloads and the wheels hang. On landing it compresses and rebounds while the wheels stay on the ground.
@@ -154,10 +163,11 @@ These are the defaults. Every action except the sticks, mute and fullscreen can 
 
 | Action | Keyboard | Gamepad |
 |---|---|---|
-| Throttle | W / ↑ | Right trigger (RT) / A |
-| Brake, and reverse when stopped | S / ↓ | Left trigger (LT) / X |
+| Throttle | W / ↑ | Right trigger (RT) |
+| Brake, and reverse when stopped | S / ↓ | Left trigger (LT) |
 | Steer | A, D / ←, → | Left stick (progressive) / D-pad |
-| Wheelie (with throttle) | Space / Left Shift | B, or RT and A together |
+| Wheelie (with throttle); drift, on hover bikes | Space / Left Shift | X (□ on PlayStation) / B |
+| Nitro, on hover bikes | E / Left Ctrl | A (✕ on PlayStation) |
 | Look around | | Right stick |
 | Restart the race | R | Select (when let go of) |
 | Pause | Esc | Start |
@@ -176,7 +186,7 @@ At the foot of the panel, whatever the section, stand "Reset" and "Back" side by
 
 Options that are on or off (fullscreen, the controls legend, pipelined rendering, the results in the middle, what the performance HUD shows) end in a box, rounded, ticked when they are on: filled with the colour of the section, or dark on the chosen row, which is already in that colour; empty and outlined when they are off.
 
-- **Game.** The language (Spanish or English), the difficulty (easy, medium, hard or very hard, medium by default; see [Game modes](#game-modes)), the view while choosing the track ("Trackside" / "A pie de pista", the default: the camera flies on along the road from the start menu and the modes, from just before the line of each track chosen, coming down under the rock through the tunnels and under the beams of the start and checkpoint arches, and cuts at once between the track screen and the bikes, with no glide between menus; a track not yet ready shows its start first, a quick look at it with its roads, walls, tunnels and arches, while the rest of it comes; or "Aerial", turning round the whole track from high above, gliding from one menu to the next) and the race start ("Lights", the default; "Real lights", the bikes free on the grid and a jump start disqualified; or "Throttle", the race starting when you first open the throttle), how many red lights the start has (one to five, five by default; faint with a start at the throttle), the wait after the last one before they go out ("Random", the default, never quite the same, so the start cannot be timed; or "Fixed, on the beat", a second, as between one light and the next; faint with a start at the throttle), how many false starts are let off with the bikes free (none to three, two by default; faint with any other start), whether the results go to the middle once everybody is in (off by default) and whether the race's whole time is shown under the lap's ("Show the total time", off by default) and whether the bikes change gears ("Gears (automatic)", off by default; see [Steering](#steering)).
+- **Game.** The language (Spanish or English), the speed units ("km/h", the default, or "mph": the speedometer reads to 360 km/h or, the same dial, to 240 mph, its red line at 300 or 200), the difficulty (easy, medium, hard or very hard, medium by default; see [Game modes](#game-modes)), the view while choosing the track ("Trackside" / "A pie de pista", the default: the camera flies on along the road from the start menu and the modes, from just before the line of each track chosen, coming down under the rock through the tunnels and under the beams of the start and checkpoint arches, and cuts at once between the track screen and the bikes, with no glide between menus; a track not yet ready shows its start first, a quick look at it with its roads, walls, tunnels and arches, while the rest of it comes; or "Aerial", turning round the whole track from high above, gliding from one menu to the next) and the race start ("Lights", the default; "Real lights", the bikes free on the grid and a jump start disqualified; or "Throttle", the race starting when you first open the throttle), how many red lights the start has (one to five, five by default; faint with a start at the throttle), the wait after the last one before they go out ("Random", the default, never quite the same, so the start cannot be timed; or "Fixed, on the beat", a second, as between one light and the next; faint with a start at the throttle), how many false starts are let off with the bikes free (none to three, two by default; faint with any other start), whether the results go to the middle once everybody is in (off by default) and whether the race's whole time is shown under the lap's ("Show the total time", off by default) and whether the bikes change gears ("Gears (automatic)", off by default; see [Steering](#steering)).
 - **Control.** "Mapping" (see [Mapping](#mapping)), "Stick behaviour" ("Comportamiento Stick"), "Keyboard behaviour" ("Comportamiento Teclado") and "Advanced" ("Avanzado", how the keyboard behaves, below), the race's "Controls legend" (shown or hidden, hidden by default) and "Rescan gamepads". Each behaviour opens a page of its own in the panel ("OPTIONS > STICK", "OPTIONS > KEYBOARD") with its steering variants; Back, Esc or B go back to Control, on its row, and Reset there puts back only that page's variants (Reset on Control, all of them and the legend). The steering variants:
 
   | Page | Option | Values | Default |
@@ -252,7 +262,7 @@ Keys or buttons pressed together do the action only when all of them are held. S
 
 ### Where settings are saved
 
-Settings (language, difficulty, race start, fullscreen, resolution, FPS limit, the performance forced, the performance HUD, the water, pipelined rendering, frame latency, controls, volumes, and the best lap and most laps against the clock of each track) are saved each time they change, in `ajustes.ron` ("settings") inside the system's settings folder:
+Settings (language, speed units, difficulty, race start, fullscreen, resolution, FPS limit, the performance forced, the performance HUD, the water, pipelined rendering, frame latency, controls, volumes, and the best lap and most laps against the clock of each track) are saved each time they change, in `ajustes.ron` ("settings") inside the system's settings folder:
 
 | System | File |
 |---|---|

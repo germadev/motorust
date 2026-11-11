@@ -18,6 +18,7 @@ music/autumn_gale.mp3
 music/beyond_the_final_turn.mp3
 music/plastic_velocity_rush.mp3
 music/victory_in_the_rearview.mp3
+music/apex_velocity.mp3
 
 # The menus' song and free ride's chill songs, and their list.
 music/music.ron
@@ -44,6 +45,7 @@ circuits/moon_base.ron
 circuits/fellowship_road.ron
 circuits/toy_store.ron
 circuits/costa_bits.ron
+circuits/puerto_neon.ron
 
 # The bikes' roster.
 bikes/roster.ron
@@ -106,6 +108,27 @@ models/azura/normal.jpg
 models/azura/pilot.bin
 models/azura/pilot_color.jpg
 
+# The hover bikes (tools/import_hoverbike.py), each ridden by the rider of
+# the bike it is the hover version of.
+models/shogun_hover/model.ron
+models/shogun_hover/bike.bin
+models/shogun_hover/base_color.jpg
+models/shogun_hover/metallic_roughness.jpg
+models/shogun_hover/normal.jpg
+models/shogun_hover/emissive.jpg
+models/azura_hover/model.ron
+models/azura_hover/bike.bin
+models/azura_hover/base_color.jpg
+models/azura_hover/metallic_roughness.jpg
+models/azura_hover/normal.jpg
+models/azura_hover/emissive.jpg
+models/falcon_hover/model.ron
+models/falcon_hover/bike.bin
+models/falcon_hover/base_color.jpg
+models/falcon_hover/metallic_roughness.jpg
+models/falcon_hover/normal.jpg
+models/falcon_hover/emissive.jpg
+
 # The scenery's models: the trees, the props of feudal Japan and of
 # Middle-earth, the toys of the toy store and Costa Bits' props.
 models/trees/trees.bin
@@ -118,6 +141,12 @@ models/toys/props.bin
 models/toys/color.jpg
 models/toys2/props.bin
 models/toys2/color.jpg
+models/neon/props.bin
+models/neon/color.jpg
+models/neon_city/props.bin
+models/neon_city/color.jpg
+models/neon_city/glow.jpg
+models/neon_city/windows.jpg
 models/costa/props.bin
 models/costa/color.jpg
 models/costa/billboard.jpg

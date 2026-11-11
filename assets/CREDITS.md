@@ -49,3 +49,7 @@ colour textures together.
 
 The flowers, the lawn in flower and the snow are painted in code.
 
+
+- The hover bikes (`assets/models/*_hover/`): made with Meshy by the author, prepared by `tools/import_hoverbike.py`.
+- "Apex Velocity" (`assets/music/apex_velocity.mp3`), Puerto Neón's song: provided by the author.
+- Puerto Neón's props (`assets/models/neon/`): made with Meshy by the author, prepared by `tools/import_neon.py`. Their GLBs, the hover bikes' and the song are attached to the release [Assets-NeonPort](https://github.com/germadev/motorust/releases/tag/Assets-NeonPort).

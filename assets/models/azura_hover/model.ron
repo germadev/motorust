@@ -1,0 +1,22 @@
+// The hover version of `azura`, by its folder: `azura_hover`.
+// Made with Meshy and prepared by tools/import_hoverbike.py, which measured
+// it: the middles of its pads (its axles) and how big they are, and where
+// its grips, pegs and seat are (m, in the bike's space); it hovers, its pads
+// casting a light of the colour of `glow` on the road; its lights are in
+// emissive.jpg; and its rider is `azura`'s.
+(
+    geometry: (
+        front_axle: (0, 0.2708, -0.5552),
+        rear_axle: (0, 0.2549, 0.6452),
+        front_radius: 0.2547,
+        rear_radius: 0.22,
+        steering_head: (0, 0.8569, -0.4203),
+        grip: (0.278, 0.7969, -0.3703),
+        peg: (0.16, 0.3397, 0.245),
+        seat: (0, 0.8897, 0.175),
+    ),
+    steers: false,
+    hover: Some((glow: (0.25, 0.7991, 1))),
+    rider: Some("azura"),
+    emissive: true,
+)

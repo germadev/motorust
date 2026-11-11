@@ -1,0 +1,22 @@
+// The hover version of `shogun`, by its folder: `shogun_hover`.
+// Made with Meshy and prepared by tools/import_hoverbike.py, which measured
+// it: the middles of its pads (its axles) and how big they are, and where
+// its grips, pegs and seat are (m, in the bike's space); it hovers, its pads
+// casting a light of the colour of `glow` on the road; its lights are in
+// emissive.jpg; and its rider is `shogun`'s.
+(
+    geometry: (
+        front_axle: (0, 0.2595, -0.5981),
+        rear_axle: (0, 0.2627, 0.5748),
+        front_radius: 0.2754,
+        rear_radius: 0.2741,
+        steering_head: (0, 0.7849, -0.3597),
+        grip: (0.3064, 0.7249, -0.3097),
+        peg: (0.16, 0.3096, 0.27),
+        seat: (0, 0.8596, 0.2),
+    ),
+    steers: false,
+    hover: Some((glow: (0.25, 0.7104, 1))),
+    rider: Some("shogun"),
+    emissive: true,
+)

@@ -13,6 +13,7 @@ pub mod desert;
 pub mod japan;
 pub mod middle_earth;
 pub mod mine;
+pub mod neon;
 pub mod shopfront;
 pub mod space;
 pub mod toys;
@@ -66,6 +67,7 @@ pub fn register() {
     themes::register::<japan::Japan>("japan");
     themes::register::<middle_earth::MiddleEarth>("middle_earth");
     themes::register::<mine::Mine>("mine");
+    themes::register::<neon::Neon>("neon");
     themes::register::<space::Space>("space");
     themes::register::<toys::ToyStore>("toys");
 }
@@ -80,6 +82,7 @@ impl Plugin for GamePlugin {
             costa::CostaPlugin,
             desert::DesertPlugin,
             mine::MinePlugin,
+            neon::NeonPlugin,
             space::SpacePlugin,
             toys::ToysPlugin,
         ));
