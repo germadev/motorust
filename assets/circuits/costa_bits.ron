@@ -14,8 +14,9 @@
 //    headland through a pine forest to the open sea.
 // 5. Carretera de la sierra: a mountain road south up the cliffs over the
 //    open sea, cut rock on the right, a stone parapet over the drop on the
-//    left, to a summit some 56 m up, on a straight, where the bike takes
-//    off; then down in bends round the cape, the lighthouse far below, and
+//    left; through a gorge, the town's houses on its rims and an old stone
+//    bridge high over the road, which runs under its arch; to a summit some 56 m up, on a straight, where the bike takes
+//    off; then down in bends round the cape, its watchtower far below, and
 //    off the mountain to the south coast.
 // 6. Autopista de la costa: a straight west along the south coast over two
 //    crests in a row, the bike in the air over each flat out, palms close on
@@ -33,8 +34,11 @@
 // - the east shore:          Span(1230.0, 1540.0)
 // - over the headland:       Span(1540.0, 2040.0), through the forest
 // - up the mountain road:    Span(2040.0, 2500.0), the summit at 2500 m
-// - down round the cape:     Span(2540.0, 3174.0), the lighthouse at (845.0, 580.0)
-// - the coast highway:       Span(3174.0, 3444.0), crests at 3230 and 3340 m
+//   - the gorge:             Span(2110.0, 2320.0), the bridge over it at 2215 m
+// - down round the cape:     Span(2540.0, 3174.0)
+//   - narrow, under the rock: Span(2740.0, 3105.0)
+// - the coast highway:       Span(3174.0, 3444.0), crests at 3230 and 3340 m,
+//                            the lighthouse beside it at 3250 m, at (525.0, 704.0)
 // - the bridge:              Span(3444.0, 3650.0), over the outlet, 165 m wide
 // - the fork:                Span(3864.0, 4214.0)
 //
@@ -99,7 +103,7 @@
             (890.0, 10.0),
             (885.0, 130.0),
             (875.0, 250.0),
-            // Round the cape with the lighthouse, and back west to the bridge.
+            // Round the cape, and back west to the bridge.
             (815.0, 480.0),
             (778.0, 565.0),
             (720.0, 627.0),
@@ -145,8 +149,12 @@
             (120.0, 5.4),
             (155.0, 7.2),
             (190.0, 4.2),
-            (250.0, 2.0),
-            (300.0, 1.6),
+            // Down to the beach: the road low over the sand by the lifeguard's
+            // tower and the beach bar.
+            (225.0, 0.8),
+            (250.0, -1.6),
+            (322.0, -1.6),
+            (352.0, 0.6),
             // Up the cliffs, steadily, with no crest in the bends.
             (382.0, 2.5),
             (456.0, 5.5),
@@ -184,7 +192,7 @@
             (2535.0, 53.0),
             (2580.0, 50.5),
             (2634.0, 49.5),
-            // Down round the cape, the lighthouse below, and off the mountain to
+            // Down round the cape, its watchtower below, and off the mountain to
             // the south coast.
             (2756.0, 43.0),
             (2872.0, 35.0),
@@ -217,6 +225,12 @@
             (4330.0, 0.4),
         ],
         wall: 11.5,
+        // Under the bridge over the gorge, the walls close in to its arch.
+        narrows: [
+            (from: 2200.0, to: 2230.0, wall: 6.5),
+            // Down round the cape the road is a single lane, under the rock.
+            (from: 2770.0, to: 3090.0, wall: 4.5, ease: 60.0),
+        ],
         // Hardly banked where the road splits, as in Ghost Island and Gold
         // Mine.
         banking: [(from: 3864.0, to: 4214.0, factor: 0.25)],
@@ -286,7 +300,7 @@
         // The land round the bay, its mouth open to the sea to the south under
         // the bridge: from the bridge's west end, up the bay's west shore, round
         // its head under the mountain and down its east shore to the bridge's
-        // east end; then out round the cape with the lighthouse, up the open
+        // east end; then out round the cape, up the open
         // coast under the cliffs of the mountain road, round the mountains to
         // the north and down the west coast.
         coast: Outline([
@@ -300,7 +314,11 @@
             (42.0, 120.0),
             (38.0, 20.0),
             (38.0, -100.0),
-            (38.0, -300.0),
+            // The beach, wider out from the road.
+            (42.0, -205.0),
+            (64.0, -240.0),
+            (66.0, -310.0),
+            (44.0, -345.0),
             (28.0, -395.0),
             (6.0, -460.0),
             (2.0, -520.0),
@@ -326,7 +344,7 @@
             (345.0, 122.0),
             (322.0, 152.0),
             // The outlet's east bank, and out along the south coast below the
-            // coast highway, round the cape with the lighthouse and up under the
+            // coast highway, round the cape and up under the
             // cliffs.
             (315.0, 230.0),
             (310.0, 320.0),
@@ -334,23 +352,36 @@
             // railing and the sea.
             (310.0, 688.0),
             (400.0, 686.0),
-            (560.0, 686.0),
+            // A point of land out from the beach for the lighthouse, beside
+            // the highway's first crest.
+            (492.0, 688.0),
+            (508.0, 714.0),
+            (525.0, 722.0),
+            (542.0, 714.0),
+            (558.0, 688.0),
             (650.0, 684.0),
             (725.0, 676.0),
-            // The cape, jutting out for the lighthouse.
+            // The cape, jutting out.
             (795.0, 668.0),
             (855.0, 640.0),
             (885.0, 570.0),
             (860.0, 505.0),
             // Right under the mountain road's parapet, some 30 m from its
             // middle, so that the cliff drops from the wall to the sea.
-            (882.0, 370.0),
-            (906.0, 250.0),
+            (884.0, 370.0),
+            (906.0, 330.0),
+            (912.0, 290.0),
+            (908.0, 250.0),
             (916.0, 130.0),
             (921.0, 10.0),
-            (923.0, -110.0),
-            (921.0, -230.0),
-            (911.0, -340.0),
+            // Out round the gorge, which the rock rises on either side of,
+            // some 100 m east of the road.
+            (950.0, -40.0),
+            (995.0, -110.0),
+            (1000.0, -200.0),
+            (990.0, -280.0),
+            (950.0, -330.0),
+            (911.0, -360.0),
             (898.0, -440.0),
             (830.0, -560.0),
             (760.0, -700.0),
@@ -404,7 +435,17 @@
             // The mountain road, cut into the cliffs: rock on the right all the
             // way up, and on the way down round the cape.
             (span: Span(2040.0, 2440.0), side: Right, height: 24.0),
-            (span: Span(2600.0, 3000.0), side: Right, height: 20.0),
+            (span: Span(2690.0, 3165.0), side: Right, height: 36.0),
+            // The gorge, through the mountain's seaward spur: sheer rock on
+            // both sides, 26 m high, the old bridge, 60 m high, standing over its
+            // rims, the side arches of its deck (from 42 m up, 21 to 34 m out)
+            // open to the sky over them.
+            (span: Span(2110.0, 2320.0), side: Right, height: 26.0),
+            (span: Span(2110.0, 2320.0), side: Left, height: 26.0),
+            // Higher at the bridge, up to the foot of its side arches, which
+            // stand on the rock.
+            (span: Span(2170.0, 2260.0), side: Right, height: 37.0),
+            (span: Span(2170.0, 2260.0), side: Left, height: 37.0),
         ],
         // Mountains closing the horizon inland, to the north; to the south,
         // open sea.
@@ -421,7 +462,9 @@
         walls: [
             // The start straight: a railing over the bay on the right, stone on
             // the town's side.
-            (span: Span(4214.0, 340.0), side: Right, style: Railing),
+            (span: Span(4214.0, 232.0), side: Right, style: Railing),
+            // By the beach, a low wooden fence, the sand and the sea over it.
+            (span: Span(232.0, 340.0), side: Right, style: Fence),
             (span: Span(4214.0, 340.0), side: Left, style: Stone),
             // The cliffs: a railing over the drop to the bay, stone against the
             // rock.
@@ -432,18 +475,24 @@
             // The mountain road: a stone parapet over the drop to the sea on the
             // left; then a railing along the coast highway over the sea, either
             // side of the bridge.
-            (span: Span(2040.0, 3100.0), side: Left, style: Stone),
+            (span: Span(2040.0, 2745.0), side: Left, style: Stone),
+            // Under the rock: stone against it on the right, and a low parapet
+            // over the sea on the left.
+            (span: Span(2745.0, 3110.0), side: Left, style: Parapet),
+            (span: Span(2745.0, 3110.0), side: Right, style: Stone),
             (span: Span(3100.0, 3444.0), side: Left, style: Railing),
             (span: Span(3650.0, 3864.0), side: Left, style: Railing),
         ],
         tunnels: [Span(985.0, 1150.0)],
         bridges: [(span: Span(3444.0, 3650.0), style: Truss)],
         gantries: [
-            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA DEL SOL")),
-            (along: 800.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
-            (along: 1700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
-            (along: 2700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
-            (along: 3700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT")),
+            // The line and the checkpoints, their arches the theme's (`costa`):
+            // the start arch, and an inflatable arch at each checkpoint.
+            (along: 0.0, color: (0.85, 0.35, 0.08), text: Some("COSTA BITS"), drawn: false),
+            (along: 800.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
+            (along: 1700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
+            (along: 2700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
+            (along: 3700.0, color: (0.8, 0.08, 0.06), text: Some("CHECKPOINT"), drawn: false),
         ],
         billboards: [
             (
@@ -476,24 +525,46 @@
             style: Cottage,
         ),
         palms: [
-            (span: Span(4214.0, 340.0), side: Right, lateral: 15.5, every: 24.0),
-            (span: Span(4214.0, 340.0), side: Left, lateral: 17.0, every: 36.0),
+            // The start straight: on the right, but before the beach's tower,
+            // bar and boat, so that they are seen from the road; on the left,
+            // but past the start arch, where the billboard and the car stand.
+            (span: Span(4214.0, 225.0), side: Right, lateral: 15.5, every: 24.0),
+            (span: Span(4214.0, 4390.0), side: Left, lateral: 17.0, every: 36.0),
+            (span: Span(70.0, 340.0), side: Left, lateral: 17.0, every: 36.0),
             // The coast highway: palms close on both sides, one every 12 m.
             (span: Span(3174.0, 3444.0), side: Right, lateral: 15.0, every: 12.0),
             (span: Span(3174.0, 3444.0), side: Left, lateral: 15.0, every: 12.0),
         ],
         // A pine forest over the headland and up the foot of the mountain.
-        forests: [(span: Span(1600.0, 2150.0), species: [Tall])],
+        // (A clearing in it round the hermitage, 1880 m round the lap.)
+        forests: [
+            (span: Span(1600.0, 1790.0), species: [Tall]),
+            (span: Span(1960.0, 2150.0), species: [Tall]),
+        ],
+        // The hermitage's knoll, a few metres over the road; and
+        terraces: [
+            (center: (802.8, -492.1), radius: 9.0, height: 24.5, skirt: 12.0),
+            // The beach by the start straight: level and low, so that it is
+            // sand from the road's fence to the water.
+            (center: (34.0, -258.0), radius: 24.0, height: 0.1, skirt: 12.0),
+            (center: (36.0, -300.0), radius: 24.0, height: 0.1, skirt: 12.0),
+            // The castle's shelf, cut into the rock a few metres over the road.
+            (center: (839.7, 259.7), radius: 21.0, height: 55.0, skirt: 9.0),
+            // A shoulder of the cliff out over the sea for the watchtower, level
+            // with the road, before the rock reaches over it.
+            (center: (886.5, 308.0), radius: 9.0, height: 48.0, skirt: 6.0),
+        ],
         buoys: [
             (120.0, -150.0),
             (200.0, -520.0),
             (300.0, -250.0),
             (230.0, 290.0),
-            (985.0, -150.0),
+            (1060.0, -150.0),
             (990.0, 60.0),
         ],
-        // On the cape, below the road coming down round it.
-        lighthouses: [(position: (845.0, 580.0), height: 24.0)],
+        // By the coast highway, 3250 m round the lap, on a point of land out
+        // from its beach: ahead and to the left all the way down the highway.
+        lighthouses: [(position: (525.0, 704.0), height: 24.0)],
         boats: [
             (position: (150.0, -250.0), heading: 0.4, kind: Sailboat),
             (position: (300.0, -560.0), heading: -1.1, kind: Sailboat),
@@ -501,8 +572,8 @@
             (position: (200.0, 260.0), heading: 1.2, kind: Sailboat),
             // Yachts and sailboats on the open sea below the cliffs, and a
             // sailboat off the cape.
-            (position: (985.0, -260.0), heading: 1.5, kind: Yacht),
-            (position: (990.0, -40.0), heading: 1.6, kind: Yacht),
+            (position: (1065.0, -260.0), heading: 1.5, kind: Yacht),
+            (position: (1050.0, -40.0), heading: 1.6, kind: Yacht),
             (position: (985.0, 180.0), heading: 1.4, kind: Yacht),
             (position: (1010.0, 330.0), heading: -0.6, kind: Sailboat),
             (position: (640.0, 800.0), heading: 0.3, kind: Sailboat),
@@ -517,7 +588,6 @@
             (along: 2900.0, side: Left, direction: Right),
             (along: 3680.0, side: Left, direction: Right),
         ],
-        grandstands: [(along: 70.0, side: Left, lateral: 16.5, length: 34.0)],
         beach_parasols: [
             (position: (30.0, -160.0), count: 5),
             (position: (30.0, -250.0), count: 4),
@@ -536,5 +606,153 @@
         // red, green and blue; the trees as flat sprites of pixel art facing the
         // camera (the engine's `Look::Voxel`).
         look: Voxel(size: 1.0, shades: Some(12)),
+        // The game's own themes (see src/world/themes.rs).
+        themes: {
+            "costa": (
+                // The props of Costa Bits, made with Meshy (see
+                // `docs/costa-bits-props.md`), in the order of the lap; facing the
+                // road unless turned.
+                props: [
+                    // The start straight: the town's houses on the left among the
+                    // engine's cottages; on the beach below the railing on the right,
+                    // a lifeguard's tower, the beach bar and a fishing boat drawn up
+                    // on the sand with its fire of skewered fish.
+                    (model: LifeguardTower, spot: Road(along: 248.0, lateral: -19.5)),
+                    (model: Chiringuito, spot: Road(along: 276.0, lateral: -21.0)),
+                    (model: EspetoBoat, spot: Road(along: 300.0, lateral: -19.0), turn: 0.4),
+                    (model: WhiteHouse, spot: Road(along: 232.0, lateral: 26.0)),
+                    // Over the line, the start arch: lattice towers hung with
+                    // pennants, a banner across it with the circuit's name.
+                    (model: StartArch, spot: Over(along: 0.0)),
+                    // At each checkpoint, an inflatable arch over the road.
+                    (model: CheckpointArch, spot: Over(along: 800.0)),
+                    (model: CheckpointArch, spot: Over(along: 1700.0)),
+                    (model: CheckpointArch, spot: Over(along: 2700.0)),
+                    (model: CheckpointArch, spot: Over(along: 3700.0)),
+                    // Beside the start straight on the left, a small grandstand,
+                    // people cheering on its steps.
+                    (model: Grandstand, spot: Road(along: 70.0, lateral: 20.5)),
+                    (model: WhiteHouse, spot: Road(along: 292.0, lateral: 25.0), turn: 0.2),
+                    // Billboards of the arcades' sunset, on the crest of the start
+                    // straight and on the coast highway, turned to the riders coming.
+                    (
+                        model: ArcadeBillboard,
+                        spot: Road(along: 150.0, lateral: 21.5),
+                        facing_riders: true,
+                    ),
+                    // Under the first, between its legs, the sports car on show: along
+                    // the billboard, tipped towards the riders coming so that its
+                    // bonnet, its seats and its boot are seen from the road.
+                    (
+                        model: RetroSportsCar,
+                        spot: Road(along: 148.5, lateral: 21.0),
+                        lean: 0.7,
+                        facing_riders: true,
+                    ),
+                    (
+                        model: ArcadeBillboard,
+                        spot: Road(along: 3390.0, lateral: -22.0),
+                        facing_riders: true,
+                    ),
+                    // Over the headland, a watchtower inland of the road.
+                    (model: Watchtower, spot: At(position: (700.0, -575.0), heading: 0.0)),
+                    // The hamlet's hermitage, over the headland, on a knoll in a
+                    // clearing of the forest, its front to the riders coming, turned
+                    // a little so that its side shows too.
+                    (
+                        model: Ermita,
+                        spot: Road(along: 1880.0, lateral: 30.0),
+                        facing_riders: true,
+                        // Turned a little off the riders, three-quarters on to them.
+                        turn: -0.55,
+                    ),
+                    // The gorge: houses on both rims, at their edges, their fronts
+                    // turned down the road to the riders coming up it, and the old bridge over the road.
+                    (model: WhiteHouse, spot: Road(along: 2125.0, lateral: 20.5), turn: -0.8),
+                    (model: WhiteHouse, spot: Road(along: 2150.0, lateral: 20.0), turn: -0.7),
+                    (model: WhiteHouse, spot: Road(along: 2250.0, lateral: 21.0), turn: -0.8),
+                    (model: WhiteHouse, spot: Road(along: 2135.0, lateral: -20.5), turn: 0.8),
+                    (model: WhiteHouse, spot: Road(along: 2245.0, lateral: -20.0), turn: 0.7),
+                    (model: WhiteHouse, spot: Road(along: 2275.0, lateral: -21.0), turn: 0.8),
+                    (model: GorgeBridge, spot: Over(along: 2215.0)),
+                    // Ibex on the rock over the road, side on to it: before the
+                    // gorge, on its rim, and on the way down round the cape.
+                    (model: Ibex, spot: Road(along: 2085.0, lateral: -20.0), turn: 1.57),
+                    (model: Ibex, spot: Road(along: 2135.0, lateral: -19.0), turn: -1.57),
+                    (model: Ibex, spot: Road(along: 2670.0, lateral: -20.0), turn: 1.57),
+                    // Out of the gorge, a viewpoint over the sea, looking out to it.
+                    (model: Mirador, spot: Road(along: 2400.0, lateral: 17.5), turn: 3.14),
+                    // A camper van parked by it.
+                    (model: CamperVan, spot: Road(along: 2378.0, lateral: 17.0)),
+                    // Boulders at the foot of the cut rock, up the mountain road and
+                    // down round the cape, between the wall and the rock (it rises
+                    // from 13 m out), into which the bigger ones reach.
+                    (model: BoulderA, spot: Road(along: 2065.0, lateral: -14.6)),
+                    (model: BoulderB, spot: Road(along: 2090.0, lateral: -13.6)),
+                    (model: BoulderC, spot: Road(along: 2370.0, lateral: -16.2), turn: 0.6),
+                    (model: BoulderA, spot: Road(along: 2440.0, lateral: -14.6), turn: 2.0),
+                    (model: BoulderB, spot: Road(along: 2630.0, lateral: -13.6)),
+                    (model: BoulderC, spot: Road(along: 2720.0, lateral: -16.2), turn: -0.8),
+                    // Prickly pears and agaves on the dry slopes of the mountain
+                    // and the cape.
+                    (model: PricklyPear, spot: Road(along: 2050.0, lateral: -13.6)),
+                    (model: Agave, spot: Road(along: 2350.0, lateral: -13.8)),
+                    (model: PricklyPear, spot: Road(along: 2455.0, lateral: -13.6), turn: 0.5),
+                    (model: Agave, spot: Road(along: 2590.0, lateral: -13.8)),
+                    // The ruins of a castle on a shelf cut low into the rock by the
+                    // road, below the mesa, its gate to the riders coming off the
+                    // summit.
+                    (
+                        model: CastleRuin,
+                        spot: Road(along: 2650.0, lateral: -33.0),
+                        facing_riders: true,
+                    ),
+                    // Another watchtower over the sea on the left, before the rock
+                    // reaches over the road.
+                    (model: Watchtower, spot: Road(along: 2688.0, lateral: 21.0)),
+                ],
+                // A sign before every bend of the cliffs and of the way down round
+                // the cape, on the left, its arrow bending as the road does.
+                bend_signs: [
+                    (span: Span(380.0, 930.0), side: Left, lateral: 12.8),
+                    (span: Span(2540.0, 3174.0), side: Left, lateral: 12.8),
+                ],
+                // A kilometre post every 500 m, on the right.
+                km_posts: Some((every: 500.0, side: Right, lateral: 12.6)),
+                // Down round the cape, the rock on the right reaches out over the
+                // narrow road and past its far wall, a great mass of it, as over a road
+                // cut into a cliff,
+                // all the way off the mountain.
+                overhangs: [
+                    (span: Span(2735.0, 3135.0), side: Right, reach: 25.0, clearance: 7.0),
+                ],
+                // A plane towing its blank banner round over the bay, seen ahead
+                // from the start straight and over the water from the cliffs and
+                // the east shore.
+                planes: [(center: (150.0, -240.0), radius: 85.0, height: 40.0, speed: 28.0)],
+                // People cheering by the road, a few metres apart, not crowded: a
+                // row of them behind the wall on the town's side by the line; on
+                // the sand below the fence along the beach; and in small groups
+                // here and there round the lap.
+                // Over the tunnel's mouth (it begins at 985 m), on the rock face
+                // over it, just clear of it, a screen
+                // of an arcade's vertical shoot-'em-up, glowing, playing to the
+                // riders coming up to it.
+                screens: [(along: 985.0, lift: 8.0, width: 40.0, height: 27.0)],
+                crowds: [
+                    (span: Span(4300.0, 4388.0), side: Left, lateral: 13.6, spacing: 3.5),
+                    (span: Span(255.0, 335.0), side: Right, lateral: 13.2, spacing: 6.0),
+                    (span: Span(790.0, 804.0), side: Right, lateral: 13.5),
+                    (span: Span(1260.0, 1275.0), side: Right, lateral: 13.5),
+                    (span: Span(1690.0, 1708.0), side: Left, lateral: 13.5),
+                    (span: Span(1990.0, 2004.0), side: Right, lateral: 13.5),
+                    (span: Span(2460.0, 2474.0), side: Right, lateral: 13.5),
+                    (span: Span(3195.0, 3210.0), side: Right, lateral: 13.5),
+                    (span: Span(3290.0, 3304.0), side: Right, lateral: 13.5),
+                    (span: Span(3700.0, 3716.0), side: Right, lateral: 13.5),
+                    (span: Span(3890.0, 3905.0), side: Left, lateral: 13.5),
+                ],
+            ),
+        },
     ),
 )
