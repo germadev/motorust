@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Motorust · Carreras de motos arcade</title>
-  <meta name="description" content="Carreras de motos arcade hechas en Rust con Bevy: nueve circuitos, ocho motos, pantalla dividida y música propia. Juega en el navegador o descárgalo para Windows, Linux y macOS.">
+  <meta name="description" content="Carreras de motos arcade hechas en Rust con Bevy: diez circuitos, ocho motos, pantalla dividida y música propia. Juega en el navegador o descárgalo para Windows, Linux y macOS.">
   <meta property="og:title" content="Motorust · Carreras de motos arcade">
-  <meta property="og:description" content="Nueve circuitos, ocho motos y pantalla dividida. Juega en el navegador o descárgalo gratis.">
+  <meta property="og:description" content="Diez circuitos, ocho motos y pantalla dividida. Juega en el navegador o descárgalo gratis.">
   <meta property="og:image" content="images/track-costa-bits.jpg">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="icon" href="favicon.ico" sizes="any">
@@ -254,6 +254,24 @@
       background: var(--magenta);
       color: #fff;
     }
+    .badge.wip { background: #ffb020; color: #1a1206; }
+    .shot.neon {
+      cursor: default;
+      background:
+        radial-gradient(ellipse at 30% 110%, rgba(255, 46, 196, 0.55), transparent 60%),
+        radial-gradient(ellipse at 80% 0%, rgba(0, 220, 255, 0.45), transparent 55%),
+        linear-gradient(160deg, #120a2e, #05030f);
+      display: grid;
+      place-items: center;
+    }
+    .shot.neon .neon-title {
+      font: italic 800 clamp(26px, 4vw, 38px)/1 var(--font-display);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 0 0 8px #ff2ec4, 0 0 22px #ff2ec4, 0 0 40px #00dcff;
+    }
+    .wip-note { margin-top: 8px !important; font-size: 14px !important; color: #ffb020 !important; font-weight: 600; }
     .track-text { padding: 16px 20px 22px; }
     .track h3 { margin: 0 0 6px; font-family: var(--font-display); font-weight: 700; font-size: 22px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
     .length { font-family: var(--font-body); font-size: 14px; font-weight: 600; color: var(--muted); }
@@ -362,7 +380,7 @@
         <div class="hero-inner">
           <div class="version" id="game-version">v0.0.1</div>
           <h1 class="main-title">MOTO<span>RUST</span></h1>
-          <p class="tagline">Carreras de motos arcade: nueve circuitos, siete rivales y el gas a fondo. Gratis, en el navegador o en tu ordenador.</p>
+          <p class="tagline">Carreras de motos arcade: diez circuitos, siete rivales y el gas a fondo. Gratis, en el navegador o en tu ordenador.</p>
           <div class="play">
             <div class="play-row">
               <button id="start-btn" type="button">JUGAR</button>
@@ -378,7 +396,7 @@
     <main class="after-hero">
       <div class="wrap">
         <div class="numbers">
-          <div><strong>9</strong><span>circuitos</span></div>
+          <div><strong>10</strong><span>circuitos</span></div>
           <div><strong>8</strong><span>motos y pilotos</span></div>
           <div><strong>5</strong><span>modos de juego</span></div>
           <div><strong>2</strong><span>jugadores en pantalla dividida</span></div>
@@ -388,8 +406,8 @@
       <section class="block" id="circuitos">
         <div class="wrap">
           <p class="eyebrow">Circuitos</p>
-          <h2>Nueve carreteras, nueve mundos</h2>
-          <p class="lead">Cuestas, cambios de rasante donde la moto vuela, curvas peraltadas, túneles, puentes y bifurcaciones. De la costa al espacio, pasando por una juguetería.</p>
+          <h2>Diez carreteras, diez mundos</h2>
+          <p class="lead">Cuestas, cambios de rasante donde la moto vuela, curvas peraltadas, túneles, puentes y bifurcaciones. De la costa al espacio, pasando por una juguetería y una ciudad de neón.</p>
           <ul class="tracks">
           <li class="track">
             <button class="shot" type="button" data-full="images/track-costa-bits.jpg" aria-label="Ver Costa Bits en grande">
@@ -474,11 +492,23 @@
           <li class="track">
             <button class="shot" type="button" data-full="images/track-toy-store.jpg" aria-label="Ver Juguetería en grande">
               <img src="images/track-toy-store.jpg" alt="Captura del circuito Juguetería" loading="lazy" width="1280" height="720">
-              
+              <span class="badge wip">En desarrollo · WIP</span>
             </button>
             <div class="track-text">
               <h3>Juguetería <span class="length">3,20 km</span></h3>
               <p>Del tamaño de un juguete: pistas de coches sobre una silla y las mesas, un castillo, un rizo, una espiral y un tobogán.</p>
+              <p class="wip-note">En desarrollo: se puede jugar, pero aún está cambiando.</p>
+            </div>
+          </li>
+          <li class="track">
+            <div class="shot neon" role="img" aria-label="Puerto Neón, circuito en desarrollo">
+              <span class="neon-title">Puerto Neón</span>
+              <span class="badge wip">En desarrollo · WIP</span>
+            </div>
+            <div class="track-text">
+              <h3>Puerto Neón <span class="length">8,06 km</span></h3>
+              <p>Antigravedad de noche, en motos que flotan: el muelle, una ciudad de torres, una autopista elevada, un tubo de cristal y un tramo sobre el mar.</p>
+              <p class="wip-note">En desarrollo: se puede jugar, pero aún está cambiando.</p>
             </div>
           </li>
           </ul>
@@ -513,7 +543,7 @@
             </article>
           </div>
           <ul class="modes" aria-label="Modos de juego">
-            <li>Arcade: los nueve circuitos seguidos</li>
+            <li>Arcade: los diez circuitos seguidos</li>
             <li>Carrera de 1 a 9 vueltas</li>
             <li>Eliminación</li>
             <li>Contrarreloj por puntos de control</li>
@@ -563,7 +593,6 @@
       <footer>
         <div class="wrap">
           <span>Motorust · hecho en Rust con <a href="https://bevy.org">Bevy</a>.</span>
-          <a href="https://github.com/germadev/motorust">Código en GitHub</a>
         </div>
       </footer>
     </main>
@@ -662,7 +691,6 @@
 
     // Desktop downloads setup
     const versionText = document.getElementById("game-version")?.textContent?.trim().replace(/^v/, "") || GAME_VERSION;
-    const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
     const downloads = {
       "dl-win": `motorust-${versionText}-x86_64-pc-windows-msvc.zip`,
       "dl-linux": `motorust-${versionText}-x86_64-unknown-linux-gnu.tar.gz`,
@@ -673,9 +701,7 @@
     for (const [id, file] of Object.entries(downloads)) {
       const a = document.getElementById(id);
       if (a) {
-        a.href = isLocal
-          ? `https://github.com/germadev/motorust/releases/download/v${versionText}/${file}`
-          : `./downloads/${file}`;
+        a.href = `./downloads/${file}`;
         a.setAttribute("download", file);
       }
     }
