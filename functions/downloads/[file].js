@@ -37,12 +37,7 @@ export async function onRequest(context) {
     }
   }
 
-  // 2. Fallback: Redirigir al asset correspondiente en GitHub Releases
-  const tagMatch = file.match(/motorust-(\d+\.\d+\.\d+)-/);
-  const tag = tagMatch ? `v${tagMatch[1]}` : "latest";
-  const ghUrl = tag === "latest"
-    ? `https://github.com/germadev/motorust/releases/latest/download/${file}`
-    : `https://github.com/germadev/motorust/releases/download/${tag}/${file}`;
-
-  return Response.redirect(ghUrl, 302);
+  // 2. The file is not in the bucket: the downloads are served from the site
+  // only.
+  return new Response("Not found", { status: 404 });
 }

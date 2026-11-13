@@ -173,10 +173,10 @@ Started by hand from **Actions → Release → Run workflow**. Releases run one 
 
 ## Running a downloaded build
 
-Download an archive from the [releases page](https://github.com/germadev/motorust/releases) (or from a workflow run's artifacts) and extract it. To check it against the published sums:
+Download an archive from the website's downloads (`https://motorust.germade.dev/downloads/…`, or from a workflow run's artifacts) and extract it. To check it against the published sums:
 
 ```sh
-sha256sum -c SHA256SUMS.txt --ignore-missing
+sha256sum -c motorust-<version>-SHA256SUMS.txt --ignore-missing
 ```
 
 - **macOS:** the executables are not signed. The first time, open the game with right-click → Open, or remove the quarantine flag with `xattr -d com.apple.quarantine motorust` (or on `Motorust.app`). Double-clicking `Motorust.app` opens the game directly without launching Terminal. macOS knows it for a racing game and turns its Game Mode on in fullscreen. On macOS the game also asks, while it runs, not to be napped, for its timers on time and for neither the display nor the Mac to sleep (what `caffeinate` does).
@@ -192,7 +192,7 @@ curl -fsSL https://motorust.germade.dev/setup.sh | bash
 wget -qO- https://motorust.germade.dev/setup.sh | bash
 ```
 
-It downloads `motorust-<version>-<target>.tar.gz` from `/downloads/` (the Pages function serves it from the R2 bucket, and falls back to the GitHub release), checks it against the sums published beside it (`motorust-<version>-SHA256SUMS.txt`, or the GitHub release's `SHA256SUMS.txt` for older releases), leaves the executable in `~/motorust/motorust` and links it into a directory of `$PATH` (`~/.local/bin` when it is there, otherwise the first writable one) so the game runs with `motorust`. Run it again and it offers to update or uninstall. It also takes `--install`, `--update`, `--uninstall`, `--dir` and `--version`.
+It downloads `motorust-<version>-<target>.tar.gz` from `/downloads/` (the Pages function serves it from the R2 bucket, and answers 404 for a file that is not there), checks it against the sums published beside it (`motorust-<version>-SHA256SUMS.txt`, when the site has them), leaves the executable in `~/motorust/motorust` and links it into a directory of `$PATH` (`~/.local/bin` when it is there, otherwise the first writable one) so the game runs with `motorust`. Run it again and it offers to update or uninstall. It also takes `--install`, `--update`, `--uninstall`, `--dir` and `--version`.
 
 `web/build.sh` writes the version of the build into the script (the `__MOTORUST_VERSION__` placeholder), so the installer always downloads the release the site is publishing, and copies it to `dist/web/setup.sh`.
 

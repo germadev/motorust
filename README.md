@@ -141,9 +141,9 @@ make install   # system dependencies (Linux) and crates
 make up        # run the game
 ```
 
-CI builds Linux, Windows and macOS binaries on every run (as artifacts) and
-attaches them to each [release](https://github.com/germadev/motorust/releases).
-The browser version is deployed to Cloudflare Pages (<https://motorust.germade.dev>).
+CI builds Linux, Windows and macOS binaries on every run (as artifacts) and,
+on a release, publishes them on the website's downloads, where the game updates
+from. The browser version is deployed to Cloudflare Pages (<https://motorust.germade.dev>).
 
 ## Controls
 
