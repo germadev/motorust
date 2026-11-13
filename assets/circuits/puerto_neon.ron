@@ -1,8 +1,8 @@
 (
     name: "Puerto Neón",
     name_en: "Neon Harbor",
-    description: "Antigravedad de noche: el muelle, la ciudad de torres,\nla autopista elevada y un tramo sobre el mar",
-    description_en: "Anti-gravity by night: the quay, the city of towers,\nthe high skyway and a run over the sea",
+    description: "En desarrollo (WIP) · Antigravedad de noche: el muelle, la ciudad de torres,\nla autopista elevada y un tramo sobre el mar",
+    description_en: "Work in progress (WIP) · Anti-gravity by night: the quay, the city of towers,\nthe high skyway and a run over the sea",
     ambience: (sea: 0.5, gulls: 0.0, birds: 0.0, cicadas: 0.0, wind: 0.6),
     song: (file: "apex_velocity.mp3", length: 178.1, loudness: -17.5, title: Some("Apex Velocity")),
     // Its bikes go some 1.8 times as fast as those on wheels.

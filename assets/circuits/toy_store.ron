@@ -98,8 +98,8 @@
 (
     name: "Juguetería",
     name_en: "Toy Store",
-    description: "Una juguetería: Scalextric sobre una silla y las mesas,\nun castillo, un rizo, una espiral y un tobogán",
-    description_en: "A toy store: slot cars over a chair and the tables,\na castle, a loop, a spiral and a slide",
+    description: "En desarrollo (WIP) · Una juguetería: Scalextric sobre una silla y las mesas,\nun castillo, un rizo, una espiral y un tobogán",
+    description_en: "Work in progress (WIP) · A toy store: slot cars over a chair and the tables,\na castle, a loop, a spiral and a slide",
     // Indoors: no sea, no birds, no wind.
     ambience: (sea: 0.0, gulls: 0.0, birds: 0.0, cicadas: 0.0, wind: 0.0),
     song: (file: "plastic_velocity_rush.mp3", length: 176.3, loudness: -14.4),

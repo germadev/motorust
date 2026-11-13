@@ -11,9 +11,11 @@ Motorust has ten tracks, picked on the track select screen (see [gameplay.md](ga
 | [Ghost Island](#ghost-island) | 5.97 km | "Inspirada en Ghost of Tsushima: un castillo cruzado por debajo y por encima, cuestas, un lago entre flores y dos bifurcaciones" (inspired by *Ghost of Tsushima*: a castle crossed under and over, steep hills, a lake among flowers and two splits) |
 | [Base Lunar](#base-lunar) ("Moon Base") | 4.6 km | "Centro espacial y observatorio en la Tierra con portal a la Luna: lanzadera, antenas gigantes, cúpulas de telescopio y base lunar" (Earth space center and observatory with portal to the Moon: launchpad, giant radio dishes, telescope domes and lunar base) |
 | [Fellowship Road](#fellowship-road) | 5.75 km | "Inspirada en La Comunidad del Anillo: de la Comarca a los Argonath, un ocho sobre y bajo las montañas, cuestas y dos bifurcaciones" (inspired by *The Fellowship of the Ring*: from the Shire to the Argonath, a figure of eight over and under the mountains, steep hills and two splits) |
-| [Juguetería](#juguetería) ("Toy Store") | 3.20 km | "Una juguetería: Scalextric sobre una silla y las mesas, un castillo, un rizo, una espiral y un tobogán" (a toy store: slot cars over a chair and the tables, a castle, a loop, a spiral and a slide) |
+| [Juguetería](#juguetería) ("Toy Store"), *WIP* | 3.20 km | "En desarrollo (WIP) · Una juguetería: Scalextric sobre una silla y las mesas, un castillo, un rizo, una espiral y un tobogán" (a toy store: slot cars over a chair and the tables, a castle, a loop, a spiral and a slide) |
 | [Costa Bits](#costa-bits) | 4.39 km | "Al atardecer: acantilados, un túnel, una carretera de montaña, una autopista de la costa y una bifurcación" (at sunset: cliffs, a tunnel, a mountain road, a coast highway and a fork) |
-| [Puerto Neón](#puerto-neón) ("Neon Harbor") | 8.06 km | "Antigravedad de noche: el muelle, la ciudad de torres, la autopista elevada y un tramo sobre el mar" (anti-gravity by night: the quay, the city of towers, the high skyway and a run over the sea) |
+| [Puerto Neón](#puerto-neón) ("Neon Harbor"), *WIP* | 8.06 km | "En desarrollo (WIP) · Antigravedad de noche: el muelle, la ciudad de torres, la autopista elevada y un tramo sobre el mar" (anti-gravity by night: the quay, the city of towers, the high skyway and a run over the sea) |
+
+Juguetería and Puerto Neón are still in development (WIP): playable, but changing. The game says so at the head of their descriptions on the track select screen, and the website marks them with a badge.
 
 Distances below are in metres from the finish line, as in the track data.
 
