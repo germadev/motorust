@@ -3603,7 +3603,7 @@ dependencies = [
 
 [[package]]
 name = "motorust"
-version = "0.0.21"
+version = "0.0.22"
 dependencies = [
  "bevy",
  "motorust-engine",
