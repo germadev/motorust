@@ -1,0 +1,32 @@
+# motorust 0.0.23 (3e662272d-dirty) benchmark on Mac-mini-de-Jesus.local
+# system: macOS 27.2.1; CPU Apple M4 (10 cores); memory 16.0 GiB
+# GPU: Apple M4 (Metal, )
+# window: 4096 x 2304 pixels at 2x; resolution Window(1920, 1080), fullscreen Desktop
+# trees new; pipelined rendering true; frames queued 2; frame rate unlimited
+# 2 laps, all round each track with 1 player and with 2, the settings taking turns of 2 s, each measured 10 s at least; about 7 min
+track            scenario                    fps     1% low   p50 ms   p95 ms   sim ms  cpu %
+Costa Bits       1p                        157.2       73.6     6.07    11.04     0.54     15
+Costa Bits       1p-shadows-medium         170.2       73.4     5.84    10.81     0.53     16
+Costa Bits       1p-shadows-low            185.3       76.3     5.37    11.25     0.53     16
+Costa Bits       1p-no-ground-shadows      176.9       77.8     5.45    11.37     0.53     17
+Costa Bits       1p-fxaa                   160.9       74.0     6.00    11.27     0.53     16
+Costa Bits       1p-no-antialiasing        165.5       73.2     5.81    11.57     0.53     16
+Costa Bits       1p-msaa-2x                160.6       74.5     5.84    11.57     0.55     16
+Costa Bits       1p-smaa                   188.0      105.9     5.31     6.47     0.56     19
+Costa Bits       1p-lighter-far-trees      152.4       76.3     6.33    11.00     0.54     15
+Costa Bits       1p-render-70              162.1       70.7     6.02    10.67     0.55     16
+Costa Bits       1p-render-50              168.6       75.4     5.68    11.28     0.55     16
+Costa Bits       1p-relief-off             156.6       71.9     6.36    10.96     0.54     15
+Costa Bits       1p-relief-at-speed        150.4       77.4     6.53    12.15     0.56     15
+Costa Bits       1p-parallax               153.1       77.6     6.44    11.46     0.55     15
+Costa Bits       1p-road-relief            153.1       76.9     6.35    11.41     0.54     15
+Costa Bits       1p-grass-plain            154.6       74.7     6.38    11.38     0.54     15
+Costa Bits       1p-grass-stochastic       158.2       76.7     6.24    11.23     0.55     16
+# Costa Bits with 1 player: slowest around 2.5 km (-13 %), fastest around 0.5 km (+13 %)
+Costa Bits       2p                        121.2       79.9     8.24     9.17     0.60     16
+Costa Bits       2p-full-detail             83.1       62.0    11.98    14.26     0.64     13
+Costa Bits       2p-render-70              136.9       88.8     7.23     8.94     0.60     18
+Costa Bits       2p-relief-off             120.4       84.6     8.29     9.27     0.59     16
+Costa Bits       2p-no-ground-shadows      135.0       82.6     7.27     8.55     0.59     17
+# Costa Bits with 2 players: slowest around 1.4 km (-16 %), fastest around 3.6 km (+18 %)
+# finished

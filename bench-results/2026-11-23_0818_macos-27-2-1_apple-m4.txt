@@ -1,0 +1,248 @@
+# motorust 0.0.23 (73ce4acd1-dirty) benchmark on Mac-mini-de-Jesus.local
+# system: macOS 27.2.1; CPU Apple M4 (10 cores); memory 16.0 GiB
+# GPU: Apple M4 (Metal, )
+# window: 4096 x 2304 pixels at 2x; resolution Window(1920, 1080), fullscreen Desktop
+# trees new; pipelined rendering true; frames queued 2; frame rate unlimited
+# 20 laps, all round each track with 1 player and with 2, the settings taking turns of 2 s, each measured 10 s at least; about 62 min
+track            scenario                    fps     1% low   p50 ms   p95 ms   sim ms  cpu %
+Bahía GP         1p                        158.0       57.9     6.13    10.83     0.48     15
+Bahía GP         1p-shadows-medium         171.2       75.9     5.71    11.32     0.45     15
+Bahía GP         1p-shadows-low            195.1       72.5     5.11     6.96     0.43     16
+Bahía GP         1p-no-ground-shadows      166.5       75.9     5.86    11.25     0.48     16
+Bahía GP         1p-fxaa                   167.4       78.7     5.98    10.76     0.43     15
+Bahía GP         1p-no-antialiasing        172.7       75.8     5.38    11.33     0.45     16
+Bahía GP         1p-msaa-2x                167.7       83.9     5.69    10.84     0.45     15
+Bahía GP         1p-smaa                   186.3      112.1     5.40     6.33     0.47     18
+Bahía GP         1p-lighter-far-trees      169.2       76.4     5.46    11.03     0.47     16
+Bahía GP         1p-render-70              172.5       80.1     5.51    11.03     0.46     16
+Bahía GP         1p-render-50              188.0       77.1     5.09    11.10     0.45     17
+Bahía GP         1p-relief-off             163.6       87.1     5.76    10.75     0.46     15
+Bahía GP         1p-relief-at-speed        160.6       83.9     6.11    10.58     0.46     15
+Bahía GP         1p-parallax               157.7       86.4     6.47    10.36     0.46     15
+Bahía GP         1p-road-relief            161.0       85.2     6.24    10.20     0.45     15
+Bahía GP         1p-grass-plain            159.8       82.5     6.15    10.47     0.45     15
+Bahía GP         1p-grass-stochastic       160.1       87.3     6.30    10.36     0.45     15
+# Bahía GP with 1 player: slowest around 0.0 km (-11 %), fastest around 1.0 km (+17 %)
+Bahía GP         2p                        123.7       82.4     8.17     8.81     0.53     15
+Bahía GP         2p-full-detail             83.7       68.6    12.17    13.16     0.51     12
+Bahía GP         2p-render-70              136.2       82.2     7.29     8.21     0.52     17
+Bahía GP         2p-relief-off             129.0       84.3     7.73     8.77     0.52     16
+Bahía GP         2p-no-ground-shadows      135.6       87.8     7.22     8.47     0.52     17
+# Bahía GP with 2 players: slowest around 0.0 km (-9 %), fastest around 1.0 km (+14 %)
+Turbo Bay        1p                        143.2       96.4     7.43     9.15     0.43     13
+Turbo Bay        1p-shadows-medium         136.9       23.4     7.25     9.92     0.42     12
+Turbo Bay        1p-shadows-low            157.5       82.6     6.53    10.60     0.42     13
+Turbo Bay        1p-no-ground-shadows      153.7       85.9     6.55    10.47     0.45     14
+Turbo Bay        1p-fxaa                   138.9       91.8     7.45     9.70     0.42     13
+Turbo Bay        1p-no-antialiasing        148.2       87.9     6.93     9.54     0.42     14
+Turbo Bay        1p-msaa-2x                145.7       93.3     7.20     9.11     0.43     14
+Turbo Bay        1p-smaa                   140.2      113.2     7.13     8.02     0.42     14
+Turbo Bay        1p-lighter-far-trees      143.2       96.0     7.39     9.55     0.44     14
+Turbo Bay        1p-render-70              149.4       94.8     6.92     9.00     0.43     14
+Turbo Bay        1p-render-50              152.7       86.4     6.61    10.13     0.42     14
+Turbo Bay        1p-relief-off             141.0       95.4     7.47     9.16     0.42     13
+Turbo Bay        1p-relief-at-speed        133.3       98.2     8.02     9.57     0.43     13
+Turbo Bay        1p-parallax               127.5       97.7     8.60     9.66     0.43     12
+Turbo Bay        1p-road-relief            135.2       99.2     8.05     9.32     0.43     13
+Turbo Bay        1p-grass-plain            136.0       98.0     7.91     9.31     0.43     13
+Turbo Bay        1p-grass-stochastic       136.7       98.1     7.68     9.40     0.42     13
+# Turbo Bay with 1 player: slowest around 1.7 km (-24 %), fastest around 3.5 km (+15 %)
+Turbo Bay        2p                         96.2       63.1    10.39    11.70     0.46     12
+Turbo Bay        2p-full-detail             66.7       52.3    14.98    17.04     0.63     10
+Turbo Bay        2p-render-70              111.0       72.4     8.91    10.30     0.45     13
+Turbo Bay        2p-relief-off              99.9       78.6    10.15    11.04     0.46     12
+Turbo Bay        2p-no-ground-shadows      115.7       84.3     8.60    10.31     0.48     14
+# Turbo Bay with 2 players: slowest around 1.7 km (-14 %), fastest around 3.7 km (+13 %)
+Loop Island      1p                        156.2       88.2     6.56    10.26     0.48     15
+Loop Island      1p-shadows-medium         174.6       85.2     5.66    10.91     0.48     16
+Loop Island      1p-shadows-low            199.2       82.0     5.31     6.52     0.45     16
+Loop Island      1p-no-ground-shadows      171.9       79.9     5.71    10.87     0.48     16
+Loop Island      1p-fxaa                   157.3       79.6     6.48    10.36     0.45     15
+Loop Island      1p-no-antialiasing        162.0       80.2     6.16    11.01     0.46     15
+Loop Island      1p-msaa-2x                156.9       87.2     6.46    10.35     0.46     15
+Loop Island      1p-smaa                   174.1       89.3     5.80     6.63     0.50     17
+Loop Island      1p-lighter-far-trees      160.2       82.6     6.19    11.20     0.50     16
+Loop Island      1p-render-70              165.9       79.5     5.78    11.12     0.48     16
+Loop Island      1p-render-50              177.9       71.9     5.45    10.69     0.48     17
+Loop Island      1p-relief-off             157.3       76.6     6.14    10.98     0.48     15
+Loop Island      1p-relief-at-speed        158.7       84.0     6.00    10.95     0.48     15
+Loop Island      1p-parallax               156.8       85.2     6.16    10.53     0.48     15
+Loop Island      1p-road-relief            163.6       85.8     6.07    10.77     0.49     15
+Loop Island      1p-grass-plain            167.7       85.6     5.90    10.72     0.49     16
+Loop Island      1p-grass-stochastic       159.7       82.2     6.15    10.71     0.49     15
+# Loop Island with 1 player: slowest around 1.3 km (-12 %), fastest around 1.0 km (+14 %)
+Loop Island      2p                        118.2       83.0     8.51     9.57     0.52     15
+Loop Island      2p-full-detail             81.7       63.9    13.00    14.11     0.55     12
+Loop Island      2p-render-70              140.0       82.1     7.29     8.41     0.52     17
+Loop Island      2p-relief-off             127.5       83.4     7.68     9.02     0.52     16
+Loop Island      2p-no-ground-shadows      134.9       87.2     7.52     8.54     0.54     17
+# Loop Island with 2 players: slowest around 0.4 km (-11 %), fastest around 1.7 km (+22 %)
+Mina Dorada      1p                        119.8       90.8     8.77    10.17     0.46     11
+Mina Dorada      1p-shadows-medium         136.3       91.9     7.80     9.96     0.45     11
+Mina Dorada      1p-shadows-low            153.7       87.2     6.58    10.30     0.45     12
+Mina Dorada      1p-no-ground-shadows      154.5       85.1     6.22    10.90     0.48     14
+Mina Dorada      1p-fxaa                   116.9       94.3     8.77    10.17     0.48     11
+Mina Dorada      1p-no-antialiasing        120.2       91.2     8.72    10.28     0.46     11
+Mina Dorada      1p-msaa-2x                114.1       89.4     9.05    10.18     0.45     10
+Mina Dorada      1p-smaa                   120.1       84.7     8.08     9.94     0.44     11
+Mina Dorada      1p-lighter-far-trees      112.0       87.0     9.04    10.48     0.45     10
+Mina Dorada      1p-render-70              123.0       94.2     8.65    10.00     0.45     11
+Mina Dorada      1p-render-50              130.0       98.1     8.36     9.19     0.45     12
+Mina Dorada      1p-relief-off             119.5       89.4     8.78    10.17     0.45     11
+Mina Dorada      1p-relief-at-speed        119.0       88.3     8.78    10.24     0.45     11
+Mina Dorada      1p-parallax               116.8       88.7     8.66    10.71     0.44     10
+Mina Dorada      1p-road-relief            117.9       91.5     8.77    10.18     0.44     10
+Mina Dorada      1p-grass-plain            125.7       86.8     8.56     9.79     0.45     11
+Mina Dorada      1p-grass-stochastic       124.8       91.9     8.51    10.06     0.45     11
+# Mina Dorada with 1 player: slowest around 1.7 km (-20 %), fastest around 0.8 km (+23 %)
+Mina Dorada      2p                         84.2       63.7    11.87    13.23     0.52     10
+Mina Dorada      2p-full-detail             61.6       47.4    16.10    18.61     0.72      9
+Mina Dorada      2p-render-70               94.4       68.0    10.69    11.94     0.50     11
+Mina Dorada      2p-relief-off              89.1       69.3    10.97    12.91     0.51     11
+Mina Dorada      2p-no-ground-shadows      110.6       80.3     8.90    10.64     0.50     13
+# Mina Dorada with 2 players: slowest around 1.7 km (-14 %), fastest around 0.7 km (+13 %)
+Ghost Island     1p                        114.7       91.1     9.03    10.45     0.49     12
+Ghost Island     1p-shadows-medium         131.0       92.1     8.41     9.33     0.45     13
+Ghost Island     1p-shadows-low            148.1       84.3     7.05    10.32     0.45     13
+Ghost Island     1p-no-ground-shadows      148.2       94.6     7.12     9.87     0.48     15
+Ghost Island     1p-fxaa                   123.2       91.6     8.15     9.27     0.47     13
+Ghost Island     1p-no-antialiasing        125.5       92.2     8.40     9.52     0.47     13
+Ghost Island     1p-msaa-2x                123.4       87.7     8.61     9.61     0.48     13
+Ghost Island     1p-smaa                   126.1       85.5     7.93     8.77     0.46     13
+Ghost Island     1p-lighter-far-trees      131.1      102.6     8.36     9.22     0.47     14
+Ghost Island     1p-render-70              132.3       89.7     8.05     9.38     0.49     14
+Ghost Island     1p-render-50              135.0      100.1     7.71     9.27     0.48     14
+Ghost Island     1p-relief-off             115.2       91.0     8.97    10.27     0.47     12
+Ghost Island     1p-relief-at-speed        120.1       92.7     8.64    10.18     0.48     13
+Ghost Island     1p-parallax               115.1       81.4     8.95    10.48     0.47     12
+Ghost Island     1p-road-relief            116.6       90.1     8.76    10.31     0.48     12
+Ghost Island     1p-grass-plain            117.8       89.6     8.83    10.43     0.50     12
+Ghost Island     1p-grass-stochastic       114.8       90.4     8.93    10.35     0.49     12
+# Ghost Island with 1 player: slowest around 3.8 km (-12 %), fastest around 2.7 km (+19 %)
+Ghost Island     2p                         81.8       58.8    12.33    13.69     0.57     11
+Ghost Island     2p-full-detail             55.9       48.0    17.95    19.89     0.69      9
+Ghost Island     2p-render-70               95.3       61.6    10.67    11.96     0.51     12
+Ghost Island     2p-relief-off              86.9       63.0    11.61    13.23     0.53     12
+Ghost Island     2p-no-ground-shadows      105.7       80.5     9.35    10.81     0.50     14
+# Ghost Island with 2 players: slowest around 4.3 km (-11 %), fastest around 2.8 km (+17 %)
+Base Lunar       1p                        121.9       74.3     8.12    11.42     0.46     13
+Base Lunar       1p-shadows-medium         142.0       83.5     6.94    11.00     0.45     14
+Base Lunar       1p-shadows-low            165.4       81.3     6.21    10.13     0.47     15
+Base Lunar       1p-no-ground-shadows      152.0       79.1     6.43     9.26     0.51     16
+Base Lunar       1p-fxaa                   133.1       86.5     7.53     9.62     0.45     13
+Base Lunar       1p-no-antialiasing        129.6       79.8     7.96    11.16     0.46     14
+Base Lunar       1p-msaa-2x                121.1       70.5     8.36    11.54     0.46     13
+Base Lunar       1p-smaa                   130.4       75.6     7.00    11.69     0.50     15
+Base Lunar       1p-lighter-far-trees      130.3       76.2     7.72    11.25     0.48     14
+Base Lunar       1p-render-70              144.2       80.9     6.53    11.48     0.47     14
+Base Lunar       1p-render-50              149.4       82.0     6.53    11.49     0.47     14
+Base Lunar       1p-relief-off             137.6       86.3     7.45    10.18     0.46     13
+Base Lunar       1p-relief-at-speed        121.2       82.5     8.48    11.41     0.48     13
+Base Lunar       1p-parallax               113.1       78.7     9.35    11.60     0.48     13
+Base Lunar       1p-road-relief            114.1       76.4     9.29    11.92     0.46     12
+Base Lunar       1p-grass-plain            122.9       73.0     8.60    11.20     0.46     13
+Base Lunar       1p-grass-stochastic       134.0       81.6     7.56    10.64     0.46     13
+# Base Lunar with 1 player: slowest around 0.8 km (-34 %), fastest around 1.9 km (+33 %)
+Base Lunar       2p                         89.9       57.6    11.28    13.55     0.53     12
+Base Lunar       2p-full-detail             59.0       37.4    16.98    26.01     0.69     10
+Base Lunar       2p-render-70              107.4       61.0     8.75    15.07     0.52     14
+Base Lunar       2p-relief-off              93.9       56.1     9.24    16.20     0.51     13
+Base Lunar       2p-no-ground-shadows      106.4       71.6     9.63    11.37     0.52     15
+# Base Lunar with 2 players: slowest around 0.7 km (-38 %), fastest around 1.2 km (+38 %)
+Fellowship Road  1p                         93.9       17.3    10.55    12.50     0.49     10
+Fellowship Road  1p-shadows-medium         110.0       86.4     9.10    11.00     0.47     11
+Fellowship Road  1p-shadows-low            128.2       92.3     8.31     9.97     0.45     12
+Fellowship Road  1p-no-ground-shadows      137.5       94.7     7.38     9.73     0.47     14
+Fellowship Road  1p-fxaa                    99.7       84.9     9.93    11.06     0.50     11
+Fellowship Road  1p-no-antialiasing        107.0       86.4     9.25    10.82     0.49     11
+Fellowship Road  1p-msaa-2x                104.4       48.4     9.24    11.69     0.48     11
+Fellowship Road  1p-smaa                   107.0       76.9     9.23    10.83     0.48     12
+Fellowship Road  1p-lighter-far-trees      103.4       83.3     9.81    11.08     0.50     11
+Fellowship Road  1p-render-70              105.7       82.9     9.55    11.24     0.49     11
+Fellowship Road  1p-render-50              114.1       76.5     8.92    10.63     0.50     12
+Fellowship Road  1p-relief-off             100.4       76.7    10.13    12.53     0.49     11
+Fellowship Road  1p-relief-at-speed         94.8       71.2    10.30    13.36     0.51     10
+Fellowship Road  1p-parallax                91.6       70.7    10.83    12.88     0.52     10
+Fellowship Road  1p-road-relief             95.5       73.0    10.63    12.83     0.53     10
+Fellowship Road  1p-grass-plain             93.1       71.8    10.83    13.28     0.51     10
+Fellowship Road  1p-grass-stochastic        92.6       73.5    10.99    12.64     0.49     10
+# Fellowship Road with 1 player: slowest around 2.5 km (-16 %), fastest around 3.4 km (+31 %)
+Fellowship Road  2p                         68.2       53.9    14.67    16.91     0.71     10
+Fellowship Road  2p-full-detail             49.5       38.9    20.89    24.14     0.76      8
+Fellowship Road  2p-render-70               81.0       60.4    12.28    13.87     0.61     11
+Fellowship Road  2p-relief-off              71.8       54.9    13.78    16.10     0.66     10
+Fellowship Road  2p-no-ground-shadows       89.0       58.2    11.25    13.35     0.53     12
+# Fellowship Road with 2 players: slowest around 0.6 km (-16 %), fastest around 3.3 km (+24 %)
+Juguetería       1p                        156.1       89.3     6.74    10.02     0.43     13
+Juguetería       1p-shadows-medium         161.6       87.3     6.32    10.69     0.43     13
+Juguetería       1p-shadows-low            174.1       82.2     5.66    11.52     0.44     13
+Juguetería       1p-no-ground-shadows      157.6       86.5     6.46    10.59     0.43     13
+Juguetería       1p-fxaa                   159.8       88.1     6.16    10.43     0.41     13
+Juguetería       1p-no-antialiasing        159.8       83.6     6.26    11.05     0.42     13
+Juguetería       1p-msaa-2x                154.7       57.9     6.67    10.51     0.42     13
+Juguetería       1p-smaa                   163.5      105.8     6.11     6.74     0.46     15
+Juguetería       1p-lighter-far-trees      149.3       97.4     7.07     8.44     0.43     13
+Juguetería       1p-render-70              157.0       80.6     6.46    10.97     0.44     13
+Juguetería       1p-render-50              162.6       79.8     6.00    11.37     0.46     14
+Juguetería       1p-relief-off             154.5       90.5     6.80    10.27     0.43     13
+Juguetería       1p-relief-at-speed        152.3       90.4     6.90     8.37     0.43     13
+Juguetería       1p-parallax               149.7       95.9     7.04     8.69     0.43     13
+Juguetería       1p-road-relief            149.9       91.9     7.03     9.24     0.43     13
+Juguetería       1p-grass-plain            153.0       89.5     6.76     9.81     0.43     13
+Juguetería       1p-grass-stochastic       152.1       90.0     6.99     9.80     0.43     13
+# Juguetería with 1 player: slowest around 0.7 km (-7 %), fastest around 1.9 km (+4 %)
+Juguetería       2p                        117.3       79.2     8.53     9.55     0.46     13
+Juguetería       2p-full-detail             82.7       68.5    12.13    12.95     0.54     11
+Juguetería       2p-render-70              136.7       92.5     7.31     8.43     0.51     16
+Juguetería       2p-relief-off             118.8       88.5     8.48     9.45     0.48     14
+Juguetería       2p-no-ground-shadows      126.4       80.8     7.92     8.67     0.51     15
+# Juguetería with 2 players: slowest around 0.6 km (-8 %), fastest around 0.5 km (+10 %)
+Costa Bits       1p                         45.5       41.4    21.99    22.92     1.09      7
+Costa Bits       1p-shadows-medium          55.1       49.5    18.17    19.37     0.91      8
+Costa Bits       1p-shadows-low             68.5       60.0    14.74    16.23     0.81      8
+Costa Bits       1p-no-ground-shadows      111.1       89.0     8.97    10.40     0.54     11
+Costa Bits       1p-fxaa                    47.3       44.7    21.15    21.93     1.05      7
+Costa Bits       1p-no-antialiasing         48.2       43.8    20.68    21.57     1.03      7
+Costa Bits       1p-msaa-2x                 47.2       43.3    21.07    22.27     1.05      7
+Costa Bits       1p-smaa                    46.7       42.8    21.43    22.28     1.05      7
+Costa Bits       1p-lighter-far-trees       45.8       40.3    21.83    22.93     1.10      7
+Costa Bits       1p-render-70               47.7       43.2    20.96    22.05     1.03      7
+Costa Bits       1p-render-50               48.7       44.2    20.58    21.49     1.03      7
+Costa Bits       1p-relief-off              46.0       41.1    21.73    23.28     1.06      7
+Costa Bits       1p-relief-at-speed         46.2       42.6    21.62    22.64     1.08      7
+Costa Bits       1p-parallax                45.8       41.9    21.88    22.65     1.07      7
+Costa Bits       1p-road-relief             46.3       41.4    21.57    22.68     1.06      7
+Costa Bits       1p-grass-plain             46.4       42.2    21.51    22.55     1.07      7
+Costa Bits       1p-grass-stochastic        46.2       42.2    21.56    22.73     1.05      7
+# Costa Bits with 1 player: slowest around 2.6 km (-4 %), fastest around 0.4 km (+3 %)
+Costa Bits       2p                         36.0       31.6    27.75    28.40     1.07      7
+Costa Bits       2p-full-detail             23.3       22.0    42.87    44.13     1.54      6
+Costa Bits       2p-render-70               37.5       35.2    26.62    27.62     1.05      7
+Costa Bits       2p-relief-off              35.9       32.2    27.78    28.63     1.08      7
+Costa Bits       2p-no-ground-shadows       65.7       51.3    15.15    15.98     0.84      9
+# Costa Bits with 2 players: slowest around 1.1 km (-3 %), fastest around 1.7 km (+3 %)
+Puerto Neón      1p                         96.3       69.2    10.22    12.87     0.59     11
+Puerto Neón      1p-shadows-medium         123.3       88.1     8.55    10.52     0.55     13
+Puerto Neón      1p-shadows-low            133.7       91.9     7.97    10.28     0.56     13
+Puerto Neón      1p-no-ground-shadows      112.7       83.4     8.98    11.53     0.56     13
+Puerto Neón      1p-fxaa                    98.7       79.8    10.21    12.11     0.59     12
+Puerto Neón      1p-no-antialiasing        104.2       77.8     9.59    11.95     0.61     12
+Puerto Neón      1p-msaa-2x                 99.4       72.8     9.92    12.58     0.60     11
+Puerto Neón      1p-smaa                   102.2       67.8     9.55    12.01     0.59     12
+Puerto Neón      1p-lighter-far-trees       98.5       73.7    10.30    12.80     0.58     11
+Puerto Neón      1p-render-70               96.4       73.6    10.55    12.18     0.59     11
+Puerto Neón      1p-render-50               99.7       75.7    10.11    11.80     0.58     12
+Puerto Neón      1p-relief-off              94.7       69.3    10.47    12.62     0.59     11
+Puerto Neón      1p-relief-at-speed         98.7       77.6    10.28    11.98     0.59     11
+Puerto Neón      1p-parallax                95.2       74.3    10.34    12.75     0.62     11
+Puerto Neón      1p-road-relief             98.7       72.0     9.87    12.70     0.60     11
+Puerto Neón      1p-grass-plain             94.9       71.8    10.43    13.02     0.60     11
+Puerto Neón      1p-grass-stochastic        92.8       71.3    10.75    12.90     0.60     11
+# Puerto Neón with 1 player: slowest around 4.7 km (-19 %), fastest around 0.8 km (+20 %)
+Puerto Neón      2p                         74.9       51.9    12.06    17.81     0.83     12
+Puerto Neón      2p-full-detail             41.9       35.8    24.50    27.18     1.12      9
+Puerto Neón      2p-render-70               73.7       55.6    13.44    16.59     0.79     11
+Puerto Neón      2p-relief-off              70.4       53.3    14.63    17.11     0.84     11
+Puerto Neón      2p-no-ground-shadows       85.3       58.2    11.79    14.70     0.64     13
+# Puerto Neón with 2 players: slowest around 4.8 km (-24 %), fastest around 4.2 km (+25 %)
+# finished
