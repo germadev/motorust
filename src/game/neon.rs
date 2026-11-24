@@ -597,7 +597,7 @@ fn spawn_piece(
 ) -> Entity {
     let pack = assets.packs.get(folder);
     let mut root = world.spawn((
-        Mesh3d(pack.piece(name).mesh.clone()),
+        pack.piece(name).drawn(),
         MeshMaterial3d(material.clone()),
         transform,
     ));
@@ -607,7 +607,7 @@ fn spawn_piece(
             root.with_children(|wheel_stand| {
                 wheel_stand
                     .spawn((
-                        Mesh3d(pack.piece("ferris_wheel_wheel").mesh.clone()),
+                        pack.piece("ferris_wheel_wheel").drawn(),
                         MeshMaterial3d(material.clone()),
                         Transform::from_translation(WHEEL_AXLE),
                         Spinning { rate },
@@ -641,7 +641,7 @@ fn spawn_piece(
             let rate = TURBINE_RATES.0 + (TURBINE_RATES.1 - TURBINE_RATES.0) * chance(number + 7);
             root.with_children(|tower| {
                 tower.spawn((
-                    Mesh3d(pack.piece("wind_turbine_rotor").mesh.clone()),
+                    pack.piece("wind_turbine_rotor").drawn(),
                     MeshMaterial3d(material.clone()),
                     Transform::from_translation(TURBINE_AXLE)
                         .with_rotation(Quat::from_rotation_z(chance(number + 11) * 2.1)),

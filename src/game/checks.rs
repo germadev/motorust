@@ -975,6 +975,12 @@ mod world {
     use super::*;
 
     #[test]
+    fn no_piece_of_a_circuit_is_left_empty() {
+        crate::game::register();
+        motorust_engine::world::tests::no_piece_of_a_circuit_is_left_empty_on(&CIRCUITS);
+    }
+
+    #[test]
     fn circuits_are_prepared_in_the_menus_and_let_go_for_a_race() {
         crate::game::register();
         motorust_engine::world::tests::circuits_are_prepared_in_the_menus_and_let_go_for_a_race_on(

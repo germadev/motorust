@@ -13,13 +13,27 @@ The benchmark has not been run since 2026-10-16, before the relief of the textur
 - **Juguetería**, the first track indoors: its ceiling's lamps glow but cast no shadow, and the room, the furniture, the toy tracks and the toys are batched into a few meshes. Measured as it is, and again once Meshy's toys fill it (see [Alongside](#alongside-jugueterías-toys)).
 - The render world's CPU time apart from the simulation's, with Tracy (`--features bevy/trace_tracy`), where a machine is not bound by its GPU (the M4 Pro).
 
+### The M4 mini at 40 fps (2026-11-19)
+
+Reported on the M4 mini at v0.0.23 (engine v0.0.26): 40 fps with the CPU at 60 %. The questions it raised, and what was found, are in `RECORD/2026-11-19.m4-mini-performance-questions.WIP.md`. In short:
+
+- **Which 60 %:** in Activity Monitor (100 % a core) it says GPU-bound, as the mini always was; in the game's log or benchmark (a share of all ten cores) it would be a CPU regression, about six cores busy against 9 % on 2026-10-16, to look for in what came since (the hover bikes, the neon grid, Puerto Neón).
+- **First,** `motorust --bench` on the mini (from a folder of its own: `mkdir -p ~/motorust-bench && cd ~/motorust-bench && caffeinate -dis motorust --bench`), compared with 2026-10-16's.
+- **If CPU-bound:** Tracy, and the system fixed in the engine.
+- **If GPU-bound, cheapest first:** the ground's anisotropic filter at 4× instead of 16×; levels of detail for the Meshy props (Costa Bits, Puerto Neón), the structures and the rivals' bikes, with the trees' simplifier (`motorust-engine/src/world/lod.rs`); the render scale below 100 % with contrast-adaptive sharpening on Macs; the ground in pieces (step 2); Bevy's TAA towards a temporal upscale; MetalFX beside wgpu last, the biggest gain on a Mac and the costliest.
+- **Costa Bits first** (the drop shows most there): its voxel ground is one mesh of unshared quads over the whole circuit, millions of triangles by a rough estimate, casting shadows, drawn in the main pass and every cascade. Count it, then: indexed quads, merged tops (greedy meshing), the ground in pieces (step 2), the far blocks out of the shadows; and the tree cards turned in the shader rather than on the CPU every frame. See the record's section 2.
+- **Triangles and draw calls a frame** in the performance log, so a run says at once whether geometry is the cause.
+- **Not to do:** Apex Neural Rendering (Windows and Linux only, a DLL put into finished D3D12 or Vulkan games, no source nor licence; frame generation would not make the game answer faster); another engine or language (no gain while the frame is bound by its pixels; reconsidered only if the time is shown to be inside Bevy, with a one-circuit prototype first).
+- **Measured on 2026-11-23:** not CPU-bound (no regression; the 60 % was Activity Monitor's); the 40 fps were Costa Bits', its voxel ground drawn whole into every shadow cascade. That ground cut into squares of 128 m, its quads indexed and its tops merged, in engine v0.0.27: Costa Bits from 45.5 to 157 fps with one player, 23 to 83 with two at full detail. The smooth ground in squares too (step 2, for the ground), in engine v0.0.28: +24–45 % with one player on Mina Dorada, Ghost Island, Base Lunar, Fellowship Road and Puerto Neón.
+- **What wgpu does not use on Apple Silicon** (not reachable from the game): tile memory for the MSAA and depth targets (why MSAA 4× costs so much there: FXAA or SMAA instead), MetalFX, native multi-draw indirect (more CPU an object on a Mac).
+
 What the measurements said so far, machine by machine, is in `RECORD/2026-10-16.performance-plan-and-measuring-guide.completed.md`: the Macs are bound by the pixels they draw (the render scale and the antialiasing count most, the shadows less), and the simulation takes under a millisecond a frame since the nearest road is found through a grid.
 
 ## 2. The ground in pieces (if step 1 says it is worth it)
 
 Each mesh of the ground (one for each kind of ground, or field of flowers) covers the whole circuit, so neither the cameras' culling nor the shadow cascades' leave any of it out: all of it is drawn in the main pass and in each cascade (four at high shadows), and again for each view with two players. Cut into squares of about 100–200 m, each sharing its kind's material, the cascades would draw only the squares they reach. The editor (section 3, step 5) needs it too: a change rebuilds only the squares near it.
 
-Judged of little worth for now: compressed textures (KTX2: the textures that fill the screen are painted at startup; the bikes' would save about 300 MB of memory, not frames), GPU occlusion culling (Apple's GPUs already drop hidden opaque fragments; it needs a depth prepass, which costs pixels), and another engine (the simulation is cheap; the limit is the pixels, not Bevy).
+Judged of little worth for now: compressed textures (KTX2: the textures that fill the screen are painted at startup; the bikes' would save about 300 MB of memory, not frames), GPU occlusion culling (Apple's GPUs already drop hidden opaque fragments; it needs a depth prepass, which costs pixels), and another engine or language (the simulation is cheap; the limit is the pixels, not Bevy; weighed again on 2026-11-19, see step 1).
 
 ## 3. The engine apart from the game
 
