@@ -3613,8 +3613,8 @@ dependencies = [
 
 [[package]]
 name = "motorust-engine"
-version = "0.0.30"
-source = "git+https://github.com/jgermade/motorust-engine?tag=v0.0.30#d8a10a56e78ce3cc81e8b0cbd93d768a39621d29"
+version = "0.0.31"
+source = "git+https://github.com/jgermade/motorust-engine?tag=v0.0.31#b89a7f8c9d6f47dcc3c2ec1abd3997669dfedf88"
 dependencies = [
  "bevy",
  "erased-serde",
